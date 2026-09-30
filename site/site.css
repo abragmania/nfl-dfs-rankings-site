@@ -1,0 +1,78 @@
+/* Published, read-only copy of the app. Everything here only HIDES controls that cannot work without the
+   server (or changes their cursor); no layout, colour or spacing of anything else is touched. Selectors
+   were taken from the view code in public/js (header.js, table.js, filterbar.js, tabs.js, lineup.js and
+   the showdown/ files). Clicks on the editable spots are also swallowed by site.js. */
+
+.site-published {
+  font-size: var(--fs-sm);
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+
+/* Header and mode row: Upload CSV, upload info, Refresh (classic and showdown), Upload Showdown CSV. */
+.is-site .upload-btn,
+.is-site #upload-info,
+.is-site #refresh-btn,
+.is-site #sd-refresh-btn,
+.is-site .mode-upload-tile {
+  display: none !important;
+}
+
+/* Filter bar: Reset all overrides. */
+.is-site #reset-overrides-btn {
+  display: none !important;
+}
+
+/* Rankings table: override editing. The edited marker stays as information; the per-cell reset icon goes,
+   the cells stop looking clickable, empty stars and empty note pencils disappear (starred rows keep their
+   gold star and noted rows keep their pencil with the note as hover text; neither can be clicked). */
+.is-site .reset-icon {
+  display: none !important;
+}
+.is-site .editable-cell {
+  cursor: default;
+}
+.is-site .star-btn {
+  cursor: default;
+}
+.is-site .star-btn:not(.active) {
+  visibility: hidden;
+}
+.is-site .note-icon {
+  cursor: default;
+}
+.is-site .note-icon:not(.has-note) {
+  display: none !important;
+}
+
+/* Projections and Ownership tabs: FantasyPros paste boxes (classic and showdown kicker), source weight
+   inputs and the Enabled tick boxes. */
+.is-site .paste-box,
+.is-site .source-enabled,
+.is-site label:has(> .source-weight-input) {
+  display: none !important;
+}
+
+/* Lineup Builder (classic and showdown): Build, Save lineup, the option selects and the Save-as box that
+   only feed them, lock and exclude buttons. Add, Clear and Load stay: they only move players around in the
+   visitor's own browser. */
+.is-site #lineup-build-btn,
+.is-site #lineup-save-btn,
+.is-site #sd-lineup-build-btn,
+.is-site #sd-lineup-save-btn,
+.is-site .lineup-controls .lineup-control,
+.is-site [data-action="slot-lock"],
+.is-site [data-action="row-lock"],
+.is-site [data-action="row-exclude"] {
+  display: none !important;
+}
+
+/* Saved lineups stay viewable: Delete goes, the name stops being a rename button. */
+.is-site [data-action="lineup-delete-start"],
+.is-site [data-action="sd-delete-start"] {
+  display: none !important;
+}
+.is-site .saved-lineup-name-btn {
+  pointer-events: none;
+  cursor: default;
+}

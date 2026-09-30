@@ -1,0 +1,1365 @@
+/* One spacing scale, one type scale, CSS variables theme both light and dark. LIGHT is the plain
+   :root default (kept pixel-for-pixel identical to the previous look) so it still renders correctly
+   with no JS and as the explicit "Light" choice. DARK is the palette the app actually shows by
+   default: index.html's inline bootstrap script sets <html data-theme="dark"> before first paint
+   unless localStorage has a saved "light" choice, so :root[data-theme="dark"] wins in the normal
+   case; the @media (prefers-color-scheme: dark) block below is only the no-JS/first-paint fallback
+   for whichever theme the OS prefers, guarded so a saved "light" choice always overrides it. The
+   header's toggle button (public/js/header.js wireThemeToggle) flips data-theme and saves the choice
+   (localStorage key "nfldfs-theme", wrapped in try/catch). Dark values match the hosted sheets' own
+   palette (see tools/build_classic_sheet.mjs): bg #0e1116, surfaces #151a22, lines #232a36, text
+   #e7e9ee, muted #8d95a3, accent gold #f0b429 (the app's existing --amber token — already the CPT/
+   showdown-band/mode-tile gold, D39), chalk red #b23a3a, value green #2f8f5b, leverage blue #3b74c9
+   (the app's existing --accent token, used for buttons/active states so white button text keeps
+   working — gold was reserved for headline/CPT accents only, not solid button fills). */
+:root {
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 24px;
+  --sp-6: 32px;
+
+  --fs-sm: 12px;
+  --fs-base: 15px;
+  --fs-md: 16px;
+  --fs-lg: 22px;
+
+  --bg: #f4f5f7;
+  --bg-elevated: #ffffff;
+  --bg-elevated-2: #eef0f3;
+  --border: #d8dce2;
+  --text: #1b1e23;
+  --text-muted: #565d68;
+  --text-dim: #7a818c;
+  --accent: #2f5cd6;
+  --accent-hover: #24489f;
+  --accent-rgb: 47, 92, 214;
+  --danger: #c8323b;
+  --danger-rgb: 200, 50, 59;
+  --success: #1f8a3b;
+  --success-rgb: 31, 138, 59;
+  --info: #1c6ea6;
+  --amber: #9a6a10;
+  --amber-rgb: 154, 106, 16;
+  --row-hover: #eef0f3;
+  --row-dim-text: #9aa2ad;
+
+  /* Value/Lev percentile grading (Adam's addition): v1 = top 20% within position, v5 = bottom 20%.
+     Each grade also carries a background tint (v1/v5 strongest) so the reading is a coloured cell, not
+     just a coloured digit — the light-theme v2/v4 text colours below are too pale to read on their own
+     (👁 visual-qa), so v2/v4 keep the neutral --text colour and rely on the tint to signal direction. */
+  --grade-v1: #1f8a3b;
+  --grade-v2: #6fb98a;
+  --grade-v5: #c8323b;
+  --grade-v4: #d98d92;
+  --grade-v1-bg: rgba(31, 138, 59, 0.16);
+  --grade-v2-bg: rgba(111, 185, 138, 0.18);
+  --grade-v4-bg: rgba(200, 50, 59, 0.13);
+  --grade-v5-bg: rgba(200, 50, 59, 0.20);
+
+  --status-out: #c8323b;
+  --status-amber: #9a6a10;
+  --status-grey: #6b7280;
+  --status-grey-rgb: 107, 114, 128;
+
+  /* Position pills/chips (showdown D41): one muted colour per position, used identically for the small
+     position pill next to a team chip and the matching filter chip, on both Rankings and Lineup Builder
+     (showdown side). Each position also carries an -rgb tuple for a translucent pill background, same
+     pattern as --danger-rgb/--amber-rgb above. Light-theme values are darker (readable on a pale card);
+     dark-theme values (below, :root[data-theme="dark"]) are lighter pastels (readable on a dark card). */
+  --pos-qb: #6b46c1;
+  --pos-qb-rgb: 107, 70, 193;
+  --pos-rb: #1f7a5c;
+  --pos-rb-rgb: 31, 122, 92;
+  --pos-wr: #2b6cb0;
+  --pos-wr-rgb: 43, 108, 176;
+  --pos-te: #b5651d;
+  --pos-te-rgb: 181, 101, 29;
+  --pos-k: #a23e6b;
+  --pos-k-rgb: 162, 62, 107;
+  --pos-dst: #4a5568;
+  --pos-dst-rgb: 74, 85, 104;
+
+  /* Tells Chromium to draw native UI (scrollbar thumbs/tracks, form controls, selects) in the matching
+     palette instead of the OS default (round-2 fix, coordinator). */
+  color-scheme: light;
+}
+
+:root[data-theme="dark"] {
+  --bg: #0e1116;
+  --bg-elevated: #151a22;
+  --bg-elevated-2: #1b212b;
+  --border: #232a36;
+  --text: #e7e9ee;
+  --text-muted: #8d95a3;
+  --text-dim: #626a78;
+  --accent: #3b74c9;
+  --accent-hover: #2e5da3;
+  --accent-rgb: 59, 116, 201;
+  --danger: #b23a3a;
+  --danger-rgb: 178, 58, 58;
+  --success: #2f8f5b;
+  --success-rgb: 47, 143, 91;
+  --info: #4fa8e0;
+  --amber: #f0b429;
+  --amber-rgb: 240, 180, 41;
+  --row-hover: #1b212b;
+  --row-dim-text: #4d5566;
+
+  --grade-v1: #2f8f5b;
+  --grade-v2: #5fae82;
+  --grade-v5: #b23a3a;
+  --grade-v4: #c97272;
+  --grade-v1-bg: rgba(47, 143, 91, 0.42);
+  --grade-v2-bg: rgba(47, 143, 91, 0.20);
+  --grade-v4-bg: rgba(178, 58, 58, 0.18);
+  --grade-v5-bg: rgba(178, 58, 58, 0.40);
+
+  --status-out: #b23a3a;
+  --status-amber: #f0b429;
+  --status-grey: #99a1ae;
+  --status-grey-rgb: 153, 161, 174;
+
+  --pos-qb: #a78bfa;
+  --pos-qb-rgb: 167, 139, 250;
+  --pos-rb: #4fd1a5;
+  --pos-rb-rgb: 79, 209, 165;
+  --pos-wr: #6fa8dc;
+  --pos-wr-rgb: 111, 168, 220;
+  --pos-te: #e0975a;
+  --pos-te-rgb: 224, 151, 90;
+  --pos-k: #d883ab;
+  --pos-k-rgb: 216, 131, 171;
+  --pos-dst: #9aa5b8;
+  --pos-dst-rgb: 154, 165, 184;
+
+  color-scheme: dark;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]):not([data-theme="dark"]) {
+    --bg: #0e1116;
+    --bg-elevated: #151a22;
+    --bg-elevated-2: #1b212b;
+    --border: #232a36;
+    --text: #e7e9ee;
+    --text-muted: #8d95a3;
+    --text-dim: #626a78;
+    --accent: #3b74c9;
+    --accent-hover: #2e5da3;
+    --accent-rgb: 59, 116, 201;
+    --danger: #b23a3a;
+    --danger-rgb: 178, 58, 58;
+    --success: #2f8f5b;
+    --success-rgb: 47, 143, 91;
+    --info: #4fa8e0;
+    --amber: #f0b429;
+    --amber-rgb: 240, 180, 41;
+    --row-hover: #1b212b;
+    --row-dim-text: #4d5566;
+
+    --grade-v1: #2f8f5b;
+    --grade-v2: #5fae82;
+    --grade-v5: #b23a3a;
+    --grade-v4: #c97272;
+    --grade-v1-bg: rgba(47, 143, 91, 0.42);
+    --grade-v2-bg: rgba(47, 143, 91, 0.20);
+    --grade-v4-bg: rgba(178, 58, 58, 0.18);
+    --grade-v5-bg: rgba(178, 58, 58, 0.40);
+
+    --status-out: #b23a3a;
+    --status-amber: #f0b429;
+    --status-grey: #99a1ae;
+    --status-grey-rgb: 153, 161, 174;
+
+    --pos-qb: #a78bfa;
+    --pos-qb-rgb: 167, 139, 250;
+    --pos-rb: #4fd1a5;
+    --pos-rb-rgb: 79, 209, 165;
+    --pos-wr: #6fa8dc;
+    --pos-wr-rgb: 111, 168, 220;
+    --pos-te: #e0975a;
+    --pos-te-rgb: 224, 151, 90;
+    --pos-k: #d883ab;
+    --pos-k-rgb: 216, 131, 171;
+    --pos-dst: #9aa5b8;
+    --pos-dst-rgb: 154, 165, 184;
+
+    color-scheme: dark;
+  }
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font-family: -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+  font-size: var(--fs-base);
+}
+
+/* ---------- Header ---------- */
+.header {
+  width: 100%;
+  background: var(--bg-elevated);
+  border-bottom: 1px solid var(--border);
+  /* Side padding grows on wide screens so the header's contents line up with the width-capped .main. */
+  padding: var(--sp-3) max(var(--sp-5), calc((100% - 1560px) / 2 + var(--sp-5)));
+}
+
+.header-top {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-5);
+  width: 100%;
+}
+
+.title {
+  margin: 0;
+  font-size: var(--fs-lg);
+  font-weight: 700;
+  color: var(--text);
+  white-space: nowrap;
+}
+
+.slate-line {
+  flex: 1;
+  color: var(--text-muted);
+  font-size: var(--fs-base);
+  white-space: nowrap;
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+}
+
+.upload-btn {
+  cursor: pointer;
+  background: var(--accent);
+  color: #ffffff;
+  padding: var(--sp-2) var(--sp-4);
+  border-radius: 6px;
+  font-size: var(--fs-base);
+  font-weight: 600;
+  white-space: nowrap;
+}
+.upload-btn:hover { background: var(--accent-hover); }
+
+.upload-info {
+  font-size: var(--fs-sm);
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+
+.refresh-btn {
+  cursor: pointer;
+  background: var(--bg-elevated-2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  padding: var(--sp-2) var(--sp-4);
+  border-radius: 6px;
+  font-size: var(--fs-base);
+  font-weight: 600;
+  white-space: nowrap;
+}
+.refresh-btn:hover { border-color: var(--accent); }
+
+/* Dark/Light toggle (header, both themes): same shape as .refresh-btn but a fixed width so flipping
+   between the sun and moon glyph never shifts anything else in .header-actions. */
+.theme-toggle-btn {
+  cursor: pointer;
+  background: var(--bg-elevated-2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: var(--sp-2) var(--sp-3);
+  font-size: var(--fs-base);
+  width: 40px;
+  text-align: center;
+}
+.theme-toggle-btn:hover { border-color: var(--accent); }
+
+.pills-row { margin-top: var(--sp-2); }
+.pills-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+}
+.pill {
+  display: inline-block;
+  border-radius: 999px;
+  padding: 3px 10px;
+  font-size: var(--fs-sm);
+}
+.pill-warning {
+  background: rgba(var(--amber-rgb), 0.15);
+  color: var(--amber);
+  border: 1px solid rgba(var(--amber-rgb), 0.4);
+}
+
+/* ---------- Main layout ---------- */
+/* The page does not have to fill a wide screen (Adam): past 1560px the game strip, filters and table stop
+   growing and sit centred together, so columns never drift apart and everything keeps one left edge. */
+.main {
+  width: 100%;
+  padding: var(--sp-4) var(--sp-5);
+  max-width: min(100vw, 1560px);
+  margin: 0 auto;
+}
+
+.status {
+  min-height: 18px;
+  margin-bottom: var(--sp-2);
+  color: var(--text-muted);
+  font-size: var(--fs-sm);
+}
+.status.error { color: var(--danger); }
+
+/* ---------- Tabs ---------- */
+.tabs {
+  display: flex;
+  gap: var(--sp-2);
+  border-bottom: 1px solid var(--border);
+  margin-bottom: var(--sp-4);
+}
+.tab-btn {
+  cursor: pointer;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--text-muted);
+  padding: var(--sp-2) var(--sp-3) var(--sp-3);
+  font-size: var(--fs-md);
+  font-weight: 600;
+}
+.tab-btn.active {
+  color: var(--text);
+  border-bottom-color: var(--accent);
+}
+.tab-btn:hover { color: var(--text); }
+
+.panel { width: 100%; }
+
+/* Shared internal-scroll, sticky-header table treatment (rankings table plus the Projections/Ownership
+   tabs' source-value tables). app.js sets max-height inline per element so each fills whatever room is
+   actually left below it instead of a fixed guess that only fit one window size. */
+.scroll-panel {
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+/* ---------- Game strip (D26) ---------- */
+.gamestrip { margin-bottom: var(--sp-4); }
+.gamestrip-toggle-row { display: flex; justify-content: flex-end; margin-bottom: var(--sp-2); }
+.gamestrip-toggle-btn {
+  cursor: pointer;
+  background: none;
+  border: none;
+  color: var(--accent);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  padding: 0;
+}
+.gamestrip-toggle-btn:hover { color: var(--accent-hover); }
+
+.gamestrip-boxes {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: var(--sp-3);
+}
+/* Compact default (👁 visual-qa): every game stays visible in one row without a hidden overflow at both
+   1366 and 1920 wide. A fixed 12-column grid stretched every box to fill the row (👁 visual-qa third
+   pass), but a 13-plus game slate then wrapped its extra box(es) onto a lonely second row (coordinator
+   round 2). Flex with equal shrinking shares instead: whatever number of games there are (12 to 16),
+   every box narrows to fit the same single row rather than a fixed column count. */
+.gamestrip-boxes.collapsed {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 3px;
+}
+.gamestrip-boxes.collapsed .game-box.compact {
+  flex: 1 1 0;
+  min-width: 0;
+}
+.game-box.compact .game-team { gap: 0; }
+.game-box.compact .game-team-abbr, .game-box.compact .game-team-implied { font-size: var(--fs-sm); }
+.game-box.compact .game-box-meta { gap: 6px; }
+.game-box.compact .game-popularity-rank { font-weight: 700; }
+
+.game-box {
+  cursor: pointer;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: var(--sp-2) var(--sp-3);
+  color: var(--text);
+  font-family: inherit;
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.game-box.compact { padding: 3px 4px; gap: 2px; }
+.game-box:hover { border-color: var(--accent); }
+.game-box.active { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+
+.game-box-teams {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.game-team {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  font-size: var(--fs-sm);
+}
+.game-team-logo { display: block; border-radius: 4px; }
+.game-team-abbr { color: var(--text-muted); font-weight: 600; }
+.game-team-implied { color: var(--text); font-weight: 700; }
+.game-team-implied-cap { color: var(--text-dim); font-size: var(--fs-sm); text-transform: uppercase; letter-spacing: 0.02em; }
+.game-at { color: var(--text-dim); font-size: var(--fs-sm); }
+
+.game-box-meta {
+  display: flex;
+  justify-content: space-between;
+  font-size: var(--fs-sm);
+  color: var(--text-muted);
+}
+.game-total { font-weight: 700; color: var(--text); }
+.game-total.line-unknown { color: var(--amber); font-weight: 600; }
+
+.game-weather { font-size: var(--fs-sm); color: var(--text-muted); }
+
+.game-popularity { display: flex; align-items: center; gap: var(--sp-2); }
+.game-popularity-bar {
+  flex: 1;
+  height: 6px;
+  background: var(--bg-elevated-2);
+  border-radius: 999px;
+  overflow: hidden;
+}
+.game-popularity-fill { height: 100%; background: var(--accent); }
+.game-popularity-rank { font-size: var(--fs-sm); color: var(--text-dim); }
+/* Compact mode always shows the popularity rank so "#3" is never lost when the box shrinks (👁
+   visual-qa); the bar next to it only appears once the strip has room to spare (1600px+ viewport, 👁
+   visual-qa third pass) — below that, each of the twelve boxes is too narrow for a legible bar. */
+.game-popularity-compact { display: flex; align-items: center; justify-content: flex-end; gap: 4px; }
+.game-popularity-compact .game-popularity-bar { display: none; }
+.game-popularity-compact .game-popularity-rank { font-weight: 700; }
+@media (min-width: 1600px) {
+  /* `flex: 1` here is what actually gives the bar something to grow into: .game-popularity-compact
+     itself is a flex item inside .game-box-meta (alongside the kickoff/total text) and, without this,
+     shrinks to its content width (just the rank), leaving the inner flex:1 bar nothing to stretch
+     against (👁 visual-qa third pass: the bar was in the markup but effectively zero width). */
+  .game-box-meta .game-popularity-compact { flex: 1; justify-content: flex-end; }
+  .game-popularity-compact .game-popularity-bar { display: block; flex: 1; height: 4px; margin-right: var(--sp-1); }
+}
+
+/* ---------- Filter bar ---------- */
+.filterbar {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  margin-bottom: var(--sp-4);
+}
+.filter-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2);
+}
+.chip-group { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
+/* Team chips: tight enough padding and gap that all 32 fit on one row at 1366px and up without a
+   horizontal scrollbar (coordinator round 2: the scrollable-row approach painted a bright native
+   scrollbar on the dark page). Wrap is the fallback, not the plan, for anything narrower. */
+#team-chips {
+  flex-wrap: wrap;
+  gap: 3px;
+}
+#team-chips .team-chip { flex: 0 0 auto; padding: 3px 6px; }
+.chip {
+  cursor: pointer;
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+  color: var(--text-muted);
+  border-radius: 999px;
+  padding: 4px 12px;
+  font-size: var(--fs-sm);
+  font-weight: 600;
+}
+.pos-chip.active, .toggle-chip.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #ffffff;
+}
+/* Inactive team chips stay at full team colour (contrast picked per-chip by textColourFor in
+   filterbar.js) with a desaturating filter rather than opacity, which would fade the label text below
+   the readable-contrast threshold along with the background. */
+/* text-shadow (not a theme colour: a fixed dark shadow that keeps whichever text colour
+   textColourFor picked readable against the chip's own team colour, independent of page theme, same
+   reasoning as the team-colour literals themselves) keeps the abbreviation legible on both themes. */
+.team-chip { border: 2px solid transparent; font-weight: 700; filter: saturate(0.6); text-shadow: 0 1px 1px rgba(0, 0, 0, 0.45); }
+.team-chip:hover { filter: saturate(0.85); }
+/* A fixed white-then-dark double ring reads as "active" against any team's own colour (dark chips like
+   BAL/CHI/PIT/NYJ/LV were invisible against a --text-coloured border alone, 👁 visual-qa). */
+.team-chip.active {
+  filter: saturate(1);
+  border-color: transparent;
+  box-shadow: 0 0 0 2px #ffffff, 0 0 0 4px #14161a;
+}
+
+.filter-summary-row { color: var(--text-muted); font-size: var(--fs-sm); }
+.filter-count { font-weight: 600; }
+.link-btn {
+  cursor: pointer;
+  background: none;
+  border: none;
+  color: var(--accent);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  padding: 0;
+}
+.link-btn:hover { color: var(--accent-hover); }
+.active-game-chip {
+  border: 1px solid var(--accent);
+  background: rgba(var(--accent-rgb), 0.12);
+  color: var(--accent);
+}
+
+.filter-search input, .filter-salary input {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 6px;
+  padding: 4px 8px;
+  font-size: var(--fs-base);
+}
+.filter-salary { display: flex; align-items: center; gap: var(--sp-1); color: var(--text-muted); font-size: var(--fs-sm); }
+.filter-salary input { width: 90px; }
+
+.reset-btn {
+  cursor: pointer;
+  background: none;
+  border: 1px solid var(--danger);
+  color: var(--danger);
+  border-radius: 6px;
+  padding: 4px 10px;
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  margin-left: auto;
+}
+.reset-btn:hover { background: rgba(var(--danger-rgb), 0.1); }
+/* Muted and inert when nothing exists to reset (👁 visual-qa third pass: no row has an override, star or
+   note yet the button still read as an urgent live action). */
+.reset-btn:disabled {
+  cursor: default;
+  border-color: var(--border);
+  color: var(--text-dim);
+  background: none;
+}
+.reset-btn:disabled:hover { background: none; }
+
+/* ---------- Rankings table ---------- */
+.table-wrap {
+  width: 100%;
+  /* max-height is set inline by app.js's adjustScrollPanels() (see .scroll-panel above). */
+}
+.table-legend {
+  margin-top: var(--sp-2);
+  color: var(--text-dim);
+  font-size: var(--fs-sm);
+}
+.rankings-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--fs-base);
+  /* Fixed layout with explicit widths on every column except Tags: under the browser's default
+     auto-layout, an empty Status column was still claiming a large share of the table's width instead
+     of giving it to Tags, which is why tag reasons wrapped to 2-3 lines even with room to spare (👁
+     visual-qa). Tags is the one column left unspecified, so it receives whatever the others don't use. */
+  table-layout: fixed;
+}
+.rankings-table th:nth-child(1), .rankings-table td:nth-child(1) { width: 36px; }
+.rankings-table th:nth-child(3), .rankings-table td:nth-child(3) { width: 54px; }
+.rankings-table th:nth-child(4), .rankings-table td:nth-child(4) { width: 62px; }
+.rankings-table th:nth-child(5), .rankings-table td:nth-child(5) { width: 62px; }
+.rankings-table th:nth-child(6), .rankings-table td:nth-child(6) { width: 82px; }
+.rankings-table th:nth-child(7), .rankings-table td:nth-child(7) { width: 72px; }
+.rankings-table th:nth-child(8), .rankings-table td:nth-child(8) { width: 82px; }
+/* Salary/Proj/Own%/Value/Lev right-align with tabular figures (👁 visual-qa third pass) so the numbers
+   themselves line up column-on-column instead of ragging left; font-variant-numeric inherits into the
+   editable-cell's span/input and the grade-cell span underneath. */
+.rankings-table th:nth-child(6), .rankings-table td:nth-child(6),
+.rankings-table th:nth-child(7), .rankings-table td:nth-child(7),
+.rankings-table th:nth-child(8), .rankings-table td:nth-child(8),
+.rankings-table th:nth-child(9), .rankings-table td:nth-child(9),
+.rankings-table th:nth-child(10), .rankings-table td:nth-child(10) {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.rankings-table td:nth-child(7) .editable-cell,
+.rankings-table td:nth-child(8) .editable-cell {
+  justify-content: flex-end;
+}
+/* Value/Lev widened from 62px (👁 visual-qa third pass: chip padding clipped a leading "-" on negative
+   leverage like "-1.42"); widened again (🎨 polish) to keep pace with the larger table type scale. */
+.rankings-table th:nth-child(9), .rankings-table td:nth-child(9) { width: 88px; }
+.rankings-table th:nth-child(10), .rankings-table td:nth-child(10) { width: 88px; }
+.rankings-table thead {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--bg-elevated-2);
+}
+.rankings-table th {
+  text-align: left;
+  padding: var(--sp-2) var(--sp-3);
+  cursor: pointer;
+  color: var(--text-muted);
+  font-size: var(--fs-sm);
+  white-space: nowrap;
+  border-bottom: 1px solid var(--border);
+  user-select: none;
+}
+.rankings-table th.sorted { color: var(--text); }
+.rankings-table td {
+  padding: 0 var(--sp-3);
+  height: 42px;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* Every column has a width, Player included, so no single column soaks up the spare room and opens a gap
+   before the next one (Adam: "a grand canyon between the player and position columns"). Whatever spare width
+   the width-capped page (.main) leaves is shared across all columns in proportion. */
+.rankings-table th:nth-child(2), .rankings-table td:nth-child(2) { width: 250px; }
+/* The star cell is narrower than the cell padding allows, so the shared ellipsis rule was printing stray
+   dots beside every star; it is centred with tight padding and never ellipsised. */
+.rankings-table th:nth-child(1), .rankings-table td:nth-child(1) {
+  padding: 0 var(--sp-1);
+  text-align: center;
+  text-overflow: clip;
+}
+/* Tags is a compact fixed width sized for two or three short pills; the reason text is hover-only (see
+   .tag-reason below), so the column no longer needs to hold prose (🎨 polish). Pills wrap onto a second
+   line inside the cell rather than pushing the column wider. */
+.rankings-table th:nth-child(11), .rankings-table td.tags-cell {
+  width: 170px;
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+  vertical-align: middle;
+  line-height: 1.6;
+}
+/* Status is usually empty; give it a small fixed width rather than an auto column so the room it would
+   otherwise hold sits with Player instead (👁 visual-qa). */
+.rankings-table th[data-col="status"], .rankings-table td.status-cell { width: 84px; }
+.rankings-table th[data-col="note"], .rankings-table td:nth-child(13) { width: 100px; }
+.rankings-table tbody tr:hover { background: var(--row-hover); }
+.rankings-table tbody tr.row-dimmed { color: var(--row-dim-text); }
+.rankings-table tbody tr.row-dimmed .team-chip-mini { opacity: 0.6; }
+
+.player-cell { display: flex; align-items: center; gap: var(--sp-2); }
+.player-logo { border-radius: 4px; display: block; }
+.player-name { font-weight: 600; }
+.team-chip-mini {
+  font-size: var(--fs-sm);
+  font-weight: 700;
+  border-radius: 4px;
+  padding: 1px 6px;
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.45);
+}
+
+/* Monochrome pencil glyph (was a colour emoji, always visible): hidden until the row is hovered or a
+   note already exists, so an empty row reads clean (👁 visual-qa). */
+.note-icon {
+  cursor: pointer;
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  opacity: 0;
+  font-size: var(--fs-base);
+  line-height: 1;
+  padding: 0;
+}
+.rank-row:hover .note-icon, .note-icon.has-note { opacity: 1; }
+.note-icon:hover { color: var(--text); }
+.note-edit-input {
+  width: 160px;
+  background: var(--bg-elevated-2);
+  border: 1px solid var(--accent);
+  color: var(--text);
+  border-radius: 4px;
+  padding: 2px 4px;
+  font-size: var(--fs-sm);
+}
+.note-preview {
+  font-size: var(--fs-sm);
+  color: var(--text-muted);
+  cursor: default;
+}
+
+.star-btn {
+  cursor: pointer;
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  font-size: var(--fs-md);
+}
+.star-btn.active { color: var(--amber); }
+
+.editable-cell { position: relative; display: flex; align-items: center; gap: 4px; cursor: text; }
+.cell-value { min-width: 2ch; }
+.cell-edit-wrap { position: relative; display: inline-flex; }
+.cell-edit-input {
+  width: 70px;
+  background: var(--bg-elevated-2);
+  border: 1px solid var(--accent);
+  color: var(--text);
+  border-radius: 4px;
+  padding: 2px 4px;
+  font-size: var(--fs-base);
+}
+/* Positioned so an invalid entry never grows the 36px row (finding: validation message under the cell,
+   editor stays open with focus). */
+.cell-edit-error {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  z-index: 3;
+  margin-top: 2px;
+  background: var(--bg-elevated-2);
+  border: 1px solid var(--danger);
+  color: var(--danger);
+  border-radius: 4px;
+  padding: 2px 6px;
+  font-size: var(--fs-sm);
+  white-space: nowrap;
+}
+.row-flag-marker { font-size: var(--fs-sm); margin-left: 1px; color: var(--amber); cursor: default; }
+
+.grade-cell { padding: 1px 5px; border-radius: 3px; }
+.grade-v1 { background: var(--grade-v1-bg); color: var(--grade-v1); font-weight: 700; }
+.grade-v2 { background: var(--grade-v2-bg); color: var(--text); }
+.grade-v3 { color: var(--text); }
+.grade-v4 { background: var(--grade-v4-bg); color: var(--text); }
+.grade-v5 { background: var(--grade-v5-bg); color: var(--grade-v5); font-weight: 700; }
+
+.status-badge {
+  display: inline-block;
+  border-radius: 4px;
+  padding: 1px 6px;
+  font-size: var(--fs-sm);
+  font-weight: 700;
+  margin-right: 4px;
+}
+.status-out { background: rgba(var(--danger-rgb), 0.18); color: var(--status-out); }
+.status-doubtful, .status-questionable { background: rgba(var(--amber-rgb), 0.18); color: var(--status-amber); }
+.status-ir, .status-other { background: rgba(var(--status-grey-rgb), 0.18); color: var(--status-grey); }
+.status-injury-note { font-size: var(--fs-sm); color: var(--text-dim); }
+
+.override-marker {
+  font-size: var(--fs-sm);
+  color: var(--accent);
+  border: 1px solid var(--accent);
+  border-radius: 3px;
+  padding: 0 3px;
+  cursor: default;
+}
+.reset-icon {
+  cursor: pointer;
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  font-size: var(--fs-sm);
+  padding: 0;
+}
+.reset-icon:hover { color: var(--accent); }
+
+.own-kind { font-size: var(--fs-sm); margin-left: 1px; color: var(--text-dim); }
+.own-kind-quoted { color: var(--info); }
+
+.tag-pill {
+  display: inline-block;
+  vertical-align: middle;
+  border-radius: 4px;
+  padding: 2px 7px;
+  font-size: var(--fs-sm);
+  font-weight: 700;
+  margin: 2px 4px 2px 0;
+  white-space: nowrap;
+}
+/* Same translucent tint tokens the grade cells use (--grade-v5-bg/--grade-v1-bg), not a separate
+   weaker alpha of the raw colour: at a low flat alpha the saturated text read as glowing neon on the
+   near-black dark background instead of a filled badge (coordinator round 2). */
+.tag-chalk { background: var(--grade-v5-bg); color: var(--danger); }
+.tag-value { background: var(--grade-v1-bg); color: var(--success); }
+.tag-other { background: var(--bg-elevated-2); color: var(--text-muted); }
+.tag-item { display: inline-block; }
+/* The reason is hover-only now (the pill's own title, plus the tags-cell <td> title carry the full text,
+   👁 visual-qa fourth pass / D-spec "pills with reason and source on hover"): printing it inline next to
+   every pill is what was ballooning the Tags column to a third of the table width (Adam, laptop
+   complaint), so it's removed from the flowed layout entirely rather than just visually hidden. */
+.tag-reason { display: none; }
+
+/* ---------- Empty / loading state ---------- */
+.empty-state {
+  padding: var(--sp-6) var(--sp-4);
+  text-align: center;
+  color: var(--text-muted);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+/* ---------- Projections / Ownership tabs ---------- */
+.tab-recipe {
+  font-size: var(--fs-sm);
+  color: var(--text-muted);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: var(--sp-3);
+  margin-bottom: var(--sp-3);
+}
+.tab-recipe p { margin: 0 0 var(--sp-1); }
+.tab-recipe p:last-of-type { margin-bottom: var(--sp-2); }
+.tab-recipe details summary { cursor: pointer; color: var(--text); font-weight: 600; }
+.tab-recipe details[open] summary { margin-bottom: var(--sp-1); }
+.tab-note { font-size: var(--fs-sm); color: var(--text-muted); margin: 0 0 var(--sp-3); }
+
+.source-card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: var(--sp-3);
+  margin-bottom: var(--sp-4);
+}
+.source-card {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: var(--sp-3);
+  font-size: var(--fs-sm);
+}
+.source-card-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--sp-2); }
+.source-label { font-weight: 700; color: var(--text); }
+.source-enabled { display: flex; align-items: center; gap: 4px; color: var(--text-muted); }
+.source-card-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--sp-1); }
+/* flex-wrap plus an explicit gap (👁 visual-qa third pass): at 1366 the "Fetched HH:MM" and "N rows ·
+   M matched · K unmatched" spans had no minimum gap between them and could sit flush against each other;
+   now there's always at least sp-3 between them on one line, or they drop to their own lines instead of
+   touching. */
+.source-card-row.muted { color: var(--text-dim); font-size: var(--fs-sm); flex-wrap: wrap; gap: 2px var(--sp-3); }
+.source-weight-input {
+  width: 60px;
+  background: var(--bg-elevated-2);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 4px;
+  padding: 2px 4px;
+}
+.source-status { font-weight: 700; text-transform: capitalize; }
+.source-status-ok { color: var(--success); }
+.source-status-stale { color: var(--amber); }
+.source-status-failed { color: var(--danger); }
+.source-unmatched { font-size: var(--fs-sm); color: var(--text-dim); margin-top: var(--sp-1); }
+.source-unmatched summary { cursor: pointer; color: var(--text-muted); }
+.source-weight-error { color: var(--danger); font-size: var(--fs-sm); margin: 2px 0 var(--sp-1); }
+
+.paste-box {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: var(--sp-3);
+  margin-bottom: var(--sp-4);
+}
+/* Collapsed by default behind <details> (👁 visual-qa third pass): the paste box previously always ate a
+   fixed block of height above the source-value table, which is the room the table itself needs most. */
+.paste-box summary { cursor: pointer; font-weight: 700; font-size: var(--fs-md); color: var(--text); margin-bottom: var(--sp-2); }
+.paste-box[open] summary { margin-bottom: var(--sp-2); }
+.paste-box-controls { display: flex; gap: var(--sp-2); margin: var(--sp-2) 0; }
+.paste-box textarea {
+  width: 100%;
+  background: var(--bg-elevated-2);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 6px;
+  padding: var(--sp-2);
+  font-family: monospace;
+  font-size: var(--fs-sm);
+}
+.paste-result { font-size: var(--fs-sm); color: var(--text-muted); margin-top: var(--sp-2); }
+
+.tab-table-wrap { width: 100%; max-height: calc(100vh - 420px); }
+.source-value-table { width: 100%; border-collapse: collapse; font-size: var(--fs-sm); }
+.source-value-table th, .source-value-table td {
+  padding: var(--sp-1) var(--sp-2);
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  white-space: nowrap;
+}
+.source-value-table thead { position: sticky; top: 0; background: var(--bg-elevated-2); }
+/* Every numeric column (each source's own value plus Blended) right-aligns with tabular figures (👁
+   visual-qa third pass); Player/Team stay left, Coverage stays as printed (a mix of "%" and words like
+   "estimate" that don't want right-alignment). */
+.source-value-table th:nth-child(n+3):not(:last-child),
+.source-value-table td:nth-child(n+3):not(:last-child) {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- Lineup builder ---------- */
+/* Left column (slots, salary bar, controls) is a fixed width so the right column (the rankings rows,
+   reused read-only) gets the rest of the 1440px viewport instead of a cramped fixed panel. */
+.lineup-layout { display: flex; gap: var(--sp-5); align-items: flex-start; }
+.lineup-left { flex: 0 0 460px; max-width: 460px; }
+.lineup-right { flex: 1; min-width: 0; }
+.lineup-right-title { margin: 0 0 var(--sp-2); font-size: var(--fs-md); color: var(--text-muted); }
+
+.lineup-controls { display: flex; flex-wrap: wrap; align-items: flex-end; gap: var(--sp-3); margin-bottom: var(--sp-3); }
+.lineup-control { display: flex; flex-direction: column; gap: 2px; font-size: var(--fs-sm); color: var(--text-muted); }
+.lineup-control select {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 6px;
+  padding: 4px 8px;
+  font-size: var(--fs-base);
+}
+.lineup-build-btn {
+  cursor: pointer;
+  background: var(--accent);
+  color: #ffffff;
+  border: none;
+  border-radius: 6px;
+  padding: 6px 18px;
+  font-weight: 600;
+  font-size: var(--fs-base);
+}
+.lineup-build-btn:hover { background: var(--accent-hover); }
+.lineup-build-btn:disabled { opacity: 0.6; cursor: default; }
+.lineup-clear-all-btn {
+  cursor: pointer;
+  background: none;
+  border: 1px solid var(--danger);
+  color: var(--danger);
+  border-radius: 6px;
+  padding: 6px 14px;
+  font-weight: 600;
+  font-size: var(--fs-base);
+}
+.lineup-clear-all-btn:hover { background: rgba(var(--danger-rgb), 0.1); }
+
+.lineup-slots { display: flex; flex-direction: column; gap: var(--sp-2); margin-bottom: var(--sp-3); }
+.lineup-slot {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: var(--sp-2) var(--sp-3);
+}
+.lineup-slot-label { width: 44px; flex: 0 0 44px; font-weight: 700; color: var(--text-muted); }
+.lineup-slot-player { flex: 1; min-width: 0; display: flex; align-items: center; gap: var(--sp-2); color: var(--text); }
+.lineup-slot-player.lineup-slot-empty { color: var(--text-dim); font-style: italic; }
+.lineup-slot-player.lineup-slot-missing { color: var(--danger); font-style: italic; }
+.lineup-slot-name { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lineup-slot-detail { color: var(--text-muted); font-size: var(--fs-sm); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lineup-slot-lock, .lineup-slot-clear {
+  cursor: pointer;
+  background: var(--bg-elevated-2);
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  border-radius: 4px;
+  padding: 2px 8px;
+  font-size: var(--fs-sm);
+  white-space: nowrap;
+}
+.lineup-slot-lock.active { background: var(--accent); border-color: var(--accent); color: #ffffff; }
+.lineup-slot-lock:disabled, .lineup-slot-clear:disabled { opacity: 0.4; cursor: default; }
+
+.salary-bar-track {
+  height: 14px;
+  background: var(--bg-elevated-2);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  overflow: hidden;
+}
+.salary-bar-fill { height: 100%; background: var(--success); }
+.salary-bar-fill.over { background: var(--danger); }
+.salary-bar-label { font-size: var(--fs-sm); color: var(--text-muted); }
+.salary-bar-label.over { color: var(--danger); font-weight: 700; }
+
+.lineup-totals { font-size: var(--fs-sm); color: var(--text-muted); margin: var(--sp-2) 0; }
+.lineup-status { font-size: var(--fs-sm); color: var(--text-muted); margin-top: var(--sp-2); }
+.lineup-status-error { color: var(--danger); font-weight: 600; }
+.lineup-status-warning { color: var(--amber); }
+.lineup-note { font-size: var(--fs-sm); color: var(--amber); margin-top: 2px; }
+
+.lineup-rows-wrap { width: 100%; max-height: calc(100vh - 260px); }
+.lineup-rows-table { width: 100%; border-collapse: collapse; font-size: var(--fs-sm); }
+.lineup-rows-table th, .lineup-rows-table td {
+  padding: var(--sp-1) var(--sp-2);
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  white-space: nowrap;
+}
+.lineup-rows-table thead { position: sticky; top: 0; background: var(--bg-elevated-2); }
+/* Salary/Proj/Own% right-align with tabular figures, same treatment as the Rankings table (👁 visual-qa
+   third pass). Columns: 1 Player, 2 Pos, 3 Salary, 4 Proj, 5 Own%, 6 Status, 7 actions. */
+.lineup-rows-table th:nth-child(3), .lineup-rows-table td:nth-child(3),
+.lineup-rows-table th:nth-child(4), .lineup-rows-table td:nth-child(4),
+.lineup-rows-table th:nth-child(5), .lineup-rows-table td:nth-child(5) {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.lineup-row.lineup-row-locked { background: rgba(var(--accent-rgb), 0.1); }
+.lineup-row.lineup-row-excluded { color: var(--row-dim-text); opacity: 0.6; }
+/* Same out/doubtful/IR dimming as the Rankings table (public/js/table.js's row-dimmed), reused here since
+   the pool reuses the Rankings rows read-only (🔵 finding 8). */
+.lineup-rows-table tbody tr.row-dimmed { color: var(--row-dim-text); }
+.lineup-rows-table tbody tr.row-dimmed .team-chip-mini { opacity: 0.6; }
+.lineup-row-actions { display: flex; gap: 4px; }
+.lineup-row-btn {
+  cursor: pointer;
+  background: var(--bg-elevated-2);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 4px;
+  padding: 2px 8px;
+  font-size: var(--fs-sm);
+  white-space: nowrap;
+}
+.lineup-row-btn.active { background: var(--accent); border-color: var(--accent); color: #ffffff; }
+.lineup-row-btn.active.danger { background: var(--danger); border-color: var(--danger); }
+.lineup-row-btn:disabled { opacity: 0.4; cursor: default; color: var(--text-dim); }
+
+.lineup-save-name-input {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 6px;
+  padding: 4px 8px;
+  font-size: var(--fs-base);
+  width: 160px;
+}
+
+/* ---------- Saved lineups (Adam's "draw up a lineup, press Save, see it in a list") ---------- */
+/* Full width of the tab (below the two-column builder above it), but the cards themselves stop at a
+   width that reads well via the grid's minmax column, rather than each card stretching edge to edge. */
+.saved-lineups { width: 100%; margin-top: var(--sp-5); }
+.saved-lineups-title { margin: 0 0 var(--sp-2); font-size: var(--fs-md); color: var(--text-muted); }
+.saved-lineups-empty, .saved-lineups-loading { color: var(--text-dim); font-size: var(--fs-base); font-style: italic; }
+.saved-lineups-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: var(--sp-3);
+}
+.saved-lineup-card {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: var(--sp-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+.saved-lineup-card-head { display: flex; align-items: center; flex-wrap: wrap; gap: var(--sp-2); }
+.saved-lineup-name-btn {
+  cursor: pointer;
+  background: none;
+  border: none;
+  color: var(--text);
+  font-weight: 700;
+  font-size: var(--fs-base);
+  padding: 0;
+  text-decoration: underline dotted;
+}
+.saved-lineup-time { color: var(--text-dim); font-size: var(--fs-sm); }
+.saved-lineup-badge {
+  font-size: var(--fs-sm);
+  font-weight: 700;
+  border-radius: 4px;
+  padding: 1px 6px;
+}
+.saved-lineup-badge-warning { color: var(--amber); background: rgba(var(--amber-rgb), 0.15); }
+.saved-lineup-badge-danger { color: var(--danger); background: rgba(var(--danger-rgb), 0.15); }
+.saved-lineup-rename { display: flex; align-items: center; gap: var(--sp-1); }
+.saved-lineup-rename-input {
+  background: var(--bg-elevated-2);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 4px;
+  padding: 2px 6px;
+  font-size: var(--fs-base);
+}
+.saved-lineup-mini-btn {
+  cursor: pointer;
+  background: var(--bg-elevated-2);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 4px;
+  padding: 2px 8px;
+  font-size: var(--fs-sm);
+}
+.saved-lineup-mini-btn.danger { border-color: var(--danger); color: var(--danger); }
+
+.saved-lineup-slots { display: flex; flex-direction: column; gap: 2px; }
+.saved-lineup-slot { display: flex; align-items: baseline; gap: var(--sp-2); font-size: var(--fs-sm); }
+.saved-lineup-slot-pos { width: 34px; flex: 0 0 34px; font-weight: 700; color: var(--text-muted); }
+.saved-lineup-slot-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.saved-lineup-slot-team { color: var(--text-muted); }
+.saved-lineup-slot-salary { color: var(--text-muted); margin-left: auto; font-variant-numeric: tabular-nums; }
+.saved-lineup-slot-empty-text { color: var(--text-dim); font-style: italic; }
+.saved-lineup-slot.saved-lineup-slot-missing { color: var(--row-dim-text); opacity: 0.65; }
+.saved-lineup-slot-note { color: var(--danger); font-size: var(--fs-sm); font-style: italic; }
+
+.saved-lineup-totals { font-size: var(--fs-sm); color: var(--text-muted); display: flex; flex-wrap: wrap; gap: 4px; }
+.saved-lineup-totals-over { color: var(--danger); font-weight: 700; }
+
+.saved-lineup-actions { display: flex; gap: var(--sp-2); align-items: center; }
+.saved-lineup-btn {
+  cursor: pointer;
+  background: var(--bg-elevated-2);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 4px;
+  padding: 3px 10px;
+  font-size: var(--fs-sm);
+}
+.saved-lineup-btn.danger { border-color: var(--danger); color: var(--danger); }
+.saved-lineup-confirm { display: flex; align-items: center; gap: var(--sp-1); font-size: var(--fs-sm); color: var(--amber); }
+
+/* ---------- Short-viewport chrome compaction (👁 visual-qa: 1366x768 needs the table to show >=12 rows
+   without scrolling the page) ---------- */
+@media (max-height: 820px) {
+  .header { padding: var(--sp-1) var(--sp-5); }
+  .main { padding: var(--sp-1) var(--sp-5); }
+  .tabs { margin-bottom: var(--sp-1); }
+  .tab-btn { padding: 2px var(--sp-3) var(--sp-1); }
+  .gamestrip { margin-bottom: var(--sp-1); }
+  .gamestrip-toggle-row { margin-bottom: 2px; }
+  .filterbar { gap: 2px; margin-bottom: var(--sp-1); }
+  .chip { padding: 2px 10px; }
+  /* Rows shrink from the default 42px so full rows still fit the shrunk vertical budget at 1366x768 (👁
+     visual-qa third pass, widened again by 🎨 polish for the larger type scale); app.js's
+     adjustScrollPanels() rounds the panel's maxHeight down to a whole multiple of whatever the rendered
+     row height actually is, so a partial next row is never shown. */
+  .rankings-table td { height: 36px; }
+}
+
+/* ============================================================================================
+   Showdown (D39/D40). Everything below is additive: no existing selector above this line is
+   touched, so the classic screen is unchanged except for the "MAIN SLATE" label (.mode-tag) and
+   the mode row itself sitting above the classic header.
+   ============================================================================================ */
+
+/* ---------- Mode row ---------- */
+.mode-row {
+  width: 100%;
+  background: var(--bg-elevated);
+  border-bottom: 1px solid var(--border);
+  padding: 6px max(var(--sp-5), calc((100% - 1560px) / 2 + var(--sp-5)));
+}
+.mode-row-inner { display: flex; flex-wrap: wrap; gap: var(--sp-2); align-items: center; }
+.mode-tile {
+  cursor: pointer;
+  background: var(--bg-elevated-2);
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  border-radius: 999px;
+  padding: 4px 14px;
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  white-space: nowrap;
+}
+.mode-tile:hover { border-color: var(--accent); color: var(--text); }
+.mode-tile.active { border-color: var(--amber); color: var(--amber); background: rgba(var(--amber-rgb), 0.12); }
+.mode-upload-tile { cursor: pointer; background: none; border-style: dashed; }
+
+/* "MAIN SLATE" label next to the classic title. */
+.mode-tag {
+  font-size: var(--fs-sm);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: var(--text-dim);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 2px 8px;
+  white-space: nowrap;
+}
+
+/* ---------- Showdown header band ---------- */
+.sd-header { border-bottom-color: var(--amber); }
+.sd-band-text {
+  font-size: var(--fs-lg);
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--amber);
+  white-space: nowrap;
+}
+
+/* ---------- Showdown Rankings table ---------- */
+/* Same sticky-header/hover treatment as .rankings-table (shared selector list, not a copy of its rules)
+   plus the CPT-column gold tint the hosted sheet uses for every Captain-priced column. Every column
+   except Notes gets an explicit width (table-layout:fixed is inherited from .rankings-table), same
+   reasoning as the classic table's own per-column widths: without one, "$17,700"-sized cells clipped to
+   "$17,7…" because the fixed layout divided the leftover space equally across every unspecified column.
+   Notes is the one column left unspecified, same treatment as classic's Tags column, so it absorbs
+   whatever width the rest don't use. */
+/* 320px: a full name plus team chip and position pill; the Notes column at the end absorbs the rest (Adam: names were
+   being cut to "Matthew St..." at 220px). */
+.rankings-table.sd-table th:nth-child(1), .rankings-table.sd-table td:nth-child(1) { width: 320px; }
+.rankings-table.sd-table th:nth-child(2), .rankings-table.sd-table td:nth-child(2) { width: 85px; }
+.rankings-table.sd-table th:nth-child(3), .rankings-table.sd-table td:nth-child(3) { width: 90px; }
+.rankings-table.sd-table th:nth-child(4), .rankings-table.sd-table td:nth-child(4) { width: 65px; }
+.rankings-table.sd-table th:nth-child(5), .rankings-table.sd-table td:nth-child(5) { width: 85px; }
+.rankings-table.sd-table th:nth-child(6), .rankings-table.sd-table td:nth-child(6) { width: 65px; }
+.rankings-table.sd-table th:nth-child(7), .rankings-table.sd-table td:nth-child(7) { width: 90px; }
+.rankings-table.sd-table th:nth-child(8), .rankings-table.sd-table td:nth-child(8) { width: 90px; }
+/* 👁 visual-qa: the classic rule ".rankings-table th:nth-child(9)" (its Value column, 88px) also matches
+   this table since it carries the plain "rankings-table" class too, pinching Notes to 148px and wrapping
+   every note onto two lines. The compound selector below has higher specificity than that single-class
+   classic rule, so it wins regardless of source order; Notes is the one column left unspecified in width
+   otherwise (same "whatever's left over" treatment as classic's Tags column). */
+.rankings-table.sd-table th:nth-child(9), .rankings-table.sd-table td:nth-child(9) { width: auto; }
+.rankings-table.sd-table th:nth-child(n+2), .rankings-table.sd-table td:nth-child(n+2) {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.rankings-table.sd-table th:last-child, .rankings-table.sd-table td:last-child {
+  text-align: left;
+  white-space: normal;
+}
+/* 👁 visual-qa: !important kept the gold CPT tint bright even on a dimmed (Out/IR) row; a dedicated dimmed
+   rule for row-dimmed lets the ordinary dimming win there while every other row still reads gold. */
+.sd-cpt-col { color: var(--amber); }
+.rank-row.row-dimmed .sd-cpt-col { color: var(--row-dim-text); }
+th.sd-cpt-col.sorted { color: var(--amber); }
+/* Position pill (D41): replaces the old plain-text "QB"/"RB"/etc next to the team chip with a small
+   coloured pill, one colour per position (tokens above), used identically in the Rankings table, the
+   Lineup Builder pool and the CPT/FLEX slots (showdown side only — the classic screen's plain .pos-chip
+   filter and table cell are untouched). display:inline-block plus the pill padding/radius are shared;
+   each pos-specific rule only sets colour + translucent background, same pattern as .status-badge. */
+.sd-pos {
+  display: inline-block;
+  vertical-align: middle;
+  border-radius: 4px;
+  padding: 1px 6px;
+  font-size: var(--fs-sm);
+  font-weight: 700;
+  margin-right: 6px;
+  color: var(--text-muted);
+  /* Adam: the pill was getting hard-clipped mid-glyph, never shrunk or ellipsised, whenever the Player
+     cell's whole row (logo/name/team chip/pill/status) ran wider than the column. flex-shrink:0 plus a
+     fixed min-width (comfortably fits "DST", the widest label, at 12px) keep the pill itself full size in
+     every flex context it sits in (Rankings row, Lineup Builder pool row, Lineup Builder CPT/FLEX slot);
+     the player name is the only thing that ever truncates now (see .rankings-table.sd-table .player-name
+     below), and text-align:center keeps every position's pill visually the same width. */
+  flex-shrink: 0;
+  min-width: 34px;
+  text-align: center;
+}
+.sd-pos-qb { background: rgba(var(--pos-qb-rgb), 0.18); color: var(--pos-qb); }
+.sd-pos-rb { background: rgba(var(--pos-rb-rgb), 0.18); color: var(--pos-rb); }
+.sd-pos-wr { background: rgba(var(--pos-wr-rgb), 0.18); color: var(--pos-wr); }
+.sd-pos-te { background: rgba(var(--pos-te-rgb), 0.18); color: var(--pos-te); }
+.sd-pos-k { background: rgba(var(--pos-k-rgb), 0.18); color: var(--pos-k); }
+.sd-pos-dst { background: rgba(var(--pos-dst-rgb), 0.18); color: var(--pos-dst); }
+
+/* Showdown position filter chips (D41): same pill shape/shell as the classic .pos-chip (.chip base class
+   still applies), tinted with the same position colour as the pill above so the chip and the pill match;
+   scoped to .sd-pos-chip so the classic Rankings filter bar's plain blue-active .pos-chip is untouched.
+   "All" gets no data-pos match here and keeps the ordinary .pos-chip.active blue (below). Active state
+   fills the chip with the position's own colour; the text colour is --bg (near-white on dark theme's
+   pastel pos colours, near-black on light theme's darker pos colours) so it stays readable in both themes
+   without a second colour token per position. */
+.sd-pos-chip[data-pos="QB"] { border-color: var(--pos-qb); color: var(--pos-qb); }
+.sd-pos-chip[data-pos="QB"].active { background: var(--pos-qb); border-color: var(--pos-qb); color: var(--bg); }
+.sd-pos-chip[data-pos="RB"] { border-color: var(--pos-rb); color: var(--pos-rb); }
+.sd-pos-chip[data-pos="RB"].active { background: var(--pos-rb); border-color: var(--pos-rb); color: var(--bg); }
+.sd-pos-chip[data-pos="WR"] { border-color: var(--pos-wr); color: var(--pos-wr); }
+.sd-pos-chip[data-pos="WR"].active { background: var(--pos-wr); border-color: var(--pos-wr); color: var(--bg); }
+.sd-pos-chip[data-pos="TE"] { border-color: var(--pos-te); color: var(--pos-te); }
+.sd-pos-chip[data-pos="TE"].active { background: var(--pos-te); border-color: var(--pos-te); color: var(--bg); }
+.sd-pos-chip[data-pos="K"] { border-color: var(--pos-k); color: var(--pos-k); }
+.sd-pos-chip[data-pos="K"].active { background: var(--pos-k); border-color: var(--pos-k); color: var(--bg); }
+.sd-pos-chip[data-pos="DST"] { border-color: var(--pos-dst); color: var(--pos-dst); }
+.sd-pos-chip[data-pos="DST"].active { background: var(--pos-dst); border-color: var(--pos-dst); color: var(--bg); }
+/* Estimated and published ownership look the same (Adam, 2026-09-27: one font, no brighter/dimmer); the hover
+   text still says which it is. The class stays on the cell for that hover and for tests. */
+.sd-own-estimate { }
+
+/* Player cell truncation, showdown Rankings only (Adam): .rankings-table td carries white-space:nowrap;
+   overflow:hidden;text-overflow:ellipsis (the shared classic rule above), which only produces a real
+   ellipsis for a single run of inline text — with the flex .player-cell now wider than the 220px Player
+   column (logo + name + team chip + position pill + status), it was instead hard-clipping the whole row,
+   including the middle of the position pill's own letters. Scoped to .sd-table so the classic Rankings
+   table (public/js/table.js), whose Player cell has no position pill, is untouched: .player-name becomes
+   the one flexible, ellipsis-truncating child (min-width:0 lets a flex item shrink below its own content
+   size, which the default "auto" would not); the logo, team chip and status pill get flex-shrink:0 so
+   they, like .sd-pos above, are never the thing that shrinks or clips. */
+.rankings-table.sd-table .player-cell { min-width: 0; }
+.rankings-table.sd-table .player-name {
+  flex: 0 1 auto; /* shrinks when it must, never grows: the chips sit right after the name */
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.rankings-table.sd-table .player-logo,
+.rankings-table.sd-table .team-chip-mini,
+.rankings-table.sd-table .status-badge {
+  flex-shrink: 0;
+}
+
+/* 👁 visual-qa: without a cap the Rankings panel (filter bar, table, legend, game line) stretched to the
+   full 1560px .main width at 1920, sprawling nine columns across space they didn't need; capped narrower
+   like a table "stops at the width where it reads well" (Adam's UI rule) while Projections/Ownership/
+   Lineup Builder (wider tables, a two-column layout) are unaffected since this only targets the Rankings
+   panel specifically. */
+.sd-rankings-panel, .sd-rankings-panel .sd-filterbar, .sd-rankings-panel .table-wrap, .sd-rankings-panel .table-legend, .sd-gameline {
+  max-width: 1180px;
+}
+.sd-filterbar { display: flex; flex-direction: column; gap: var(--sp-2); margin-bottom: var(--sp-4); }
+
+/* ---------- Showdown game line (👁 visual-qa: four small boxes above the Rankings table, like the hosted
+   sheet's Total/Line/implied boxes) ---------- */
+.sd-gameline { display: flex; gap: var(--sp-2); flex-wrap: wrap; margin-bottom: var(--sp-3); }
+.sd-gameline-box {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 4px 12px;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: var(--fs-sm);
+}
+.sd-gameline-label { color: var(--text-muted); }
+.sd-gameline-value { font-weight: 700; font-size: var(--fs-md); color: var(--text); }
+
+/* ---------- Showdown Projected Ownership tab ---------- */
+/* 👁 visual-qa: ".source-value-table td { white-space: nowrap }" (classic) outranks a class-only selector
+   by specificity regardless of source order; matching its class+element weight here is what actually lets
+   white-space:normal win, and the column needs its own width once wrapping is allowed. */
+.source-value-table td.sd-recipe-cell { white-space: normal; max-width: 420px; color: var(--text-muted); }
+.sd-kicker-paste { margin-top: var(--sp-3); }
+
+/* ---------- Showdown Lineup Builder ---------- */
+.sd-cpt-slot { border-color: var(--amber); }
+.sd-cpt-slot .lineup-slot-label { color: var(--amber); }
