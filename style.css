@@ -1229,14 +1229,16 @@ html, body {
 .rankings-table.sd-table th:nth-child(4), .rankings-table.sd-table td:nth-child(4) { width: 65px; }
 .rankings-table.sd-table th:nth-child(5), .rankings-table.sd-table td:nth-child(5) { width: 85px; }
 .rankings-table.sd-table th:nth-child(6), .rankings-table.sd-table td:nth-child(6) { width: 65px; }
-.rankings-table.sd-table th:nth-child(7), .rankings-table.sd-table td:nth-child(7) { width: 90px; }
-.rankings-table.sd-table th:nth-child(8), .rankings-table.sd-table td:nth-child(8) { width: 90px; }
+.rankings-table.sd-table th:nth-child(7), .rankings-table.sd-table td:nth-child(7) { width: 80px; }
+.rankings-table.sd-table th:nth-child(8), .rankings-table.sd-table td:nth-child(8) { width: 80px; }
 /* 👁 visual-qa: the classic rule ".rankings-table th:nth-child(9)" (its Value column, 88px) also matches
    this table since it carries the plain "rankings-table" class too, pinching Notes to 148px and wrapping
    every note onto two lines. The compound selector below has higher specificity than that single-class
    classic rule, so it wins regardless of source order; Notes is the one column left unspecified in width
    otherwise (same "whatever's left over" treatment as classic's Tags column). */
-.rankings-table.sd-table th:nth-child(9), .rankings-table.sd-table td:nth-child(9) { width: auto; }
+.rankings-table.sd-table th:nth-child(9), .rankings-table.sd-table td:nth-child(9) { width: 82px; }
+.rankings-table.sd-table th:nth-child(10), .rankings-table.sd-table td:nth-child(10) { width: 82px; }
+.rankings-table.sd-table th:nth-child(11), .rankings-table.sd-table td:nth-child(11) { width: auto; }
 .rankings-table.sd-table th:nth-child(n+2), .rankings-table.sd-table td:nth-child(n+2) {
   text-align: right;
   font-variant-numeric: tabular-nums;
@@ -1333,9 +1335,10 @@ th.sd-cpt-col.sorted { color: var(--amber); }
    Lineup Builder (wider tables, a two-column layout) are unaffected since this only targets the Rankings
    panel specifically. */
 .sd-rankings-panel, .sd-rankings-panel .sd-filterbar, .sd-rankings-panel .table-wrap, .sd-rankings-panel .table-legend, .sd-gameline {
-  max-width: 1180px;
+  max-width: 1400px; /* eleven columns since the Lev and CPT Lev columns (2026-09-30); 1180px left Notes no room */
 }
 .sd-filterbar { display: flex; flex-direction: column; gap: var(--sp-2); margin-bottom: var(--sp-4); }
+.sd-filterbar .link-btn { margin-left: auto; }
 
 /* ---------- Showdown game line (👁 visual-qa: four small boxes above the Rankings table, like the hosted
    sheet's Total/Line/implied boxes) ---------- */

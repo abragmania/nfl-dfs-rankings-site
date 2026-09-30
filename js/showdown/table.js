@@ -1,6 +1,6 @@
 // Showdown Rankings table (D39/D40). Visual target: the hosted sheet built by
 // data/showdown/2026-w03-ATLGB/build-sheet.mjs — same dark palette and type as the rest of the app, same
-// nine columns: Player (team chip, position, status pill), FLEX $, CPT $ (gold), Proj, CPT proj (gold),
+// eleven columns (Lev and CPT Lev added 2026-09-30): Player (team chip, position, status pill), FLEX $, CPT $ (gold), Proj, CPT proj (gold),
 // Val (one column — Captain value is identical to FLEX value since Captain price and points are both
 // 1.5x), Own FLEX, Own CPT (gold), Notes. No inline editing here (unlike the classic table): the brief's
 // column list for Showdown Rankings has no star or edit affordance, only display plus sort and filter.
@@ -17,6 +17,8 @@ export const SD_COLUMNS = [
   { key: "value", label: "Val" },
   { key: "ownFlex", label: "Own FLEX" },
   { key: "ownCpt", label: "Own CPT", gold: true },
+  { key: "levFlex", label: "Lev", title: "Ownership-adjusted value: value z-score minus ownership z-score across the showdown slate, FLEX slot" },
+  { key: "levCpt", label: "CPT Lev", gold: true, title: "Ownership-adjusted value: value z-score minus ownership z-score across the showdown slate, Captain slot" },
   { key: "note", label: "Notes" },
 ];
 
@@ -61,6 +63,14 @@ function gradedValueHtml(row) {
   return `<span class="grade-cell${cls}">${dec2(row.value)}</span>`;
 }
 
+// Lev (levFlex / levCpt): same graded chip as Val; null (thin position or no ownership number) is a dash,
+// never 0. The grade comes from applyGrades in view.js (levGrade / levCptGrade).
+function gradedLevHtml(value, grade) {
+  if (value == null || Number.isNaN(value)) return "—";
+  const cls = grade ? ` grade-${grade}` : "";
+  return `<span class="grade-cell${cls}">${dec2(value)}</span>`;
+}
+
 // Ownership of every kind renders in the same font (Adam, 2026-09-27); the class only carries the hover text.
 // FLEX and Captain ownership each carry their own kind (ownKindFlex/ownKindCpt), so this is called once
 // per side with that side's own kind, not a single row-level flag (🔵 review item 4). Every Proj and Own
@@ -103,6 +113,8 @@ function rowHtml(row) {
       <td>${gradedValueHtml(row)}</td>
       <td>${ownCellHtml(row.ownFlex, row.ownKindFlex, row.ownHow, row.proj != null)}</td>
       <td class="sd-cpt-col">${ownCellHtml(row.ownCpt, row.ownKindCpt, row.ownHow, row.proj != null)}</td>
+      <td>${gradedLevHtml(row.levFlex, row.levGrade)}</td>
+      <td class="sd-cpt-col">${gradedLevHtml(row.levCpt, row.levCptGrade)}</td>
       <td class="sd-notes-cell">${noteCellHtml(row)}</td>
     </tr>`;
 }
@@ -111,7 +123,8 @@ export function renderShowdownTableHead(theadEl, sort, onSortClick) {
   const cells = SD_COLUMNS.map((c) => {
     const arrow = sort.col === c.key ? (sort.dir === "asc" ? " ▲" : " ▼") : "";
     const cls = `sortable${sort.col === c.key ? " sorted" : ""}${c.gold ? " sd-cpt-col" : ""}`;
-    return `<th data-col="${c.key}" class="${cls}">${escapeHtml(c.label)}${arrow}</th>`;
+    const titleAttr = c.title ? ` title="${escapeHtml(c.title)}"` : "";
+    return `<th data-col="${c.key}" class="${cls}"${titleAttr}>${escapeHtml(c.label)}${arrow}</th>`;
   }).join("");
   theadEl.innerHTML = `<tr>${cells}</tr>`;
   theadEl.querySelectorAll("th[data-col]").forEach((th) => {

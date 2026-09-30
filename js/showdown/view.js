@@ -141,9 +141,16 @@ const NO_TINT_STATUS = new Set(["o", "out", "ir"]);
 
 function normalizeBoard(raw) {
   if (!raw || !raw.ok) return raw;
-  const rows = applyGrades((raw.rows ?? []).map(normalizeRow)).map((r) => {
-    const statusKey = (r.status ?? "").trim().toLowerCase();
-    return NO_TINT_STATUS.has(statusKey) ? { ...r, valueGrade: null } : r;
+  // Lev is graded by the same applyGrades quintile-within-position as Val (which reads a row's `lev`
+  // field): one pass with lev = levFlex gives levGrade, one with lev = levCpt gives levCptGrade.
+  const normalized = (raw.rows ?? []).map(normalizeRow);
+  const flexGraded = applyGrades(normalized.map((r) => ({ ...r, lev: r.levFlex })));
+  const cptGraded = applyGrades(normalized.map((r) => ({ ...r, lev: r.levCpt })));
+  const rows = flexGraded.map((g, i) => {
+    const { lev, ...r } = g;
+    const graded = { ...r, levCptGrade: cptGraded[i].levGrade };
+    const statusKey = (graded.status ?? "").trim().toLowerCase();
+    return NO_TINT_STATUS.has(statusKey) ? { ...graded, valueGrade: null, levGrade: null, levCptGrade: null } : graded;
   });
   const sources = (raw.sources ?? []).map((s) => normalizeSource(s, raw.unmatched));
   return { ...raw, rows, sources };
@@ -153,7 +160,7 @@ function normalizeBoard(raw) {
 // Filter / sort
 // --------------------------------------------------------------------------------------------------------
 
-const DESC_FIRST = new Set(["salary", "cptSalary", "proj", "cptProj", "value", "ownFlex", "ownCpt"]);
+const DESC_FIRST = new Set(["salary", "cptSalary", "proj", "cptProj", "value", "ownFlex", "ownCpt", "levFlex", "levCpt"]);
 function defaultDirFor(col) {
   return DESC_FIRST.has(col) ? "desc" : "asc";
 }
@@ -176,6 +183,10 @@ function sortValue(row, col) {
       return row.ownFlex ?? null;
     case "ownCpt":
       return row.ownCpt ?? null;
+    case "levFlex":
+      return row.levFlex ?? null;
+    case "levCpt":
+      return row.levCpt ?? null;
     case "note":
       return row.note && row.note.trim() ? row.note : null;
     default:
@@ -332,6 +343,7 @@ function renderFilterBar() {
         <label>Min FLEX pts <input id="sd-min-proj" type="number" step="1" placeholder="any" value="${state.filters.minProj ?? ""}" /></label>
       </div>
       <span id="sd-filter-count" class="filter-count"></span>
+      <button type="button" id="sd-clear-filters-btn" class="link-btn">Clear filters</button>
     </div>`;
   els.filterbar.querySelectorAll("[data-team-filter]").forEach((btn) => {
     btn.addEventListener("click", () => {
@@ -346,6 +358,12 @@ function renderFilterBar() {
       renderFilterBar();
       renderRankingsTable();
     });
+  });
+  // Same as classic's "Clear filters": a deliberate click, so a full rebuild of the bar is fine.
+  els.filterbar.querySelector("#sd-clear-filters-btn")?.addEventListener("click", () => {
+    state.filters = { team: "both", pos: "All", maxSalary: null, minProj: null };
+    renderFilterBar();
+    renderRankingsTable();
   });
   // Patches the table only (not the whole filter bar) on every keystroke, same reasoning as the classic
   // filter bar's salary inputs (public/js/filterbar.js): rebuilding the input itself would steal focus.
