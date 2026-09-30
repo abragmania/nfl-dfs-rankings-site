@@ -5,6 +5,12 @@
 // visible rows), so filtering never changes a row's grade.
 // D42: Value grades require projected points >= 3.0; rows under that floor get valueGrade null.
 
+// D50: a position needs at least this many rows with a number before any of them is graded. In a showdown
+// there are two kickers, two defences and often two quarterbacks, and comparing two players makes one
+// green and one red for nothing, so a thinner position gets grade null (no tint) for that field. One
+// place for both Value and Lev (both go through percentileGrades).
+const GRADE_MIN_PER_POS = 3;
+
 function gradeForPercentile(pct) {
   if (pct > 0.8) return "v1";
   if (pct > 0.6) return "v2";
@@ -25,6 +31,7 @@ function percentileGrades(rows, field) {
   for (const list of byPos.values()) {
     const sorted = [...list].sort((a, b) => a[field] - b[field]);
     const n = sorted.length;
+    if (n < GRADE_MIN_PER_POS) continue;
     sorted.forEach((r, i) => {
       const pct = (i + 1) / n;
       gradeById.set(r.id, gradeForPercentile(pct));

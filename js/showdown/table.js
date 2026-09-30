@@ -65,10 +65,13 @@ function gradedValueHtml(row) {
 
 // Lev (levFlex / levCpt): same graded chip as Val; null (thin position or no ownership number) is a dash,
 // never 0. The grade comes from applyGrades in view.js (levGrade / levCptGrade).
-function gradedLevHtml(value, grade) {
-  if (value == null || Number.isNaN(value)) return "—";
+// `kind` is that side's ownership kind; an "estimate" adds a hover saying the Lev rests on an estimated Own.
+// `dashCls` is an extra class for the null dash (the CPT column uses it to shed the gold column colour).
+function gradedLevHtml(value, grade, kind, ownLabel, dashCls = "") {
+  if (value == null || Number.isNaN(value)) return dashCls ? `<span class="${dashCls}">—</span>` : "—";
   const cls = grade ? ` grade-${grade}` : "";
-  return `<span class="grade-cell${cls}">${dec2(value)}</span>`;
+  const title = kind === "estimate" ? ` title="Built from estimated ownership (hover ${ownLabel} for the method)"` : "";
+  return `<span class="grade-cell${cls}"${title}>${dec2(value)}</span>`;
 }
 
 // Ownership of every kind renders in the same font (Adam, 2026-09-27); the class only carries the hover text.
@@ -113,8 +116,8 @@ function rowHtml(row) {
       <td>${gradedValueHtml(row)}</td>
       <td>${ownCellHtml(row.ownFlex, row.ownKindFlex, row.ownHow, row.proj != null)}</td>
       <td class="sd-cpt-col">${ownCellHtml(row.ownCpt, row.ownKindCpt, row.ownHow, row.proj != null)}</td>
-      <td>${gradedLevHtml(row.levFlex, row.levGrade)}</td>
-      <td class="sd-cpt-col">${gradedLevHtml(row.levCpt, row.levCptGrade)}</td>
+      <td>${gradedLevHtml(row.levFlex, row.levGrade, row.ownKindFlex, "Own FLEX")}</td>
+      <td class="sd-cpt-col">${gradedLevHtml(row.levCpt, row.levCptGrade, row.ownKindCpt, "Own CPT", "sd-dash")}</td>
       <td class="sd-notes-cell">${noteCellHtml(row)}</td>
     </tr>`;
 }

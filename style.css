@@ -1252,6 +1252,9 @@ html, body {
 .sd-cpt-col { color: var(--amber); }
 .rank-row.row-dimmed .sd-cpt-col { color: var(--row-dim-text); }
 th.sd-cpt-col.sorted { color: var(--amber); }
+/* Null CPT Lev dash: same colour as the plain Lev column's dash, not the gold column colour. */
+.sd-cpt-col .sd-dash { color: var(--text); }
+.rank-row.row-dimmed .sd-cpt-col .sd-dash { color: var(--row-dim-text); }
 /* Position pill (D41): replaces the old plain-text "QB"/"RB"/etc next to the team chip with a small
    coloured pill, one colour per position (tokens above), used identically in the Rankings table, the
    Lineup Builder pool and the CPT/FLEX slots (showdown side only — the classic screen's plain .pos-chip
