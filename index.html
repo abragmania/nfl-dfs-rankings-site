@@ -1,0 +1,221 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>NFLDFSRankings</title>
+  <link rel="stylesheet" href="style.css" />
+  <link rel="stylesheet" href="site/site.css">
+  <script>
+    // Dark mode is the default (2026-09-27 brief): set <html data-theme> before first paint so the
+    // page never flashes light-then-dark. A saved choice in localStorage ("nfldfs-theme": "light" or
+    // "dark") always wins; anything else (nothing saved, or a bad value) falls back to dark. Wrapped
+    // in try/catch since localStorage can throw (private browsing, disabled storage). The header's
+    // toggle button (public/js/header.js's wireThemeToggle, wired from app.js) reads/writes the same
+    // key and flips this same attribute at runtime. "?theme=light" or "?theme=dark" (dev/QA
+    // convenience only, same category as this page's existing "?tab="/"&scrollTo="/"&autobuild=1"
+    // params below) overrides for this page load without touching the saved choice, so a screenshot
+    // script can force either theme without clicking the toggle or writing localStorage.
+    (function () {
+      var theme = "dark";
+      try {
+        var saved = window.localStorage.getItem("nfldfs-theme");
+        if (saved === "light" || saved === "dark") theme = saved;
+      } catch (e) {
+        /* localStorage unavailable — default to dark for this page load */
+      }
+      var forced = new URLSearchParams(window.location.search).get("theme");
+      if (forced === "light" || forced === "dark") theme = forced;
+      document.documentElement.setAttribute("data-theme", theme);
+    })();
+  </script>
+</head>
+<body>
+  <!-- Mode row (Showdown, D39/D40): sits above the classic game strip and everything else, visually
+       separate from the classic header, so switching between the main slate and a loaded showdown is
+       always one click away regardless of which tab or mode is currently showing. Populated by
+       public/js/header.js's renderModeRow, called from app.js. -->
+  <div id="mode-row" class="mode-row"></div>
+
+  <header class="header" id="classic-header">
+    <div class="header-top">
+      <h1 class="title">NFLDFSRankings</h1>
+      <span class="mode-tag">MAIN SLATE</span>
+      <div id="slate-line" class="slate-line">Loading...</div>
+      <div class="header-actions">
+        <label class="upload-btn">
+          Upload DraftKings CSV
+          <input id="csv-input" type="file" accept=".csv,text/csv" hidden />
+        </label>
+        <span id="upload-info" class="upload-info"></span>
+        <button id="refresh-btn" class="refresh-btn" type="button">Refresh</button>
+        <button id="theme-toggle-btn" class="theme-toggle-btn" type="button" title="Switch theme"></button>
+      </div>
+    </div>
+    <div id="pills-row" class="pills-row"></div>
+  </header>
+
+  <!-- Showdown header (D39/D40): hidden while the classic slate is showing; public/js/showdown/view.js
+       fills #sd-band with the gold "SHOWDOWN · <away team name> at <home team name> · <kickoff>" band and
+       shows it on all four showdown tabs. -->
+  <header class="header sd-header" id="showdown-header" hidden>
+    <div class="header-top">
+      <div id="sd-band" class="sd-band"></div>
+      <div class="header-actions">
+        <button id="sd-refresh-btn" class="refresh-btn" type="button">Refresh</button>
+      </div>
+    </div>
+    <div id="sd-pills-row" class="pills-row"></div>
+  </header>
+
+  <main class="main" id="classic-main">
+    <div id="status" class="status"></div>
+
+    <nav id="tabs" class="tabs"></nav>
+    <!-- Second slates (D57): one plain line while a second slate (the afternoon-only slate, say) is on screen;
+         hidden on the main slate. Filled by app.js's renderSlateChrome. -->
+    <p id="slate-note" class="tab-note" hidden></p>
+
+    <div id="rankings-panel" class="panel">
+      <section id="gamestrip" class="gamestrip"></section>
+      <section id="filterbar" class="filterbar"></section>
+      <p id="own-banner" class="tab-note own-banner"></p>
+      <div class="table-wrap scroll-panel">
+        <table id="rankings-table" class="rankings-table">
+          <thead id="rankings-thead"></thead>
+          <tbody id="rankings-tbody"></tbody>
+        </table>
+      </div>
+      <div class="table-legend">coloured number = your own (&times; puts the original back) &middot; &mdash; = nobody has published one</div>
+    </div>
+
+    <div id="favorites-panel" class="panel" hidden>
+      <p id="favorites-note" class="tab-note">Starred players for this week's slate. Stars are saved with the week.</p>
+      <p id="favorites-empty" class="tab-note" hidden></p>
+      <div id="favorites-wrap" class="table-wrap scroll-panel">
+        <table id="favorites-table" class="rankings-table favorites-table">
+          <thead id="favorites-thead"></thead>
+          <tbody id="favorites-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div id="projections-panel" class="panel" hidden></div>
+    <div id="ownership-panel" class="panel" hidden></div>
+    <div id="lineup-panel" class="panel" hidden></div>
+    <div id="empty-state" class="empty-state" hidden></div>
+  </main>
+
+  <!-- Showdown main (D39/D40): parallel structure to the classic <main> above, hidden until a showdown
+       tile in the mode row is clicked (location.hash becomes "#sd=<key>"). Rendered entirely by
+       public/js/showdown/view.js, table.js, tabs.js and lineup.js. -->
+  <main class="main" id="showdown-main" hidden>
+    <div id="sd-status" class="status"></div>
+
+    <nav id="sd-tabs" class="tabs"></nav>
+
+    <div id="sd-rankings-panel" class="panel sd-rankings-panel">
+      <div id="sd-gameline" class="sd-gameline"></div>
+      <div id="sd-filterbar" class="sd-filterbar"></div>
+      <div class="table-wrap scroll-panel">
+        <table id="sd-table" class="rankings-table sd-table">
+          <thead id="sd-thead"></thead>
+          <tbody id="sd-tbody"></tbody>
+        </table>
+      </div>
+      <div id="sd-legend" class="table-legend"></div>
+    </div>
+    <div id="sd-projections-panel" class="panel" hidden></div>
+    <div id="sd-ownership-panel" class="panel" hidden></div>
+    <div id="sd-lineup-panel" class="panel" hidden></div>
+    <div id="sd-empty-state" class="empty-state" hidden></div>
+  </main>
+
+  <script type="module" src="app.js"></script>
+  <script>
+    // Dev/QA convenience only: "?tab=lineup" (or any tab key) clicks that tab's button once it exists,
+    // so a headless screenshot can land straight on a non-default tab without a separate DevTools
+    // script. Polls briefly because the tab buttons only render after the board finishes loading.
+    // "&scrollTo=<id>" (added for the Saved Lineups screenshot) additionally scrolls that element into
+    // view once it exists, since the tab's own content can be taller than one screenshot's viewport.
+    // "&autobuild=1" (added for a 🔵 review render of the Showdown Lineup Builder after a Build) stubs
+    // window.fetch for exactly the showdown lineup/optimize URL with one real, previously-captured
+    // response from server/lineup/showdown.js's optimizeShowdown (run directly against this page's own
+    // public/dev/showdown-sample.json rows), then clicks the Build button once the Lineup Builder tab is
+    // showing — real response shape, no live showdown slate upload or server route needed for the render.
+    // Every other fetch (the board itself, saved lineups, etc.) is untouched, passed straight to the real
+    // fetch.
+    (function () {
+      var params = new URLSearchParams(window.location.search);
+      var wantTab = params.get("tab");
+      var scrollToId = params.get("scrollTo");
+      var wantAutobuild = params.get("autobuild") === "1";
+      if (!wantTab && !scrollToId && !wantAutobuild) return;
+      if (wantAutobuild && window.fetch) {
+        var realFetch = window.fetch.bind(window);
+        window.fetch = function (url, opts) {
+          if (typeof url === "string" && url.indexOf("/lineup/optimize") !== -1) {
+            var canned = {
+              ok: true, generatedAt: new Date().toISOString(), stale: [], feasible: true, message: "",
+              salaryUsed: 49800, salaryLeft: 200, totalProj: 86.56, totalOwn: 155.3, notes: [],
+              lineup: [
+                { slot: "CPT", id: "90500002", name: "Jordan Love", team: "GB", pos: "CPT", salary: 15000, proj: 26.94, own: 13.8, personId: "90000002", realPos: "QB" },
+                { slot: "FLEX", id: "90000001", name: "Bijan Robinson", team: "ATL", pos: "RB", salary: 11800, proj: 20.41, own: 51.7, personId: "90000001", realPos: "RB" },
+                { slot: "FLEX", id: "90000003", name: "Christian Watson", team: "GB", pos: "WR", salary: 9800, proj: 15.8, own: 37.6, personId: "90000003", realPos: "WR" },
+                { slot: "FLEX", id: "90000004", name: "Drake London", team: "ATL", pos: "WR", salary: 8800, proj: 15, own: 35, personId: "90000004", realPos: "WR" },
+                { slot: "FLEX", id: "90000019", name: "Skyy Moore", team: "GB", pos: "WR", salary: 2400, proj: 4.56, own: 9.7, personId: "90000019", realPos: "WR" },
+                { slot: "FLEX", id: "90000021", name: "Olamide Zaccheaus", team: "ATL", pos: "WR", salary: 2000, proj: 3.85, own: 7.5, personId: "90000021", realPos: "WR" }
+              ]
+            };
+            return Promise.resolve({ ok: true, status: 200, json: function () { return Promise.resolve(canned); } });
+          }
+          return realFetch(url, opts);
+        };
+      }
+      var tabClicked = !wantTab;
+      var built = !wantAutobuild;
+      var attempts = 0;
+      var timer = setInterval(function () {
+        attempts++;
+        if (!tabClicked) {
+          // Showdown mode (D39/D40) has its own tab bar (#sd-tabs) alongside the classic one (#tabs),
+          // both present in the DOM at once (the inactive mode's container is merely hidden) — scoping by
+          // location.hash's "#sd=" prefix picks the one actually on screen instead of always matching
+          // #tabs first in document order.
+          var scope = window.location.hash.indexOf("#sd=") === 0 ? "#sd-tabs" : "#tabs";
+          var btn = document.querySelector(scope + ' [data-tab="' + wantTab + '"]');
+          if (btn) {
+            btn.click();
+            tabClicked = true;
+          }
+        }
+        if (tabClicked && !built) {
+          var buildBtn = document.querySelector("#sd-lineup-build-btn");
+          if (buildBtn && !buildBtn.disabled) {
+            built = true;
+            buildBtn.click();
+          }
+        }
+        // Waits for the saved-lineups list to finish its own async load (never scrolls while it still
+        // reads "Loading…") and only then scrolls, once — scrolling earlier, while the panel above it is
+        // still being sized off the current scroll position, was moving the target underneath itself.
+        var scrolled = !scrollToId;
+        if (tabClicked && scrollToId) {
+          var el = document.getElementById(scrollToId);
+          var ready = el && el.querySelector(".saved-lineup-card, .saved-lineups-empty");
+          if (ready) {
+            el.scrollIntoView({ block: "start" });
+            scrolled = true;
+          }
+        }
+        if (tabClicked && built && scrolled) {
+          clearInterval(timer);
+        } else if (attempts > 600) {
+          clearInterval(timer); // ~60s at 100ms: give up rather than poll forever
+        }
+      }, 100);
+    })();
+  </script>
+  <script type="module" src="site/site.js"></script>
+</body>
+</html>
