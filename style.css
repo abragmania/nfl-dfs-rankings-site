@@ -426,10 +426,16 @@ html, body {
   font-size: var(--fs-sm);
 }
 .game-team-logo { display: block; border-radius: 4px; }
-.game-team-abbr { color: var(--text-muted); font-weight: 600; }
+.game-team-abbr { color: var(--text-muted); font-weight: 600; white-space: nowrap; }
+.game-team-spread { color: var(--text-dim); font-weight: 400; }
 .game-team-implied { color: var(--text); font-weight: 700; }
 .game-team-implied-cap { color: var(--text-dim); font-size: var(--fs-sm); text-transform: uppercase; letter-spacing: 0.02em; }
 .game-at { color: var(--text-dim); font-size: var(--fs-sm); }
+/* Kickoff time sits at the top of the cell, centred over the "@" between the two teams. */
+.game-mid { display: flex; flex-direction: column; align-items: center; align-self: stretch; gap: 1px; }
+.game-kickoff { color: var(--text-dim); font-size: var(--fs-sm); line-height: 1.1; text-align: center; }
+/* Compact boxes are narrow: the time wraps to "1:00" over "PM" instead of widening the team row. */
+.game-box.compact .game-kickoff { width: min-content; }
 
 .game-box-meta {
   display: flex;
@@ -451,7 +457,11 @@ html, body {
   overflow: hidden;
 }
 .game-popularity-fill { height: 100%; background: var(--accent); }
-.game-popularity-rank { font-size: var(--fs-sm); color: var(--text-dim); }
+.game-popularity-rank { font-size: var(--fs-sm); color: var(--text-dim); white-space: nowrap; }
+/* --pop-t (0 = the slate's least-owned game .. 1 = the most-owned, set inline) blends the label from muted to a bright accent. */
+.game-popularity-rank[style] {
+  color: color-mix(in srgb, color-mix(in srgb, var(--accent) 45%, var(--text)) calc(var(--pop-t) * 100%), var(--text-dim));
+}
 /* Compact mode always shows the popularity rank so "#3" is never lost when the box shrinks (👁
    visual-qa); the bar next to it only appears once the strip has room to spare (1600px+ viewport, 👁
    visual-qa third pass) — below that, each of the twelve boxes is too narrow for a legible bar. */
@@ -934,6 +944,9 @@ html, body {
   white-space: nowrap;
 }
 .source-value-table thead { position: sticky; top: 0; background: var(--bg-elevated-2); }
+/* Projected Ownership headers sort on click, same look as the Rankings headers (muted, full text when sorted). */
+.source-value-table th.sortable { cursor: pointer; user-select: none; color: var(--text-muted); }
+.source-value-table th.sorted { color: var(--text); }
 /* Every numeric column (each source's own value plus Blended) right-aligns with tabular figures (👁
    visual-qa third pass); Player/Team stay left, Coverage stays as printed (a mix of "%" and words like
    "estimate" that don't want right-alignment). */

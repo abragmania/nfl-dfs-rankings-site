@@ -1,4 +1,4 @@
-// Game strip (D26): one box per game, away @ home with both logos, kickoff time, the total (shown as
+// Game strip (D26): one box per game, away @ home with both logos, kickoff time above the "@", the total (shown as
 // "O/U 49.5" on the kickoff line), each team's implied total under its logo, a popularity bar with rank
 // (only when the game has real ownership numbers to sum; otherwise neither is drawn), a "line unknown" marker, and either an indoor icon, "roof unknown" or temp/wind for outdoor games.
 // Clicking a box filters the table to that game; clicking the active box again clears the filter.
@@ -28,7 +28,60 @@ export function setGamestripCollapsed(collapsed) {
   }
 }
 
-function teamLogoHtml(abbr, impliedTotal, collapsed, lineMissing) {
+/**
+ * The spread label shown beside a team code: "-3" / "-2.5" beside the favourite only, "PK" beside both teams of
+ * a pick'em (a parsed line with no favourite), and "" when the line is unknown or the team is the underdog.
+ * Board games carry `spread` (the favourite's number, negative) and `favorite` (a team code or null).
+ */
+export function spreadLabel(game, abbr) {
+  if (!game || game.lineParsed === false || (game.flags ?? []).includes("lineUnknown")) return "";
+  if (game.spread == null) return "";
+  if (!game.favorite) return game.spread === 0 ? "(PK)" : "";
+  if (game.favorite !== abbr) return "";
+  const n = Math.abs(Number(game.spread));
+  return Number.isFinite(n) && n > 0 ? `(-${n})` : "";
+}
+
+const BRIGHTNESS_FLOOR = 0.15; // the least-owned game stays legible
+
+/**
+ * How bright a game's popularity label is, 0..1: the game's summed ownership `value` measured from zero against
+ * `max` (the largest value among the games shown, the same scale as the bar), lifted by a small floor so the
+ * lowest game is never invisible. Continuous, so near-equal games look near-equal and a runaway leader stands
+ * apart. Null when the game has no value; 0.5 (neutral) when fewer than two games have a value or max is 0.
+ */
+export function popularityBrightness(value, max, count = 2) {
+  if (value == null || !Number.isFinite(value)) return null;
+  if (count < 2 || !Number.isFinite(max) || max <= 0) return 0.5;
+  return BRIGHTNESS_FLOOR + (1 - BRIGHTNESS_FLOOR) * Math.max(0, Math.min(1, value / max));
+}
+
+/**
+ * Re-ranks the games shown by popularity.value, highest first, so a subset (a second slate, D57) is numbered #1..#n
+ * among itself. Equal sums share a rank and the next one skips (1, 2, 2, 4). A game with no value keeps rank null.
+ * Returns copies in the same order; the input is untouched.
+ */
+export function rankGames(games) {
+  const valued = games.map((g) => g.popularity?.value).filter((v) => v != null && Number.isFinite(v)).sort((a, b) => b - a);
+  return games.map((g) => {
+    const v = g.popularity?.value;
+    const has = v != null && Number.isFinite(v);
+    return { ...g, popularity: { ...g.popularity, rank: has ? valued.indexOf(v) + 1 : null } };
+  });
+}
+
+/** The rank label: "#1 (245%)", the game's summed offensive ownership rounded to a whole percent. */
+export function popularityLabel(pop) {
+  return `#${pop.rank ?? "?"} (${Math.round(pop.value)}%)`;
+}
+
+function popularityRankHtml(pop, range) {
+  const t = popularityBrightness(pop.value, range.max, range.count);
+  const style = t == null ? "" : ` style="--pop-t:${t.toFixed(3)}"`;
+  return `<span class="game-popularity-rank"${style}>${escapeHtml(popularityLabel(pop))}</span>`;
+}
+
+function teamLogoHtml(abbr, impliedTotal, collapsed, lineMissing, spread = "") {
   const t = TEAM_BY_ABBR[abbr];
   const logo = logoFor(t);
   const name = t?.name ?? abbr;
@@ -46,7 +99,7 @@ function teamLogoHtml(abbr, impliedTotal, collapsed, lineMissing) {
   return `
     <div class="game-team">
       <img class="game-team-logo" src="${logo}" alt="${escapeHtml(name)}" width="${logoSize}" height="${logoSize}" />
-      <span class="game-team-abbr">${escapeHtml(abbr)}</span>
+      <span class="game-team-abbr">${escapeHtml(abbr)}${spread ? ` <span class="game-team-spread" title="Point spread (favourite)">${escapeHtml(spread)}</span>` : ""}</span>
       <span class="game-team-implied"${impliedStyle} title="Implied team total">${implied}</span>
       ${cap}
     </div>`;
@@ -73,29 +126,29 @@ function weatherHtml(game) {
 // budget a short viewport needs for the table. The bar itself is included too but stays display:none
 // under a width threshold (style.css) — a 1920-wide strip has room for a compact bar next to the rank,
 // a 1366-wide one doesn't (👁 visual-qa third pass).
-function popularityCompactHtml(game, maxValue) {
+function popularityCompactHtml(game, maxValue, range) {
   const pop = game.popularity ?? {};
   if (pop.value == null || pop.rank == null) return ""; // no real ownership number in this game: no bar, no rank
   const pct = maxValue > 0 ? Math.max(4, Math.round((100 * (pop.value ?? 0)) / maxValue)) : 0;
   return `
-    <div class="game-popularity-compact" title="Sum of the published ownership numbers for this game's slate players">
+    <div class="game-popularity-compact" title="Sum of the published ownership numbers for this game's offensive players (defenses excluded)">
       <div class="game-popularity-bar"><div class="game-popularity-fill" style="width:${pct}%"></div></div>
-      <span class="game-popularity-rank">#${pop.rank ?? "?"}</span>
+      ${popularityRankHtml(pop, range)}
     </div>`;
 }
 
-function popularityHtml(game, maxValue) {
+function popularityHtml(game, maxValue, range) {
   const pop = game.popularity ?? {};
   if (pop.value == null || pop.rank == null) return ""; // no real ownership number in this game: no bar, no rank
   const pct = maxValue > 0 ? Math.max(4, Math.round((100 * (pop.value ?? 0)) / maxValue)) : 0;
   return `
-    <div class="game-popularity" title="Sum of the published ownership numbers for this game's slate players">
+    <div class="game-popularity" title="Sum of the published ownership numbers for this game's offensive players (defenses excluded)">
       <div class="game-popularity-bar"><div class="game-popularity-fill" style="width:${pct}%"></div></div>
-      <span class="game-popularity-rank">#${pop.rank ?? "?"}</span>
+      ${popularityRankHtml(pop, range)}
     </div>`;
 }
 
-function gameBoxHtml(game, activeGameId, maxPopValue, collapsed) {
+function gameBoxHtml(game, activeGameId, maxPopValue, collapsed, popRange) {
   const isActive = activeGameId === game.id;
   const lineUnknown = (game.flags ?? []).includes("lineUnknown");
   // A line that's unknown, failed to parse, or has no total at all is treated the same way: "line n/a"
@@ -106,25 +159,31 @@ function gameBoxHtml(game, activeGameId, maxPopValue, collapsed) {
   return `
     <button type="button" class="game-box${isActive ? " active" : ""}${collapsed ? " compact" : ""}" data-game-id="${gameIdAttr}">
       <div class="game-box-teams">
-        ${teamLogoHtml(game.away, game.impliedTotal?.away, collapsed, lineMissing)}
-        <span class="game-at">@</span>
-        ${teamLogoHtml(game.home, game.impliedTotal?.home, collapsed, lineMissing)}
+        ${teamLogoHtml(game.away, game.impliedTotal?.away, collapsed, lineMissing, spreadLabel(game, game.away))}
+        <div class="game-mid">
+          <span class="game-kickoff">${escapeHtml(kickoffClockPart(game.kickoffEt))}</span>
+          <span class="game-at">@</span>
+        </div>
+        ${teamLogoHtml(game.home, game.impliedTotal?.home, collapsed, lineMissing, spreadLabel(game, game.home))}
       </div>
       <div class="game-box-meta">
-        <span class="game-kickoff">${escapeHtml(kickoffClockPart(game.kickoffEt))}</span>
         <span class="game-total${lineMissing ? " line-unknown" : ""}">${escapeHtml(total)}</span>
-        ${collapsed ? popularityCompactHtml(game, maxPopValue) : ""}
+        ${collapsed ? popularityCompactHtml(game, maxPopValue, popRange) : ""}
       </div>
       ${collapsed ? "" : weatherHtml(game)}
-      ${collapsed ? "" : popularityHtml(game, maxPopValue)}
+      ${collapsed ? "" : popularityHtml(game, maxPopValue, popRange)}
     </button>`;
 }
 
 /** `collapsed`/`onToggleCollapse` control the compact-vs-full-detail layout (default compact). */
-export function renderGameStrip(container, games, activeGameId, onGameClick, { collapsed = true, onToggleCollapse } = {}) {
+export function renderGameStrip(container, shownGames, activeGameId, onGameClick, { collapsed = true, onToggleCollapse } = {}) {
+  // Rank and brightness are among the games actually shown, so a second slate's three games read #1-#3 (D57).
+  const games = rankGames(shownGames);
   const maxPopValue = Math.max(0, ...games.map((g) => g.popularity?.value ?? 0));
   const toggleLabel = collapsed ? "Show game details ▾" : "Hide game details ▴";
-  const boxesHtml = games.map((g) => gameBoxHtml(g, activeGameId, maxPopValue, collapsed)).join("");
+  const popCount = games.filter((g) => g.popularity?.value != null && Number.isFinite(g.popularity.value)).length;
+  const popRange = { max: maxPopValue, count: popCount };
+  const boxesHtml = games.map((g) => gameBoxHtml(g, activeGameId, maxPopValue, collapsed, popRange)).join("");
   container.innerHTML = `
     <div class="gamestrip-toggle-row">
       <button type="button" id="gamestrip-toggle" class="gamestrip-toggle-btn">${toggleLabel}</button>

@@ -1,8 +1,9 @@
 // Tabs above the table: Rankings (rendered by table.js/gamestrip.js/filterbar.js, default),
 // Favorites (starred players, favorites.js), Projections, Projected Ownership, Lineup Builder.
 import { escapeHtml, dec1, clockPart } from "./format.js";
-import { store, passesProjFloor, CLASSIC_PROJ_FLOOR, activeSlateRows } from "./state.js";
+import { store, passesProjFloor, CLASSIC_PROJ_FLOOR, activeSlateRows, sortRows } from "./state.js";
 import { favoritesTabLabel } from "./favorites.js";
+import { unmatchedPartsHtml, slateTeamSet } from "./unmatched.js";
 
 // The classic projection floor (D52) as it applies to the two source tables: the same predicate and the same
 // "Show all players" toggle as the Rankings table, nothing else from the filter bar. These tabs have no search
@@ -39,14 +40,17 @@ export function renderTabs(container, activeTab, onTabClick, favoritesCount = 0)
   });
 }
 
-function sourceCardHtml(source) {
+// `slateTeams`/`slateRows`: the team codes and rows of the loaded slate. Unmatched names on other teams are
+// counted and kept behind a closed disclosure, not listed in the open (Adam, 2026-10-10); see unmatched.js for
+// the split and its guards (unrecognised team codes, names matching a slate player, an empty slate).
+function sourceCardHtml(source, slateTeams, slateRows) {
   const idAttr = escapeHtml(String(source.id));
   // 👁 visual-qa: long "not on the DK slate" lists collapse behind a disclosure instead of always
   // being shown in full; the label text is already the display name (server/rank/board.js's
   // recordLabel), so it's shown as-is.
-  const unmatchedHtml = source.unmatchedNames?.length
-    ? `<details class="source-unmatched"><summary>${source.unmatchedNames.length} unmatched</summary>${source.unmatchedNames.map(escapeHtml).join(", ")}</details>`
-    : "";
+  const { onSlate, listHtml: unmatchedHtml, offSlateHtml: offSlateNote } = unmatchedPartsHtml(source.unmatchedNames, slateTeams, slateRows, escapeHtml);
+  // With no names to split (an older response), the server's own count stands.
+  const unmatchedShown = source.unmatchedNames?.length ? onSlate.length : (source.unmatchedCount ?? 0);
   // Ownership tables only: the page's own "updated" text as the site wrote it, and, for a source kept at
   // weight 0, the plain statement that its numbers are stored and shown but never part of Own% (D35).
   const pageUpdatedHtml = source.pageUpdated
@@ -71,20 +75,18 @@ function sourceCardHtml(source) {
       <div class="source-weight-error" data-id="${idAttr}" hidden></div>
       <div class="source-card-row muted">
         <span>Fetched ${source.fetchedAt ? clockPart(source.fetchedAt) : "never"}</span>
-        <span>${source.recordCount ?? 0} rows · ${source.matchedCount ?? 0} matched · ${source.unmatchedCount ?? 0} unmatched</span>
+        <span>${source.recordCount ?? 0} rows · ${source.matchedCount ?? 0} matched · ${unmatchedShown} unmatched on this slate</span>
       </div>
       ${pageUpdatedHtml}
       ${keptOnlyHtml}
       ${unmatchedHtml}
+      ${offSlateNote}
     </div>`;
 }
 
-// `coverageFn`: overrides the plain r.coverage read (the Ownership tab needs its own coverage, since board
-// rows only carry the projection blend's coverage — see renderOwnershipPanel).
-// `headerSuffixFn`: optional words added after a source's column header (the Ownership tab marks a source kept
-// at weight 0 as "(not used)"); the Projections tab passes none, so its headers are the plain labels.
-function sourceValueTableHtml(rows, sources, { valueField, bySourceField, coverageFn, coverageHeader = "Coverage", headerSuffixFn = null } = {}) {
-  const head = `<tr><th>Player</th><th>Team</th>${sources.map((s) => `<th>${escapeHtml(s.label + (headerSuffixFn ? headerSuffixFn(s) : ""))}</th>`).join("")}<th>Blended</th><th>${escapeHtml(coverageHeader)}</th></tr>`;
+// The Projections tab's table (the Projected Ownership tab has its own sortable table, ownershipColumns below).
+function sourceValueTableHtml(rows, sources, { valueField, bySourceField, coverageHeader = "Coverage" } = {}) {
+  const head = `<tr><th>Player</th><th>Team</th>${sources.map((s) => `<th>${escapeHtml(s.label)}</th>`).join("")}<th>Blended</th><th>${escapeHtml(coverageHeader)}</th></tr>`;
   const body = rows
     .map((r) => {
       const cells = sources
@@ -94,7 +96,7 @@ function sourceValueTableHtml(rows, sources, { valueField, bySourceField, covera
         })
         .join("");
       const blended = r[valueField];
-      const coverage = coverageFn ? coverageFn(r) : r.coverage;
+      const coverage = r.coverage;
       const coverageCell = coverage == null ? "—" : `${Math.round(coverage * 100)}%`;
       return `<tr><td>${escapeHtml(r.name)}</td><td>${escapeHtml(r.team)}</td>${cells}<td>${blended == null ? "—" : dec1(blended)}</td><td>${coverageCell}</td></tr>`;
     })
@@ -142,7 +144,9 @@ let lastPasteResultText = null;
 
 export function renderProjectionsPanel(container, board, callbacks) {
   const sources = (board.sources ?? []).filter((s) => s.kind === "projection");
-  const cards = sources.map(sourceCardHtml).join("");
+  const slateRows = activeSlateRows(board);
+  const slateTeams = slateTeamSet(slateRows);
+  const cards = sources.map((s) => sourceCardHtml(s, slateTeams, slateRows)).join("");
   const pasteOptions = PASTE_POSITIONS.map((p) => `<option value="${p}">${p}</option>`).join("");
 
   container.innerHTML = `
@@ -189,25 +193,81 @@ export function renderProjectionsPanel(container, board, callbacks) {
   });
 }
 
+// The Projected Ownership table's sort, kept here so it survives the re-render that follows a board reload or a
+// floor toggle. Default Own% high to low, as on Rankings. Column keys: player, team, own, cov, or "src:<id>".
+let ownSort = { col: "own", dir: "desc" };
+
+// Player and Team start A to Z; every number column starts high to low (the Rankings pattern, state.js).
+function ownDefaultDir(col) {
+  return col === "player" || col === "team" ? "asc" : "desc";
+}
+
+// Projected Ownership table (Adam, 2026-10-10: Own% close to the left, every column sortable). Columns: Player,
+// Team, Own% (the blend), the sources that feed the blend in config order, the sources not in the blend
+// ("(not used)": weight 0 or switched off), then Quoted coverage. Header clicks reuse the Rankings pattern
+// (sortable/sorted classes, ▲/▼ arrow, blanks last either way via state.js sortRows). The scroll wrapper and
+// <table> are rendered once by renderOwnershipPanel; only the thead and tbody are rebuilt on a sort click, so
+// the wrapper keeps the height app.js's adjustScrollPanels gave it and its scroll position.
+function ownershipColumns(sources, isNotUsed) {
+  return [
+    { key: "player", label: "Player" },
+    { key: "team", label: "Team" },
+    { key: "own", label: "Own%" },
+    ...sources.filter((s) => !isNotUsed(s)).map((s) => ({ key: `src:${s.id}`, label: s.label })),
+    ...sources.filter(isNotUsed).map((s) => ({ key: `src:${s.id}`, label: `${s.label} (not used)` })),
+    { key: "cov", label: "Quoted coverage" },
+  ];
+}
+
+function ownershipHeadHtml(cols, sort) {
+  const head = cols
+    .map((c) => {
+      const arrow = sort.col === c.key ? (sort.dir === "asc" ? " ▲" : " ▼") : "";
+      return `<th data-col="${escapeHtml(c.key)}" class="sortable${sort.col === c.key ? " sorted" : ""}">${escapeHtml(c.label)}${arrow}</th>`;
+    })
+    .join("");
+  return `<tr>${head}</tr>`;
+}
+
+function ownershipBodyHtml(rows, cols, sort, valueOf) {
+  return sortRows(rows, sort.col, sort.dir, valueOf)
+    .map((r) => {
+      const cells = cols
+        .map((c) => {
+          const v = valueOf(r, c.key);
+          if (c.key === "player" || c.key === "team") return `<td>${escapeHtml(v ?? "")}</td>`;
+          if (c.key === "cov") return `<td>${v == null ? "—" : `${Math.round(v * 100)}%`}</td>`;
+          return `<td>${v == null ? "—" : dec1(v)}</td>`;
+        })
+        .join("");
+      return `<tr>${cells}</tr>`;
+    })
+    .join("");
+}
+
 export function renderOwnershipPanel(container, board, callbacks) {
   const sources = (board.sources ?? []).filter((s) => s.kind === "ownership");
-  const cards = sources.map(sourceCardHtml).join("");
+  const slateRows = activeSlateRows(board);
+  const slateTeams = slateTeamSet(slateRows);
+  const cards = sources.map((s) => sourceCardHtml(s, slateTeams, slateRows)).join("");
 
   // Coverage here must describe ownership coverage, not the projection blend's coverage field that
-  // board rows also carry: it is the share of the ownership sources that COUNT towards Own% (weight above
-  // 0) that published a number for the row. A source kept at weight 0 is shown in its own column but never
-  // counts here (D35). A player none of the counting sources published a number for, or a table with no
-  // counting source at all, has no coverage to report, so the cell is an em dash.
-  const isKeptOnly = (s) => Number(s.weight) === 0;
-  const usedSources = sources.filter((s) => !isKeptOnly(s));
+  // board rows also carry. Same definition as the projection blend (server/rank/blend.js): the covering
+  // sources' weight as a share of the total weight of the sources that count, where a source counts when it is
+  // switched on, its weight is above 0 and it produced records. A source kept at weight 0 is shown in its own
+  // column but never counts here (D35). A player none of the counting sources published a number for, or a
+  // table with no counting source at all, has no coverage to report, so the cell is an em dash.
+  const isKeptOnly = (s) => Number(s.weight) === 0 || s.enabled === false;
+  const usedSources = sources.filter((s) => !isKeptOnly(s) && Number(s.weight) > 0 && Number(s.recordCount) > 0);
+  const usedWeight = usedSources.reduce((sum, s) => sum + Number(s.weight), 0);
   const coverageFn = (r) => {
-    if (!usedSources.length) return null;
-    const covered = usedSources.filter((s) => r.ownBySource?.[s.id] != null).length;
-    return covered === 0 ? null : covered / usedSources.length;
+    if (!usedSources.length || !(usedWeight > 0)) return null;
+    const covering = usedSources.reduce((sum, s) => sum + (r.ownBySource?.[s.id] != null ? Number(s.weight) : 0), 0);
+    return covering === 0 ? null : covering / usedWeight;
   };
 
   const rows = activeSlateRows(board); // the whole board, or the active second slate's players (D57)
-  const published =rows.filter((r) => r.ownKind === "quoted").length;
+  const published = rows.filter((r) => r.ownKind === "quoted").length;
   const blank = rows.filter((r) => r.own == null).length;
 
   // The server's recipe is already plain English, so it is shown as it stands.
@@ -217,16 +277,39 @@ export function renderOwnershipPanel(container, board, callbacks) {
     ${tabNotesHtml(board.tabNotes?.ownership)}
     <div class="source-card-grid">${cards}</div>
     ${floorNoteHtml(rows, floorRows(rows))}
-    ${sourceValueTableHtml(floorRows(rows), sources, {
-      valueField: "own",
-      bySourceField: "ownBySource",
-      coverageFn,
-      coverageHeader: "Quoted coverage",
-      headerSuffixFn: (s) => (isKeptOnly(s) ? " (not used)" : ""),
-    })}
+    <div class="tab-table-wrap scroll-panel"><table class="source-value-table"><thead></thead><tbody></tbody></table></div>
   `;
 
   wireSourceCards(container, callbacks.onSourceChange);
+
+  const cols = ownershipColumns(sources, isKeptOnly);
+  const valueOf = (r, col) => {
+    if (col === "player") return r.name ?? null;
+    if (col === "team") return r.team ?? null;
+    if (col === "own") return r.own ?? null;
+    if (col === "cov") return coverageFn(r);
+    return r.ownBySource?.[col.slice(4)] ?? null;
+  };
+  // A sort left over from a source that is no longer a column (a different week's sources) falls back to Own% high to low.
+  if (!cols.some((c) => c.key === ownSort.col)) ownSort = { col: "own", dir: "desc" };
+
+  const theadEl = container.querySelector(".source-value-table thead");
+  const tbodyEl = container.querySelector(".source-value-table tbody");
+  const shownRows = floorRows(rows);
+  const draw = () => {
+    theadEl.innerHTML = ownershipHeadHtml(cols, ownSort);
+    tbodyEl.innerHTML = ownershipBodyHtml(shownRows, cols, ownSort, valueOf);
+    theadEl.querySelectorAll("th[data-col]").forEach((th) => {
+      th.addEventListener("click", () => {
+        const col = th.dataset.col;
+        ownSort = ownSort.col === col
+          ? { col, dir: ownSort.dir === "asc" ? "desc" : "asc" }
+          : { col, dir: ownDefaultDir(col) };
+        draw();
+      });
+    });
+  };
+  draw();
 }
 
 // The Lineup Builder tab's real implementation lives in lineup.js (its own state: locks, excludes, the

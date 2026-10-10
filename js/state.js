@@ -195,11 +195,13 @@ function sortValue(row, col) {
 
 // Null values always sort to the bottom regardless of direction; only non-null values flip with dir. That is
 // what keeps a blank Own% and a blank Lev under every real number whichever way the column is sorted.
-export function sortRows(rows, col, dir) {
+// `valueOf(row, col)`: optional; a table with columns the Rankings table lacks (the Projected Ownership tab's
+// one column per source) supplies its own reader and keeps the same blanks-last, stable-order rules.
+export function sortRows(rows, col, dir, valueOf = sortValue) {
   const withIndex = rows.map((row, i) => ({ row, i }));
   withIndex.sort((a, b) => {
-    const va = sortValue(a.row, col);
-    const vb = sortValue(b.row, col);
+    const va = valueOf(a.row, col);
+    const vb = valueOf(b.row, col);
     const aNull = va == null || va === "";
     const bNull = vb == null || vb === "";
     if (aNull && bNull) return a.i - b.i;

@@ -12,6 +12,7 @@
 // exported), so this file now builds its own small source-card grid and its own single kicker paste box
 // instead of reusing the classic one.
 import { escapeHtml, dec1, clockPart } from "../format.js";
+import { unmatchedPartsHtml, slateTeamSet } from "../unmatched.js";
 
 const TABS = [
   { key: "rankings", label: "Rankings" },
@@ -34,11 +35,13 @@ export function renderShowdownTabs(container, activeTab, onTabClick) {
 // mapped on from board.unmatched.projections[id]/kickers[id] (🔵 review item 3). There is no
 // /api/showdown/<key>/sources route to write a weight or enabled change back to, so both inputs are
 // rendered disabled with a plain note saying so (🔵 review item 9) rather than looking live.
-function sourceCardHtml(source) {
+// `slateTeams`/`slateRows`: the showdown game's two teams and its rows. Unmatched names on other teams are
+// counted and kept behind a closed disclosure (Adam, 2026-10-10); see ../unmatched.js for the split and guards.
+function sourceCardHtml(source, slateTeams, slateRows) {
   const idAttr = escapeHtml(String(source.id));
-  const unmatchedHtml = source.unmatchedNames?.length
-    ? `<details class="source-unmatched"><summary>${source.unmatchedNames.length} unmatched</summary>${source.unmatchedNames.map(escapeHtml).join(", ")}</details>`
-    : "";
+  const { onSlate, listHtml: unmatchedHtml, offSlateHtml: offSlateNote } = unmatchedPartsHtml(source.unmatchedNames, slateTeams, slateRows, escapeHtml);
+  // With no names to split (an older response), the server's own count stands.
+  const unmatchedShown = source.unmatchedNames?.length ? onSlate.length : (source.unmatchedCount ?? 0);
   const weightHtml = source.weight != null
     ? `<label>Weight <input type="number" class="source-weight-input" value="${escapeHtml(String(source.weight))}" disabled /></label>`
     : `<span>no weight (kicker consolidation, D39)</span>`;
@@ -58,9 +61,10 @@ function sourceCardHtml(source) {
       <div class="source-card-row muted"><span>display only &mdash; no live weight/enable route for showdown sources yet</span></div>
       <div class="source-card-row muted">
         <span>Fetched ${source.fetchedAt ? clockPart(source.fetchedAt) : "never"}</span>
-        <span>${source.recordCount ?? 0} rows &middot; ${source.matchedCount ?? 0} matched &middot; ${source.unmatchedCount ?? 0} unmatched</span>
+        <span>${source.recordCount ?? 0} rows &middot; ${source.matchedCount ?? 0} matched &middot; ${unmatchedShown} unmatched on this slate</span>
       </div>
       ${unmatchedHtml}
+      ${offSlateNote}
     </div>`;
 }
 
@@ -74,7 +78,10 @@ let sdPasteResultText = null;
 // (D39) and only kickers are showdown's own paste.
 export function renderShowdownProjectionsPanel(container, board, callbacks) {
   const sources = (board.sources ?? []).filter((s) => s.kind === "projection" || s.kind === "kicker");
-  const cards = sources.map(sourceCardHtml).join("");
+  // The game's own two teams; the rows' teams only if the board carries no game.
+  const gameTeams = [board.game?.away, board.game?.home].filter(Boolean);
+  const slateTeams = gameTeams.length === 2 ? slateTeamSet(gameTeams.map((team) => ({ team }))) : slateTeamSet(board.rows);
+  const cards = sources.map((s) => sourceCardHtml(s, slateTeams, board.rows)).join("");
   container.innerHTML = `
     <div class="tab-recipe">${escapeHtml(board.recipes?.projection ?? "")}</div>
     <div class="source-card-grid">${cards}</div>
