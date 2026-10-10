@@ -1,5 +1,6 @@
 /* Published, read-only copy of the app. Everything here only HIDES controls that cannot work without the
-   server (or changes their cursor); no layout, colour or spacing of anything else is touched. Selectors
+   server (or changes their cursor), plus the Matchups link and the tab-row wrap it needs; no other layout,
+   colour or spacing is touched. Selectors
    were taken from the view code in public/js (header.js, table.js, filterbar.js, tabs.js, lineup.js and
    the showdown/ files). Clicks on the editable spots are also swallowed by site.js. */
 
@@ -8,14 +9,27 @@
   color: var(--text-dim);
   white-space: nowrap;
 }
-/* Link to the week's Matchups column, shown only when the build carried one (site.js reads baked/meta.json). */
-.site-matchups-link {
-  font-size: var(--fs-sm);
+/* Link to the week's Matchups column at the end of the tab row, shown only when the build carried one (site.js reads
+   baked/meta.json). Sized like a tab but outlined in the accent colour with an arrow, so it reads as another page.
+   The row wraps on a narrow screen so the link is never pushed out of sight; its width is held to the screen's
+   (the page around it is wider than a phone, which would otherwise let the row run past the screen edge). */
+.is-site .tabs {
+  flex-wrap: wrap;
+  align-items: center;
+  max-width: calc(100vw - 2 * var(--sp-5));
+}
+.site-matchups-tab {
+  margin: 0 0 var(--sp-1) var(--sp-2);
+  padding: var(--sp-1) var(--sp-3);
+  border: 1px solid var(--accent);
+  border-radius: 999px;
   color: var(--accent);
+  font-size: var(--fs-md);
+  font-weight: 600;
   white-space: nowrap;
   text-decoration: none;
 }
-.site-matchups-link:hover {
+.site-matchups-tab:hover {
   text-decoration: underline;
 }
 
