@@ -84,26 +84,6 @@ function sourceCardHtml(source, slateTeams, slateRows) {
     </div>`;
 }
 
-// The Projections tab's table (the Projected Ownership tab has its own sortable table, ownershipColumns below).
-function sourceValueTableHtml(rows, sources, { valueField, bySourceField, coverageHeader = "Coverage" } = {}) {
-  const head = `<tr><th>Player</th><th>Team</th>${sources.map((s) => `<th>${escapeHtml(s.label)}</th>`).join("")}<th>Blended</th><th>${escapeHtml(coverageHeader)}</th></tr>`;
-  const body = rows
-    .map((r) => {
-      const cells = sources
-        .map((s) => {
-          const v = r[bySourceField]?.[s.id];
-          return `<td>${v == null ? "—" : dec1(v)}</td>`;
-        })
-        .join("");
-      const blended = r[valueField];
-      const coverage = r.coverage;
-      const coverageCell = coverage == null ? "—" : `${Math.round(coverage * 100)}%`;
-      return `<tr><td>${escapeHtml(r.name)}</td><td>${escapeHtml(r.team)}</td>${cells}<td>${blended == null ? "—" : dec1(blended)}</td><td>${coverageCell}</td></tr>`;
-    })
-    .join("");
-  return `<div class="tab-table-wrap scroll-panel"><table class="source-value-table"><thead>${head}</thead><tbody>${body}</tbody></table></div>`;
-}
-
 function wireSourceCards(container, onSourceChange) {
   container.querySelectorAll("[data-action='source-enabled']").forEach((el) => {
     el.addEventListener("change", () => onSourceChange(el.dataset.id, { enabled: el.checked }));
@@ -142,6 +122,26 @@ const PASTE_POSITIONS = ["QB", "RB", "WR", "TE", "DST"];
 // of every new submit so a stale result never lingers under a fresh "Submitting...".
 let lastPasteResultText = null;
 
+// The Projections table's sort, kept here (separate from ownSort) so it survives the re-render that follows a board
+// reload. Default Proj high to low. Column keys: player, team, proj, cov, or "src:<id>".
+let projSort = { col: "proj", dir: "desc" };
+
+// A projection source is in the blend when it is switched on and its weight is above 0; otherwise it is "(not used)".
+const isProjectionNotUsed = (s) => Number(s.weight) <= 0 || s.enabled === false;
+
+// Projections table columns (Adam, 2026-10-10: like Projected Ownership): Player, Team, Proj (the blend), the sources
+// in the blend in config order, the sources not in the blend, then Coverage.
+export function projectionColumns(sources, isNotUsed = isProjectionNotUsed) {
+  return [
+    { key: "player", label: "Player" },
+    { key: "team", label: "Team" },
+    { key: "proj", label: "Proj" },
+    ...sources.filter((s) => !isNotUsed(s)).map((s) => ({ key: `src:${s.id}`, label: s.label })),
+    ...sources.filter(isNotUsed).map((s) => ({ key: `src:${s.id}`, label: `${s.label} (not used)` })),
+    { key: "cov", label: "Coverage" },
+  ];
+}
+
 export function renderProjectionsPanel(container, board, callbacks) {
   const sources = (board.sources ?? []).filter((s) => s.kind === "projection");
   const slateRows = activeSlateRows(board);
@@ -163,10 +163,41 @@ export function renderProjectionsPanel(container, board, callbacks) {
       <div id="paste-result" class="paste-result">${lastPasteResultText ? escapeHtml(lastPasteResultText) : ""}</div>
     </details>
     ${floorNoteHtml(activeSlateRows(board), floorRows(activeSlateRows(board)))}
-    ${sourceValueTableHtml(floorRows(activeSlateRows(board)), sources, { valueField: "proj", bySourceField: "projBySource" })}
+    <div class="tab-table-wrap scroll-panel"><table class="source-value-table"><thead></thead><tbody></tbody></table></div>
   `;
 
   wireSourceCards(container, callbacks.onSourceChange);
+
+  // The player table sorts like the Projected Ownership table (Adam, 2026-10-10): the wrapper and <table> are
+  // rendered once above; a header click rebuilds only thead and tbody.
+  const cols = projectionColumns(sources, isProjectionNotUsed);
+  const valueOf = (r, col) => {
+    if (col === "player") return r.name ?? null;
+    if (col === "team") return r.team ?? null;
+    if (col === "proj") return r.proj ?? null;
+    if (col === "cov") return r.coverage ?? null;
+    return r.projBySource?.[col.slice(4)] ?? null;
+  };
+  // A sort left over from a source that is no longer a column falls back to Proj high to low.
+  if (!cols.some((c) => c.key === projSort.col)) projSort = { col: "proj", dir: "desc" };
+
+  const theadEl = container.querySelector(".source-value-table thead");
+  const tbodyEl = container.querySelector(".source-value-table tbody");
+  const shownRows = floorRows(activeSlateRows(board));
+  const draw = () => {
+    theadEl.innerHTML = sortableHeadHtml(cols, projSort);
+    tbodyEl.innerHTML = sortableBodyHtml(shownRows, cols, projSort, valueOf);
+    theadEl.querySelectorAll("th[data-col]").forEach((th) => {
+      th.addEventListener("click", () => {
+        const col = th.dataset.col;
+        projSort = projSort.col === col
+          ? { col, dir: projSort.dir === "asc" ? "desc" : "asc" }
+          : { col, dir: sortDefaultDir(col) };
+        draw();
+      });
+    });
+  };
+  draw();
 
   container.querySelector("#paste-submit").addEventListener("click", async () => {
     const pos = container.querySelector("#paste-position").value;
@@ -198,7 +229,7 @@ export function renderProjectionsPanel(container, board, callbacks) {
 let ownSort = { col: "own", dir: "desc" };
 
 // Player and Team start A to Z; every number column starts high to low (the Rankings pattern, state.js).
-function ownDefaultDir(col) {
+export function sortDefaultDir(col) {
   return col === "player" || col === "team" ? "asc" : "desc";
 }
 
@@ -219,7 +250,7 @@ function ownershipColumns(sources, isNotUsed) {
   ];
 }
 
-function ownershipHeadHtml(cols, sort) {
+function sortableHeadHtml(cols, sort) {
   const head = cols
     .map((c) => {
       const arrow = sort.col === c.key ? (sort.dir === "asc" ? " ▲" : " ▼") : "";
@@ -229,7 +260,7 @@ function ownershipHeadHtml(cols, sort) {
   return `<tr>${head}</tr>`;
 }
 
-function ownershipBodyHtml(rows, cols, sort, valueOf) {
+function sortableBodyHtml(rows, cols, sort, valueOf) {
   return sortRows(rows, sort.col, sort.dir, valueOf)
     .map((r) => {
       const cells = cols
@@ -297,14 +328,14 @@ export function renderOwnershipPanel(container, board, callbacks) {
   const tbodyEl = container.querySelector(".source-value-table tbody");
   const shownRows = floorRows(rows);
   const draw = () => {
-    theadEl.innerHTML = ownershipHeadHtml(cols, ownSort);
-    tbodyEl.innerHTML = ownershipBodyHtml(shownRows, cols, ownSort, valueOf);
+    theadEl.innerHTML = sortableHeadHtml(cols, ownSort);
+    tbodyEl.innerHTML = sortableBodyHtml(shownRows, cols, ownSort, valueOf);
     theadEl.querySelectorAll("th[data-col]").forEach((th) => {
       th.addEventListener("click", () => {
         const col = th.dataset.col;
         ownSort = ownSort.col === col
           ? { col, dir: ownSort.dir === "asc" ? "desc" : "asc" }
-          : { col, dir: ownDefaultDir(col) };
+          : { col, dir: sortDefaultDir(col) };
         draw();
       });
     });

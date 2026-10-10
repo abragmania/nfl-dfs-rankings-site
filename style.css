@@ -944,7 +944,7 @@ html, body {
   white-space: nowrap;
 }
 .source-value-table thead { position: sticky; top: 0; background: var(--bg-elevated-2); }
-/* Projected Ownership headers sort on click, same look as the Rankings headers (muted, full text when sorted). */
+/* Projections and Projected Ownership headers sort on click, same look as the Rankings headers (muted, full text when sorted). */
 .source-value-table th.sortable { cursor: pointer; user-select: none; color: var(--text-muted); }
 .source-value-table th.sorted { color: var(--text); }
 /* Every numeric column (each source's own value plus Blended) right-aligns with tabular figures (👁

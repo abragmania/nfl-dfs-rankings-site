@@ -8,6 +8,16 @@
   color: var(--text-dim);
   white-space: nowrap;
 }
+/* Link to the week's Matchups column, shown only when the build carried one (site.js reads baked/meta.json). */
+.site-matchups-link {
+  font-size: var(--fs-sm);
+  color: var(--accent);
+  white-space: nowrap;
+  text-decoration: none;
+}
+.site-matchups-link:hover {
+  text-decoration: underline;
+}
 
 /* Header and mode row: Upload CSV, upload info, Refresh (classic and showdown), Upload Showdown CSV. */
 .is-site .upload-btn,

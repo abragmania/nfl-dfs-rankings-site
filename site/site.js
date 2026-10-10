@@ -18,17 +18,31 @@ export function formatPublished(iso) {
   return `Published ${text} ET`;
 }
 
+// The header items the site adds, in order: the published stamp, then a "Matchups" link when the build
+// carried the week's Matchups column (meta.matchups, set by tools/publish.mjs). Either may be absent.
+export function siteHeaderItems(meta) {
+  const items = [];
+  const text = formatPublished(meta?.publishedAt);
+  if (text) items.push({ tag: "span", className: "site-published", text });
+  if (meta?.matchups === true) items.push({ tag: "a", className: "site-matchups-link", text: "Matchups", href: "matchups.html" });
+  return items;
+}
+
 async function showPublished() {
   try {
     const res = await fetch("baked/meta.json");
     const meta = await res.json();
-    const text = formatPublished(meta.publishedAt);
-    if (!text) return;
+    const items = siteHeaderItems(meta);
+    if (!items.length) return;
     document.querySelectorAll(".header-actions").forEach((box) => {
-      const span = document.createElement("span");
-      span.className = "site-published";
-      span.textContent = text;
-      box.prepend(span);
+      const nodes = items.map((item) => {
+        const el = document.createElement(item.tag);
+        el.className = item.className;
+        el.textContent = item.text;
+        if (item.href) el.setAttribute("href", item.href);
+        return el;
+      });
+      box.prepend(...nodes);
     });
   } catch (e) {
     /* no meta file: the page still works, it just has no stamp */
