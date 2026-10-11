@@ -743,7 +743,7 @@ function mustHaveBarHtml(shown, total) {
 
 /** A saved lineup's players for the exposure tables: the live board row when there is one (matchup D43, own% D32),
  *  else the saved snapshot. */
-function savedLineupPlayers(lineup, rowById) {
+export function savedLineupPlayers(lineup, rowById) {
   return (lineup.slots ?? []).map((s) => {
     const id = String(s.playerId);
     const row = rowById.get(id);
@@ -1586,12 +1586,14 @@ function newLineupsTabHtml(rowById, savedHere) {
   const nShown = shown.length;
   const allSaved = n > 0 && (filtered ? shown.every((e) => savedFlags[e.index]) : nSaved === n);
   const noneShown = filtered && nShown === 0;
+  // While filtered, "Save K shown" counts only the shown lineups not yet saved (the same test as the card's Saved mark).
+  const nShownUnsaved = shown.filter((e) => !savedFlags[e.index]).length;
   parts.push(
     n
       ? `<div class="opt-results-head">
            <span class="opt-sub">${n} lineup${n === 1 ? "" : "s"} from the last Go${nSaved ? `, ${nSaved} saved` : ", not saved yet"}</span>
            <span class="opt-card-actions">
-             <button type="button" class="saved-lineup-btn" data-action="opt-save-all"${busy || allSaved || noneShown ? " disabled" : ""}>${bulkLabel("Save", nShown, filtered)}</button>
+             <button type="button" class="saved-lineup-btn" data-action="opt-save-all"${busy || allSaved || noneShown ? " disabled" : ""}>${bulkLabel("Save", nShownUnsaved, filtered)}</button>
              <button type="button" class="saved-lineup-btn danger" data-action="opt-discard-all"${busy || noneShown ? " disabled" : ""}>${bulkLabel("Discard", nShown, filtered)}</button>
            </span>
          </div>`

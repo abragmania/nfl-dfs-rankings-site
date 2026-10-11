@@ -35,6 +35,7 @@
   --accent: #2f5cd6;
   --accent-hover: #24489f;
   --accent-rgb: 47, 92, 214;
+  --accent-text: #2f5cd6; /* accent used as text colour on a card: 5.8:1 on white (D77) */
   --danger: #c8323b;
   --danger-rgb: 200, 50, 59;
   --success: #1f8a3b;
@@ -97,6 +98,7 @@
   --accent: #3b74c9;
   --accent-hover: #2e5da3;
   --accent-rgb: 59, 116, 201;
+  --accent-text: #6b9bec; /* 6.3:1 on the dark card (#151a22) */
   --danger: #b23a3a;
   --danger-rgb: 178, 58, 58;
   --success: #2f8f5b;
@@ -149,6 +151,7 @@
     --accent: #3b74c9;
     --accent-hover: #2e5da3;
     --accent-rgb: 59, 116, 201;
+    --accent-text: #6b9bec;
     --danger: #b23a3a;
     --danger-rgb: 178, 58, 58;
     --success: #2f8f5b;
@@ -1665,7 +1668,7 @@ select.opt-input { text-align: left; padding: 3px 4px; }
 .opt-exp-name .opt-pick { display: inline; overflow: visible; }
 .opt-pick:hover { color: var(--accent); text-decoration: underline; }
 .opt-pick:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; border-radius: 2px; }
-.opt-pick.opt-pick-on { color: var(--accent); }
+.opt-pick.opt-pick-on { color: var(--accent-text); }
 .opt-must-bar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); padding: var(--sp-2) var(--sp-3); background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 8px; }
 .opt-must-label { font-size: var(--fs-sm); font-weight: 600; color: var(--text-muted); }
 .opt-must-count { margin-left: auto; }
