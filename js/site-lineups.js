@@ -6,16 +6,15 @@
 // that fails is "no device lineups", a write that fails is a plain refusal. `storage` is passed in (the page's
 // localStorage, or a test double); null means unavailable.
 //
-// Saving follows POST /api/lineups (server/server.js handleLineupsPost, lineups/store.js buildLineupEntry): the same
-// slot and name checks with the same messages, the snapshot taken from the published board, "Lineup N" for a blank
-// name. A device lineup's id starts with "device-" and it carries device: true; site.css marks it "saved on this
-// device" and gives it a Delete button by that id.
+// Saving follows POST /api/lineups (server/server.js handleLineupsPost, lineups/store.js buildLineupEntry): the
+// route's own slot, name and slate checks and snapshot builder (server/lineups/validate.js, copied beside the engine)
+// run on the published board, "Lineup N" for a blank name. A device lineup's id starts with "device-" and it carries
+// device: true; site.css marks it "saved on this device" and gives it a Delete button by that id.
+import { validateLineupSlots, validateLineupName, findLineupSlate, buildLineupSnapshot } from "../server/lineups/validate.js";
 
 export const STORAGE_PREFIX = "nfldfs-site-lineups:";
 export const DEVICE_ID_PREFIX = "device-";
 export const STORAGE_UNAVAILABLE_MESSAGE = "This browser is not letting the site keep lineups (storage is switched off or full), so nothing was saved.";
-
-const LINEUP_SLOT_NAMES = new Set(["QB", "RB", "WR", "TE", "FLEX", "DST"]);
 
 /** The page's localStorage, or null when the browser refuses it (reading the property itself can throw). */
 export function pageStorage() {
@@ -97,38 +96,6 @@ function makeDeviceId(existing) {
   }
 }
 
-// server.js validateLineupSlots
-function validateLineupSlots(value) {
-  if (!Array.isArray(value) || value.length === 0) return { error: "slots must be a non-empty array" };
-  const seen = new Set();
-  const slots = [];
-  for (const item of value) {
-    if (typeof item !== "object" || item === null || Array.isArray(item)) {
-      return { error: "each slot entry must be an object" };
-    }
-    const slot = String(item.slot ?? "").trim().toUpperCase();
-    if (!LINEUP_SLOT_NAMES.has(slot)) {
-      return { error: `slot must be one of ${[...LINEUP_SLOT_NAMES].join(", ")}` };
-    }
-    if (typeof item.playerId !== "string" && typeof item.playerId !== "number") {
-      return { error: "each slot entry needs a playerId" };
-    }
-    const playerId = String(item.playerId);
-    if (seen.has(playerId)) return { error: `duplicate player ${playerId}` };
-    seen.add(playerId);
-    slots.push({ slot, playerId });
-  }
-  return { slots };
-}
-
-// server.js validateLineupName
-function validateLineupName(value) {
-  if (value === undefined) return { name: value };
-  if (typeof value !== "string") return { error: "name must be a string" };
-  if (value.trim().length > 80) return { error: "name must be at most 80 characters" };
-  return { name: value };
-}
-
 /**
  * Builds a device lineup from a POST /api/lineups body against the published board. `others`: every lineup the
  * visitor sees this week (baked and device), for the "Lineup N" name. Returns {error} or {entry, slateKey}.
@@ -139,47 +106,20 @@ export function buildDeviceLineup(body, board, others = []) {
   if (slotsResult.error) return { error: slotsResult.error };
   const nameResult = validateLineupName(body.name);
   if (nameResult.error) return { error: nameResult.error };
-  const secondSlates = Array.isArray(board?.slates) ? board.slates : [];
-  let lineupSlate;
-  let lineupSecondSlate = null;
-  if (body.slate !== undefined && body.slate !== null) {
-    if (body.slate !== "main") {
-      lineupSecondSlate = typeof body.slate === "string" ? secondSlates.find((s) => s.key === body.slate) ?? null : null;
-      if (!lineupSecondSlate) return { error: `There is no second slate called ${JSON.stringify(body.slate)} for the loaded week.` };
-    }
-    lineupSlate = body.slate;
-  }
+  const slateFound = findLineupSlate(body.slate, Array.isArray(board?.slates) ? board.slates : []);
+  if (slateFound.error) return { error: slateFound.error };
+  const { lineupSlate, lineupSecondSlate } = slateFound;
   const rowById = new Map((board?.rows ?? []).map((r) => [String(r.id), r]));
-  if (lineupSecondSlate) {
-    const games = new Set(lineupSecondSlate.gameIds);
-    const outside = slotsResult.slots.map((s) => rowById.get(s.playerId)).filter((r) => r && !games.has(r.gameId));
-    if (outside.length) {
-      return { error: `${outside.map((r) => r.name).join(", ")} ${outside.length === 1 ? "is" : "are"} not in the ${lineupSecondSlate.label} games, so this lineup cannot be saved to that slate.` };
-    }
-  }
-  const slots = [];
-  for (const item of slotsResult.slots) {
-    const row = rowById.get(item.playerId);
-    if (!row) return { error: `unknown playerId ${item.playerId}` };
-    slots.push({
-      slot: item.slot,
-      playerId: item.playerId,
-      name: row.name,
-      team: row.team ?? null,
-      pos: row.pos ?? null,
-      salary: row.salary ?? null,
-      proj: row.proj ?? null,
-      own: row.own ?? null,
-    });
-  }
+  const snapshot = buildLineupSnapshot(slotsResult.slots, rowById, lineupSecondSlate);
+  if (snapshot.error) return { error: snapshot.error };
   const trimmed = (nameResult.name ?? "").trim();
   const entry = {
     id: makeDeviceId(others),
     name: trimmed === "" ? nextLineupName(others) : trimmed,
     savedAt: new Date().toISOString(),
-    slots,
-    salaryUsed: slots.reduce((sum, s) => sum + (s.salary ?? 0), 0),
-    totalProj: slots.reduce((sum, s) => sum + (s.proj ?? 0), 0),
+    slots: snapshot.slots,
+    salaryUsed: snapshot.salaryUsed,
+    totalProj: snapshot.totalProj,
     device: true,
   };
   if (typeof lineupSlate === "string" && lineupSlate !== "") entry.slate = lineupSlate;
