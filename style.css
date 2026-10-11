@@ -426,6 +426,16 @@ body.table-expanded { overflow: hidden; }
 }
 @media (max-width: 700px) {
   .expand-btn { padding: 6px var(--sp-3); }
+
+  /* Phone page width (Adam 2026-10-10): the page must be exactly the screen wide, never zoomed out. The header
+     row and the tabs wrap, and the game strip becomes one sideways-scrolling row inside its own box. */
+  .header { padding-left: var(--sp-3); padding-right: var(--sp-3); }
+  .header-top { flex-wrap: wrap; gap: var(--sp-2) var(--sp-3); }
+  .slate-line { flex: 1 1 100%; order: 3; white-space: normal; }
+  .header-actions { order: 4; flex: 1 1 100%; flex-wrap: wrap; gap: var(--sp-2); }
+  .upload-info { white-space: normal; }
+  .main { padding-left: var(--sp-3); padding-right: var(--sp-3); }
+  .tabs { flex-wrap: wrap; }
 }
 
 /* ---------- Game strip (D26) ---------- */
@@ -545,6 +555,22 @@ body.table-expanded { overflow: hidden; }
      against (👁 visual-qa third pass: the bar was in the markup but effectively zero width). */
   .game-box-meta .game-popularity-compact { flex: 1; justify-content: flex-end; }
   .game-popularity-compact .game-popularity-bar { display: block; flex: 1; height: 4px; margin-right: var(--sp-1); }
+}
+
+/* Phone: the game strip is one sideways-scrolling row inside its own box (Adam 2026-10-10). Placed after the base
+   strip rules so it wins at equal specificity. */
+@media (max-width: 700px) {
+  .gamestrip-boxes,
+  .gamestrip-boxes.collapsed {
+    display: flex;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    gap: var(--sp-2);
+    padding-bottom: var(--sp-2);
+    -webkit-overflow-scrolling: touch;
+  }
+  .gamestrip-boxes .game-box { flex: 0 0 190px; min-width: 190px; }
+  .gamestrip-boxes.collapsed .game-box.compact { flex: 0 0 132px; min-width: 132px; padding: 4px 6px; }
 }
 
 /* ---------- Filter bar ---------- */
@@ -1517,8 +1543,9 @@ th.sd-cpt-col.sorted { color: var(--amber); }
 .opt-results { width: 100%; margin-top: var(--sp-5); display: flex; flex-direction: column; gap: var(--sp-2); }
 .opt-results-head { display: flex; align-items: center; gap: var(--sp-3); flex-wrap: wrap; }
 .opt-note { font-size: var(--fs-sm); color: var(--text-dim); }
-.opt-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(400px, 1fr)); gap: var(--sp-3); }
+.opt-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(400px, 100%), 1fr)); gap: var(--sp-3); }
 .opt-card {
+  min-width: 0; /* a grid item may shrink below its unwrapped rows, so the player name truncates instead of the card overflowing */
   background: var(--bg-elevated);
   border: 1px solid var(--border);
   border-radius: 8px;
@@ -1539,6 +1566,15 @@ th.sd-cpt-col.sorted { color: var(--amber); }
 .opt-p-proj { flex: 0 0 34px; text-align: right; font-variant-numeric: tabular-nums; }
 .opt-p-own { flex: 0 0 68px; text-align: right; color: var(--text-muted); font-variant-numeric: tabular-nums; }
 .opt-card-totals { font-size: var(--fs-sm); color: var(--text-muted); border-top: 1px solid var(--border); padding-top: var(--sp-1); }
+/* Phone: the fixed columns give back a little room so the player name keeps more than a few letters. */
+@media (max-width: 700px) {
+  .opt-card { padding: var(--sp-2); }
+  .opt-p { gap: 4px; }
+  .opt-p-slot { width: 28px; flex-basis: 28px; }
+  .opt-p-opp { flex-basis: 42px; }
+  .opt-p-sal { flex-basis: 46px; }
+  .opt-p-own { flex-basis: 60px; }
+}
 
 .opt-exposure { margin-top: var(--sp-3); display: flex; flex-direction: column; gap: var(--sp-2); }
 .opt-exp-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--sp-3); align-items: start; }
@@ -1585,3 +1621,12 @@ th.sd-cpt-col.sorted { color: var(--amber); }
 .entries-download-row { display: flex; align-items: center; gap: var(--sp-3); flex-wrap: wrap; }
 .entries-quiet { font-size: var(--fs-sm); color: var(--text-dim); }
 .entries-error { margin-top: 0; }
+
+/* Phone (Adam 2026-10-10): the Lineup Builder stacks (lineup above the player table) and its controls wrap, so the
+   page stays exactly the screen wide. Placed last so it wins at equal specificity. */
+@media (max-width: 700px) {
+  .lineup-layout { flex-direction: column; align-items: stretch; }
+  .lineup-left { flex: 0 0 auto; max-width: 100%; width: 100%; }
+  .lineup-right { width: 100%; }
+  .opt-inline { white-space: normal; flex-wrap: wrap; }
+}

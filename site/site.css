@@ -1,5 +1,6 @@
 /* Published, read-only copy of the app. Everything here only HIDES controls that cannot work without the
-   server (or changes their cursor), plus the Matchups link and the tab-row wrap it needs; no other layout,
+   server (or changes their cursor), plus the Matchups link and the tab-row wrap it needs, and the "saved on this
+   device" note on lineups saved on the site; no other layout,
    colour or spacing is touched. Selectors
    were taken from the view code in public/js (header.js, table.js, filterbar.js, tabs.js, lineup.js and
    the showdown/ files). Clicks on the editable spots are also swallowed by site.js. */
@@ -81,22 +82,19 @@
   display: none !important;
 }
 
-/* Lineup Builder (classic and showdown): Build, Save lineup, the option selects and the Save-as box that
-   only feed them, lock and exclude buttons. Add, Clear and Load stay: they only move players around in the
-   visitor's own browser. */
+/* Lineup Builder: Build and the three option selects that only feed it go (Build needs the server); showdown's Build
+   and Save go too. Classic Lock, Exclude, Add, Clear, Load, Save lineup and its Save-as box stay (D69): locks and
+   excludes feed the Optimizer, and a saved lineup is kept in the visitor's own browser. */
 .is-site #lineup-build-btn,
-.is-site #lineup-save-btn,
 .is-site #sd-lineup-build-btn,
 .is-site #sd-lineup-save-btn,
-.is-site .lineup-controls .lineup-control,
-.is-site [data-action="slot-lock"],
-.is-site [data-action="row-lock"],
-.is-site [data-action="row-exclude"] {
+.is-site .lineup-controls .lineup-control:not(:has(#lineup-save-name)) {
   display: none !important;
 }
 
-/* Saved lineups stay viewable: Delete goes, the name stops being a rename button. */
-.is-site [data-action="lineup-delete-start"],
+/* Saved lineups stay viewable: Delete goes, the name stops being a rename button. A lineup saved on this site keeps
+   its Delete (it lives only in this browser, D69; its id starts with "device-", site-src/site-lineups.js). */
+.is-site [data-action="lineup-delete-start"]:not([data-id^="device-"]),
 .is-site [data-action="sd-delete-start"] {
   display: none !important;
 }
@@ -104,12 +102,13 @@
   pointer-events: none;
   cursor: default;
 }
-
-/* Optimizer: it makes and saves lineups, so the read-only site does not show it. */
-.is-site .opt-panel,
-.is-site .opt-results {
-  display: none !important;
+/* The small "saved on this device" note on a lineup saved on this site, after its saved time. */
+.is-site .saved-lineup-card:has([data-action="lineup-load"][data-id^="device-"]) .saved-lineup-time::after {
+  content: " \00b7  saved on this device"; /* two spaces: a CSS hex escape swallows the first */
+  color: var(--text-dim);
 }
+
+/* The Optimizer is shown and runs in the visitor's browser (D69). */
 
 /* Entries: Adam's private DraftKings entries files, never on the public site. */
 .is-site .entries-section {
