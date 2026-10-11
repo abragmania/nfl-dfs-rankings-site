@@ -12,7 +12,7 @@ const GENERATE_RULE_KEYS = [...RULE_KEYS, ...LEGACY_RULE_KEYS];
 const GENERATE_BODY_KEYS = new Set(["slate", "settings"]);
 const GENERATE_SETTING_KEYS = new Set([
   "count", "minUnique", "locks", "excludes", "catchers", "maxExposure", "rules", "maxPerTeam", "allowRbGames", "avoidGames",
-  "objective", "stackOwn", "stackOwnOrMore", "stackOpp", "stackOppOrMore"
+  "objective", "stackOwn", "stackOwnOrMore", "stackOpp", "stackOppOrMore", "playerMaxExposure"
 ]);
 // D73: the QB stack's two numbers, in Adam's words for the refusal sentence.
 const GENERATE_STACK_NUMBERS = [
@@ -38,9 +38,9 @@ export function validateIdArray(value, name) {
   return { ids: value };
 }
 
-// One maximum-exposure value, always explicit: {pct: 0-100} (a share of saved plus new lineups) or {count: whole
-// number} (a lineup count). A bare number is refused, since 1 could mean 100% or one lineup. Null or omitted means
-// no cap. Returns an error string or null.
+// One maximum-exposure value, always explicit: {pct: 0-100} (a share of the new lineups asked for, rounded up; saved
+// lineups never count, D74) or {count: whole number} (a lineup count). A bare number is refused, since 1 could mean
+// 100% or one lineup. Null or omitted means no cap. Returns an error string or null.
 export function exposureValueError(pos, value) {
   if (value === null || value === undefined) return null;
   if (isPlainObject(value)) {
@@ -101,6 +101,22 @@ export function validateGenerateSettings(raw, ctx) {
       if (err) return { error: err };
     }
     out.maxExposure = raw.maxExposure;
+  }
+  // Per-player Max % (Adam 2026-10-11): {"<playerId>": {pct: 0-100}}; null means no cap and is dropped.
+  if (raw.playerMaxExposure !== undefined && raw.playerMaxExposure !== null) {
+    if (!isPlainObject(raw.playerMaxExposure)) return { error: "playerMaxExposure must be an object keyed by player id" };
+    const caps = {};
+    for (const [rawId, value] of Object.entries(raw.playerMaxExposure)) {
+      const id = String(rawId).trim();
+      if (!ctx.boardIds.has(id)) return { error: `playerMaxExposure names a player who is not on the board: ${rawId}` };
+      if (value === null || value === undefined) continue;
+      const keys = isPlainObject(value) ? Object.keys(value) : [];
+      if (keys.length !== 1 || keys[0] !== "pct") return { error: `playerMaxExposure for ${ctx.nameOf(id)} must be {pct: 0-100}` };
+      const n = value.pct;
+      if (typeof n !== "number" || !Number.isFinite(n) || n < 0 || n > 100) return { error: `playerMaxExposure for ${ctx.nameOf(id)} must be a percent from 0 to 100` };
+      caps[id] = { pct: n };
+    }
+    out.playerMaxExposure = caps;
   }
   if (raw.rules !== undefined && raw.rules !== null) {
     if (!isPlainObject(raw.rules)) return { error: "rules must be an object of on/off switches" };

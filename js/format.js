@@ -33,6 +33,24 @@ export function clockPart(isoString) {
   return m ? m[1] : "";
 }
 
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+// When something happened (a source's fetchedAt, "cached 00:43", "Fetched 00:43") in the browser's own local
+// time: { clock: "HH:MM", day: "YYYY-MM-DD", monthDay: "Oct 10" }, or null when the stamp is unreadable. The one
+// helper for those times; the server stamps them in UTC, so slicing the string (clockPart) shows the UTC clock.
+// Never for kickoffs: those are read as written (kickoffClockPart, D30).
+export function localStamp(ts) {
+  if (typeof ts !== "string" || ts.trim() === "") return null;
+  const d = new Date(ts);
+  if (Number.isNaN(d.getTime())) return null;
+  const pad = (n) => String(n).padStart(2, "0");
+  return {
+    clock: `${pad(d.getHours())}:${pad(d.getMinutes())}`,
+    day: `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`,
+    monthDay: `${MONTHS[d.getMonth()]} ${d.getDate()}`,
+  };
+}
+
 // Pulls the kickoff clock substring straight out of the kickoffEt string and renders a 12-hour label,
 // e.g. the ISO+offset form "2026-09-13T13:00:00-04:00" -> "1:00 PM" (13:00 -> "1:00 PM", 16:25 -> "4:25
 // PM"). This is plain string/integer arithmetic on the hour digits pulled out of the string — never a

@@ -1,8 +1,8 @@
-// The Optimizer's engine (PROJECT.md Part 4 "Optimizer"; DECISIONS.md D55 as amended 2026-10-10, D73): N DraftKings
+// The Optimizer's engine (PROJECT.md Part 4 "Optimizer"; DECISIONS.md D55 as amended 2026-10-10, D73, D74): N DraftKings
 // classic lineups, one at a time, each the best lineup by the chosen objective (projection unless Adam picks
 // leverage or projection minus ownership; below, "projection" means that score) that keeps every rule Adam has switched on,
 // every lock, the uniqueness he set against his saved lineups and every earlier lineup of the batch, and the
-// per-position exposure caps as they stand at that moment. It is a pure function over board rows: no network, no
+// per-position exposure caps as they stand at that moment (counted over this batch only, D74). It is a pure function over board rows: no network, no
 // clock, no file writes. The single-lineup builder (optimize.js) is separate and unchanged.
 //
 // Search: exact depth-first branch and bound, deterministic, no dependencies. A lineup is enumerated as one of the
@@ -204,9 +204,10 @@ function normaliseSettings(settings, slate, existingCount, notes) {
     fatal = "The ownership penalty from the rank settings did not reach the Optimizer, so it cannot score lineups on projection minus ownership.";
   }
 
-  // Exposure: {pct: 50} is a percentage of all lineups (saved plus this batch as asked for), {count: 3} a lineup
-  // count. Anything else is ignored with a note (the route refuses it). Nothing set means no cap (D55 amended).
-  const totalLineups = existingCount + count;
+  // Exposure: {pct: 50} is a percentage of this batch as asked for, rounded UP to whole lineups (50% of 5 allows
+  // 3; 0% still means never), {count: 3} a lineup count within the batch; saved lineups never count toward a cap
+  // (D74). Anything else is ignored with a note (the route refuses it). Nothing set means no cap (D55 amended).
+  const totalLineups = count;
   const capCount = {};
   const capLabel = {};
   const capPct = {};
@@ -221,18 +222,31 @@ function normaliseSettings(settings, slate, existingCount, notes) {
       n = Math.floor(raw.count);
       label = `${n} lineup${n === 1 ? "" : "s"}`;
     } else if (isObj && num(raw.pct) !== null && raw.pct >= 0) {
-      n = Math.floor((raw.pct / 100) * totalLineups + 1e-9);
+      n = pctToLineups(raw.pct, totalLineups);
       label = `${raw.pct}%`;
       capPct[pos] = raw.pct;
-      if (n === 0 && raw.pct > 0) {
-        notes.push(`The ${pos} maximum exposure of ${raw.pct}% of ${totalLineups} lineups rounds down to 0, so no ${pos} can be used unless he is locked.`);
-      }
     } else {
       notes.push(`The ${pos} maximum exposure must be given as {pct} or {count}; ${JSON.stringify(raw)} was ignored, so ${pos} has no cap.`);
       continue;
     }
     capCount[pos] = n;
     capLabel[pos] = label;
+  }
+
+  // Per-player Max % (Adam 2026-10-11, D74): {id: {pct}}, sized on this batch and rounded up like the position
+  // caps. A malformed entry is ignored with a note (the route refuses it); a locked player capped below 100% is
+  // refused in run(), since every lineup must hold him.
+  const playerCap = new Map(); // id -> {n, pct}
+  const givenP = s.playerMaxExposure && typeof s.playerMaxExposure === "object" ? s.playerMaxExposure : {};
+  for (const [rawId, raw] of Object.entries(givenP)) {
+    if (raw === undefined || raw === null) continue;
+    const id = String(rawId).trim();
+    const pct = typeof raw === "object" ? num(raw.pct) : null;
+    if (!id || pct === null || pct < 0 || pct > 100) {
+      notes.push(`The maximum exposure for player ${id} must be given as {pct} from 0 to 100; ${JSON.stringify(raw)} was ignored.`);
+      continue;
+    }
+    playerCap.set(id, { n: pctToLineups(pct, count), pct });
   }
 
   const maxPerTeamRaw = num(s.maxPerTeam);
@@ -246,6 +260,7 @@ function normaliseSettings(settings, slate, existingCount, notes) {
     capCount,
     capLabel,
     capPct,
+    playerCap,
     existingCount,
     maxPerTeam,
     stackOwn,
@@ -267,6 +282,13 @@ function normaliseSettings(settings, slate, existingCount, notes) {
     diagNodeLimit: num(s._diagNodeLimit) ?? DIAG_NODE_LIMIT,
     stats: s._stats && typeof s._stats === "object" ? s._stats : null
   };
+}
+
+/** A percent cap as a number of lineups of the batch, rounded up (Adam 2026-10-11: "round up on those so if its 50%
+ *  in 5 lineups the guy can be in 3"); 0% is 0, never rounded up. The epsilon keeps 20% of 5 at exactly 1. */
+export function pctToLineups(pct, count) {
+  if (!(pct > 0)) return 0;
+  return Math.ceil((pct / 100) * count - 1e-9);
 }
 
 /** A stack count from the settings: a whole number from 0 to `max`; absent means `fallback`; anything else is
@@ -310,8 +332,10 @@ const oppStackActive = (opts) => !(opts.stackOpp === 0 && opts.stackOppOrMore);
  * @param {object}   [args.slate]   the slate; `cap` or `salaryCap` is used when present, else $50,000 (D1)
  * @param {object}   [args.settings]
  *   locks, excludes: player ids. count: 1-150 (default 1). minUnique: 1-9 (default 1).
- *   maxExposure: {QB, RB, WR, TE, DST}, each {pct} (percent of saved plus the lineups asked for) or {count}; per
- *     player, over existing plus batch; default none. Any other form is ignored with a note.
+ *   maxExposure: {QB, RB, WR, TE, DST}, each {pct} (percent of the lineups asked for, rounded up) or {count}; per
+ *     player, over this batch only, never the saved lineups (D74); default none. Any other form is ignored with a note.
+ *   playerMaxExposure: {id: {pct}}, one player's own cap, sized and counted the same way; a locked player with a
+ *     cap under 100% is refused (no lineups, a note).
  *   rules: {starredQbOnly, rbWithOwnQbOnlyIfCatcher, noSameTeamRbs, noSameGameRbs, noDstVsOwnPlayers}, each
  *     boolean, all true by default. Older keys qbStack and oneOffensivePerOtherTeam are accepted (LEGACY_RULE_KEYS).
  *   stackOwn (0-4, default 1), stackOwnOrMore (default true), stackOpp (0-3, default 0), stackOppOrMore (default
@@ -324,8 +348,10 @@ const oppStackActive = (opts) => !(opts.stackOpp === 0 && opts.stackOppOrMore);
  *   fpCatches: Map or object id -> FantasyPros projected catches; when absent, row.fpRec is read instead. The D55
  *     pass-catcher test uses FantasyPros' number first, then the board's all-source average row.projStats.rec.
  *     catchers: ids Adam names as pass catchers whatever the number.
- * @param {Array}    [args.existing] Adam's saved lineups (arrays of ids, or objects with ids/lineup/players/slots)
+ * @param {Array}    [args.existing] Adam's saved lineups (arrays of ids, or objects with ids/lineup/players/slots);
+ *   they count for minimum unique players only, never for the exposure caps (D74)
  * @returns {{lineups: Array<{ids: string[], salary: number, proj: number}>, exposure: object, notes: string[]}}
+ *   exposure is still reported over saved plus new lineups (the Optimizer tab computes its own per tab, D74).
  *   ids are in DraftKings slot order QB, RB, RB, WR, WR, WR, TE, FLEX, DST; proj is always the lineup's projection,
  *   whatever the objective. Never throws.
  */
@@ -364,6 +390,17 @@ function run(rows, slate, settings, existing, notes) {
     notes.push(st.fatal);
     return { lineups: [], exposure: exposureOf(st, existingList.map((ids) => ids.map((id) => st.keyOfId.get(id) ?? `id:${id}`)), opts), notes };
   }
+  // A locked player is in every lineup of the batch, so his own Max % must allow all of them once rounded up (D74):
+  // refused when his allowance is below the count, never silently broken.
+  const lockedCapped = opts.locks.filter((id) => opts.playerCap.has(id) && opts.playerCap.get(id).n < opts.count);
+  if (lockedCapped.length) {
+    for (const id of lockedCapped) {
+      const name = st.byId.get(id)?.name ?? id;
+      const { n, pct } = opts.playerCap.get(id);
+      notes.push(`Locked ${name} is capped at ${n} of ${opts.count} lineups (${pct}%); unlock him or raise his Max %.`);
+    }
+    return { lineups: [], exposure: emptyExposure(), notes };
+  }
 
   // Saved lineups, as DK keys (two board rows of one man count as one player).
   const prevKeys = existingList.map((ids) => ids.map((id) => st.keyOfId.get(id) ?? `id:${id}`));
@@ -374,13 +411,14 @@ function run(rows, slate, settings, existing, notes) {
   }
 
   const prev = makePrevIndex(st, prevKeys, opts.count);
+  // D74: the exposure caps count this batch only, so the counts start empty; the saved lineups are in `prev` for
+  // minimum unique players and nothing else.
   const counts = new Map();
-  for (const keys of prevKeys) for (const k of keys) counts.set(k, (counts.get(k) ?? 0) + 1);
 
   // Locks above a position's exposure cap: the lock wins (every lineup must hold him), and Adam is told.
   for (const c of st.lockCands) {
     const capN = opts.capCount[c.pos];
-    if (capN !== undefined && (counts.get(c.key) ?? 0) + opts.count > capN) {
+    if (capN !== undefined && opts.count > capN) {
       notes.push(`${c.name} is locked, so he is in every new lineup even though that takes him past the ${c.pos} maximum exposure (${opts.capLabel[c.pos]}).`);
     }
   }
@@ -422,10 +460,13 @@ function run(rows, slate, settings, existing, notes) {
   if (aborted && lineups.length) {
     notes.push(`The search hit its step limit on at least one lineup, so that lineup may not be the very best available.`);
   }
-  const pctCaps = Object.entries(opts.capPct);
-  if (lineups.length < opts.count && pctCaps.length) {
-    const saved = opts.existingCount ? ` plus ${opts.existingCount} saved` : "";
-    notes.push(`The percentage caps (${pctCaps.map(([pos, p]) => `${pos} ${p}%`).join(", ")}) were sized for the ${opts.count} lineups asked for${saved}, not the ${lineups.length} made.`);
+  // Percent caps (position and per-player Max %) are sized on the count asked for; a short batch says so.
+  const pctCaps = Object.entries(opts.capPct).map(([pos, p]) => `${pos} ${p}%`);
+  const playerPct = [...opts.playerCap].map(([id, { pct }]) => `${st.byId.get(id)?.name ?? id} ${pct}%`);
+  const shown = playerPct.length > 5 ? [...playerPct.slice(0, 5), `${playerPct.length - 5} more players`] : playerPct;
+  const allPct = [...pctCaps, ...shown];
+  if (lineups.length < opts.count && allPct.length) {
+    notes.push(`The percentage caps (${allPct.join(", ")}) were sized for the ${opts.count} lineups asked for, not the ${lineups.length} made.`);
   }
   return { lineups, exposure: exposureOf(st, prevKeys, opts), notes };
 }
@@ -741,10 +782,17 @@ function addPrev(prev, keys) {
 
 function availableLists(st, opts, counts, prev) {
   const out = { trimmed: 0 };
+  // Per-player Max % (D74, this batch only), by DK key; two rows of one man take the smaller cap.
+  const playerCapN = new Map();
+  for (const [id, { n }] of opts.playerCap) {
+    const key = st.keyOfId.get(id);
+    if (key !== undefined) playerCapN.set(key, Math.min(n, playerCapN.get(key) ?? Infinity));
+  }
   for (const pos of POSITIONS) {
     const capN = opts.capCount[pos];
     let list = st.byPos[pos];
     if (capN !== undefined) list = list.filter((c) => (counts.get(c.key) ?? 0) < capN);
+    if (playerCapN.size) list = list.filter((c) => !playerCapN.has(c.key) || (counts.get(c.key) ?? 0) < playerCapN.get(c.key));
     if (!opts.noTrim) {
       const kept = trimPosition(list, pos, st, opts, prev);
       out.trimmed += list.length - kept.length;
@@ -1112,6 +1160,25 @@ function diagnose(rows, settings, slate, existingCount, prevKeys, opts, n) {
   }
   if (opts.minUnique > 1) trials.push({ label: `minimum unique players (${opts.minUnique})`, patch: { minUnique: 1 } });
   if (Object.keys(opts.capCount).length) trials.push({ label: "the maximum exposure settings", patch: { maxExposure: {} } });
+  // D74: caps count only this batch's lineups (prevKeys holds the saved ones first, then the batch so far).
+  const batchCounts = new Map();
+  for (const keys of prevKeys.slice(existingCount)) for (const k of keys) batchCounts.set(k, (batchCounts.get(k) ?? 0) + 1);
+  // Per-player Max %: only a player already at his cap can be what blocks; each is tried alone (named), or all
+  // together when there are many.
+  const rowOf = new Map(rows.filter((r) => r && typeof r === "object").map((r) => [String(r.id), r]));
+  const blocking = [...opts.playerCap].filter(([id, { n }]) => {
+    const row = rowOf.get(id);
+    return row && (batchCounts.get(dkKeyOf(row, id)) ?? 0) >= n;
+  });
+  const givenCaps = base.playerMaxExposure && typeof base.playerMaxExposure === "object" ? base.playerMaxExposure : {};
+  if (blocking.length > 6) {
+    trials.push({ label: "the players' Max % settings", patch: { playerMaxExposure: {} } });
+  } else {
+    for (const [id, { pct }] of blocking) {
+      const rest = Object.fromEntries(Object.entries(givenCaps).filter(([k]) => String(k).trim() !== id));
+      trials.push({ label: `the Max % of ${pct}% on ${rowOf.get(id).name ?? id}`, patch: { playerMaxExposure: rest } });
+    }
+  }
   if (opts.maxPerTeam !== null) trials.push({ label: `the limit of ${opts.maxPerTeam} per team`, patch: { maxPerTeam: null } });
   if (opts.avoidGames.size) trials.push({ label: "the games to avoid", patch: { avoidGames: [] } });
   if (opts.locks.length) trials.push({ label: "the locks", patch: { locks: [] } });
@@ -1128,9 +1195,7 @@ function diagnose(rows, settings, slate, existingCount, prevKeys, opts, n) {
     const st2 = prepare(rows, o2, scratch);
     if (st2.fatal) continue;
     const prev2 = makePrevIndex(st2, prevKeys, 1);
-    const counts = new Map();
-    for (const keys of prevKeys) for (const k of keys) counts.set(k, (counts.get(k) ?? 0) + 1);
-    const avail = availableLists(st2, o2, counts, prev2);
+    const avail = availableLists(st2, o2, batchCounts, prev2);
     const r = searchOne(st2, avail, prev2, o2, opts.diagNodeLimit);
     if (r.best) found.push(t.label);
     else if (r.aborted) unchecked.push(t.label);

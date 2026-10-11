@@ -305,6 +305,9 @@ html, body {
   color: var(--amber);
   border: 1px solid rgba(var(--amber-rgb), 0.4);
 }
+/* The phone summary chip (header.js renderPills); shown only inside the max-width 700px block. */
+.pills-summary { display: none; padding: 0; }
+.pills-toggle { background: none; border: 0; color: inherit; font: inherit; padding: 3px 10px; cursor: pointer; }
 
 /* ---------- Main layout ---------- */
 /* The page does not have to fill a wide screen (Adam): past 1560px the game strip, filters and table stop
@@ -1153,14 +1156,21 @@ body.table-expanded { overflow: hidden; }
 }
 .lineup-rows-table thead { position: sticky; top: 0; background: var(--bg-elevated-2); }
 /* Salary/Proj/Own%/Value right-align with tabular figures, same treatment as the Rankings table (👁 visual-qa
-   third pass). Columns: 1 Player, 2 Pos, 3 Salary, 4 Proj, 5 Own%, 6 Value, 7 Status (when present), 8 actions. */
+   third pass). Columns: 1 Player, 2 Pos, 3 Salary, 4 Proj, 5 Own%, 6 Max % (Adam 2026-10-11), 7 Value,
+   8 Status (when present), then actions. */
 .lineup-rows-table th:nth-child(3), .lineup-rows-table td:nth-child(3),
 .lineup-rows-table th:nth-child(4), .lineup-rows-table td:nth-child(4),
 .lineup-rows-table th:nth-child(5), .lineup-rows-table td:nth-child(5),
-.lineup-rows-table th:nth-child(6), .lineup-rows-table td:nth-child(6) {
+.lineup-rows-table th:nth-child(7), .lineup-rows-table td:nth-child(7) {
   text-align: right;
   font-variant-numeric: tabular-nums;
 }
+/* Max %: a narrow box (three digits), centred under its header; the header is plain text, not a sort. */
+.lineup-rows-table th.lineup-max-head, .lineup-rows-table td.lineup-max-cell { text-align: center; padding-left: 2px; padding-right: 2px; }
+.lineup-rows-table th.lineup-max-head { color: var(--text-muted); font-weight: 600; }
+.lineup-rows-table td.lineup-max-cell { padding-top: 1px; padding-bottom: 1px; }
+.opt-input.lineup-max-input { width: 3.6em; padding: 1px 4px; text-align: right; font-size: var(--fs-sm); }
+.opt-input.lineup-max-input.invalid { border-color: var(--danger); background: rgba(var(--danger-rgb), 0.12); }
 .lineup-row.lineup-row-locked { background: rgba(var(--accent-rgb), 0.1); }
 .lineup-row.lineup-row-excluded { color: var(--row-dim-text); opacity: 0.6; }
 /* Same out/doubtful/IR dimming as the Rankings table (public/js/table.js's row-dimmed), reused here since
@@ -1573,10 +1583,43 @@ select.opt-input { text-align: left; padding: 3px 4px; }
 .opt-p-proj { flex: 0 0 34px; text-align: right; font-variant-numeric: tabular-nums; }
 .opt-p-own { flex: 0 0 68px; text-align: right; color: var(--text-muted); font-variant-numeric: tabular-nums; }
 .opt-card-totals { font-size: var(--fs-sm); color: var(--text-muted); border-top: 1px solid var(--border); padding-top: var(--sp-1); }
+/* New since the card before (Adam 2026-10-11): a green tint, a green bar on the left and a green dot. Green, not the
+   blue accent locked players use; every row keeps the dot's room so the columns stay lined up. */
+.opt-p { padding: 1px 0 1px 5px; border-radius: 3px; }
+.opt-p-dot { flex: 0 0 6px; width: 6px; height: 6px; border-radius: 50%; }
+.opt-p-new { background: rgba(var(--success-rgb), 0.13); box-shadow: inset 3px 0 0 var(--success); }
+.opt-p-new .opt-p-dot { background: var(--success); }
+/* Saved (or the same nine players as a saved lineup): the Save button becomes a disabled "Saved ✓". */
+.opt-card.opt-card-saved { border-color: rgba(var(--success-rgb), 0.6); }
+.saved-lineup-btn.opt-saved-btn:disabled { border-color: var(--success); color: var(--success); background: rgba(var(--success-rgb), 0.12); opacity: 1; cursor: default; font-weight: 600; }
+/* One fixed line height for the card buttons, so the ✓ glyph's font cannot make "Saved ✓" taller than Save. */
+.opt-card-actions .saved-lineup-btn { line-height: 16px; }
+/* D74: New lineups / Saved lineups tabs over the results; each tab has its own exposure tables. */
+.opt-tabs { display: flex; gap: var(--sp-1); border-bottom: 1px solid var(--border); }
+.opt-tab {
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  padding: 6px 12px;
+  font: inherit;
+  font-size: var(--fs-md);
+  font-weight: 600;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.opt-tab:hover { color: var(--text); }
+.opt-tab.active { color: var(--text); border-bottom-color: var(--accent); }
+.opt-tab-n { margin-left: 4px; padding: 0 6px; border-radius: 9px; font-size: var(--fs-sm); background: var(--bg-elevated-2); color: var(--text-muted); }
+.opt-tab.active .opt-tab-n { background: rgba(var(--accent-rgb), 0.15); color: var(--accent); }
+.opt-tab-panel { display: flex; flex-direction: column; gap: var(--sp-2); }
+.opt-tab-panel .saved-lineups { margin-top: 0; }
 /* Phone: the fixed columns give back a little room so the player name keeps more than a few letters. */
 @media (max-width: 700px) {
   .opt-card { padding: var(--sp-2); }
-  .opt-p { gap: 4px; }
+  /* Phone: no dot and only the bar's own 3px of left room, so names keep their letters; the bar and tint stay. */
+  .opt-p { gap: 4px; padding-left: 3px; }
+  .opt-p-dot { display: none; }
   .opt-p-slot { width: 28px; flex-basis: 28px; }
   .opt-p-opp { flex-basis: 42px; }
   .opt-p-sal { flex-basis: 46px; }
@@ -1633,8 +1676,39 @@ select.opt-input { text-align: left; padding: 3px 4px; }
 .entries-table { width: 100%; border-collapse: collapse; font-size: var(--fs-sm); }
 .entries-table th, .entries-table td { padding: var(--sp-1) var(--sp-2); border-bottom: 1px solid var(--border); text-align: left; white-space: nowrap; }
 .entries-table thead { background: var(--bg-elevated-2); }
-.entries-table .entries-contest { white-space: normal; min-width: 200px; }
+.entries-table th:first-child { width: 110px; }
+.entries-table th:nth-child(2) { width: 34%; }
 .entries-fee, .entries-id { font-variant-numeric: tabular-nums; color: var(--text-muted); }
+/* Contest groups (D75): one header row per contest, its entries below. */
+.entries-contest-head td { background: var(--bg-elevated-2); padding-top: 6px; padding-bottom: 6px; }
+.entries-contest-group + .entries-contest-group .entries-contest-head td { border-top: 2px solid var(--border); }
+.entries-contest-line { display: flex; align-items: baseline; gap: var(--sp-3); white-space: normal; }
+.entries-contest-name { font-weight: 700; color: var(--text); }
+.entries-contest-status { font-size: var(--fs-sm); color: var(--text-dim); }
+.entries-contest-status.some { color: var(--text); font-weight: 600; }
+.entries-clear { margin-left: auto; align-self: center; padding: 1px 10px; }
+.entries-section .saved-lineup-btn:disabled { opacity: 0.5; cursor: default; }
+/* Bulk assign panel (D75): ticked lineups | contests with that many entries, then the one Assign button. */
+.entries-bulk { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: var(--sp-2) var(--sp-5); padding: var(--sp-2) var(--sp-3); background: var(--bg-elevated-2); border: 1px solid var(--border); border-radius: 6px; }
+.entries-bulk-col { display: flex; flex-direction: column; gap: var(--sp-1); min-width: 0; }
+.entries-bulk-head { display: flex; align-items: center; gap: var(--sp-2); }
+.entries-bulk-head .saved-lineup-btn { padding: 1px 8px; background: var(--bg-elevated); }
+.entries-bulk-title { font-weight: 700; font-size: var(--fs-sm); color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.04em; margin-right: var(--sp-1); }
+.entries-bulk-list { display: flex; flex-direction: column; gap: 1px; }
+/* About 16 rows, then its own scroll; All / None / "N selected" sit above it and stay in view. The scroll is on a
+   wrapper: a height cap on the columned list itself would push extra columns out sideways. */
+.entries-bulk-scroll { max-height: 320px; overflow-y: auto; overflow-x: hidden; }
+.entries-bulk-lineups { display: block; columns: 240px; column-gap: var(--sp-4); }
+.entries-bulk-lineups .entries-check { break-inside: avoid; margin-bottom: 1px; user-select: none; }
+.entries-check { display: flex; align-items: center; gap: 6px; font-size: var(--fs-sm); cursor: pointer; min-width: 0; padding: 1px 0; }
+.entries-check input { margin: 0; flex: 0 0 auto; }
+.entries-check > span:first-of-type { min-width: 0; }
+.entries-bulk-lineups .entries-check > span:first-of-type { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.entries-check > .entries-quiet { margin-left: auto; padding-left: var(--sp-2); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.entries-check.off { color: var(--text-dim); cursor: default; }
+.entries-bulk-go { grid-column: 1 / -1; display: flex; align-items: center; gap: var(--sp-3); flex-wrap: wrap; padding-top: var(--sp-1); }
+.entries-bulk-notes { grid-column: 1 / -1; display: flex; flex-direction: column; gap: 2px; }
+.entries-bulk-skip { font-size: var(--fs-sm); color: var(--amber); }
 .entries-now { color: var(--text-muted); }
 .entries-now.blank { color: var(--text-dim); font-style: italic; }
 .entries-row.assigned { background: rgba(var(--accent-rgb), 0.08); }
@@ -1651,4 +1725,16 @@ select.opt-input { text-align: left; padding: 3px 4px; }
   .lineup-left { flex: 0 0 auto; max-width: 100%; width: 100%; }
   .lineup-right { width: 100%; }
   .opt-inline { white-space: normal; flex-wrap: wrap; }
+  /* Entries (D75): Contests stack under Lineups; the table drops "In the file now" so nothing scrolls sideways. */
+  .entries-bulk { grid-template-columns: minmax(0, 1fr); }
+  .entries-bulk-list:not(.entries-bulk-lineups) .entries-check > span:first-of-type { flex: 1; min-width: 0; }
+  .entries-bulk-list:not(.entries-bulk-lineups) .entries-check > .entries-quiet { flex-shrink: 0; }
+  .entries-bulk-head .entries-quiet { white-space: nowrap; }
+  .entries-table th:nth-child(2), .entries-table td.entries-now { display: none; }
+  .entries-table th:first-child { width: auto; }
+  .entries-pick { width: 100%; min-width: 0; }
+  .entries-contest-line { flex-wrap: wrap; }
+  /* Header source chips: one summary chip ("9 sources · cached 04:43") that opens the full list on tap. */
+  .pills-list.collapsible:not(.open) > .pill:not(.pills-summary) { display: none; }
+  .pills-list.collapsible > .pills-summary { display: inline-block; }
 }

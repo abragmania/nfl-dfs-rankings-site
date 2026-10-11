@@ -129,6 +129,7 @@ function savePersisted() {
         slots: state.slots,
         locks: [...state.locks],
         excludes: [...state.excludes],
+        playerMax: opt.playerMax, // per slate key: {id: "typed text"} (the pool's Max % boxes)
       })
     );
   } catch (e) {
@@ -150,6 +151,7 @@ function hydrateFromStorage() {
   }
   if (Array.isArray(persisted.locks)) state.locks = new Set(persisted.locks.map(String));
   if (Array.isArray(persisted.excludes)) state.excludes = new Set(persisted.excludes.map(String));
+  opt.playerMax = cleanPlayerMax(persisted.playerMax);
   // Older saved state may still carry the removed Build's objective / maxFromTeam / stackQbWith; they are ignored
   // and dropped on the next save.
   // 🔵 finding 5: an id in both locks and excludes is dropped from both.
@@ -191,6 +193,7 @@ function validateAgainstBoard(board) {
   const rowById = new Map((board.rows ?? []).map((r) => [String(r.id), r]));
   for (const id of [...state.locks]) if (!rowById.has(id)) state.locks.delete(id);
   for (const id of [...state.excludes]) if (!rowById.has(id)) state.excludes.delete(id);
+  for (const map of Object.values(opt.playerMax)) for (const id of Object.keys(map)) if (!rowById.has(id)) delete map[id];
   state.slots = state.slots.map((s, i) => {
     if (!s) return null;
     if (!rowById.has(String(s.id))) return null; // no row on this board: drop it
@@ -403,7 +406,6 @@ async function doSaveLineup(name) {
       state.savedLineups = Array.isArray(data.lineups) ? data.lineups : state.savedLineups;
       state.saveName = "";
       state.saveConfirm = `Saved "${data.lineup?.name ?? ""}".`;
-      markExposureStale(); // the saved set changed, so the Optimizer's exposure lists are no longer current
     }
   } catch (e) {
     state.saveError = `Could not reach the server: ${e.message}`;
@@ -429,10 +431,7 @@ async function doDeleteLineup(id) {
   commit();
   try {
     const data = await deleteLineup(id);
-    if (data && data.ok !== false && Array.isArray(data.lineups)) {
-      state.savedLineups = data.lineups;
-      markExposureStale();
-    }
+    if (data && data.ok !== false && Array.isArray(data.lineups)) state.savedLineups = data.lineups;
   } catch (e) {
     // Best-effort: nothing destructive happened locally, the list just won't reflect the delete until reloaded.
   }
@@ -491,7 +490,6 @@ function panelHtml() {
       </div>
     </div>
     ${optimizerResultsHtml(rowById)}
-    ${savedLineupsSectionHtml(rowById)}
     ${renderEntriesSection(state.savedLineups, board?.slates ?? [], entriesWeekKey(board))}`;
 }
 
@@ -649,10 +647,11 @@ function savedLineupCardHtml(lineup, rowById) {
     ? `${money(totals.salaryUsed)} used &middot; ${money(-salaryLeft)} over`
     : `${money(totals.salaryUsed)} used &middot; ${money(salaryLeft)} left`;
   // Same rule as the builder panel above (🔵 finding 3 / D29): the app never estimates ownership, so a
-  // total is only printed when every filled slot has a published number; otherwise it's an em dash.
+  // total is only printed when every filled slot has a published number; otherwise it's an em dash. When all are
+  // published the count is left out so the summary stays on one line (👁 visual-qa 2026-10-11).
   const ownText =
     totals.ownPublished === totals.filled
-      ? `${Math.round(totals.totalOwn)}% own (${totals.ownPublished} of ${totals.filled} published)`
+      ? `${Math.round(totals.totalOwn)}% own`
       : `— (${totals.ownPublished} of ${totals.filled} published)`;
 
   const deleteHtml = isConfirmingDelete
@@ -682,8 +681,12 @@ function savedLineupCardHtml(lineup, rowById) {
     </div>`;
 }
 
-function savedLineupsSectionHtml(rowById) {
+/** The Saved lineups tab (D74): this slate's saved cards (Load, rename, Delete as before; on the site the D69
+ *  device- ids work the same way), then the exposure tables over those saved lineups only. */
+function savedLineupsSectionHtml(rowById, savedHere) {
   let body;
+  let exposureHtml = "";
+  lastExposure = { exposure: {}, subtitle: "" };
   if (!state.savedLoaded) {
     // A distinct class from saved-lineups-empty (below): a QA screenshot script waits for the real
     // empty/loaded state and must never mistake "still loading" for "confirmed empty".
@@ -692,16 +695,31 @@ function savedLineupsSectionHtml(rowById) {
     // 🔵 finding: a failed GET (e.g. LINEUPS_UNREADABLE) must say so, not render as a false "no saved
     // lineups yet" — that would read as "you have none" when the real answer is "couldn't check".
     body = `<div class="saved-lineups-empty saved-lineups-error">${escapeHtml(state.savedError)}</div>`;
-  } else if (state.savedLineups.length === 0) {
-    body = `<div class="saved-lineups-empty">No saved lineups yet.</div>`;
+  } else if (savedHere.length === 0) {
+    body = `<div class="saved-lineups-empty">No saved lineups for this slate yet.</div>`;
   } else {
-    body = `<div class="saved-lineups-list">${state.savedLineups.map((l) => savedLineupCardHtml(l, rowById)).join("")}</div>`;
+    body = `<div class="saved-lineups-list">${savedHere.map((l) => savedLineupCardHtml(l, rowById)).join("")}</div>`;
+    const n = savedHere.length;
+    lastExposure = { exposure: exposureOfLineups(savedHere.map((l) => savedLineupPlayers(l, rowById))), subtitle: `${n} saved lineup${n === 1 ? "" : "s"}` };
+    exposureHtml = optExposureHtml(lastExposure.exposure, lastExposure.subtitle, opt.expSortDir);
   }
   return `
     <div class="saved-lineups" id="saved-lineups">
-      <h3 class="saved-lineups-title">Saved lineups</h3>
       ${body}
+      ${exposureHtml}
     </div>`;
+}
+
+/** A saved lineup's players for the exposure tables: the live board row when there is one (matchup D43, own% D32),
+ *  else the saved snapshot. */
+function savedLineupPlayers(lineup, rowById) {
+  return (lineup.slots ?? []).map((s) => {
+    const id = String(s.playerId);
+    const row = rowById.get(id);
+    return row
+      ? { id, name: row.name, pos: row.pos, team: row.team, opp: matchupOf(row), own: row.own ?? null, identity: dkIdentity(row) }
+      : { id, name: s.name, pos: s.pos, team: s.team, opp: "", own: s.own ?? null, identity: id };
+  });
 }
 
 /** The identity of every currently-placed player (🔵 finding 6), used both to disable Add on an
@@ -736,17 +754,20 @@ function rightColumnHtml(rows, rowById) {
   const hasStatus = sorted.some((row) => (row.status ?? "").trim());
   // Headers sort through the same store sort the Rankings table uses (sort.col / sort.dir; keys player, pos,
   // salary, proj, own, status are the ones state.js sortRows reads); the shared sortableHeadHtml draws them.
-  const headCols = [
+  // Max % (Adam 2026-10-11: "a max % field per player ... between own % and value") is a plain header, not sortable.
+  const headBefore = [
     { key: "player", label: "Player" },
     { key: "pos", label: "Pos" },
     { key: "salary", label: "Salary" },
     { key: "proj", label: "Proj" },
     { key: "own", label: "Own%" },
-    { key: "value", label: "Value" },
-    ...(hasStatus ? [{ key: "status", label: "Status" }] : []),
   ];
-  const headHtml = sortableHeadHtml(headCols, sort).replace(/<\/tr>$/, "<th></th></tr>");
-  const bodyRows = sorted.map((row) => rightRowHtml(row, placed, hasStatus)).join("");
+  const headAfter = [{ key: "value", label: "Value" }, ...(hasStatus ? [{ key: "status", label: "Status" }] : [])];
+  const inner = (cols) => sortableHeadHtml(cols, sort).replace(/^<tr>|<\/tr>$/g, "");
+  const maxHead = `<th class="lineup-max-head" title="Most of the new lineups this player may be in; blank = no cap">Max %</th>`;
+  const headHtml = `<tr>${inner(headBefore)}${maxHead}${inner(headAfter)}<th></th></tr>`;
+  const maxMap = playerMaxFor(slateKeyOf(store.get().board));
+  const bodyRows = sorted.map((row) => rightRowHtml(row, placed, hasStatus, maxMap)).join("");
   return `
     <div class="lineup-rows-wrap scroll-panel">
       <table class="lineup-rows-table">
@@ -767,8 +788,10 @@ function statusBadgeHtml(row) {
   return "";
 }
 
-function rightRowHtml(row, placedSet, hasStatus) {
+function rightRowHtml(row, placedSet, hasStatus, maxMap = {}) {
   const id = String(row.id);
+  const maxText = maxMap[id] ?? "";
+  const maxBad = Number.isNaN(parsePct(maxText));
   const t = TEAM_BY_ABBR[row.team];
   const primary = t?.colourPrimary ?? "#333333";
   const secondary = t?.colourSecondary ?? "#ffffff";
@@ -793,6 +816,7 @@ function rightRowHtml(row, placedSet, hasStatus) {
       <td>${money(row.salary)}</td>
       <td>${row.proj == null ? "no proj" : dec1(row.proj)}</td>
       <td>${row.own == null ? "—" : `${dec1(row.own)}%`}</td>
+      <td class="lineup-max-cell"><input type="text" inputmode="decimal" maxlength="5" class="opt-input lineup-max-input${maxBad ? " invalid" : ""}" data-player-max="${escapeHtml(id)}" value="${escapeHtml(maxText)}" aria-label="Max % for ${escapeHtml(row.name ?? "")}" /></td>
       <td>${row.value == null || Number.isNaN(row.value) ? "—" : dec2(row.value)}</td>
       ${hasStatus ? `<td class="status-cell">${statusBadgeHtml(row)}</td>` : ""}
       <td class="lineup-row-actions">
@@ -967,7 +991,8 @@ function wire(container) {
 // rules are toggle chips (all on), and the per-position maximum exposure boxes are his own (blank = no cap).
 // POST /api/lineup/generate returns lineups that are NOT saved; each card is saved through the existing
 // save-lineup route or discarded. The form's values live in `opt` (typed text is kept as typed), so the whole
-// panel can re-render without losing a box; nothing here is written to localStorage.
+// panel can re-render without losing a box; only the pool's per-player Max % boxes go to localStorage (with the
+// locks). The results are two tabs, New and Saved, each with its own exposure (D74).
 // --------------------------------------------------------------------------------------------------------
 
 const OPT_POSITIONS = ["QB", "RB", "WR", "TE", "DST"];
@@ -1000,13 +1025,17 @@ const opt = {
   maxPerTeam: "", // "" (no limit) or "1".."4", the <select> value
   ...OPT_DEFAULT_STACK, // D73: stackOwn / stackOpp numbers and their "or more" ticks
   avoid: new Set(), // game ids such as "DET@ARI"
+  // Per-player Max % from the pool's boxes, per slate key ("main" or a second slate's key): {id: text as typed}.
+  // Mirrored to localStorage with the locks (savePersisted); Clear all leaves it, as it leaves every Optimizer setting.
+  playerMax: {},
+  resultsTab: null, // D74: "new" or "saved" once Go or a tab click picks one this page load; null = the default
   expSortDir: "desc", // the exposure lists' one sort, by exposure: "desc" (highest first) or "asc"
   generating: false,
   saving: false,
   error: null, // the server's sentence for a refused or failed request
   saveError: null,
-  formError: null, // a sentence naming a maximum-exposure box that is not a percent; blocks Go
-  results: null, // {slateKey, lineups: [{uid, ids, salary, proj, players}], exposure, notes, exposureStale} or null
+  formError: null, // a sentence naming a maximum-exposure box (position or player) that is not a percent; blocks Go
+  results: null, // {slateKey, lineups: [{uid, ids, salary, proj, players, saved?}], notes} or null
 };
 let optSeq = 0;
 
@@ -1057,9 +1086,109 @@ export function matchupOf(row) {
   return row?.opp ? String(row.opp) : "";
 }
 
-/** The saved lineups or the board changed under the lists, so the exposure counts are no longer current. */
-function markExposureStale() {
-  if (opt.results) opt.results.exposureStale = true;
+/** D74: exposure by position over one set of lineups, computed here so each results tab shows its own set. Each
+ *  lineup is a list of players {id, name, pos, team, opp, own, identity?}; a player counts once per lineup, keyed by
+ *  his DraftKings identity when given. Rows carry optExposureHtml's fields {id, name, team, opp, own, count, pct},
+ *  pct of this set's lineups to one decimal. */
+export function exposureOfLineups(lineups) {
+  const out = Object.fromEntries(OPT_POSITIONS.map((p) => [p, []]));
+  const list = (lineups ?? []).filter((l) => Array.isArray(l) && l.length);
+  if (!list.length) return out;
+  const byKey = new Map();
+  for (const players of list) {
+    const seen = new Set();
+    for (const p of players) {
+      if (!p || p.id == null) continue;
+      const key = String(p.identity ?? p.id);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      const hit = byKey.get(key);
+      if (hit) hit.count++;
+      else byKey.set(key, { pos: p.pos, row: { id: String(p.id), name: p.name ?? String(p.id), team: p.team ?? null, opp: p.opp ?? "", own: p.own ?? null }, count: 1 });
+    }
+  }
+  for (const { pos, row, count } of byKey.values()) {
+    if (out[pos]) out[pos].push({ ...row, count, pct: Math.round((count / list.length) * 1000) / 10 });
+  }
+  return out;
+}
+
+/** A board id's DraftKings identity (dkIdentity), or the id itself when the board has no row for it. */
+function identityOf(id, rowById) {
+  const row = rowById?.get(String(id));
+  return row ? dkIdentity(row) : String(id);
+}
+
+/** One lineup as a set: its players' DraftKings identities, sorted, so the same nine players match in any slot order. */
+export function lineupSetKey(ids, rowById) {
+  return [...new Set((ids ?? []).map((id) => identityOf(id, rowById)))].sort().join("|");
+}
+
+/** The set keys of saved lineups (their slots' player ids): a new card whose key is here shows "Saved ✓". */
+export function savedSetKeys(savedLineups, rowById) {
+  return new Set((savedLineups ?? []).map((l) => lineupSetKey((l.slots ?? []).map((s) => s.playerId), rowById)));
+}
+
+/** Per new-lineup card, the ids of players who were not in the card before it (by DraftKings identity, Adam
+ *  2026-10-11: "highlight the new players from the previous lineup"); the first card has none. */
+export function newPlayerIds(lineups, rowById) {
+  return (lineups ?? []).map((l, k) => {
+    if (k === 0) return new Set();
+    const before = new Set((lineups[k - 1].ids ?? []).map((id) => identityOf(id, rowById)));
+    return new Set((l.ids ?? []).map(String).filter((id) => !before.has(identityOf(id, rowById))));
+  });
+}
+
+/** The saved lineups of the slate on screen: those saved with its key; one saved with no slate counts on the main
+ *  slate always and on a second slate when every player is in its games. This is the server's existingForSlate rule
+ *  (server/lineup/generate-request.js), repeated because the browser app cannot import server files. */
+export function savedForSlate(saved, slateKey, slateIds) {
+  const key = slateKey || "main";
+  return (Array.isArray(saved) ? saved : [])
+    .filter((l) => Array.isArray(l?.slots) && l.slots.length > 0)
+    .filter((l) => (typeof l.slate === "string" && l.slate !== "" ? l.slate === key : key === "main" || l.slots.every((s) => slateIds.has(String(s.playerId)))));
+}
+
+/** A saved name that is unique on this slate: `wanted` when no name in `taken` equals it, else the lowest free
+ *  "Lineup N" (N from 1). Names compare exactly, as the server's own "Lineup N" numbering does. */
+export function uniqueSavedName(wanted, taken) {
+  const used = new Set((taken ?? []).map(String));
+  if (!used.has(wanted)) return wanted;
+  let n = 1;
+  while (used.has(`Lineup ${n}`)) n++;
+  return `Lineup ${n}`;
+}
+
+/** The active slate's key: "main", or the second slate's key (D57). */
+function slateKeyOf(board) {
+  return activeSlate(board)?.key ?? "main";
+}
+
+/** The pool's Max % boxes for one slate, {id: text}. */
+function playerMaxFor(slateKey) {
+  return opt.playerMax[slateKey] ?? {};
+}
+
+/** Persisted Max % boxes, kept only as {slateKey: {id: text}} with string text; anything else is dropped. */
+function cleanPlayerMax(raw) {
+  const out = {};
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return out;
+  for (const [slate, map] of Object.entries(raw)) {
+    if (!map || typeof map !== "object" || Array.isArray(map)) continue;
+    const kept = {};
+    for (const [id, text] of Object.entries(map)) if (typeof text === "string" && text.trim() !== "") kept[id] = text;
+    out[slate] = kept;
+  }
+  return out;
+}
+
+/** The first per-player Max % box that is neither blank nor a percent from 0 to 100, as a sentence naming the
+ *  player (`nameOf(id)`), else null; it blocks Go like exposureProblem. */
+export function playerMaxProblem(map, nameOf = (id) => id) {
+  for (const [id, text] of Object.entries(map ?? {})) {
+    if (Number.isNaN(parsePct(text))) return `${nameOf(id)}'s Max % must be a percent from 0 to 100, or blank for no cap.`;
+  }
+  return null;
 }
 
 let lastOptSlateKey;
@@ -1119,6 +1248,13 @@ export function buildGenerateSettings(form) {
   if (MAX_TEAM_OPTIONS.includes(String(form.maxPerTeam ?? "")) && String(form.maxPerTeam ?? "") !== "") {
     settings.maxPerTeam = Number(form.maxPerTeam);
   }
+  // Per-player Max % (Adam 2026-10-11): only boxes holding a percent, as {id: {pct}}; sent only when there is one.
+  const playerMaxExposure = {};
+  for (const [id, text] of Object.entries(form.playerMax ?? {})) {
+    const pct = parsePct(text);
+    if (pct !== null && !Number.isNaN(pct)) playerMaxExposure[String(id)] = { pct };
+  }
+  if (Object.keys(playerMaxExposure).length) settings.playerMaxExposure = playerMaxExposure;
   return settings;
 }
 
@@ -1172,14 +1308,17 @@ export function avoidChipsHtml(games, avoid) {
     .join("");
 }
 
-function optPlayerRowHtml(p, slotName) {
+function optPlayerRowHtml(p, slotName, isNew = false) {
   const t = TEAM_BY_ABBR[p.team];
   const primary = t?.colourPrimary ?? "#333333";
   const secondary = t?.colourSecondary ?? "#ffffff";
   const textColour = textColourFor(primary, secondary);
   const projText = p.proj == null ? "—" : dec1(p.proj);
+  // A player new since the card before gets a tinted row, an accent bar and a dot (every row keeps the dot's room).
+  const dot = isNew ? `<span class="opt-p-dot" role="img" aria-label="new" title="Not in the lineup before"></span>` : `<span class="opt-p-dot"></span>`;
   return `
-      <div class="opt-p">
+      <div class="opt-p${isNew ? " opt-p-new" : ""}">
+        ${dot}
         <span class="opt-p-slot">${escapeHtml(slotName)}</span>
         <span class="team-chip-mini" style="background:${primary};color:${textColour}">${escapeHtml(p.team ?? "")}</span>
         <span class="opt-p-name">${escapeHtml(p.name ?? "")}</span>
@@ -1191,19 +1330,24 @@ function optPlayerRowHtml(p, slotName) {
 }
 
 /** One "new lineup" card: the nine players in DK slot order (name, matchup D43, salary, projection, own% D32),
- *  the totals, and Save / Discard. `busy` disables both while a save is in flight. */
-export function optLineupCardHtml(lineup, index, busy) {
+ *  the totals, and Save / Discard. `busy` disables both while a save is in flight. `saved`: the card is saved, or
+ *  its nine players equal a saved lineup's, so Save shows a disabled "Saved ✓" (Adam 2026-10-11). `fresh`: the
+ *  ids of players not in the card before, highlighted. */
+export function optLineupCardHtml(lineup, index, busy, { saved = false, fresh = null } = {}) {
   const totals = lineupTotalsOf(lineup);
   const overCap = totals.salary > SALARY_CAP;
-  const rows = (lineup.players ?? []).map((p, i) => optPlayerRowHtml(p, LINEUP_SLOTS[i] ?? p.pos ?? "")).join("");
+  const rows = (lineup.players ?? []).map((p, i) => optPlayerRowHtml(p, LINEUP_SLOTS[i] ?? p.pos ?? "", Boolean(fresh?.has(String(p.id))))).join("");
   const ownText = totals.own == null ? "" : ` &middot; ${Math.round(totals.own)}% own`;
   const uid = escapeHtml(lineup.uid ?? "");
+  const saveBtn = saved
+    ? `<button type="button" class="saved-lineup-btn opt-saved-btn" disabled>Saved ✓</button>`
+    : `<button type="button" class="saved-lineup-btn" data-action="opt-save" data-uid="${uid}"${busy ? " disabled" : ""}>Save</button>`;
   return `
-    <div class="opt-card" data-uid="${uid}">
+    <div class="opt-card${saved ? " opt-card-saved" : ""}" data-uid="${uid}">
       <div class="opt-card-head">
         <span class="opt-card-title">Lineup ${index + 1}</span>
         <span class="opt-card-actions">
-          <button type="button" class="saved-lineup-btn" data-action="opt-save" data-uid="${uid}"${busy ? " disabled" : ""}>Save</button>
+          ${saveBtn}
           <button type="button" class="saved-lineup-btn danger" data-action="opt-discard" data-uid="${uid}"${busy ? " disabled" : ""}>Discard</button>
         </span>
       </div>
@@ -1229,10 +1373,11 @@ export function sortExposure(list, dir) {
 }
 
 /** Exposure by position, one table per position (D55; Adam 2026-10-11: exposure first, then Player, Team, Matchup,
- *  %Own). Exposure is "42% (2)": the share of saved plus new lineups that hold him and how many; only its header
- *  sorts, one direction `sortDir` for every box. Matchup is D43's; own% is D32's (blank when nobody published one).
- *  `exposure` is {QB: [{name, team, opp, own, count, pct}], ...}. */
-export function optExposureHtml(exposure, stale, sortDir = "desc") {
+ *  %Own). Exposure is "42% (2)": the share of the tab's lineups (D74: the new batch, or the saved ones) that hold
+ *  him and how many; only its header sorts, one direction `sortDir` for every box. Matchup is D43's; own% is D32's
+ *  (blank when nobody published one). `exposure` is {QB: [{name, team, opp, own, count, pct}], ...}; `subtitle`
+ *  names the set ("5 new lineups"). */
+export function optExposureHtml(exposure, subtitle = "", sortDir = "desc") {
   const dir = sortDir === "asc" ? "asc" : "desc";
   const arrow = dir === "asc" ? " ▲" : " ▼";
   const head = `<tr><th class="sortable sorted opt-exp-pct" data-action="opt-exp-sort" aria-sort="${dir === "asc" ? "ascending" : "descending"}">Exposure${arrow}</th><th>Player</th><th>Team</th><th>Matchup</th><th class="opt-exp-own">Own%</th></tr>`;
@@ -1254,10 +1399,10 @@ export function optExposureHtml(exposure, stale, sortDir = "desc") {
       : `<div class="opt-exp-empty">None</div>`;
     return `<div class="opt-exp-box"><div class="opt-exp-title">${escapeHtml(pos)}</div><div class="opt-exp-list">${body}</div></div>`;
   }).join("");
-  const staleNote = stale ? `<span class="opt-sub">out of date: the lineups changed since the last Go</span>` : "";
+  const sub = subtitle ? ` <span class="opt-sub">${escapeHtml(String(subtitle))}</span>` : "";
   return `
     <div class="opt-exposure">
-      <h3 class="opt-title">Exposure by position <span class="opt-sub">saved plus new lineups</span> ${staleNote}</h3>
+      <h3 class="opt-title">Exposure by position${sub}</h3>
       <div class="opt-exp-grid">${boxes}</div>
     </div>`;
 }
@@ -1333,45 +1478,101 @@ function optimizerControlsHtml(rowById) {
     </div>`;
 }
 
+/** The saved lineups of the slate on screen (D57 slate key, savedForSlate). */
+function savedOfActiveSlate() {
+  const board = store.get().board;
+  const slateIds = new Set(activeSlateRows(board).map((r) => String(r.id)));
+  return savedForSlate(state.savedLineups, slateKeyOf(board), slateIds);
+}
+
+/** Which results tab shows (D74): Adam's pick this page load, else New when there is a batch (or one is being
+ *  made), else Saved when this slate has saved lineups, else New. */
+function activeResultsTab(savedHere) {
+  if (opt.resultsTab === "new" || opt.resultsTab === "saved") return opt.resultsTab;
+  if (opt.results || opt.generating || opt.error) return "new";
+  return savedHere.length ? "saved" : "new";
+}
+
+/** Whether a new card counts as saved: its nine players equal a saved lineup's (`savedKeys` from savedSetKeys of
+ *  this slate's saved lineups), so deleting that saved lineup turns the card back to Save. `lineup.saved` is set
+ *  only when a save answer carried no saved list (saveGenerated). */
+export function cardIsSaved(lineup, savedKeys, rowById) {
+  return Boolean(lineup.saved) || savedKeys.has(lineupSetKey(lineup.ids ?? (lineup.players ?? []).map((p) => p.id), rowById));
+}
+
+let lastExposure = { exposure: {}, subtitle: "" }; // the exposure on screen, for the sort header's redraw
+
+/** D74: the results are two tabs. New lineups: this batch's cards (Save turns into "Saved ✓"; players new since the
+ *  card before are highlighted) and the exposure of the batch only. Saved lineups: this slate's saved cards and the
+ *  exposure of those only. */
 function optimizerResultsHtml(rowById) {
-  if (opt.generating && !opt.results) return `<div class="opt-results" id="opt-results"><div class="opt-sub">Making lineups…</div></div>`;
-  if (!opt.error && !opt.results) return "";
+  const savedHere = savedOfActiveSlate();
+  const tab = activeResultsTab(savedHere);
+  const r = opt.results;
+  const nNew = r ? r.lineups.length : 0;
+  const tabBtn = (key, label, n) =>
+    `<button type="button" role="tab" class="opt-tab${tab === key ? " active" : ""}" data-action="opt-tab" data-tab="${key}" aria-selected="${tab === key}">${label}${n ? ` <span class="opt-tab-n">${n}</span>` : ""}</button>`;
+  const tabs = `<div class="opt-tabs" role="tablist" aria-label="Lineups">${tabBtn("new", "New lineups", nNew)}${tabBtn("saved", "Saved lineups", savedHere.length)}</div>`;
+  const body = tab === "saved" ? savedLineupsSectionHtml(rowById, savedHere) : newLineupsTabHtml(rowById, savedHere);
+  return `<div class="opt-results" id="opt-results">${tabs}<div class="opt-tab-panel" role="tabpanel">${body}</div></div>`;
+}
+
+function newLineupsTabHtml(rowById, savedHere) {
   const parts = [];
   if (opt.error) parts.push(`<div class="lineup-status lineup-status-error">${escapeHtml(opt.error)}</div>`);
   const r = opt.results;
-  if (r) {
-    const n = r.lineups.length;
-    const busy = opt.saving || opt.generating;
-    const head = n
+  if (!r) {
+    parts.push(`<div class="saved-lineups-empty">${opt.generating ? "Making lineups…" : "No new lineups. Press Go to make some."}</div>`);
+    lastExposure = { exposure: {}, subtitle: "" };
+    return parts.join("");
+  }
+  const n = r.lineups.length;
+  const busy = opt.saving || opt.generating;
+  const savedKeys = savedSetKeys(savedHere, rowById);
+  const savedFlags = r.lineups.map((l) => cardIsSaved(l, savedKeys, rowById));
+  const nSaved = savedFlags.filter(Boolean).length;
+  const allSaved = n > 0 && nSaved === n;
+  parts.push(
+    n
       ? `<div class="opt-results-head">
-           <h3 class="opt-title">New lineups (not saved) <span class="opt-sub">${n} lineup${n === 1 ? "" : "s"}</span></h3>
+           <span class="opt-sub">${n} lineup${n === 1 ? "" : "s"} from the last Go${nSaved ? `, ${nSaved} saved` : ", not saved yet"}</span>
            <span class="opt-card-actions">
-             <button type="button" class="saved-lineup-btn" data-action="opt-save-all"${busy ? " disabled" : ""}>Save all</button>
+             <button type="button" class="saved-lineup-btn" data-action="opt-save-all"${busy || allSaved ? " disabled" : ""}>Save all</button>
              <button type="button" class="saved-lineup-btn danger" data-action="opt-discard-all"${busy ? " disabled" : ""}>Discard all</button>
            </span>
          </div>`
-      : `<h3 class="opt-title">New lineups (not saved) <span class="opt-sub">none left</span></h3>`;
-    parts.push(head);
-    if (opt.saveError) parts.push(`<div class="lineup-status lineup-status-error">${escapeHtml(opt.saveError)}</div>`);
-    parts.push(optNotesHtml(r.notes));
-    if (n) parts.push(`<div class="opt-cards">${r.lineups.map((l, i) => optLineupCardHtml(l, i, busy)).join("")}</div>`);
-    parts.push(optExposureHtml(r.exposure, r.exposureStale, opt.expSortDir));
+      : `<div class="opt-sub">None left from the last Go.</div>`
+  );
+  if (opt.saveError) parts.push(`<div class="lineup-status lineup-status-error">${escapeHtml(opt.saveError)}</div>`);
+  parts.push(optNotesHtml(r.notes));
+  if (n) {
+    const fresh = newPlayerIds(r.lineups, rowById);
+    parts.push(`<div class="opt-cards">${r.lineups.map((l, i) => optLineupCardHtml(l, i, busy, { saved: savedFlags[i], fresh: fresh[i] })).join("")}</div>`);
+    const players = r.lineups.map((l) => (l.players ?? []).map((p) => ({ ...p, identity: identityOf(p.id, rowById) })));
+    lastExposure = { exposure: exposureOfLineups(players), subtitle: `${n} new lineup${n === 1 ? "" : "s"}` };
+    parts.push(optExposureHtml(lastExposure.exposure, lastExposure.subtitle, opt.expSortDir));
+  } else {
+    lastExposure = { exposure: {}, subtitle: "" };
   }
-  return `<div class="opt-results" id="opt-results">${parts.join("")}</div>`;
+  return parts.join("");
 }
 
 // ---- Actions ----
 
 async function doGenerate() {
   if (opt.generating || opt.saving) return;
-  opt.formError = exposureProblem(opt.maxExp);
+  const board = store.get().board;
+  const slate = activeSlate(board);
+  const slateKey = slate ? slate.key : "main";
+  const nameById = new Map((board?.rows ?? []).map((r) => [String(r.id), r.name]));
+  // The per-player Max % boxes of this slate, for players still in its pool (D57).
+  const slateRowIds = new Set(activeSlateRows(board).map((r) => String(r.id)));
+  const playerMax = Object.fromEntries(Object.entries(playerMaxFor(slateKey)).filter(([id]) => slateRowIds.has(id)));
+  opt.formError = exposureProblem(opt.maxExp) ?? playerMaxProblem(playerMax, (id) => nameById.get(id) ?? id);
   if (opt.formError) {
     commit();
     return;
   }
-  const board = store.get().board;
-  const slate = activeSlate(board);
-  const slateKey = slate ? slate.key : "main";
   // The week and the slate on screen when Go was pressed: a response that arrives after either changed belongs to
   // something no longer shown and is dropped.
   const madeForWeek = seasonWeekKey(board);
@@ -1406,10 +1607,12 @@ async function doGenerate() {
     stackOwnOrMore: opt.stackOwnOrMore,
     stackOpp: opt.stackOpp,
     stackOppOrMore: opt.stackOppOrMore,
+    playerMax,
   };
   opt.generating = true;
   opt.error = null;
   opt.saveError = null;
+  opt.resultsTab = "new"; // D74: a Go shows the New lineups tab
   commit();
   try {
     const data = await postLineupGenerate(buildGeneratePayload(form, slateKey));
@@ -1424,7 +1627,8 @@ async function doGenerate() {
       const lineups = (Array.isArray(data.lineups) ? data.lineups : []).map((l) => ({ ...l, uid: `n${++optSeq}` }));
       const notes = [...slateNotes, ...(Array.isArray(data.notes) ? data.notes : [])];
       if (!lineups.length && !notes.length) notes.push("No lineups could be made from these locks and settings.");
-      opt.results = { slateKey, lineups, exposure: data.exposure ?? {}, notes, exposureStale: false };
+      // The response's own exposure (saved plus new) is not shown: each tab computes its own (D74).
+      opt.results = { slateKey, lineups, notes };
     }
   } catch (e) {
     opt.error = `Could not reach the server: ${e.message}`;
@@ -1439,7 +1643,8 @@ async function doGenerate() {
 }
 
 /** Saves the given new lineups one after another through the existing save-lineup route (D57: with the active slate
- *  key). A saved card leaves the new list and lands in the saved list; the first failure stops the run and stays. */
+ *  key). A saved card stays where it is and shows a disabled "Saved ✓" (Adam 2026-10-11), and it lands in the Saved
+ *  tab; a card already saved, or matching a saved lineup, is skipped; the first failure stops the run and stays. */
 async function saveGenerated(uids) {
   if (opt.saving || opt.generating || !opt.results) return;
   opt.saving = true;
@@ -1447,17 +1652,24 @@ async function saveGenerated(uids) {
   commit();
   const results = opt.results;
   const slateKey = results.slateKey ?? "main"; // the slate these lineups were made for, not the one on screen now
+  const rowById = new Map((store.get().board?.rows ?? []).map((r) => [String(r.id), r]));
   for (const uid of uids) {
     const lineup = results.lineups.find((l) => l.uid === uid);
-    if (!lineup) continue;
+    if (!lineup || cardIsSaved(lineup, savedSetKeys(savedOfActiveSlate(), rowById), rowById)) continue;
     try {
-      const data = await postLineup({ name: "", slots: slotsForSave(lineup.players), slate: slateKey });
+      // The card's own name ("Lineup 2") is kept as the saved name unless this slate already has it (Entries picks
+      // lineups by name, so names stay unique per slate).
+      const taken = savedOfActiveSlate().map((l) => l.name);
+      const name = uniqueSavedName(`Lineup ${results.lineups.indexOf(lineup) + 1}`, taken);
+      const data = await postLineup({ name, slots: slotsForSave(lineup.players), slate: slateKey });
       if (!data || data.ok === false) {
         opt.saveError = data?.error?.message ?? "Could not save the lineup.";
         break;
       }
+      // The saved list decides "Saved ✓" (so a later Delete shows Save again); the card's own flag is only for a
+      // save answer that carried no list to match against.
       if (Array.isArray(data.lineups)) state.savedLineups = data.lineups;
-      results.lineups = results.lineups.filter((l) => l.uid !== uid);
+      else lineup.saved = true;
     } catch (e) {
       opt.saveError = `Could not reach the server: ${e.message}`;
       break;
@@ -1470,21 +1682,19 @@ async function saveGenerated(uids) {
 function discardGenerated(uid) {
   if (!opt.results) return;
   opt.results.lineups = opt.results.lineups.filter((l) => l.uid !== uid);
-  opt.results.exposureStale = true;
   commit();
 }
 
-/** The exposure header flips the one sort and redraws only the exposure section (never the whole panel), then
- *  re-wires its headers. */
+/** The exposure header flips the one sort and redraws only the exposure section on screen (never the whole panel),
+ *  then re-wires its headers. */
 function wireExposureSort(container) {
   container.querySelectorAll(".opt-exposure [data-action='opt-exp-sort']").forEach((th) => {
     th.addEventListener("click", () => {
       opt.expSortDir = opt.expSortDir === "asc" ? "desc" : "asc";
       const section = container.querySelector(".opt-exposure");
-      const r = opt.results;
-      if (!section || !r) return;
+      if (!section) return;
       const holder = document.createElement("div");
-      holder.innerHTML = optExposureHtml(r.exposure, r.exposureStale, opt.expSortDir);
+      holder.innerHTML = optExposureHtml(lastExposure.exposure, lastExposure.subtitle, opt.expSortDir);
       const fresh = holder.querySelector(".opt-exposure");
       if (!fresh) return;
       section.replaceWith(fresh);
@@ -1548,7 +1758,32 @@ function wireOptimizer(container) {
     btn.addEventListener("click", () => discardGenerated(btn.dataset.uid));
   });
   container.querySelector("[data-action='opt-save-all']")?.addEventListener("click", () => {
-    saveGenerated((opt.results?.lineups ?? []).map((l) => l.uid));
+    saveGenerated((opt.results?.lineups ?? []).map((l) => l.uid)); // saved cards are skipped inside
+  });
+  // D74: the New / Saved tabs; the pick is remembered for this page load.
+  container.querySelectorAll("[data-action='opt-tab']").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      if (opt.resultsTab === btn.dataset.tab) return;
+      opt.resultsTab = btn.dataset.tab === "saved" ? "saved" : "new";
+      commit();
+    });
+  });
+  // The pool's Max % boxes: kept per slate as typed and saved to localStorage on every keystroke without a
+  // re-render (focus stays in the box); a box that is not a percent turns red and blocks Go.
+  container.querySelectorAll("[data-player-max]").forEach((el) => {
+    el.addEventListener("input", () => {
+      const key = slateKeyOf(store.get().board);
+      const map = { ...playerMaxFor(key) };
+      if (el.value.trim() === "") delete map[el.dataset.playerMax];
+      else map[el.dataset.playerMax] = el.value;
+      opt.playerMax = { ...opt.playerMax, [key]: map };
+      el.classList.toggle("invalid", Number.isNaN(parsePct(el.value)));
+      if (opt.formError) {
+        opt.formError = null;
+        container.querySelector(".opt-form-error")?.remove();
+      }
+      savePersisted();
+    });
   });
   container.querySelector("[data-action='opt-discard-all']")?.addEventListener("click", () => {
     resetOptimizerResults();

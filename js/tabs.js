@@ -1,6 +1,6 @@
 // Tabs above the table: Rankings (rendered by table.js/gamestrip.js/filterbar.js, default),
 // Favorites (starred players, favorites.js), Projections, Projected Ownership, Optimizer (the main-slate tab, second after Rankings; DECISIONS.md D70).
-import { escapeHtml, dec1, clockPart } from "./format.js";
+import { escapeHtml, dec1, localStamp } from "./format.js";
 import { store, passesProjFloor, CLASSIC_PROJ_FLOOR, activeSlateRows, sortRows } from "./state.js";
 import { favoritesTabLabel } from "./favorites.js";
 import { unmatchedPartsHtml, slateTeamSet } from "./unmatched.js";
@@ -74,7 +74,7 @@ function sourceCardHtml(source, slateTeams, slateRows) {
       </div>
       <div class="source-weight-error" data-id="${idAttr}" hidden></div>
       <div class="source-card-row muted">
-        <span>Fetched ${source.fetchedAt ? clockPart(source.fetchedAt) : "never"}</span>
+        <span>Fetched ${localStamp(source.fetchedAt)?.clock ?? "never"}</span>
         <span>${source.recordCount ?? 0} rows · ${source.matchedCount ?? 0} matched · ${unmatchedShown} unmatched on this slate</span>
       </div>
       ${pageUpdatedHtml}

@@ -1,7 +1,7 @@
 // Header strip: title (static in index.html), slate line, upload flow (unchanged network shape),
 // refresh, and the amber pill row: one pill per stale or failed source, plus collapsed CSV warnings. Board
 // notes are never header pills; the few that exist are shown as a quiet line inside their own tab (tabs.js).
-import { escapeHtml, clockPart, collapseWarnings, kickoffClockPart } from "./format.js";
+import { escapeHtml, localStamp, collapseWarnings, kickoffClockPart } from "./format.js";
 import { uploadCsv } from "./api.js";
 import { slateTileText } from "./state.js";
 
@@ -16,7 +16,7 @@ function sourcePillHtml(id, sources) {
   if (FAILED_STATUSES.has((source?.status ?? "").toLowerCase())) {
     return `<li class="pill pill-warning" title="${escapeHtml(label)} · failed">${escapeHtml(label)} · failed</li>`;
   }
-  const time = source?.fetchedAt ? clockPart(source.fetchedAt) : "";
+  const time = localStamp(source?.fetchedAt)?.clock ?? ""; // Adam's local time, not the UTC clock in the stamp
   const suffix = time ? `cached ${time}` : "cached";
   return `<li class="pill pill-warning" title="${escapeHtml(label)} · ${suffix}">${escapeHtml(label)} · ${suffix}</li>`;
 }
@@ -34,10 +34,56 @@ export function renderPills(container, { staleIds = [], sources = null, warnings
   const failedIds = (sources ?? []).filter((s) => FAILED_STATUSES.has((s.status ?? "").toLowerCase())).map((s) => s.id);
   const ids = [...new Set([...(staleIds ?? []), ...failedIds])];
   const sourcePills = ids.map((id) => sourcePillHtml(id, sources)).join("");
-  const warningPills = collapseWarnings(warnings).map(warningPillHtml).join("");
+  const collapsed = collapseWarnings(warnings);
+  const warningPills = collapsed.map(warningPillHtml).join("");
   const all = sourcePills + warningPills;
-  container.innerHTML = all ? `<ul class="pills-list">${all}</ul>` : "";
+  // Phone only (CSS, max-width 700px): two or more chips fold into one summary chip that opens the list on tap.
+  // On a wider screen the summary is hidden and every chip shows as before.
+  const many = ids.length + collapsed.length > 1;
+  // A re-render (board reload, refresh) keeps the list open if Adam had opened it.
+  const wasOpen = Boolean(container.querySelector(".pills-list")?.classList.contains("open"));
+  const open = many && wasOpen;
+  const summary = many
+    ? `<li class="pill pill-warning pills-summary"><button type="button" class="pills-toggle" aria-expanded="${open}">${escapeHtml(pillsSummaryText(ids, sources, collapsed.length))}</button></li>`
+    : "";
+  container.innerHTML = all ? `<ul class="pills-list${many ? " collapsible" : ""}${open ? " open" : ""}">${summary}${all}</ul>` : "";
   container.hidden = !all;
+  container.querySelector(".pills-toggle")?.addEventListener("click", (ev) => {
+    const open = container.querySelector(".pills-list").classList.toggle("open");
+    ev.currentTarget.setAttribute("aria-expanded", String(open));
+  });
+}
+
+/** The phone summary chip's text: "9 sources · cached 04:43" (the oldest cached time, in local time; "cached
+ *  Oct 10 23:10" when that is not today, local), plus "2 failed" and "3 warnings" when there are any. A cached source with no time known
+ *  (no fetchedAt, or not in `sources`) makes it plain "cached", never a newer-looking time; an unparseable
+ *  fetchedAt is ignored. `ids`: the stale or failed source ids; `warningCount`: collapsed warnings. */
+export function pillsSummaryText(ids, sources, warningCount = 0, now = Date.now()) {
+  const list = ids ?? [];
+  const of = (id) => (sources ?? []).find((s) => s.id === id);
+  const isFailed = (id) => FAILED_STATUSES.has((of(id)?.status ?? "").toLowerCase());
+  const cachedIds = list.filter((id) => !isFailed(id));
+  const failed = list.length - cachedIds.length;
+  const unknownTime = cachedIds.some((id) => !of(id)?.fetchedAt);
+  const times = cachedIds
+    .map((id) => of(id)?.fetchedAt)
+    .filter((t) => localStamp(t) !== null)
+    .sort((a, b) => Date.parse(a) - Date.parse(b));
+  const parts = [];
+  if (list.length) {
+    parts.push(`${list.length} source${list.length === 1 ? "" : "s"}`);
+    if (cachedIds.length) {
+      const oldest = localStamp(times[0]);
+      if (unknownTime || !oldest) parts.push("cached");
+      else {
+        const today = localStamp(new Date(now).toISOString())?.day;
+        parts.push(`cached ${oldest.day === today ? "" : `${oldest.monthDay} `}${oldest.clock}`);
+      }
+    }
+    if (failed) parts.push(`${failed} failed`);
+  }
+  if (warningCount) parts.push(`${warningCount} warning${warningCount === 1 ? "" : "s"}`);
+  return parts.join(" · ");
 }
 
 export function renderSlateLine(container, slate) {
@@ -83,7 +129,7 @@ export function wireUpload({ csvInput, uploadInfo, statusEl, slateLine, pillsRow
         onUploaded?.(data);
       } else if (data.ok) {
         statusEl.textContent = `Uploaded ${file.name}.`;
-        uploadInfo.textContent = `${data.savedAs ?? file.name} · uploaded ${clockPart(data.uploadedAt) || data.uploadedAt}`;
+        uploadInfo.textContent = `${data.savedAs ?? file.name} · uploaded ${localStamp(data.uploadedAt)?.clock ?? data.uploadedAt}`;
         renderSlateLine(slateLine, data);
         // Show pills for this response's own stale list immediately, before the board reloads;
         // board.sources isn't known yet so the id itself is the label (🔵 review requirement).

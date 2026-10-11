@@ -11,7 +11,7 @@
 // reachable from outside public/js/tabs.js (sourceCardHtml and its paste-result variable are not
 // exported), so this file now builds its own small source-card grid and its own single kicker paste box
 // instead of reusing the classic one.
-import { escapeHtml, dec1, clockPart } from "../format.js";
+import { escapeHtml, dec1, localStamp } from "../format.js";
 import { unmatchedPartsHtml, slateTeamSet } from "../unmatched.js";
 
 const TABS = [
@@ -60,7 +60,7 @@ function sourceCardHtml(source, slateTeams, slateRows) {
       </div>
       <div class="source-card-row muted"><span>display only &mdash; no live weight/enable route for showdown sources yet</span></div>
       <div class="source-card-row muted">
-        <span>Fetched ${source.fetchedAt ? clockPart(source.fetchedAt) : "never"}</span>
+        <span>Fetched ${localStamp(source.fetchedAt)?.clock ?? "never"}</span>
         <span>${source.recordCount ?? 0} rows &middot; ${source.matchedCount ?? 0} matched &middot; ${unmatchedShown} unmatched on this slate</span>
       </div>
       ${unmatchedHtml}
