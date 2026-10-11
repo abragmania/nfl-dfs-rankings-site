@@ -1459,7 +1459,7 @@ function optimizerControlsHtml(rowById) {
         <label class="opt-inline">Objective
           <select id="opt-objective" class="opt-input opt-select">${options(OBJECTIVES.map((o) => o.value), opt.objective, (v) => OBJECTIVES.find((o) => o.value === v).label)}</select>
         </label>
-        <label class="opt-inline">Max per team
+        <label class="opt-inline" title="Not applied to the quarterback's team or the team he faces (D76)">Max per team <span class="opt-sub">outside QB game</span>
           <select id="opt-max-team" class="opt-input opt-select">${options(MAX_TEAM_OPTIONS, opt.maxPerTeam, (v) => (v === "" ? "No limit" : v))}</select>
         </label>
         <span class="opt-inline">Stack QB with

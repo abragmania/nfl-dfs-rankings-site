@@ -52,20 +52,14 @@
   display: none !important;
 }
 
-/* Showdown's Build, its Objective select, Save and Save-as box go (Build needs the server). The classic Optimizer tab
-   has no Build any more (D73); its Lock, Exclude, Add, Clear, Load, Save lineup and Save-as box stay (D69): locks and
-   excludes feed the Optimizer, and a saved lineup is kept in the visitor's own browser. */
-.is-site #sd-lineup-build-btn,
-.is-site #sd-lineup-save-btn,
-.is-site .lineup-controls .lineup-control:has(#sd-lineup-objective),
-.is-site .lineup-controls .lineup-control:has(#sd-lineup-save-name) {
-  display: none !important;
-}
+/* Showdown's Build, Objective, Save and Save-as box are shown and run in the visitor's browser (D71, site-src/
+   site-showdown.js), as do the classic Optimizer's Lock, Exclude, Add, Clear, Load, Save lineup and Save-as box (D69):
+   a saved lineup is kept in the visitor's own browser. */
 
 /* Saved lineups stay viewable: Delete goes, the name stops being a rename button. A lineup saved on this site keeps
-   its Delete (it lives only in this browser, D69; its id starts with "device-", site-src/site-lineups.js). */
+   its Delete (it lives only in this browser, D69/D71; its id starts with "device-", site-src/site-lineups.js). */
 .is-site [data-action="lineup-delete-start"]:not([data-id^="device-"]),
-.is-site [data-action="sd-delete-start"] {
+.is-site [data-action="sd-delete-start"]:not([data-id^="device-"]) {
   display: none !important;
 }
 .is-site .saved-lineup-name-btn {
@@ -73,7 +67,8 @@
   cursor: default;
 }
 /* The small "saved on this device" note on a lineup saved on this site, after its saved time. */
-.is-site .saved-lineup-card:has([data-action="lineup-load"][data-id^="device-"]) .saved-lineup-time::after {
+.is-site .saved-lineup-card:has([data-action="lineup-load"][data-id^="device-"]) .saved-lineup-time::after,
+.is-site .saved-lineup-card:has([data-action="sd-load"][data-id^="device-"]) .saved-lineup-time::after {
   content: " \00b7  saved on this device"; /* two spaces: a CSS hex escape swallows the first */
   color: var(--text-dim);
 }

@@ -34,7 +34,7 @@ export function storageKey(season, week, slateKey) {
   return `${STORAGE_PREFIX}${weekPart(season, week)}:${slateKey || "main"}`;
 }
 
-function readKey(storage, key) {
+export function readKey(storage, key) {
   try {
     const raw = storage.getItem(key);
     if (!raw) return [];
@@ -62,7 +62,7 @@ export function readDeviceLineups(storage, season, week) {
 }
 
 /** Writes one slate's list. Returns true, or false when the browser refused. */
-function writeKey(storage, key, lineups) {
+export function writeKey(storage, key, lineups) {
   if (!storage) return false;
   try {
     if (lineups.length) storage.setItem(key, JSON.stringify({ lineups }));
@@ -79,14 +79,14 @@ export function sortedNewestFirst(lineups) {
 }
 
 // lineups/store.js nextLineupName
-function nextLineupName(lineups) {
+export function nextLineupName(lineups) {
   const used = new Set(lineups.map((l) => l.name));
   let n = 1;
   while (used.has(`Lineup ${n}`)) n++;
   return `Lineup ${n}`;
 }
 
-function makeDeviceId(existing) {
+export function makeDeviceId(existing) {
   const ids = new Set(existing.map((l) => l.id));
   for (;;) {
     const bytes = new Uint8Array(6);

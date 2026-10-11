@@ -344,7 +344,8 @@ const oppStackActive = (opts) => !(opts.stackOpp === 0 && opts.stackOppOrMore);
  *   objective: "proj" (default), "lev" or "projMinusOwn"; ownPenaltyK: the rank settings' ownership penalty,
  *     required for projMinusOwn (no lineups and a note without it).
  *   allowRbGames, avoidGames: game keys as on the board (row.gameId, e.g. "DET@ARI").
- *   maxPerTeam: most players (defense included) from one team, as optimize.js maxFromTeam; default none.
+ *   maxPerTeam: most players (defense included) from one team, as optimize.js maxFromTeam; default none. D76: it
+ *     never limits the lineup quarterback's team or the team he faces, only every other team.
  *   fpCatches: Map or object id -> FantasyPros projected catches; when absent, row.fpRec is read instead. The D55
  *     pass-catcher test uses FantasyPros' number first, then the board's all-source average row.projStats.rec.
  *     catchers: ids Adam names as pass catchers whatever the number.
@@ -817,7 +818,10 @@ function availableLists(st, opts, counts, prev) {
  *     count binds (1 each, since a player from either changes the counts), the other backs' teams (2) and games
  *     (4 teams), the defense's opponent (1), the quarterback's team for a back who is not a catcher (1), teams at
  *     the per-team cap (8 / cap), and the one game the rest of M might sit in (2). For a defense: the teams of M's
- *     eight offensive players (8), the game (2), the per-team cap.
+ *     eight offensive players (8), the game (2), the per-team cap. D76: the per-team cap never blocks the
+ *     quarterback's team or the team he faces, so it blocks only other teams, each holding `cap` of M's eight
+ *     others; 8 / cap still bounds them, and a replacement from an exempt team is fine for the cap (any stack
+ *     effect is already counted above).
  *   A dominator from p's OWN team keeps every team rule and both stack counts exactly as they were (with an exact
  *   teammate count a back's dominator matches his catcher status), so `need` same-team dominators are always
  *   enough. Cross-team dominators are not used for a quarterback (his team decides the stack) or for a player who
@@ -853,6 +857,8 @@ function trimPosition(list, pos, st, opts, prev) {
     const byTeam = new Map();
     for (const q of usable) {
       if (q === p) continue;
+      // D76: a quarterback's game decides which teams the per-team cap skips, so his dominator must face the same team.
+      if (pos === "QB" && q.oppIx !== p.oppIx) continue;
       if (q.salary > p.salary || q.score < p.score) continue;
       if (q.salary === p.salary && q.score === p.score && cmpId(q.id, p.id) >= 0) continue;
       if (pos === "RB" && p.catcher && !q.catcher) continue;
@@ -914,7 +920,10 @@ function searchOne(st, avail, prev, opts, nodeLimit) {
   let best = null;
 
   function canAdd(c) {
-    if (maxPerTeam !== null && teamN[c.teamIx] >= maxPerTeam) return false;
+    // D76: Max per team skips the quarterback's team and the team he faces. Before he is placed (only locks: the QB
+    // group is searched first) a team is not refused, since it may turn out to be his game; his own placement
+    // below then checks every placed team outside his game, so the limit holds whatever the order.
+    if (maxPerTeam !== null && c.pos !== "QB" && qbTeam !== -1 && c.teamIx !== qbTeam && c.teamIx !== qbOpp && teamN[c.teamIx] >= maxPerTeam) return false;
     if (c.pos === "DST") {
       if (dstOpp !== -1) return false;
       if (rules.noDstVsOwnPlayers && c.oppIx >= 0 && offN[c.oppIx] > 0) return false;
@@ -923,6 +932,7 @@ function searchOne(st, avail, prev, opts, nodeLimit) {
       let m = 0;
       let o = 0;
       for (const p of placed) {
+        if (maxPerTeam !== null && p.teamIx !== c.teamIx && p.teamIx !== c.oppIx && teamN[p.teamIx] > maxPerTeam) return false;
         if (p.pos === "DST") {
           if (rules.noDstVsOwnPlayers && p.oppIx === c.teamIx) return false;
           continue;
@@ -1179,7 +1189,7 @@ function diagnose(rows, settings, slate, existingCount, prevKeys, opts, n) {
       trials.push({ label: `the Max % of ${pct}% on ${rowOf.get(id).name ?? id}`, patch: { playerMaxExposure: rest } });
     }
   }
-  if (opts.maxPerTeam !== null) trials.push({ label: `the limit of ${opts.maxPerTeam} per team`, patch: { maxPerTeam: null } });
+  if (opts.maxPerTeam !== null) trials.push({ label: `the limit of ${opts.maxPerTeam} per team (outside the quarterback's game)`, patch: { maxPerTeam: null } });
   if (opts.avoidGames.size) trials.push({ label: "the games to avoid", patch: { avoidGames: [] } });
   if (opts.locks.length) trials.push({ label: "the locks", patch: { locks: [] } });
 
