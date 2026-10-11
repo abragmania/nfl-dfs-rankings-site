@@ -358,6 +358,76 @@ html, body {
   border-radius: 8px;
 }
 
+/* ---------- Expand / Minimize on the player tables (public/js/expand.js) ----------
+   A thin right-aligned bar above each table holds the Expand button. Expanded, the bar becomes a fixed top strip
+   (title on the left, Minimize on the right) and the table's scroll panel fills the rest of the window; a
+   placeholder the same size as the pair keeps the page from jumping. */
+.expand-bar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  width: 100%;
+  margin-bottom: var(--sp-1);
+}
+.expand-bar[hidden] { display: none; }
+#rankings-panel > .expand-bar,
+#favorites-panel > .expand-bar {
+  max-width: 1250px;
+  margin-left: auto;
+  margin-right: auto;
+  margin-bottom: var(--sp-1);
+}
+.expand-title { display: none; font-weight: 600; font-size: var(--fs-md); color: var(--text); }
+.expand-btn {
+  cursor: pointer;
+  background: var(--bg-elevated-2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text-muted);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  padding: 3px var(--sp-3);
+}
+.expand-btn:hover { color: var(--text); }
+body.table-expanded { overflow: hidden; }
+.expand-bar.is-expanded {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 1000;
+  box-sizing: border-box;
+  height: 48px;
+  max-width: none;
+  margin: 0;
+  padding: 0 var(--sp-3);
+  justify-content: space-between;
+  background: var(--bg-elevated);
+  border-bottom: 1px solid var(--border);
+}
+.expand-bar.is-expanded .expand-title { display: inline; }
+.expand-bar.is-expanded .expand-btn { padding: 6px var(--sp-4); color: var(--text); }
+.scroll-panel.is-expanded {
+  position: fixed;
+  top: 48px;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 1000;
+  box-sizing: border-box;
+  width: auto;
+  max-width: none;
+  max-height: none !important; /* beats the height app.js's adjustScrollPanels sets inline */
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  background: var(--bg);
+  overscroll-behavior: contain;
+}
+@media (max-width: 700px) {
+  .expand-btn { padding: 6px var(--sp-3); }
+}
+
 /* ---------- Game strip (D26) ---------- */
 .gamestrip { margin-bottom: var(--sp-4); }
 .gamestrip-toggle-row { display: flex; justify-content: flex-end; margin-bottom: var(--sp-2); }
@@ -1491,3 +1561,27 @@ th.sd-cpt-col.sorted { color: var(--amber); }
 .lineup-slot-player-2 .lineup-slot-name { white-space: normal; overflow: visible; text-overflow: clip; }
 .lineup-slot-matchup { color: var(--text-muted); font-size: var(--fs-sm); white-space: nowrap; }
 .lineup-slot-player-2 .lineup-slot-detail { white-space: normal; overflow: visible; text-overflow: clip; }
+
+/* ---------- Entries (Lineup Builder tab, under Saved lineups): Adam's DraftKings entries file, one picker per entry ---------- */
+.entries-section { width: 100%; margin-top: var(--sp-5); padding-top: var(--sp-3); border-top: 1px solid var(--border); display: flex; flex-direction: column; gap: var(--sp-2); }
+.entries-title { margin: 0; font-size: var(--fs-md); color: var(--text-muted); display: flex; align-items: baseline; gap: var(--sp-2); flex-wrap: wrap; }
+.entries-upload-row { display: flex; align-items: center; gap: var(--sp-2); }
+.entries-empty { color: var(--text-dim); font-size: var(--fs-base); font-style: italic; }
+.entries-file { max-width: 1040px; background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 8px; padding: var(--sp-3); display: flex; flex-direction: column; gap: var(--sp-2); }
+.entries-file-head { display: flex; align-items: baseline; gap: var(--sp-3); flex-wrap: wrap; }
+.entries-slate { font-weight: 700; font-size: var(--fs-base); }
+.entries-file-name { color: var(--text-dim); font-size: var(--fs-sm); overflow-wrap: anywhere; }
+.entries-count { color: var(--text-muted); font-size: var(--fs-sm); }
+.entries-table { width: 100%; border-collapse: collapse; font-size: var(--fs-sm); }
+.entries-table th, .entries-table td { padding: var(--sp-1) var(--sp-2); border-bottom: 1px solid var(--border); text-align: left; white-space: nowrap; }
+.entries-table thead { background: var(--bg-elevated-2); }
+.entries-table .entries-contest { white-space: normal; min-width: 200px; }
+.entries-fee, .entries-id { font-variant-numeric: tabular-nums; color: var(--text-muted); }
+.entries-now { color: var(--text-muted); }
+.entries-now.blank { color: var(--text-dim); font-style: italic; }
+.entries-row.assigned { background: rgba(var(--accent-rgb), 0.08); }
+.entries-pick { width: 100%; min-width: 280px; background: var(--bg-elevated-2); border: 1px solid var(--border); color: var(--text); border-radius: 4px; padding: 3px 6px; font-size: var(--fs-sm); }
+.entries-pick option:disabled { color: var(--text-dim); }
+.entries-download-row { display: flex; align-items: center; gap: var(--sp-3); flex-wrap: wrap; }
+.entries-quiet { font-size: var(--fs-sm); color: var(--text-dim); }
+.entries-error { margin-top: 0; }

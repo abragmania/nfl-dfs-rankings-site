@@ -31,6 +31,7 @@ import { renderFilterBar, updateFilterSummary } from "./js/filterbar.js";
 import { renderTableHead, renderTableBody, updateRow } from "./js/table.js";
 import { renderTabs, renderProjectionsPanel, renderOwnershipPanel, renderLineupPanel } from "./js/tabs.js";
 import { renderFavoritesPanel, favoriteRows } from "./js/favorites.js";
+import { initExpand, syncExpandUi, phoneMinHeight } from "./js/expand.js";
 
 const el = {
   modeRow: document.getElementById("mode-row"),
@@ -394,6 +395,7 @@ function applyMode() {
   renderSlateChrome();
   renderModeRowNow();
   if (isShowdown) renderShowdownView(key);
+  syncExpandUi(); // a showdown hides the classic page: a table expanded there must close, never leave the page locked
 }
 
 // The one line above the Rankings table that says where Own% comes from: only numbers a named source
@@ -435,11 +437,17 @@ function renderEmptyState({ loading, boardError }) {
 // else) while lineup.js is imported by tabs.js which app.js itself imports — importing app.js back into
 // lineup.js would make that a circular module dependency. Duplicated on purpose; keep both in sync.
 function snapPanelMaxHeight(panelEl, top, reserve) {
-  const available = window.innerHeight - top - reserve;
+  // On a phone (max-width 700px) the table gets at least 70% of the window's height, however much of the page
+  // sits above it (Adam, 2026-10-10: the list showed about three rows); the page scrolls to reach it. Wider
+  // windows size exactly as before. window.innerHeight is the dynamic viewport height (what dvh measures).
+  const phoneMin = phoneMinHeight();
+  const available = Math.max(window.innerHeight - top - reserve, phoneMin);
   const rows = panelEl.querySelectorAll("tbody tr");
   const borderAllowance = panelEl.offsetHeight - panelEl.clientHeight;
   if (rows.length === 0) {
-    panelEl.style.maxHeight = `calc(100vh - ${Math.round(top)}px - ${Math.round(reserve)}px)`;
+    panelEl.style.maxHeight = phoneMin
+      ? `${Math.max(Math.round(window.innerHeight - top - reserve), phoneMin)}px`
+      : `calc(100vh - ${Math.round(top)}px - ${Math.round(reserve)}px)`;
     return;
   }
   let lastFitBottom = null;
@@ -472,6 +480,8 @@ function adjustScrollPanels() {
   });
 }
 window.addEventListener("resize", adjustScrollPanels);
+// Expand / Minimize on the four player tables (public/js/expand.js); minimizing re-sizes the table for its place.
+initExpand({ onLayout: adjustScrollPanels });
 
 function renderDynamic() {
   const { board, filters, sort, activeTab, loading, boardError } = store.get();
@@ -491,6 +501,7 @@ function renderDynamic() {
     el.ownershipPanel.hidden = true;
     el.lineupPanel.hidden = true;
     renderEmptyState({ loading, boardError });
+    syncExpandUi();
     return;
   }
   el.emptyState.hidden = true;
@@ -531,6 +542,7 @@ function renderDynamic() {
     renderLineupPanel(el.lineupPanel);
   }
 
+  syncExpandUi();
   adjustScrollPanels();
 }
 

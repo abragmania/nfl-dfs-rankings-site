@@ -83,3 +83,16 @@ export function deleteLineup() {
 export function putLineupName() {
   return readOnly();
 }
+
+// Entries are Adam's private DraftKings files: the site has none, and its Entries section is hidden by site.css.
+export function getEntries() {
+  return readOnly();
+}
+
+export function postEntriesUpload() {
+  return readOnly();
+}
+
+export function postEntriesExport() {
+  return readOnly();
+}

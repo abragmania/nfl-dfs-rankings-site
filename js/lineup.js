@@ -20,6 +20,8 @@ import { escapeHtml, money, dec1, textColourFor } from "./format.js";
 import { store, filterRows, sortRows, passesProjFloor, FLEX_POS, activeSlate, activeSlateRows, activeSlateGames, slateDisplayName } from "./state.js";
 import { TEAM_BY_ABBR } from "./teams-data.js";
 import { postLineupOptimize, postLineupGenerate, getLineups, postLineup, deleteLineup, putLineupName } from "./api.js";
+import { renderEntriesSection, wireEntries } from "./entries.js";
+import { phoneMinHeight } from "./expand.js";
 
 const LINEUP_SLOTS = ["QB", "RB", "RB", "WR", "WR", "WR", "TE", "FLEX", "DST"];
 const SALARY_CAP = 50000;
@@ -213,6 +215,11 @@ function validateAgainstBoard(board) {
 
 let lastContainer = null;
 
+/** The season-week the Entries section loads for, or null when no board or week is loaded yet. */
+function entriesWeekKey(board) {
+  return board?.slate?.season != null && board?.slate?.week != null ? seasonWeekKey(board) : null;
+}
+
 export function renderLineupPanel(container) {
   lastContainer = container;
   hydrateFromStorage();
@@ -240,11 +247,15 @@ export function renderLineupPanel(container) {
 // entry module — it imports tabs.js, which imports this module, so importing app.js back into lineup.js
 // would make that a circular module dependency. Keep both copies in sync.
 function snapPanelMaxHeight(panelEl, top, reserve) {
-  const available = window.innerHeight - top - reserve;
+  // Same phone minimum as app.js's copy (70% of the window's height at max-width 700px, via expand.js).
+  const phoneMin = phoneMinHeight();
+  const available = Math.max(window.innerHeight - top - reserve, phoneMin);
   const rows = panelEl.querySelectorAll("tbody tr");
   const borderAllowance = panelEl.offsetHeight - panelEl.clientHeight;
   if (rows.length === 0) {
-    panelEl.style.maxHeight = `calc(100vh - ${Math.round(top)}px - ${Math.round(reserve)}px)`;
+    panelEl.style.maxHeight = phoneMin
+      ? `${Math.max(Math.round(window.innerHeight - top - reserve), phoneMin)}px`
+      : `calc(100vh - ${Math.round(top)}px - ${Math.round(reserve)}px)`;
     return;
   }
   let lastFitBottom = null;
@@ -591,7 +602,8 @@ function panelHtml() {
     </div>
     ${optimizerControlsHtml(rowById)}
     ${optimizerResultsHtml(rowById)}
-    ${savedLineupsSectionHtml(rowById)}`;
+    ${savedLineupsSectionHtml(rowById)}
+    ${renderEntriesSection(state.savedLineups, board?.slates ?? [], entriesWeekKey(board))}`;
 }
 
 function controlsHtml() {
@@ -1062,6 +1074,11 @@ function wire(container) {
   });
 
   wireOptimizer(container);
+  wireEntries(container, {
+    weekKey: entriesWeekKey(store.get().board),
+    getSaved: () => state.savedLineups,
+    getSlates: () => store.get().board?.slates ?? [],
+  });
 }
 
 // --------------------------------------------------------------------------------------------------------

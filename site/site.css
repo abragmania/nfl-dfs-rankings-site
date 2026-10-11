@@ -110,3 +110,8 @@
 .is-site .opt-results {
   display: none !important;
 }
+
+/* Entries: Adam's private DraftKings entries files, never on the public site. */
+.is-site .entries-section {
+  display: none !important;
+}
