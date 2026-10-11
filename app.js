@@ -157,8 +157,10 @@ function uniqueTeams(games) {
 
 // "Reset all overrides" (D28) clears only typed projection and ownership numbers, never stars or notes (D72), so
 // it has nothing to do while no row carries a typed number; it starts muted and inert rather than reading as a
-// live destructive action (👁 visual-qa third pass).
-function hasAnyOverride(rows) {
+// live destructive action (👁 visual-qa third pass). On the public site the board says whether the visitor typed
+// any number (site-src/site-overrides.js), since there Reset all puts back the published numbers (D71, D72).
+function hasAnyOverride(rows, siteTypedNumbers) {
+  if (typeof siteTypedNumbers === "boolean") return siteTypedNumbers;
   return (rows ?? []).some((r) => r.override && (r.override.proj != null || r.override.own != null));
 }
 
@@ -272,7 +274,7 @@ function renderStatic(board) {
 // every game on the main slate). "Reset all overrides" clears the whole week's typed numbers (D72), so whether it has anything to do
 // is still judged on the whole board, not just the slate on screen.
 function renderFilterBarNow(board) {
-  renderFilterBar(el.filterbar, uniqueTeams(activeSlateGames(board)), store.get().filters, filterCallbacks, hasAnyOverride(board.rows));
+  renderFilterBar(el.filterbar, uniqueTeams(activeSlateGames(board)), store.get().filters, filterCallbacks, hasAnyOverride(board.rows, board.siteTypedNumbers));
 }
 
 // Second slates (D57): the header label next to the title ("MAIN SLATE" / "AFTERNOON SLATE") and the one plain

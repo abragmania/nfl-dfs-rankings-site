@@ -1,9 +1,10 @@
-/* Published, read-only copy of the app. Everything here only HIDES controls that cannot work without the
-   server (or changes their cursor), plus the Matchups link and the tab-row wrap it needs, and the "saved on this
-   device" note on lineups saved on the site; no other layout,
-   colour or spacing is touched. Selectors
-   were taken from the view code in public/js (header.js, table.js, filterbar.js, tabs.js, lineup.js and
-   the showdown/ files). Clicks on the editable spots are also swallowed by site.js. */
+/* Published copy of the app (D71: it does what the app does, with the visitor's edits kept in their own browser).
+   Everything here only HIDES controls that cannot work without the server or stay app-only (upload, Refresh, the
+   FantasyPros paste boxes, source settings, Entries, renaming and deleting the app's lineups), plus the Matchups link
+   and the tab-row wrap it needs, and the "saved on this device" note on lineups saved on the site; no other layout,
+   colour or spacing is touched. Stars, notes, typed numbers, the per-cell reset and Reset all are shown and work
+   (site-src/site-overrides.js). Selectors were taken from the view code in public/js (header.js, table.js,
+   filterbar.js, tabs.js, lineup.js and the showdown/ files). Clicks on a lineup rename are also swallowed by site.js. */
 
 .site-published {
   font-size: var(--fs-sm);
@@ -40,37 +41,6 @@
 .is-site #refresh-btn,
 .is-site #sd-refresh-btn,
 .is-site .mode-upload-tile {
-  display: none !important;
-}
-
-/* Filter bar: Reset all overrides. */
-.is-site #reset-overrides-btn {
-  display: none !important;
-}
-
-/* Rankings table: override editing. An edited number stays coloured as information; the per-cell reset x goes,
-   the cells stop looking clickable, empty stars and empty note pencils disappear (starred rows keep their
-   gold star and noted rows keep their pencil with the note as hover text; neither can be clicked). */
-.is-site .reset-icon {
-  display: none !important;
-}
-.is-site .editable-cell {
-  cursor: default;
-}
-/* Favorites tab empty sentence: its second half tells the visitor to click a star, which cannot be done here. */
-.is-site .favorites-empty-hint {
-  display: none;
-}
-.is-site .star-btn {
-  cursor: default;
-}
-.is-site .star-btn:not(.active) {
-  visibility: hidden;
-}
-.is-site .note-icon {
-  cursor: default;
-}
-.is-site .note-icon:not(.has-note) {
   display: none !important;
 }
 

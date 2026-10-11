@@ -125,8 +125,13 @@ export function renderFilterBar(container, teamAbbrs, filters, callbacks, hasOve
   });
 
   container.querySelector("#reset-overrides-btn").addEventListener("click", () => {
-    // D72: the reset clears typed numbers only; stars and notes stay.
-    if (window.confirm("Reset all overrides for this week? This clears every edited projection and ownership number. Stars and notes stay.")) {
+    // D72: the reset clears typed numbers only; stars and notes stay. On the public site it puts back the published
+    // numbers (D71; site-src/site.js marks the page is-site).
+    const onSite = document.documentElement.classList.contains("is-site");
+    const question = onSite
+      ? "Put back the published numbers? This clears every projection and ownership number you typed. Stars and notes stay."
+      : "Reset all overrides for this week? This clears every edited projection and ownership number. Stars and notes stay.";
+    if (window.confirm(question)) {
       callbacks.onResetOverrides();
     }
   });

@@ -2,12 +2,15 @@
 // Exports EXACTLY the same names as the real file. Reads fetch the files baked at publish time by RELATIVE url (the
 // site lives under a sub-path). The Optimizer works (DECISIONS.md D69): it runs in the visitor's browser on the
 // published board, and lineups saved here are kept only in this browser (site-lineups.js), each marked as saved on
-// this device; the app's own saved lineups stay read-only. Every other write rejects with one plain message.
-// Nothing here touches the network or the page at import time.
+// this device; the app's own saved lineups stay read-only. Stars, notes, typed numbers, the per-cell reset and Reset
+// all work too (D71): the visitor's changes are kept in this browser (site-overrides.js) and merged over the baked
+// board by the app's own remerge, and the board, the Optimizer and lineup saves all use the merged board. Every other
+// write rejects with one plain message. Nothing here touches the network or the page at import time.
 import {
   pageStorage, readDeviceLineups, buildDeviceLineup, saveDeviceLineup, deleteDeviceLineup, sortedNewestFirst,
   STORAGE_UNAVAILABLE_MESSAGE,
 } from "./site-lineups.js";
+import { boardWithEdits, putEdits, resetPlayerEdits, resetAllEdits } from "./site-overrides.js";
 
 export const READ_ONLY_MESSAGE = "Read-only on the live site. Do this in the app on your computer.";
 
@@ -30,16 +33,20 @@ export function isSampleMode() {
   return false;
 }
 
+// A fresh copy of the baked board (the app may adjust what it is handed) with this browser's override changes merged
+// in, so a reload keeps them.
 export async function getBoard() {
-  return getJson("baked/board.json");
+  return visitorBoard(await getJson("baked/board.json"));
 }
 
 export async function getSlate() {
   return getJson("baked/slate.json");
 }
 
-// The baked board and slate for the Optimizer and device saves, fetched once per page (the site never changes under
-// a loaded page) and kept apart from what getBoard hands the app, which may adjust its copy.
+// The baked board and slate for the Optimizer and device saves, fetched once per page and kept apart from what
+// getBoard hands the app, which may adjust its copy. Adam can publish again while a page is open: a board fetched
+// later whose slate (season, week, upload time) is not the cached slate's is refused with SITE_UPDATED (sameSlate),
+// so the visitor's changes are never merged onto a slate the page did not load.
 const bakedCache = new Map();
 function baked(url) {
   if (!bakedCache.has(url)) {
@@ -56,9 +63,56 @@ function siteError(code, message) {
 
 /** The published week, or null when the baked slate cannot say. */
 async function publishedWeek() {
+  const pub = await publishedSlate();
+  return pub ? { season: pub.season, week: pub.week } : null;
+}
+
+/** The baked board with this browser's override changes, for the Optimizer and device saves (D55: a star made here counts). */
+async function bakedVisitorBoard() {
+  return visitorBoard(await baked("baked/board.json"));
+}
+
+/** The published week and the baked slate (its games, for the remerge), or null when the slate cannot say. */
+async function publishedSlate() {
   const slate = await baked("baked/slate.json");
   if (!slate || slate.ok === false || slate.season == null || slate.week == null) return null;
-  return { season: slate.season, week: slate.week };
+  return { season: slate.season, week: slate.week, slate };
+}
+
+const SITE_UPDATED = () => siteError("SITE_UPDATED", "The site was updated; reload the page.");
+
+/** Whether `board` was built from the cached baked slate (a publish since the page loaded makes them differ). */
+function sameSlate(board, slate) {
+  const b = board?.slate ?? {};
+  return b.season === slate.season && b.week === slate.week && (b.uploadedAt ?? null) === (slate.uploadedAt ?? null);
+}
+
+/** `board` with this browser's override changes for the published week merged in (site-overrides.js). */
+async function visitorBoard(board) {
+  if (!board || board.ok === false || !Array.isArray(board.rows)) return board;
+  let pub;
+  try {
+    pub = await publishedSlate();
+  } catch (e) {
+    console.warn("site overrides: the baked slate could not be read, so the published board is shown", e);
+    return board;
+  }
+  if (!pub) return board;
+  if (!sameSlate(board, pub.slate)) return SITE_UPDATED();
+  return boardWithEdits(board, pub.slate, pageStorage(), pub.season, pub.week);
+}
+
+// The override writes (PUT /api/overrides, DELETE /api/overrides/:id, DELETE /api/overrides) on a fresh copy of the
+// baked board. Answers as the routes do: the whole merged board, or {ok:false, error} (storage switched off, or a
+// value the app would refuse), leaving the board and the saved changes as they were.
+async function overrideWrite(change) {
+  const [board, pub] = await Promise.all([getJson("baked/board.json"), publishedSlate()]);
+  if (!board || board.ok === false || !Array.isArray(board.rows) || !pub) {
+    return board?.ok === false ? board : siteError("NO_SLATE", "No slate has been uploaded yet.");
+  }
+  if (!sameSlate(board, pub.slate)) return SITE_UPDATED();
+  const result = change(pageStorage(), pub.season, pub.week, board, pub.slate);
+  return result.error ? siteError(result.error.code, result.error.message) : result.board;
 }
 
 /** The app's saved lineups (baked, read-only) plus this device's, newest first, as GET /api/lineups answers. */
@@ -83,16 +137,16 @@ export function postRefresh() {
   return readOnly();
 }
 
-export function putOverrides() {
-  return readOnly();
+export function putOverrides(patch) {
+  return overrideWrite((storage, season, week, board, slate) => putEdits(storage, season, week, board, slate, patch));
 }
 
 export function deleteAllOverrides() {
-  return readOnly();
+  return overrideWrite((storage, season, week, board, slate) => resetAllEdits(storage, season, week, board, slate));
 }
 
-export function deleteOverride() {
-  return readOnly();
+export function deleteOverride(playerId) {
+  return overrideWrite((storage, season, week, board, slate) => resetPlayerEdits(storage, season, week, board, slate, String(playerId)));
 }
 
 export function postSources() {
@@ -192,7 +246,7 @@ async function runGenerate(args) {
 // site, so a failure is answered as the route's own LINEUP_GENERATE_FAILED, never as an unreachable server.
 export async function postLineupGenerate(payload) {
   try {
-    const [board, slate, wk] = await Promise.all([baked("baked/board.json"), baked("baked/slate.json"), publishedWeek()]);
+    const [board, slate, wk] = await Promise.all([bakedVisitorBoard(), baked("baked/slate.json"), publishedWeek()]);
     const saved = wk ? readDeviceLineups(pageStorage(), wk.season, wk.week) : [];
     return await runGenerate({ board, slate, body: payload, saved });
   } catch (e) {
@@ -203,7 +257,7 @@ export async function postLineupGenerate(payload) {
 
 // Body and answer as POST /api/lineups, but the lineup is kept in this browser only (site-lineups.js).
 export async function postLineup(payload) {
-  const [board, wk, app] = await Promise.all([baked("baked/board.json"), publishedWeek(), appLineups()]);
+  const [board, wk, app] = await Promise.all([bakedVisitorBoard(), publishedWeek(), appLineups()]);
   if (!board || board.ok === false || !wk) return board?.ok === false ? board : siteError("NO_SLATE", "No slate has been uploaded yet.");
   const storage = pageStorage();
   const others = [...app, ...readDeviceLineups(storage, wk.season, wk.week)];

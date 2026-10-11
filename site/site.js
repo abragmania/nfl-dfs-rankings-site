@@ -1,6 +1,7 @@
-// Published, read-only copy of the app: marks the page, shows when it was published, and swallows the
-// clicks that would start an edit. Injected into index.html by tools/publish.mjs. Hiding of the controls
-// themselves is done in site.css.
+// Published copy of the app: marks the page, shows when it was published, and swallows the clicks that would
+// start an edit the site cannot keep (renaming a lineup). Stars, notes and typed numbers work on the site (D71,
+// site-src/site-overrides.js). Injected into index.html by tools/publish.mjs. Hiding of the controls that stay
+// app-only is done in site.css.
 document.documentElement.classList.add("is-site");
 
 // "Published Tue, Sep 29, 8:40 PM ET", always in Eastern time whatever the visitor's zone.
@@ -74,8 +75,7 @@ async function showPublished() {
 }
 
 // Capture phase on the document so these run before the table's own delegated handlers.
-const BLOCKED =
-  "[data-action='toggle-star'], [data-action='edit-note'], .reset-icon, .editable-cell, [data-action='lineup-rename-start'], [data-action='sd-rename-start']";
+const BLOCKED = "[data-action='lineup-rename-start'], [data-action='sd-rename-start']";
 document.addEventListener(
   "click",
   (e) => {
