@@ -1,5 +1,5 @@
 // Tabs above the table: Rankings (rendered by table.js/gamestrip.js/filterbar.js, default),
-// Favorites (starred players, favorites.js), Projections, Projected Ownership, Lineup Builder.
+// Favorites (starred players, favorites.js), Projections, Projected Ownership, Optimizer (the main-slate tab, second after Rankings; DECISIONS.md D70).
 import { escapeHtml, dec1, clockPart } from "./format.js";
 import { store, passesProjFloor, CLASSIC_PROJ_FLOOR, activeSlateRows, sortRows } from "./state.js";
 import { favoritesTabLabel } from "./favorites.js";
@@ -23,10 +23,10 @@ function floorNoteHtml(allRows, shownRows) {
 
 const TABS = [
   { key: "rankings", label: "Rankings" },
+  { key: "lineup", label: "Optimizer" }, // DECISIONS.md D70: "Optimizer" (was "Lineup Builder"), second tab
   { key: "favorites", label: "Favorites" },
   { key: "projections", label: "Projections" },
   { key: "ownership", label: "Projected Ownership" },
-  { key: "lineup", label: "Lineup Builder" },
 ];
 
 // `favoritesCount`: how many starred players are on the slate; the Favorites tab shows it as "Favorites (3)".
@@ -250,7 +250,7 @@ function ownershipColumns(sources, isNotUsed) {
   ];
 }
 
-function sortableHeadHtml(cols, sort) {
+export function sortableHeadHtml(cols, sort) {
   const head = cols
     .map((c) => {
       const arrow = sort.col === c.key ? (sort.dir === "asc" ? " ▲" : " ▼") : "";
@@ -343,7 +343,7 @@ export function renderOwnershipPanel(container, board, callbacks) {
   draw();
 }
 
-// The Lineup Builder tab's real implementation lives in lineup.js (its own state: locks, excludes, the
+// The Optimizer tab's real implementation lives in lineup.js (its own state: locks, excludes, the
 // nine slots and the option controls); re-exported here so app.js's existing
 // `import { renderLineupPanel } from "./tabs.js"` keeps working unchanged.
 export { renderLineupPanel } from "./lineup.js";

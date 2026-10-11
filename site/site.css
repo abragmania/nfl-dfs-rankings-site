@@ -82,7 +82,7 @@
   display: none !important;
 }
 
-/* Lineup Builder: Build and the three option selects that only feed it go (Build needs the server); showdown's Build
+/* Optimizer tab: Build and the three option selects that only feed it go (Build needs the server); showdown's Build
    and Save go too. Classic Lock, Exclude, Add, Clear, Load, Save lineup and its Save-as box stay (D69): locks and
    excludes feed the Optimizer, and a saved lineup is kept in the visitor's own browser. */
 .is-site #lineup-build-btn,

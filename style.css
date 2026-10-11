@@ -1059,6 +1059,9 @@ body.table-expanded { overflow: hidden; }
 .lineup-left { flex: 0 0 460px; max-width: 460px; }
 .lineup-right { flex: 1; min-width: 0; }
 .lineup-right-title { margin: 0 0 var(--sp-2); font-size: var(--fs-md); color: var(--text-muted); }
+.lineup-pos-chips { margin-bottom: var(--sp-2); }
+.lineup-rows-table th.sortable { cursor: pointer; user-select: none; color: var(--text-muted); }
+.lineup-rows-table th.sorted { color: var(--text); }
 
 .lineup-controls { display: flex; flex-wrap: wrap; align-items: flex-end; gap: var(--sp-3); margin-bottom: var(--sp-3); }
 .lineup-control { display: flex; flex-direction: column; gap: 2px; font-size: var(--fs-sm); color: var(--text-muted); }
@@ -1501,11 +1504,11 @@ th.sd-cpt-col.sorted { color: var(--amber); }
 .sd-cpt-slot { border-color: var(--amber); }
 .sd-cpt-slot .lineup-slot-label { color: var(--amber); }
 
-/* ---------- Optimizer (Lineup Builder tab: controls under the nine slots, results and exposure below) ---------- */
+/* ---------- Optimizer (Lineup Builder tab: controls band first, the nine slots under it, results and exposure below) ---------- */
 .opt-panel {
-  margin-top: var(--sp-5);
-  padding-top: var(--sp-3);
-  border-top: 1px solid var(--border);
+  margin-bottom: var(--sp-5);
+  padding-bottom: var(--sp-4);
+  border-bottom: 1px solid var(--border);
   display: flex;
   flex-direction: column;
   gap: var(--sp-2);

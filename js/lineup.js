@@ -1,8 +1,8 @@
-// Lineup Builder tab (PROJECT.md D21/D32, Part 4 Lineup Builder screen). Secondary tab, never the main
-// page. Left column: the nine DraftKings classic slots (D1), a salary bar, totals, and the objective /
-// max-per-team / stack-QB controls plus Build and Clear all. Right column: the same rows the Rankings
-// tab is currently showing — same store, same filters, same sort — rendered read-only with per-row
-// Lock, Exclude and Add-to-slot buttons.
+// Optimizer tab (PROJECT.md D21/D32, D70, Part 4 Lineup Builder screen). Secondary tab, never the main
+// page. Top: the Optimizer band. Left column: the nine DraftKings classic slots (D1), a salary bar, totals, and the
+// objective / max-per-team / stack-QB controls plus Build and Clear all. Right column: the same rows the Rankings
+// tab is currently showing — same store, same filters (its own position chips set them), same sort (its headers set
+// it) — with per-row Lock, Exclude and Add-to-slot buttons.
 //
 // State (locks, excludes, the nine slots, and the option controls) lives in this module for the life of
 // the page load, independent of the app-level store in state.js (this tab never edits Proj/Own, and
@@ -17,7 +17,9 @@
 // with no row anymore (a stale localStorage entry, or last week's slate) is dropped instead of rendering
 // stale data or throwing.
 import { escapeHtml, money, dec1, textColourFor } from "./format.js";
-import { store, filterRows, sortRows, passesProjFloor, FLEX_POS, activeSlate, activeSlateRows, activeSlateGames, slateDisplayName } from "./state.js";
+import { store, filterRows, sortRows, passesProjFloor, FLEX_POS, defaultDirFor, activeSlate, activeSlateRows, activeSlateGames, slateDisplayName } from "./state.js";
+import { sortableHeadHtml } from "./tabs.js";
+import { posChipsHtml } from "./filterbar.js";
 import { TEAM_BY_ABBR } from "./teams-data.js";
 import { postLineupOptimize, postLineupGenerate, getLineups, postLineup, deleteLineup, putLineupName } from "./api.js";
 import { renderEntriesSection, wireEntries } from "./entries.js";
@@ -583,7 +585,10 @@ function panelHtml() {
   // 🔵 finding 3: any placed player with a null own% makes the total unknown, not smaller.
   const ownText = totals.totalOwn == null ? "— (not every player has a published number)" : `${Math.round(totals.totalOwn)}% own`;
 
+  // The Optimizer band is the first thing in the tab (DECISIONS.md D70, Adam 2026-10-10: "move the optimizer stuff up"); the lineup
+  // it builds from sits right under it, its results and the saved lineups below.
   return `
+    ${optimizerControlsHtml(rowById)}
     <div class="lineup-layout">
       <div class="lineup-left">
         ${controlsHtml()}
@@ -596,11 +601,11 @@ function panelHtml() {
         ${buildStatusHtml()}
       </div>
       <div class="lineup-right">
-        <h3 class="lineup-right-title">Rankings (current filters, read-only)</h3>
+        <h3 class="lineup-right-title">Rankings (current filters)</h3>
+        ${poolPosChipsHtml()}
         ${rightColumnHtml(activeSlateRows(board), rowById)}
       </div>
     </div>
-    ${optimizerControlsHtml(rowById)}
     ${optimizerResultsHtml(rowById)}
     ${savedLineupsSectionHtml(rowById)}
     ${renderEntriesSection(state.savedLineups, board?.slates ?? [], entriesWeekKey(board))}`;
@@ -859,6 +864,11 @@ function placedIdentities(rowById) {
   return set;
 }
 
+/** The Rankings filter bar's position chips (filterbar.js's one copy), setting the same global position filter. */
+function poolPosChipsHtml() {
+  return `<div class="chip-group lineup-pos-chips">${posChipsHtml(store.get().filters.pos, `data-action="pool-pos"`)}</div>`;
+}
+
 function rightColumnHtml(rows, rowById) {
   const { filters, sort } = store.get();
   // The classic projection floor (D52) applies to this pool like every other classic list, with one exception:
@@ -872,12 +882,22 @@ function rightColumnHtml(rows, rowById) {
   // entirely so the auto-layout table hands that width to Player instead of holding a blank labelled
   // column open (👁 visual-qa fourth pass).
   const hasStatus = sorted.some((row) => (row.status ?? "").trim());
-  const statusHeadHtml = hasStatus ? "<th>Status</th>" : "";
+  // Headers sort through the same store sort the Rankings table uses (sort.col / sort.dir; keys player, pos,
+  // salary, proj, own, status are the ones state.js sortRows reads); the shared sortableHeadHtml draws them.
+  const headCols = [
+    { key: "player", label: "Player" },
+    { key: "pos", label: "Pos" },
+    { key: "salary", label: "Salary" },
+    { key: "proj", label: "Proj" },
+    { key: "own", label: "Own%" },
+    ...(hasStatus ? [{ key: "status", label: "Status" }] : []),
+  ];
+  const headHtml = sortableHeadHtml(headCols, sort).replace(/<\/tr>$/, "<th></th></tr>");
   const bodyRows = sorted.map((row) => rightRowHtml(row, placed, hasStatus)).join("");
   return `
     <div class="lineup-rows-wrap scroll-panel">
       <table class="lineup-rows-table">
-        <thead><tr><th>Player</th><th>Pos</th><th>Salary</th><th>Proj</th><th>Own%</th>${statusHeadHtml}<th></th></tr></thead>
+        <thead>${headHtml}</thead>
         <tbody>${bodyRows}</tbody>
       </table>
     </div>
@@ -990,10 +1010,53 @@ function wire(container) {
   container.querySelectorAll("[data-action='row-lock']").forEach((btn) => {
     btn.addEventListener("click", () => {
       const id = btn.dataset.id;
-      if (state.locks.has(id)) state.locks.delete(id);
-      else state.locks.add(id);
-      state.lastResult = null;
+      const before = JSON.stringify([state.slots, [...state.locks]]);
+      // DECISIONS.md D70: pool Lock = in the base lineup, unlock = out of it. Unlock clears his slot too (a pool-only
+      // lock from older saved state has no slot and just loses the lock). Lock places him like Add does (which also
+      // adds the lock); already placed (under this id, or the same DraftKings player under another id): lock that
+      // placed copy. Excluded or refused: nothing locks, and addPlayer's state.addError sentence shows.
+      if (state.locks.has(id)) {
+        state.locks.delete(id);
+        for (let i = 0; i < state.slots.length; i++) {
+          if (state.slots[i] && String(state.slots[i].id) === id) state.slots[i] = null;
+        }
+        state.addError = null;
+      } else if (!state.excludes.has(id)) {
+        const rowById = new Map((store.get().board?.rows ?? []).map((r) => [String(r.id), r]));
+        const row = rowById.get(id);
+        if (row) {
+          state.addError = null;
+          const identity = dkIdentity(row);
+          const placedSlot = state.slots.find((s) => {
+            const placedRow = s ? rowById.get(String(s.id)) : null;
+            return placedRow && dkIdentity(placedRow) === identity;
+          });
+          if (placedSlot) state.locks.add(String(placedSlot.id));
+          else addPlayer(row, rowById);
+        }
+      }
+      // A refused Lock changes nothing, so the last Build result stays (addPlayer clears it itself on success).
+      if (JSON.stringify([state.slots, [...state.locks]]) !== before) state.lastResult = null;
       commit();
+    });
+  });
+  // Pool position chips and sortable headers write the store's global filter / sort, exactly what the Rankings tab's
+  // chips and headers write (app.js filterCallbacks.onPosChange / onSortClick), so "current filters" stays true.
+  // The store change re-renders this panel (keeping the pool's scroll position). The Rankings filter bar's own chips
+  // only get class toggles, so they are kept in step here.
+  container.querySelectorAll("[data-action='pool-pos']").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const pos = btn.dataset.pos;
+      document.querySelectorAll("#pos-chips .pos-chip").forEach((c) => c.classList.toggle("active", c.dataset.pos === pos));
+      store.setFilters({ pos });
+    });
+  });
+  container.querySelectorAll(".lineup-rows-table th[data-col]").forEach((th) => {
+    th.addEventListener("click", () => {
+      const col = th.dataset.col;
+      const sort = store.get().sort;
+      if (sort.col === col) store.setSort({ dir: sort.dir === "asc" ? "desc" : "asc" });
+      else store.setSort({ col, dir: defaultDirFor(col) });
     });
   });
   container.querySelectorAll("[data-action='row-exclude']").forEach((btn) => {
@@ -1083,7 +1146,7 @@ function wire(container) {
 
 // --------------------------------------------------------------------------------------------------------
 // Optimizer (PROJECT.md Part 4 "Optimizer"; DECISIONS.md D55 as amended 2026-10-10, D43, D32, D57).
-// "Make N more lineups from these locks": the slots Adam has filled (plus any pool Lock) are the locks, the D55
+// "Make N more lineups from these locks": the slots Adam has filled (a pool Lock places the player in a slot, then locks him) are the locks, the D55
 // rules are toggle chips (all on), and the per-position maximum exposure boxes are his own (blank = no cap).
 // POST /api/lineup/generate returns lineups that are NOT saved; each card is saved through the existing
 // save-lineup route or discarded. The form's values live in `opt` (typed text is kept as typed), so the whole

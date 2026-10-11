@@ -31,10 +31,16 @@ export function updateFilterSummary(container, { filteredCount, totalCount, acti
   slot.querySelector("#active-game-chip").addEventListener("click", () => onClearGame?.());
 }
 
-export function renderFilterBar(container, teamAbbrs, filters, callbacks, hasOverrides = true) {
-  const posChipsHtml = POSITION_CHIPS.map(
-    (pos) => `<button type="button" class="chip pos-chip${pos === filters.pos ? " active" : ""}" data-pos="${pos}">${pos}</button>`
+/** The position chips (All, QB, ... FLEX), one copy for the filter bar and the Optimizer tab's pool. `extraAttrs` is
+ *  added to every button (the pool passes its data-action). */
+export function posChipsHtml(currentPos, extraAttrs = "") {
+  return POSITION_CHIPS.map(
+    (pos) => `<button type="button" class="chip pos-chip${pos === currentPos ? " active" : ""}"${extraAttrs ? ` ${extraAttrs}` : ""} data-pos="${pos}">${pos}</button>`
   ).join("");
+}
+
+export function renderFilterBar(container, teamAbbrs, filters, callbacks, hasOverrides = true) {
+  const chipsHtml = posChipsHtml(filters.pos);
 
   const teamChipsHtml = teamAbbrs
     .map((abbr) => {
@@ -49,7 +55,7 @@ export function renderFilterBar(container, teamAbbrs, filters, callbacks, hasOve
 
   container.innerHTML = `
     <div class="filter-row">
-      <div class="chip-group" id="pos-chips">${posChipsHtml}</div>
+      <div class="chip-group" id="pos-chips">${chipsHtml}</div>
       <div class="filter-search">
         <input id="search-input" type="search" placeholder="Search players" value="${escapeHtml(filters.search ?? "")}" />
       </div>
