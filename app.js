@@ -155,12 +155,11 @@ function uniqueTeams(games) {
   return [...teams].sort();
 }
 
-// "Reset all overrides" (D28) has nothing to do while no row carries an override, a star or a note (👁
-// visual-qa third pass); it starts muted and inert rather than reading as a live destructive action.
+// "Reset all overrides" (D28) clears only typed projection and ownership numbers, never stars or notes (D72), so
+// it has nothing to do while no row carries a typed number; it starts muted and inert rather than reading as a
+// live destructive action (👁 visual-qa third pass).
 function hasAnyOverride(rows) {
-  return (rows ?? []).some(
-    (r) => r.starred || r.note || (r.override && (r.override.proj != null || r.override.own != null))
-  );
+  return (rows ?? []).some((r) => r.override && (r.override.proj != null || r.override.own != null));
 }
 
 const filterCallbacks = {
@@ -270,7 +269,7 @@ function renderStatic(board) {
 }
 
 // The filter bar's team chips are the teams of the slate on screen (D57: the active second slate's games, or
-// every game on the main slate). "Reset all overrides" clears the whole week, so whether it has anything to do
+// every game on the main slate). "Reset all overrides" clears the whole week's typed numbers (D72), so whether it has anything to do
 // is still judged on the whole board, not just the slate on screen.
 function renderFilterBarNow(board) {
   renderFilterBar(el.filterbar, uniqueTeams(activeSlateGames(board)), store.get().filters, filterCallbacks, hasAnyOverride(board.rows));

@@ -1,16 +1,24 @@
-// The Optimizer's request checks and response shaping (PROJECT.md Part 4 "Optimizer"; DECISIONS.md D55, D69), shared
+// The Optimizer's request checks and response shaping (PROJECT.md Part 4 "Optimizer"; DECISIONS.md D55, D69, D73), shared
 // by POST /api/lineup/generate (server/server.js handleLineupGenerate) and the public site's copy of that route
 // (site-src/site-generate.js, run in the visitor's browser). One copy, so the two answer message for message alike;
 // tests/site-optimizer.test.mjs runs the same cases through both as a wiring check.
 //
 // Pure and browser-safe: no node modules, no network, no storage, no logging. tools/publish.mjs copies it, unchanged,
 // to out/server/lineup/ beside the engine and privacy-scans it.
-import { RULE_KEYS as GENERATE_RULE_KEYS } from "./multi.js";
+import { RULE_KEYS, LEGACY_RULE_KEYS, OBJECTIVES, STACK_OWN_MAX, STACK_OPP_MAX } from "./multi.js";
 
+// An older saved request may still carry the D55 rule keys D73 replaced; they are accepted (and must be booleans).
+const GENERATE_RULE_KEYS = [...RULE_KEYS, ...LEGACY_RULE_KEYS];
 const GENERATE_BODY_KEYS = new Set(["slate", "settings"]);
 const GENERATE_SETTING_KEYS = new Set([
-  "count", "minUnique", "locks", "excludes", "catchers", "maxExposure", "rules", "maxPerTeam", "allowRbGames", "avoidGames"
+  "count", "minUnique", "locks", "excludes", "catchers", "maxExposure", "rules", "maxPerTeam", "allowRbGames", "avoidGames",
+  "objective", "stackOwn", "stackOwnOrMore", "stackOpp", "stackOppOrMore"
 ]);
+// D73: the QB stack's two numbers, in Adam's words for the refusal sentence.
+const GENERATE_STACK_NUMBERS = [
+  { key: "stackOwn", max: STACK_OWN_MAX, words: "teammates to stack with the quarterback" },
+  { key: "stackOpp", max: STACK_OPP_MAX, words: "opponents to stack with the quarterback" }
+];
 const GENERATE_POSITIONS = ["QB", "RB", "WR", "TE", "DST"];
 const GENERATE_MAX_COUNT = 150;
 const GENERATE_MAX_UNIQUE = 8;
@@ -107,6 +115,24 @@ export function validateGenerateSettings(raw, ctx) {
       return { error: "maxPerTeam must be a whole number from 1 to 8" };
     }
     out.maxPerTeam = raw.maxPerTeam;
+  }
+  if (raw.objective !== undefined && raw.objective !== null) {
+    if (!OBJECTIVES.includes(raw.objective)) return { error: `objective must be one of ${OBJECTIVES.join(", ")}` };
+    out.objective = raw.objective;
+  }
+  for (const { key, max, words } of GENERATE_STACK_NUMBERS) {
+    const value = raw[key];
+    if (value === undefined || value === null) continue;
+    if (!Number.isInteger(value) || value < 0 || value > max) {
+      return { error: `${key} (the number of ${words}) must be a whole number from 0 to ${max}` };
+    }
+    out[key] = value;
+  }
+  for (const key of ["stackOwnOrMore", "stackOppOrMore"]) {
+    const value = raw[key];
+    if (value === undefined || value === null) continue;
+    if (typeof value !== "boolean") return { error: `${key} must be true or false` };
+    out[key] = value;
   }
   for (const name of ["allowRbGames", "avoidGames"]) {
     const value = raw[name];

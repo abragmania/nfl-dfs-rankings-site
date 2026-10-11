@@ -1,6 +1,6 @@
 // Optimizer tab (PROJECT.md D21/D32, D70, Part 4 Lineup Builder screen). Secondary tab, never the main
-// page. Top: the Optimizer band. Left column: the nine DraftKings classic slots (D1), a salary bar, totals, and the
-// objective / max-per-team / stack-QB controls plus Build and Clear all. Right column: the same rows the Rankings
+// page. Top: the Optimizer band (its objective, max-per-team and D73 QB-stack controls included). Left column: the
+// nine DraftKings classic slots (D1), a salary bar, totals, Clear all and Save lineup. Right column: the same rows the Rankings
 // tab is currently showing — same store, same filters (its own position chips set them), same sort (its headers set
 // it) — with per-row Lock, Exclude and Add-to-slot buttons.
 //
@@ -12,16 +12,16 @@
 //
 // A slot holds only `{id, slot}` — never a name/salary/proj/own snapshot — so every render reads those
 // fields from whatever board.rows currently says for that id. That is what makes an override show up in
-// a placed slot without this module doing anything, and it's why the persisted/build-result state is
+// a placed slot without this module doing anything, and it's why the persisted state (slots, locks, excludes) is
 // re-validated against the live board on every board load rather than trusted as-is (🔵 finding 1): an id
 // with no row anymore (a stale localStorage entry, or last week's slate) is dropped instead of rendering
 // stale data or throwing.
-import { escapeHtml, money, dec1, textColourFor } from "./format.js";
+import { escapeHtml, money, dec1, dec2, textColourFor } from "./format.js";
 import { store, filterRows, sortRows, passesProjFloor, FLEX_POS, defaultDirFor, activeSlate, activeSlateRows, activeSlateGames, slateDisplayName } from "./state.js";
 import { sortableHeadHtml } from "./tabs.js";
 import { posChipsHtml } from "./filterbar.js";
 import { TEAM_BY_ABBR } from "./teams-data.js";
-import { postLineupOptimize, postLineupGenerate, getLineups, postLineup, deleteLineup, putLineupName } from "./api.js";
+import { postLineupGenerate, getLineups, postLineup, deleteLineup, putLineupName } from "./api.js";
 import { renderEntriesSection, wireEntries } from "./entries.js";
 import { phoneMinHeight } from "./expand.js";
 
@@ -33,7 +33,6 @@ const OBJECTIVES = [
   { value: "projMinusOwn", label: "Projection minus ownership" },
 ];
 const MAX_TEAM_OPTIONS = ["", "1", "2", "3", "4"];
-const STACK_QB_OPTIONS = [0, 1, 2];
 const STORAGE_KEY = "nfldfs.lineupBuilder.v1";
 
 // Mirrors table.js's status-badge/dimming rules exactly (🔵 finding 8: "as in the Rankings table") so the
@@ -53,13 +52,8 @@ const DIM_STATUS_TOKENS = new Set(["o", "out", "ir", "d", "doubtful"]);
 
 const state = {
   slots: new Array(LINEUP_SLOTS.length).fill(null), // each: {id, slot} or null; row fields are read live
-  locks: new Set(), // player ids (strings) that must appear in the next Build
+  locks: new Set(), // player ids (strings) the Optimizer must use (D70: a filled slot is always one)
   excludes: new Set(), // player ids (strings) that must never appear
-  objective: "proj",
-  maxFromTeam: "", // "" (no limit) or "1".."4", mirrors the <select> value
-  stackQbWith: 0, // 0, 1 or 2
-  lastResult: null, // {feasible, message, notes, salaryUsed, salaryLeft, totalProj, totalOwn, slotsSnapshot} or null
-  building: false,
   addError: null, // set when Add is blocked, or as a non-blocking warning after a successful Add
 
   // Saved lineups (Adam's "draw up a lineup, press Save, see it in a list").
@@ -135,9 +129,6 @@ function savePersisted() {
         slots: state.slots,
         locks: [...state.locks],
         excludes: [...state.excludes],
-        objective: state.objective,
-        maxFromTeam: state.maxFromTeam,
-        stackQbWith: state.stackQbWith,
       })
     );
   } catch (e) {
@@ -159,16 +150,8 @@ function hydrateFromStorage() {
   }
   if (Array.isArray(persisted.locks)) state.locks = new Set(persisted.locks.map(String));
   if (Array.isArray(persisted.excludes)) state.excludes = new Set(persisted.excludes.map(String));
-  // 🔵 finding 5: objective/maxFromTeam/stackQbWith are accepted only if they're in their option lists.
-  if (typeof persisted.objective === "string" && OBJECTIVES.some((o) => o.value === persisted.objective)) {
-    state.objective = persisted.objective;
-  }
-  if (typeof persisted.maxFromTeam === "string" && MAX_TEAM_OPTIONS.includes(persisted.maxFromTeam)) {
-    state.maxFromTeam = persisted.maxFromTeam;
-  }
-  if (typeof persisted.stackQbWith === "number" && STACK_QB_OPTIONS.includes(persisted.stackQbWith)) {
-    state.stackQbWith = persisted.stackQbWith;
-  }
+  // Older saved state may still carry the removed Build's objective / maxFromTeam / stackQbWith; they are ignored
+  // and dropped on the next save.
   // 🔵 finding 5: an id in both locks and excludes is dropped from both.
   for (const id of [...state.locks]) {
     if (state.excludes.has(id)) {
@@ -275,7 +258,7 @@ function snapPanelMaxHeight(panelEl, top, reserve) {
 
 // Mirrors app.js's adjustScrollPanels() sizing for this panel's own .scroll-panel element. app.js is out
 // of scope for this pass and doesn't export that function; it also only runs after the app-level
-// renderDynamic, which this module's own re-renders (Build, Lock, Add, Clear — all via commit(), below)
+// renderDynamic, which this module's own re-renders (Lock, Add, Clear, Go — all via commit(), below)
 // bypass entirely, so the pool needs its own call (🔵 finding 9).
 function resizeLineupScrollPanels(container) {
   container.querySelectorAll(".scroll-panel").forEach((panelEl) => {
@@ -299,34 +282,9 @@ function commit() {
 // Derived data
 // --------------------------------------------------------------------------------------------------------
 
-/** True when `snapshot` (a lastResult.slotsSnapshot) still describes exactly what's in state.slots now,
- *  id-for-id and slot-for-slot — used to decide whether the last Build's own totals are still valid. */
-function currentSlotsMatchSnapshot(snapshot) {
-  if (!Array.isArray(snapshot) || snapshot.length !== state.slots.length) return false;
-  for (let i = 0; i < state.slots.length; i++) {
-    const a = state.slots[i];
-    const b = snapshot[i];
-    if (!a && !b) continue;
-    if (!a || !b) return false;
-    if (String(a.id) !== String(b.id)) return false;
-  }
-  return true;
-}
-
-// 🔵 finding 3: when the last Build is feasible and still matches what's placed, its own salaryUsed /
-// salaryLeft / totalProj / totalOwn are shown as-is (they're exactly what the server computed). Otherwise
-// the totals are read live off the current board rows, and a null own on any placed player makes the
-// total unknown rather than silently smaller.
+// 🔵 finding 3: the totals are read live off the current board rows, and a null own on any placed player makes
+// the total unknown rather than silently smaller.
 function computeTotals(rowById) {
-  const r = state.lastResult;
-  if (r && r.feasible && currentSlotsMatchSnapshot(r.slotsSnapshot)) {
-    return {
-      salaryUsed: r.salaryUsed ?? 0,
-      salaryLeft: r.salaryLeft ?? SALARY_CAP,
-      totalProj: r.totalProj ?? 0,
-      totalOwn: r.totalOwn ?? null,
-    };
-  }
   let salaryUsed = 0;
   let totalProj = 0;
   let totalOwn = 0;
@@ -394,15 +352,14 @@ function addPlayer(row, rowById) {
   }
   state.slots[idx] = { id: rowId, slot: LINEUP_SLOTS[idx] };
   state.locks.add(rowId);
-  state.lastResult = null;
   state.addError = addWarning(row);
 }
 
 /** Places `entries` ({slot, id}, in any order) into a fresh LINEUP_SLOTS-shaped array, each by its own
  *  `slot` name into the next free slot of that name (🔵 finding 7) — not by its position in the input
  *  array, which need not line up with LINEUP_SLOTS' order. An entry whose slot name has no free slot left
- *  is skipped rather than thrown. Shared by a Build response, Load, and the saved-lineup cards' own
- *  roster-order reconstruction, so all three place a saved/optimized list the same way. */
+ *  is skipped rather than thrown. Shared by Load and the saved-lineup cards' own roster-order
+ *  reconstruction, so both place a saved list the same way. */
 function placeBySlotName(entries) {
   const nextSlots = new Array(LINEUP_SLOTS.length).fill(null);
   for (const entry of entries) {
@@ -412,78 +369,6 @@ function placeBySlotName(entries) {
     nextSlots[idx] = { id: String(entry.id), slot: slotName };
   }
   return nextSlots;
-}
-
-// --------------------------------------------------------------------------------------------------------
-// Build
-// --------------------------------------------------------------------------------------------------------
-
-async function doBuild() {
-  if (state.building) return;
-  state.building = true;
-  state.addError = null;
-  commit();
-
-  const payload = {
-    locks: [...state.locks],
-    excludes: [...state.excludes],
-    objective: state.objective,
-    maxFromTeam: state.maxFromTeam === "" ? null : Number(state.maxFromTeam),
-    stackQbWith: state.stackQbWith,
-  };
-  // A second slate on screen (D57): the server builds from that slate's games only. Locks are per player and
-  // are kept for the main slate, so a lock on a player who is not in this slate's games is left out of this
-  // request (the server would refuse it) and said so in the result's notes rather than dropped silently.
-  const board = store.get().board;
-  const slate = activeSlate(board);
-  let slateNote = null;
-  if (slate) {
-    payload.slate = slate.key;
-    const inSlate = new Set(activeSlateRows(board).map((r) => String(r.id)));
-    const kept = payload.locks.filter((id) => inSlate.has(String(id)));
-    const leftOut = payload.locks.length - kept.length;
-    payload.locks = kept;
-    if (leftOut > 0) {
-      slateNote = `${leftOut} locked player${leftOut === 1 ? " is" : "s are"} not in the ${slateDisplayName(slate)}'s games and ${leftOut === 1 ? "was" : "were"} left out of this build.`;
-    }
-  }
-
-  try {
-    const data = await postLineupOptimize(payload);
-    // `notes` may be absent on the running server (PROJECT.md Part 4) — always treat a missing notes
-    // array as [].
-    const notes = Array.isArray(data?.notes) ? [...data.notes] : [];
-    if (slateNote) notes.push(slateNote);
-    if (!data || data.ok === false) {
-      state.lastResult = { feasible: false, message: data?.error?.message ?? "Could not build a lineup.", notes };
-    } else if (data.feasible) {
-      // 🔵 finding 7: each entry is placed by its own `slot` name into the next free slot of that name,
-      // not by its position in the response array (which need not line up with LINEUP_SLOTS' order).
-      const lineup = Array.isArray(data.lineup) ? data.lineup : [];
-      const nextSlots = placeBySlotName(lineup);
-      state.slots = nextSlots;
-      state.lastResult = {
-        feasible: true,
-        message: data.message ?? "",
-        notes,
-        salaryUsed: data.salaryUsed,
-        salaryLeft: data.salaryLeft,
-        totalProj: data.totalProj,
-        totalOwn: data.totalOwn,
-        slotsSnapshot: nextSlots.map((s) => (s ? { ...s } : null)),
-      };
-    } else {
-      state.lastResult = {
-        feasible: false,
-        message: data.message ?? "No legal lineup fits these locks, exclusions and the salary cap.",
-        notes,
-      };
-    }
-  } catch (e) {
-    state.lastResult = { feasible: false, message: `Could not reach the server: ${e.message}`, notes: [] };
-  }
-  state.building = false;
-  commit();
 }
 
 // --------------------------------------------------------------------------------------------------------
@@ -554,14 +439,13 @@ async function doDeleteLineup(id) {
   commit();
 }
 
-/** Puts a saved lineup's players back into the builder's slots, replacing whatever is there, via the same
- *  placeBySlotName() a Build response uses — so an off-slate player (dropped by validateAgainstBoard on
- *  the next render) and totals/locks behave exactly as they do after any other slot change. */
+/** Puts a saved lineup's players back into the builder's slots, replacing whatever is there, via
+ *  placeBySlotName() — so an off-slate player (dropped by validateAgainstBoard on the next render) and
+ *  totals/locks behave exactly as they do after any other slot change. */
 function doLoadLineup(id) {
   const lineup = state.savedLineups.find((l) => l.id === id);
   if (!lineup) return;
   state.slots = placeBySlotName((lineup.slots ?? []).map((s) => ({ slot: s.slot, id: s.playerId })));
-  state.lastResult = null;
   state.addError = null;
   commit();
 }
@@ -612,28 +496,9 @@ function panelHtml() {
 }
 
 function controlsHtml() {
-  const objectiveOptions = OBJECTIVES.map(
-    (o) => `<option value="${o.value}"${state.objective === o.value ? " selected" : ""}>${escapeHtml(o.label)}</option>`
-  ).join("");
-  const maxTeamOptions = MAX_TEAM_OPTIONS
-    .map((v) => `<option value="${v}"${state.maxFromTeam === v ? " selected" : ""}>${v === "" ? "No limit" : v}</option>`)
-    .join("");
-  const stackOptions = STACK_QB_OPTIONS
-    .map((n) => `<option value="${n}"${state.stackQbWith === n ? " selected" : ""}>${n}</option>`)
-    .join("");
   const hasAnySlot = state.slots.some(Boolean);
   return `
     <div class="lineup-controls">
-      <label class="lineup-control">Objective
-        <select id="lineup-objective">${objectiveOptions}</select>
-      </label>
-      <label class="lineup-control">Max per team
-        <select id="lineup-max-team">${maxTeamOptions}</select>
-      </label>
-      <label class="lineup-control">Stack QB with
-        <select id="lineup-stack-qb">${stackOptions}</select>
-      </label>
-      <button type="button" id="lineup-build-btn" class="lineup-build-btn"${state.building ? " disabled" : ""}>${state.building ? "Building…" : "Build"}</button>
       <button type="button" id="lineup-clear-all-btn" class="lineup-clear-all-btn">Clear all</button>
       <label class="lineup-control">Save as
         <input type="text" id="lineup-save-name" class="lineup-save-name-input" placeholder="Name (optional)" value="${escapeHtml(state.saveName)}" />
@@ -646,7 +511,6 @@ function slotsHtml(rowById) {
   return LINEUP_SLOTS.map((slotName, i) => {
     const s = state.slots[i];
     const row = s ? rowById.get(String(s.id)) : null;
-    const locked = s ? state.locks.has(String(s.id)) : false;
     // 🔵 finding 2: a slot whose id no longer has a row (should already have been dropped by
     // validateAgainstBoard, but this is the defensive last line) shows a visible marker instead of
     // guessing at stale name/salary/proj/own.
@@ -659,7 +523,6 @@ function slotsHtml(rowById) {
       <div class="lineup-slot" data-slot-index="${i}">
         <span class="lineup-slot-label">${escapeHtml(slotName)}</span>
         ${bodyHtml}
-        <button type="button" class="lineup-slot-lock${locked ? " active" : ""}" data-action="slot-lock" data-slot="${i}"${s ? "" : " disabled"}>${locked ? "Locked" : "Lock"}</button>
         <button type="button" class="lineup-slot-clear" data-action="slot-clear" data-slot="${i}"${s ? "" : " disabled"}>Clear</button>
       </div>`;
   }).join("");
@@ -693,17 +556,6 @@ function buildStatusHtml() {
     parts.push(`<div class="lineup-status lineup-status-error">${escapeHtml(state.saveError)}</div>`);
   } else if (state.saveConfirm) {
     parts.push(`<div class="lineup-status">${escapeHtml(state.saveConfirm)}</div>`);
-  }
-  const r = state.lastResult;
-  if (r) {
-    if (!r.feasible) {
-      parts.push(`<div class="lineup-status lineup-status-error">${escapeHtml(r.message || "No legal lineup could be built.")}</div>`);
-    } else if (r.message) {
-      parts.push(`<div class="lineup-status">${escapeHtml(r.message)}</div>`);
-    }
-    for (const n of r.notes ?? []) {
-      parts.push(`<div class="lineup-note">${escapeHtml(n)}</div>`);
-    }
   }
   return parts.join("");
 }
@@ -890,6 +742,7 @@ function rightColumnHtml(rows, rowById) {
     { key: "salary", label: "Salary" },
     { key: "proj", label: "Proj" },
     { key: "own", label: "Own%" },
+    { key: "value", label: "Value" },
     ...(hasStatus ? [{ key: "status", label: "Status" }] : []),
   ];
   const headHtml = sortableHeadHtml(headCols, sort).replace(/<\/tr>$/, "<th></th></tr>");
@@ -940,6 +793,7 @@ function rightRowHtml(row, placedSet, hasStatus) {
       <td>${money(row.salary)}</td>
       <td>${row.proj == null ? "no proj" : dec1(row.proj)}</td>
       <td>${row.own == null ? "—" : `${dec1(row.own)}%`}</td>
+      <td>${row.value == null || Number.isNaN(row.value) ? "—" : dec2(row.value)}</td>
       ${hasStatus ? `<td class="status-cell">${statusBadgeHtml(row)}</td>` : ""}
       <td class="lineup-row-actions">
         <button type="button" class="lineup-row-btn${locked ? " active" : ""}" data-action="row-lock" data-id="${escapeHtml(id)}"${excluded ? " disabled" : ""}>${locked ? "Locked" : "Lock"}</button>
@@ -954,46 +808,14 @@ function rightRowHtml(row, placedSet, hasStatus) {
 // --------------------------------------------------------------------------------------------------------
 
 function wire(container) {
-  const objSel = container.querySelector("#lineup-objective");
-  objSel?.addEventListener("change", () => {
-    state.objective = objSel.value;
-    state.lastResult = null;
-    commit();
-  });
-  const maxSel = container.querySelector("#lineup-max-team");
-  maxSel?.addEventListener("change", () => {
-    state.maxFromTeam = maxSel.value;
-    state.lastResult = null;
-    commit();
-  });
-  const stackSel = container.querySelector("#lineup-stack-qb");
-  stackSel?.addEventListener("change", () => {
-    state.stackQbWith = Number(stackSel.value);
-    state.lastResult = null;
-    commit();
-  });
-
-  container.querySelector("#lineup-build-btn")?.addEventListener("click", () => doBuild());
-
   container.querySelector("#lineup-clear-all-btn")?.addEventListener("click", () => {
     state.slots = new Array(LINEUP_SLOTS.length).fill(null);
     state.locks = new Set();
     state.excludes = new Set();
-    state.lastResult = null;
     state.addError = null;
     commit();
   });
 
-  container.querySelectorAll("[data-action='slot-lock']").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      const p = state.slots[Number(btn.dataset.slot)];
-      if (!p) return;
-      if (state.locks.has(p.id)) state.locks.delete(p.id);
-      else state.locks.add(p.id);
-      state.lastResult = null;
-      commit();
-    });
-  });
   container.querySelectorAll("[data-action='slot-clear']").forEach((btn) => {
     btn.addEventListener("click", () => {
       const i = Number(btn.dataset.slot);
@@ -1001,7 +823,6 @@ function wire(container) {
       if (!p) return;
       state.locks.delete(p.id);
       state.slots[i] = null;
-      state.lastResult = null;
       state.addError = null;
       commit();
     });
@@ -1010,7 +831,6 @@ function wire(container) {
   container.querySelectorAll("[data-action='row-lock']").forEach((btn) => {
     btn.addEventListener("click", () => {
       const id = btn.dataset.id;
-      const before = JSON.stringify([state.slots, [...state.locks]]);
       // DECISIONS.md D70: pool Lock = in the base lineup, unlock = out of it. Unlock clears his slot too (a pool-only
       // lock from older saved state has no slot and just loses the lock). Lock places him like Add does (which also
       // adds the lock); already placed (under this id, or the same DraftKings player under another id): lock that
@@ -1035,8 +855,6 @@ function wire(container) {
           else addPlayer(row, rowById);
         }
       }
-      // A refused Lock changes nothing, so the last Build result stays (addPlayer clears it itself on success).
-      if (JSON.stringify([state.slots, [...state.locks]]) !== before) state.lastResult = null;
       commit();
     });
   });
@@ -1071,7 +889,6 @@ function wire(container) {
           if (state.slots[i] && state.slots[i].id === id) state.slots[i] = null;
         }
       }
-      state.lastResult = null;
       commit();
     });
   });
@@ -1158,14 +975,17 @@ const OPT_MAX_COUNT = 150;
 const OPT_MAX_UNIQUE = 8;
 const OPT_DEFAULT_COUNT = 5;
 const OPT_DEFAULT_UNIQUE = 1;
+// D73: the QB stack's choices (server/lineup/multi.js STACK_OWN_MAX / STACK_OPP_MAX) and defaults, "or more" ticked.
+const OPT_STACK_OWN_MAX = 4;
+const OPT_STACK_OPP_MAX = 3;
+const OPT_DEFAULT_STACK = { stackOwn: 1, stackOwnOrMore: true, stackOpp: 0, stackOppOrMore: true };
 const OPT_BUSY_TEXT = "Another set of lineups is still being made. Try again in a moment.";
 
-/** The seven D55 rules, in the server's rule keys (server/lineup/multi.js RULE_KEYS), with Adam's chip words. */
+/** The five D55 rules, in the server's rule keys (server/lineup/multi.js RULE_KEYS), with Adam's chip words. The QB
+ *  stack is the band's "Stack QB with" controls instead (D73). */
 export const OPT_RULES = [
   { key: "starredQbOnly", label: "starred QBs only" },
-  { key: "qbStack", label: "QB stack" },
   { key: "rbWithOwnQbOnlyIfCatcher", label: "RB with own QB only if pass catcher" },
-  { key: "oneOffensivePerOtherTeam", label: "one per other team" },
   { key: "noSameTeamRbs", label: "no same-team RBs" },
   { key: "noSameGameRbs", label: "no same-game RBs" },
   { key: "noDstVsOwnPlayers", label: "no DST vs own players" },
@@ -1176,7 +996,11 @@ const opt = {
   minUnique: String(OPT_DEFAULT_UNIQUE),
   maxExp: { QB: "", RB: "", WR: "", TE: "", DST: "" }, // percent text as typed; blank = no cap
   rules: Object.fromEntries(OPT_RULES.map((r) => [r.key, true])),
+  objective: "proj", // one of OBJECTIVES' values
+  maxPerTeam: "", // "" (no limit) or "1".."4", the <select> value
+  ...OPT_DEFAULT_STACK, // D73: stackOwn / stackOpp numbers and their "or more" ticks
   avoid: new Set(), // game ids such as "DET@ARI"
+  expSortDir: "desc", // the exposure lists' one sort, by exposure: "desc" (highest first) or "asc"
   generating: false,
   saving: false,
   error: null, // the server's sentence for a refused or failed request
@@ -1268,7 +1092,8 @@ export function lockedIds(slots, locks) {
 }
 
 /** The `settings` object for POST /api/lineup/generate. maxExposure carries only {pct: N} for boxes that have a
- *  number (a blank box is left out, never sent as 0); every rule is sent explicitly. */
+ *  number (a blank box is left out, never sent as 0); every rule and both D73 stack numbers and ticks are sent
+ *  explicitly; maxPerTeam only when a limit is picked. */
 export function buildGenerateSettings(form) {
   const maxExposure = {};
   for (const pos of OPT_POSITIONS) {
@@ -1277,7 +1102,7 @@ export function buildGenerateSettings(form) {
   }
   const rules = {};
   for (const r of OPT_RULES) rules[r.key] = form.rules?.[r.key] !== false;
-  return {
+  const settings = {
     count: parseWhole(form.count, 1, OPT_MAX_COUNT, OPT_DEFAULT_COUNT),
     minUnique: parseWhole(form.minUnique, 1, OPT_MAX_UNIQUE, OPT_DEFAULT_UNIQUE),
     locks: (form.locks ?? []).map(String),
@@ -1285,7 +1110,16 @@ export function buildGenerateSettings(form) {
     maxExposure,
     rules,
     avoidGames: [...(form.avoid ?? [])],
+    objective: OBJECTIVES.some((o) => o.value === form.objective) ? form.objective : "proj",
+    stackOwn: parseWhole(form.stackOwn, 0, OPT_STACK_OWN_MAX, OPT_DEFAULT_STACK.stackOwn),
+    stackOwnOrMore: form.stackOwnOrMore === undefined ? OPT_DEFAULT_STACK.stackOwnOrMore : Boolean(form.stackOwnOrMore),
+    stackOpp: parseWhole(form.stackOpp, 0, OPT_STACK_OPP_MAX, OPT_DEFAULT_STACK.stackOpp),
+    stackOppOrMore: form.stackOppOrMore === undefined ? OPT_DEFAULT_STACK.stackOppOrMore : Boolean(form.stackOppOrMore),
   };
+  if (MAX_TEAM_OPTIONS.includes(String(form.maxPerTeam ?? "")) && String(form.maxPerTeam ?? "") !== "") {
+    settings.maxPerTeam = Number(form.maxPerTeam);
+  }
+  return settings;
 }
 
 /** The whole request body: the active slate key (D57: "main" or the second slate's key) plus the settings. */
@@ -1385,26 +1219,40 @@ function teamBadgeHtml(team) {
   return `<span class="team-chip-mini" style="background:${primary};color:${textColourFor(primary, secondary)}">${escapeHtml(team ?? "")}</span>`;
 }
 
-/** Exposure by position, one list per position (D55). Each row is name + matchup (D43) + own% (D32) and how many
- *  lineups (saved plus new) hold him. `exposure` is {QB: [{name, team, opp, own, count, pct}], ...}. */
-export function optExposureHtml(exposure, stale) {
+/** One position's exposure rows in the chosen order: by exposure (lineup count, which orders the percent the same
+ *  way), `dir` "desc" (highest first, the default) or "asc", ties by name. */
+export function sortExposure(list, dir) {
+  const sign = dir === "asc" ? 1 : -1;
+  return [...(list ?? [])].sort(
+    (a, b) => sign * ((a.count ?? 0) - (b.count ?? 0) || (a.pct ?? 0) - (b.pct ?? 0)) || String(a.name ?? "").localeCompare(String(b.name ?? ""))
+  );
+}
+
+/** Exposure by position, one table per position (D55; Adam 2026-10-11: exposure first, then Player, Team, Matchup,
+ *  %Own). Exposure is "42% (2)": the share of saved plus new lineups that hold him and how many; only its header
+ *  sorts, one direction `sortDir` for every box. Matchup is D43's; own% is D32's (blank when nobody published one).
+ *  `exposure` is {QB: [{name, team, opp, own, count, pct}], ...}. */
+export function optExposureHtml(exposure, stale, sortDir = "desc") {
+  const dir = sortDir === "asc" ? "asc" : "desc";
+  const arrow = dir === "asc" ? " ▲" : " ▼";
+  const head = `<tr><th class="sortable sorted opt-exp-pct" data-action="opt-exp-sort" aria-sort="${dir === "asc" ? "ascending" : "descending"}">Exposure${arrow}</th><th>Player</th><th>Team</th><th>Matchup</th><th class="opt-exp-own">Own%</th></tr>`;
   const boxes = OPT_POSITIONS.map((pos) => {
     const list = Array.isArray(exposure?.[pos]) ? exposure[pos] : [];
-    const rows = list.length
-      ? list
+    const body = list.length
+      ? `<table class="opt-exp-table"><thead>${head}</thead><tbody>${sortExposure(list, dir)
           .map(
             (e) => `
-          <div class="opt-exp-row">
-            ${teamBadgeHtml(e.team)}
-            <span class="opt-exp-name">${escapeHtml(e.name ?? "")}</span>
-            <span class="opt-exp-opp">${escapeHtml(e.opp ?? "")}</span>
-            <span class="opt-exp-own">${escapeHtml(ownParen(e.own))}</span>
-            <span class="opt-exp-pct">${escapeHtml(String(Math.round(e.pct ?? 0)))}% <span class="opt-exp-count">(${escapeHtml(String(e.count ?? 0))})</span></span>
-          </div>`
+          <tr class="opt-exp-row">
+            <td class="opt-exp-pct">${escapeHtml(String(Math.round(e.pct ?? 0)))}% <span class="opt-exp-count">(${escapeHtml(String(e.count ?? 0))})</span></td>
+            <td class="opt-exp-name">${escapeHtml(e.name ?? "")}</td>
+            <td class="opt-exp-team">${teamBadgeHtml(e.team)}</td>
+            <td class="opt-exp-opp">${escapeHtml(e.opp ?? "")}</td>
+            <td class="opt-exp-own">${e.own == null ? "" : `${escapeHtml(String(Math.round(e.own)))}%`}</td>
+          </tr>`
           )
-          .join("")
+          .join("")}</tbody></table>`
       : `<div class="opt-exp-empty">None</div>`;
-    return `<div class="opt-exp-box"><div class="opt-exp-title">${escapeHtml(pos)}</div><div class="opt-exp-list">${rows}</div></div>`;
+    return `<div class="opt-exp-box"><div class="opt-exp-title">${escapeHtml(pos)}</div><div class="opt-exp-list">${body}</div></div>`;
   }).join("");
   const staleNote = stale ? `<span class="opt-sub">out of date: the lineups changed since the last Go</span>` : "";
   return `
@@ -1444,6 +1292,9 @@ function optimizerControlsHtml(rowById) {
     : "";
   const formError = opt.formError ? `<div class="lineup-status lineup-status-error opt-form-error">${escapeHtml(opt.formError)}</div>` : "";
   const busy = opt.generating || opt.saving;
+  const options = (values, current, label = (v) => String(v)) =>
+    values.map((v) => `<option value="${escapeHtml(String(v))}"${String(current) === String(v) ? " selected" : ""}>${escapeHtml(label(v))}</option>`).join("");
+  const upTo = (max) => Array.from({ length: max + 1 }, (_, i) => i);
   return `
     <div class="opt-panel" id="opt-panel">
       <h3 class="opt-title">Optimizer</h3>
@@ -1459,6 +1310,22 @@ function optimizerControlsHtml(rowById) {
         ${info}
       </div>
       ${formError}
+      <div class="opt-row">
+        <label class="opt-inline">Objective
+          <select id="opt-objective" class="opt-input opt-select">${options(OBJECTIVES.map((o) => o.value), opt.objective, (v) => OBJECTIVES.find((o) => o.value === v).label)}</select>
+        </label>
+        <label class="opt-inline">Max per team
+          <select id="opt-max-team" class="opt-input opt-select">${options(MAX_TEAM_OPTIONS, opt.maxPerTeam, (v) => (v === "" ? "No limit" : v))}</select>
+        </label>
+        <span class="opt-inline">Stack QB with
+          <select id="opt-stack-own" class="opt-input opt-select-n" aria-label="Teammates to stack with the quarterback">${options(upTo(OPT_STACK_OWN_MAX), opt.stackOwn)}</select>
+          <label class="opt-check"><input type="checkbox" id="opt-stack-own-more"${opt.stackOwnOrMore ? " checked" : ""} /> or more</label>
+          from his team,</span>
+        <span class="opt-inline">
+          <select id="opt-stack-opp" class="opt-input opt-select-n" aria-label="Opponents to stack with the quarterback">${options(upTo(OPT_STACK_OPP_MAX), opt.stackOpp)}</select>
+          <label class="opt-check"><input type="checkbox" id="opt-stack-opp-more"${opt.stackOppOrMore ? " checked" : ""} /> or more</label>
+          from the opponent</span>
+      </div>
       <div class="opt-row opt-row-chips">
         <div class="opt-block"><span class="opt-block-label">Rules</span><div class="opt-chips">${ruleChipsHtml(opt.rules)}</div></div>
         ${avoidBlock}
@@ -1488,7 +1355,7 @@ function optimizerResultsHtml(rowById) {
     if (opt.saveError) parts.push(`<div class="lineup-status lineup-status-error">${escapeHtml(opt.saveError)}</div>`);
     parts.push(optNotesHtml(r.notes));
     if (n) parts.push(`<div class="opt-cards">${r.lineups.map((l, i) => optLineupCardHtml(l, i, busy)).join("")}</div>`);
-    parts.push(optExposureHtml(r.exposure, r.exposureStale));
+    parts.push(optExposureHtml(r.exposure, r.exposureStale, opt.expSortDir));
   }
   return `<div class="opt-results" id="opt-results">${parts.join("")}</div>`;
 }
@@ -1533,6 +1400,12 @@ async function doGenerate() {
     avoid,
     locks,
     excludes: [...state.excludes],
+    objective: opt.objective,
+    maxPerTeam: opt.maxPerTeam,
+    stackOwn: opt.stackOwn,
+    stackOwnOrMore: opt.stackOwnOrMore,
+    stackOpp: opt.stackOpp,
+    stackOppOrMore: opt.stackOppOrMore,
   };
   opt.generating = true;
   opt.error = null;
@@ -1601,6 +1474,25 @@ function discardGenerated(uid) {
   commit();
 }
 
+/** The exposure header flips the one sort and redraws only the exposure section (never the whole panel), then
+ *  re-wires its headers. */
+function wireExposureSort(container) {
+  container.querySelectorAll(".opt-exposure [data-action='opt-exp-sort']").forEach((th) => {
+    th.addEventListener("click", () => {
+      opt.expSortDir = opt.expSortDir === "asc" ? "desc" : "asc";
+      const section = container.querySelector(".opt-exposure");
+      const r = opt.results;
+      if (!section || !r) return;
+      const holder = document.createElement("div");
+      holder.innerHTML = optExposureHtml(r.exposure, r.exposureStale, opt.expSortDir);
+      const fresh = holder.querySelector(".opt-exposure");
+      if (!fresh) return;
+      section.replaceWith(fresh);
+      wireExposureSort(container);
+    });
+  });
+}
+
 function wireOptimizer(container) {
   const bind = (sel, key) => {
     const el = container.querySelector(sel);
@@ -1619,6 +1511,21 @@ function wireOptimizer(container) {
       }
     });
   });
+  // Objective, Max per team and the D73 stack: the value is kept in `opt`; nothing else on the panel depends on it,
+  // so no re-render.
+  const bindValue = (sel, key, read) => {
+    const el = container.querySelector(sel);
+    el?.addEventListener("change", () => {
+      opt[key] = read(el);
+    });
+  };
+  bindValue("#opt-objective", "objective", (el) => el.value);
+  bindValue("#opt-max-team", "maxPerTeam", (el) => el.value);
+  bindValue("#opt-stack-own", "stackOwn", (el) => Number(el.value));
+  bindValue("#opt-stack-opp", "stackOpp", (el) => Number(el.value));
+  bindValue("#opt-stack-own-more", "stackOwnOrMore", (el) => el.checked);
+  bindValue("#opt-stack-opp-more", "stackOppOrMore", (el) => el.checked);
+  wireExposureSort(container);
   container.querySelector("#opt-go-btn")?.addEventListener("click", () => doGenerate());
   container.querySelectorAll("[data-action='opt-rule']").forEach((btn) => {
     btn.addEventListener("click", () => {

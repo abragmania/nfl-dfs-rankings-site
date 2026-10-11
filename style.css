@@ -1113,7 +1113,7 @@ body.table-expanded { overflow: hidden; }
 .lineup-slot-player.lineup-slot-missing { color: var(--danger); font-style: italic; }
 .lineup-slot-name { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .lineup-slot-detail { color: var(--text-muted); font-size: var(--fs-sm); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.lineup-slot-lock, .lineup-slot-clear {
+.lineup-slot-clear {
   cursor: pointer;
   background: var(--bg-elevated-2);
   border: 1px solid var(--border);
@@ -1123,8 +1123,7 @@ body.table-expanded { overflow: hidden; }
   font-size: var(--fs-sm);
   white-space: nowrap;
 }
-.lineup-slot-lock.active { background: var(--accent); border-color: var(--accent); color: #ffffff; }
-.lineup-slot-lock:disabled, .lineup-slot-clear:disabled { opacity: 0.4; cursor: default; }
+.lineup-slot-clear:disabled { opacity: 0.4; cursor: default; }
 
 .salary-bar-track {
   height: 14px;
@@ -1153,11 +1152,12 @@ body.table-expanded { overflow: hidden; }
   white-space: nowrap;
 }
 .lineup-rows-table thead { position: sticky; top: 0; background: var(--bg-elevated-2); }
-/* Salary/Proj/Own% right-align with tabular figures, same treatment as the Rankings table (👁 visual-qa
-   third pass). Columns: 1 Player, 2 Pos, 3 Salary, 4 Proj, 5 Own%, 6 Status, 7 actions. */
+/* Salary/Proj/Own%/Value right-align with tabular figures, same treatment as the Rankings table (👁 visual-qa
+   third pass). Columns: 1 Player, 2 Pos, 3 Salary, 4 Proj, 5 Own%, 6 Value, 7 Status (when present), 8 actions. */
 .lineup-rows-table th:nth-child(3), .lineup-rows-table td:nth-child(3),
 .lineup-rows-table th:nth-child(4), .lineup-rows-table td:nth-child(4),
-.lineup-rows-table th:nth-child(5), .lineup-rows-table td:nth-child(5) {
+.lineup-rows-table th:nth-child(5), .lineup-rows-table td:nth-child(5),
+.lineup-rows-table th:nth-child(6), .lineup-rows-table td:nth-child(6) {
   text-align: right;
   font-variant-numeric: tabular-nums;
 }
@@ -1528,6 +1528,10 @@ th.sd-cpt-col.sorted { color: var(--amber); }
 }
 .opt-input-num { width: 54px; }
 .opt-input-pct { width: 52px; }
+select.opt-input { text-align: left; padding: 3px 4px; }
+.opt-select-n { width: 46px; }
+.opt-check { display: inline-flex; align-items: center; gap: 4px; cursor: pointer; }
+.opt-check input { margin: 0; accent-color: var(--accent); }
 .opt-go { padding: 4px 18px; }
 .opt-warn { color: var(--amber); font-size: var(--fs-sm); }
 .opt-lockinfo { color: var(--text-muted); font-size: var(--fs-sm); }
@@ -1579,19 +1583,34 @@ th.sd-cpt-col.sorted { color: var(--amber); }
   .opt-p-own { flex-basis: 60px; }
 }
 
-.opt-exposure { margin-top: var(--sp-3); display: flex; flex-direction: column; gap: var(--sp-2); }
-.opt-exp-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--sp-3); align-items: start; }
-.opt-exp-box { background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 8px; padding: var(--sp-2) var(--sp-3); }
+.opt-exposure { margin-top: var(--sp-3); display: flex; flex-direction: column; gap: var(--sp-2); container-type: inline-size; }
+/* One compact table per position (Adam 2026-10-11: Exposure, Player, Team, Matchup, Own%), full names. The boxes are
+   equal fixed-width grid columns (330px: the widest box with full names on the week 5 board, 323px, plus headroom),
+   never stretched: five on one row when the section is wide enough (5 x 330 + gaps), otherwise three then two, never
+   four and a lone one; narrower, one column (full width on a phone). A box narrower than its table scrolls sideways
+   inside itself. */
+.opt-exp-grid { display: grid; grid-template-columns: max-content; gap: var(--sp-2); align-items: start; }
+.opt-exp-grid > .opt-exp-box { min-width: 0; }
+@container (min-width: 1006px) { .opt-exp-grid { grid-template-columns: repeat(3, 330px); } }
+@container (min-width: 1682px) { .opt-exp-grid { grid-template-columns: repeat(5, 330px); } }
+@media (max-width: 600px) { .opt-exp-grid { grid-template-columns: minmax(0, 1fr); } } /* phone: stacked boxes line up full width */
+.opt-exp-box { background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 8px; padding: var(--sp-2) 6px; }
 .opt-exp-title { font-weight: 700; color: var(--text-muted); font-size: var(--fs-sm); margin-bottom: 2px; }
-.opt-exp-list { max-height: 252px; overflow-y: auto; display: flex; flex-direction: column; gap: 1px; }
-.opt-exp-row { display: flex; align-items: center; gap: 5px; font-size: var(--fs-sm); white-space: nowrap; }
-.opt-exp-name { flex: 1 1 auto; min-width: 0; font-weight: 600; overflow: hidden; text-overflow: ellipsis; }
-.opt-exp-opp { flex: 0 0 44px; color: var(--text-muted); }
-.opt-exp-own { flex: 0 0 62px; text-align: right; color: var(--text-muted); font-variant-numeric: tabular-nums; }
-.opt-exp-pct { flex: 0 0 54px; text-align: right; font-weight: 600; font-variant-numeric: tabular-nums; }
+.opt-exp-list { max-height: 252px; overflow: auto; }
+.opt-exp-table { border-collapse: collapse; font-size: var(--fs-sm); white-space: nowrap; }
+.opt-exp-table th { position: sticky; top: 0; background: var(--bg-elevated); color: var(--text-muted); font-weight: 600; font-size: 0.92em; text-align: left; padding: 1px 4px 3px; }
+.opt-exp-table th.sortable { cursor: pointer; user-select: none; }
+.opt-exp-table th.sorted { color: var(--text); }
+.opt-exp-table td { padding: 1px 4px; }
+.opt-exp-table th:first-child, .opt-exp-table td:first-child { padding-left: 0; }
+.opt-exp-table th:last-child, .opt-exp-table td:last-child { padding-right: 0; }
+.opt-exp-name { font-weight: 600; }
+.opt-exp-opp { color: var(--text-muted); }
+.opt-exp-table .opt-exp-own { text-align: right; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.opt-exp-table .opt-exp-pct { text-align: right; font-weight: 600; font-variant-numeric: tabular-nums; }
+.opt-exp-table th.opt-exp-pct { font-weight: 600; }
 .opt-exp-count { font-weight: 400; color: var(--text-dim); }
 .opt-exp-empty { color: var(--text-dim); font-size: var(--fs-sm); font-style: italic; }
-@media (max-width: 1100px) { .opt-exp-grid { grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); } }
 
 /* Placed-player rows in the nine slots: the name, matchup (D43) and ownership (D32) are never cut off; the second
    line carries salary, projection and own%. Only the Classic builder uses the -2 modifier, Showdown keeps its row. */
