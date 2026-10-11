@@ -1655,6 +1655,21 @@ select.opt-input { text-align: left; padding: 3px 4px; }
 .opt-exp-count { font-weight: 400; color: var(--text-dim); }
 .opt-exp-empty { color: var(--text-dim); font-size: var(--fs-sm); font-style: italic; }
 
+/* "Only lineups with" (Adam 2026-10-11): a player's name on a card or in an exposure row is a button that adds him to
+   the filter; it looks like the plain name until hovered or focused, and shows the accent colour while he is chosen. */
+.opt-pick {
+  display: block; max-width: 100%; padding: 0; margin: 0; border: 0; background: none;
+  font: inherit; font-weight: inherit; color: inherit; text-align: left; cursor: pointer;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.opt-exp-name .opt-pick { display: inline; overflow: visible; }
+.opt-pick:hover { color: var(--accent); text-decoration: underline; }
+.opt-pick:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; border-radius: 2px; }
+.opt-pick.opt-pick-on { color: var(--accent); }
+.opt-must-bar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); padding: var(--sp-2) var(--sp-3); background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 8px; }
+.opt-must-label { font-size: var(--fs-sm); font-weight: 600; color: var(--text-muted); }
+.opt-must-count { margin-left: auto; }
+
 /* Placed-player rows in the nine slots: the name, matchup (D43) and ownership (D32) are never cut off; the second
    line carries salary, projection and own%. Only the Classic builder uses the -2 modifier, Showdown keeps its row. */
 .lineup-slot-player.lineup-slot-player-2 { flex-direction: column; align-items: flex-start; gap: 2px; }

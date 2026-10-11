@@ -20,6 +20,7 @@ import { escapeHtml, money, dec1, dec2, textColourFor } from "./format.js";
 import { store, filterRows, sortRows, passesProjFloor, FLEX_POS, defaultDirFor, activeSlate, activeSlateRows, activeSlateGames, slateDisplayName } from "./state.js";
 import { sortableHeadHtml } from "./tabs.js";
 import { posChipsHtml } from "./filterbar.js";
+import { filterLineups, bulkUids, bulkLabel, toggleMustHave, pickButtonHtml, filterBarHtml } from "./lineup-filter.js";
 import { TEAM_BY_ABBR } from "./teams-data.js";
 import { postLineupGenerate, getLineups, postLineup, deleteLineup, putLineupName } from "./api.js";
 import { renderEntriesSection, wireEntries } from "./entries.js";
@@ -188,6 +189,7 @@ function validateAgainstBoard(board) {
     state.savedError = null;
     loadSavedLineups(savedKey);
     resetOptimizerResults(); // new lineups belong to the week they were made for
+    clearMustHave(); // the players he filtered by belong to that week too
     opt.avoid.clear(); // avoid-game picks are games of that week
   }
   const rowById = new Map((board.rows ?? []).map((r) => [String(r.id), r]));
@@ -602,7 +604,8 @@ function computeLiveTotals(lineup, rowById) {
   return { slotEntries, filled, salaryUsed, totalProj, totalOwn, ownPublished };
 }
 
-function savedLineupSlotHtml(slotName, entry) {
+/** `pick` ({isChosen(id)}, see pickOptions) turns the player's name into the "only lineups with" button. */
+function savedLineupSlotHtml(slotName, entry, pick = null) {
   if (!entry) {
     return `<div class="saved-lineup-slot saved-lineup-slot-empty"><span class="saved-lineup-slot-pos">${escapeHtml(slotName)}</span><span class="saved-lineup-slot-empty-text">Empty</span></div>`;
   }
@@ -610,17 +613,19 @@ function savedLineupSlotHtml(slotName, entry) {
   if (!src) return "";
   const missingCls = entry.row ? "" : " saved-lineup-slot-missing";
   const noteHtml = entry.row ? "" : `<span class="saved-lineup-slot-note">not on slate</span>`;
+  const pickId = entry.row?.id ?? entry.snap?.playerId;
+  const nameHtml = pick && pickId != null ? pickButtonHtml({ id: pickId, name: src.name ?? "", chosen: pick.isChosen(pickId) }) : escapeHtml(src.name ?? "");
   return `
     <div class="saved-lineup-slot${missingCls}">
       <span class="saved-lineup-slot-pos">${escapeHtml(slotName)}</span>
-      <span class="saved-lineup-slot-name">${escapeHtml(src.name ?? "")}</span>
+      <span class="saved-lineup-slot-name">${nameHtml}</span>
       <span class="saved-lineup-slot-team">${escapeHtml(src.team ?? "")}</span>
       <span class="saved-lineup-slot-salary">${money(src.salary)}</span>
       ${noteHtml}
     </div>`;
 }
 
-function savedLineupCardHtml(lineup, rowById) {
+function savedLineupCardHtml(lineup, rowById, pick = null) {
   const totals = computeLiveTotals(lineup, rowById);
   const overCap = totals.salaryUsed > SALARY_CAP;
   const incomplete = totals.filled < LINEUP_SLOTS.length;
@@ -640,7 +645,7 @@ function savedLineupCardHtml(lineup, rowById) {
       </span>`
     : `<button type="button" class="saved-lineup-name-btn" data-action="lineup-rename-start" data-id="${escapeHtml(lineup.id)}" title="Click to rename">${escapeHtml(lineup.name)}</button>`;
 
-  const rowsHtml = totals.slotEntries.map((entry, i) => savedLineupSlotHtml(LINEUP_SLOTS[i], entry)).join("");
+  const rowsHtml = totals.slotEntries.map((entry, i) => savedLineupSlotHtml(LINEUP_SLOTS[i], entry, pick)).join("");
 
   const salaryLeft = SALARY_CAP - totals.salaryUsed;
   const salaryText = overCap
@@ -686,6 +691,7 @@ function savedLineupCardHtml(lineup, rowById) {
 function savedLineupsSectionHtml(rowById, savedHere) {
   let body;
   let exposureHtml = "";
+  let shownCount = 0;
   lastExposure = { exposure: {}, subtitle: "" };
   if (!state.savedLoaded) {
     // A distinct class from saved-lineups-empty (below): a QA screenshot script waits for the real
@@ -698,16 +704,41 @@ function savedLineupsSectionHtml(rowById, savedHere) {
   } else if (savedHere.length === 0) {
     body = `<div class="saved-lineups-empty">No saved lineups for this slate yet.</div>`;
   } else {
-    body = `<div class="saved-lineups-list">${savedHere.map((l) => savedLineupCardHtml(l, rowById)).join("")}</div>`;
+    // Adam 2026-10-11: only the saved lineups holding every chosen player show, and the exposure counts those only.
+    const pick = pickOptions(rowById);
     const n = savedHere.length;
-    lastExposure = { exposure: exposureOfLineups(savedHere.map((l) => savedLineupPlayers(l, rowById))), subtitle: `${n} saved lineup${n === 1 ? "" : "s"}` };
-    exposureHtml = optExposureHtml(lastExposure.exposure, lastExposure.subtitle, opt.expSortDir);
+    const shown = filterLineups(savedHere, opt.mustHave, (l) => savedLineupPlayers(l, rowById));
+    const k = shown.length;
+    shownCount = k;
+    if (k === 0) {
+      body = `<div class="saved-lineups-empty">${NO_MATCH_TEXT}</div>`;
+    } else {
+      body = `<div class="saved-lineups-list">${shown.map((e) => savedLineupCardHtml(e.item, rowById, pick)).join("")}</div>`;
+      const subtitle = opt.mustHave.length ? `${k} of ${n} saved lineup${n === 1 ? "" : "s"}, filtered` : `${n} saved lineup${n === 1 ? "" : "s"}`;
+      lastExposure = { exposure: exposureOfLineups(shown.map((e) => savedLineupPlayers(e.item, rowById))), subtitle };
+      exposureHtml = optExposureHtml(lastExposure.exposure, lastExposure.subtitle, opt.expSortDir, pick);
+    }
   }
   return `
     <div class="saved-lineups" id="saved-lineups">
+      ${mustHaveBarHtml(shownCount, savedHere.length)}
       ${body}
       ${exposureHtml}
     </div>`;
+}
+
+const NO_MATCH_TEXT = "No lineups here have all of the chosen players.";
+
+/** The click-to-filter hooks the card and exposure builders take: `isChosen(boardId)` says whether that player is in
+ *  the "only lineups with" list (matched by DraftKings identity, as exposure counts him). */
+function pickOptions(rowById) {
+  return { isChosen: (id) => opt.mustHave.includes(identityOf(id, rowById)) };
+}
+
+/** The "Only lineups with:" bar for the tab on screen, empty when nobody is chosen. */
+function mustHaveBarHtml(shown, total) {
+  const chips = opt.mustHave.map((key) => ({ key, name: opt.mustHaveNames[key] ?? key }));
+  return filterBarHtml(chips, shown, total);
 }
 
 /** A saved lineup's players for the exposure tables: the live board row when there is one (matchup D43, own% D32),
@@ -1029,6 +1060,10 @@ const opt = {
   // Mirrored to localStorage with the locks (savePersisted); Clear all leaves it, as it leaves every Optimizer setting.
   playerMax: {},
   resultsTab: null, // D74: "new" or "saved" once Go or a tab click picks one this page load; null = the default
+  // Adam 2026-10-11: "only lineups with" these players (identity keys, in the order chosen), shared by the New and
+  // Saved tabs, page-only, kept across Go, cleared when the slate or week changes. mustHaveNames: key -> name for the chips.
+  mustHave: [],
+  mustHaveNames: {},
   expSortDir: "desc", // the exposure lists' one sort, by exposure: "desc" (highest first) or "asc"
   generating: false,
   saving: false,
@@ -1043,6 +1078,11 @@ function resetOptimizerResults() {
   opt.results = null;
   opt.error = null;
   opt.saveError = null;
+}
+
+function clearMustHave() {
+  opt.mustHave = [];
+  opt.mustHaveNames = {};
 }
 
 // ---- Pure helpers (exported for tests/optimizer-ui.test.mjs) ----
@@ -1196,7 +1236,10 @@ let lastOptSlateKey;
 function syncOptimizerSlate() {
   const key = store.get().activeSlateKey ?? null;
   if (key !== lastOptSlateKey) {
-    if (lastOptSlateKey !== undefined) resetOptimizerResults();
+    if (lastOptSlateKey !== undefined) {
+      resetOptimizerResults();
+      clearMustHave(); // Adam 2026-10-11: the "only lineups with" players are cleared when the slate changes
+    }
     lastOptSlateKey = key;
   }
 }
@@ -1308,7 +1351,7 @@ export function avoidChipsHtml(games, avoid) {
     .join("");
 }
 
-function optPlayerRowHtml(p, slotName, isNew = false) {
+function optPlayerRowHtml(p, slotName, isNew = false, pick = null) {
   const t = TEAM_BY_ABBR[p.team];
   const primary = t?.colourPrimary ?? "#333333";
   const secondary = t?.colourSecondary ?? "#ffffff";
@@ -1321,7 +1364,7 @@ function optPlayerRowHtml(p, slotName, isNew = false) {
         ${dot}
         <span class="opt-p-slot">${escapeHtml(slotName)}</span>
         <span class="team-chip-mini" style="background:${primary};color:${textColour}">${escapeHtml(p.team ?? "")}</span>
-        <span class="opt-p-name">${escapeHtml(p.name ?? "")}</span>
+        <span class="opt-p-name">${pick && p.id != null ? pickButtonHtml({ id: p.id, name: p.name ?? "", chosen: pick.isChosen(p.id) }) : escapeHtml(p.name ?? "")}</span>
         <span class="opt-p-opp">${escapeHtml(p.opp ?? "")}</span>
         <span class="opt-p-sal">${money(p.salary)}</span>
         <span class="opt-p-proj">${projText}</span>
@@ -1332,11 +1375,12 @@ function optPlayerRowHtml(p, slotName, isNew = false) {
 /** One "new lineup" card: the nine players in DK slot order (name, matchup D43, salary, projection, own% D32),
  *  the totals, and Save / Discard. `busy` disables both while a save is in flight. `saved`: the card is saved, or
  *  its nine players equal a saved lineup's, so Save shows a disabled "Saved ✓" (Adam 2026-10-11). `fresh`: the
- *  ids of players not in the card before, highlighted. */
-export function optLineupCardHtml(lineup, index, busy, { saved = false, fresh = null } = {}) {
+ *  ids of players not in the card before, highlighted. `pick` ({isChosen(id)}): each name is the "only lineups
+ *  with" button (Adam 2026-10-11). */
+export function optLineupCardHtml(lineup, index, busy, { saved = false, fresh = null, pick = null } = {}) {
   const totals = lineupTotalsOf(lineup);
   const overCap = totals.salary > SALARY_CAP;
-  const rows = (lineup.players ?? []).map((p, i) => optPlayerRowHtml(p, LINEUP_SLOTS[i] ?? p.pos ?? "", Boolean(fresh?.has(String(p.id))))).join("");
+  const rows = (lineup.players ?? []).map((p, i) => optPlayerRowHtml(p, LINEUP_SLOTS[i] ?? p.pos ?? "", Boolean(fresh?.has(String(p.id))), pick)).join("");
   const ownText = totals.own == null ? "" : ` &middot; ${Math.round(totals.own)}% own`;
   const uid = escapeHtml(lineup.uid ?? "");
   const saveBtn = saved
@@ -1376,8 +1420,9 @@ export function sortExposure(list, dir) {
  *  %Own). Exposure is "42% (2)": the share of the tab's lineups (D74: the new batch, or the saved ones) that hold
  *  him and how many; only its header sorts, one direction `sortDir` for every box. Matchup is D43's; own% is D32's
  *  (blank when nobody published one). `exposure` is {QB: [{name, team, opp, own, count, pct}], ...}; `subtitle`
- *  names the set ("5 new lineups"). */
-export function optExposureHtml(exposure, subtitle = "", sortDir = "desc") {
+ *  names the set ("5 new lineups"). `pick` ({isChosen(id)}) makes each name the "only lineups with" button
+ *  (Adam 2026-10-11). */
+export function optExposureHtml(exposure, subtitle = "", sortDir = "desc", pick = null) {
   const dir = sortDir === "asc" ? "asc" : "desc";
   const arrow = dir === "asc" ? " ▲" : " ▼";
   const head = `<tr><th class="sortable sorted opt-exp-pct" data-action="opt-exp-sort" aria-sort="${dir === "asc" ? "ascending" : "descending"}">Exposure${arrow}</th><th>Player</th><th>Team</th><th>Matchup</th><th class="opt-exp-own">Own%</th></tr>`;
@@ -1389,7 +1434,7 @@ export function optExposureHtml(exposure, subtitle = "", sortDir = "desc") {
             (e) => `
           <tr class="opt-exp-row">
             <td class="opt-exp-pct">${escapeHtml(String(Math.round(e.pct ?? 0)))}% <span class="opt-exp-count">(${escapeHtml(String(e.count ?? 0))})</span></td>
-            <td class="opt-exp-name">${escapeHtml(e.name ?? "")}</td>
+            <td class="opt-exp-name">${pick && e.id != null ? pickButtonHtml({ id: e.id, name: e.name ?? "", chosen: pick.isChosen(e.id) }) : escapeHtml(e.name ?? "")}</td>
             <td class="opt-exp-team">${teamBadgeHtml(e.team)}</td>
             <td class="opt-exp-opp">${escapeHtml(e.opp ?? "")}</td>
             <td class="opt-exp-own">${e.own == null ? "" : `${escapeHtml(String(Math.round(e.own)))}%`}</td>
@@ -1519,8 +1564,13 @@ function optimizerResultsHtml(rowById) {
 
 function newLineupsTabHtml(rowById, savedHere) {
   const parts = [];
-  if (opt.error) parts.push(`<div class="lineup-status lineup-status-error">${escapeHtml(opt.error)}</div>`);
   const r = opt.results;
+  // Adam 2026-10-11: only the lineups holding every chosen player show (cards keep their own numbers); the
+  // exposure counts those only. Nothing is deleted or changed by it.
+  const pick = pickOptions(rowById);
+  const shown = filterLineups(r?.lineups ?? [], opt.mustHave, (l) => (l.players ?? []).map((p) => ({ ...p, identity: identityOf(p.id, rowById) })));
+  parts.push(mustHaveBarHtml(shown.length, r?.lineups.length ?? 0));
+  if (opt.error) parts.push(`<div class="lineup-status lineup-status-error">${escapeHtml(opt.error)}</div>`);
   if (!r) {
     parts.push(`<div class="saved-lineups-empty">${opt.generating ? "Making lineups…" : "No new lineups. Press Go to make some."}</div>`);
     lastExposure = { exposure: {}, subtitle: "" };
@@ -1531,26 +1581,36 @@ function newLineupsTabHtml(rowById, savedHere) {
   const savedKeys = savedSetKeys(savedHere, rowById);
   const savedFlags = r.lineups.map((l) => cardIsSaved(l, savedKeys, rowById));
   const nSaved = savedFlags.filter(Boolean).length;
-  const allSaved = n > 0 && nSaved === n;
+  // Save all / Discard all act only on the lineups shown while the filter is on (Adam 2026-10-11).
+  const filtered = opt.mustHave.length > 0;
+  const nShown = shown.length;
+  const allSaved = n > 0 && (filtered ? shown.every((e) => savedFlags[e.index]) : nSaved === n);
+  const noneShown = filtered && nShown === 0;
   parts.push(
     n
       ? `<div class="opt-results-head">
            <span class="opt-sub">${n} lineup${n === 1 ? "" : "s"} from the last Go${nSaved ? `, ${nSaved} saved` : ", not saved yet"}</span>
            <span class="opt-card-actions">
-             <button type="button" class="saved-lineup-btn" data-action="opt-save-all"${busy || allSaved ? " disabled" : ""}>Save all</button>
-             <button type="button" class="saved-lineup-btn danger" data-action="opt-discard-all"${busy ? " disabled" : ""}>Discard all</button>
+             <button type="button" class="saved-lineup-btn" data-action="opt-save-all"${busy || allSaved || noneShown ? " disabled" : ""}>${bulkLabel("Save", nShown, filtered)}</button>
+             <button type="button" class="saved-lineup-btn danger" data-action="opt-discard-all"${busy || noneShown ? " disabled" : ""}>${bulkLabel("Discard", nShown, filtered)}</button>
            </span>
          </div>`
       : `<div class="opt-sub">None left from the last Go.</div>`
   );
   if (opt.saveError) parts.push(`<div class="lineup-status lineup-status-error">${escapeHtml(opt.saveError)}</div>`);
   parts.push(optNotesHtml(r.notes));
-  if (n) {
-    const fresh = newPlayerIds(r.lineups, rowById);
-    parts.push(`<div class="opt-cards">${r.lineups.map((l, i) => optLineupCardHtml(l, i, busy, { saved: savedFlags[i], fresh: fresh[i] })).join("")}</div>`);
-    const players = r.lineups.map((l) => (l.players ?? []).map((p) => ({ ...p, identity: identityOf(p.id, rowById) })));
-    lastExposure = { exposure: exposureOfLineups(players), subtitle: `${n} new lineup${n === 1 ? "" : "s"}` };
-    parts.push(optExposureHtml(lastExposure.exposure, lastExposure.subtitle, opt.expSortDir));
+  if (n && !shown.length) {
+    parts.push(`<div class="saved-lineups-empty">${NO_MATCH_TEXT}</div>`);
+    lastExposure = { exposure: {}, subtitle: "" };
+  } else if (n) {
+    // The new-player highlight compares a card with the previous card SHOWN.
+    const fresh = newPlayerIds(shown.map((e) => e.item), rowById);
+    parts.push(`<div class="opt-cards">${shown.map((e, k) => optLineupCardHtml(e.item, e.index, busy, { saved: savedFlags[e.index], fresh: fresh[k], pick })).join("")}</div>`);
+    const players = shown.map((e) => (e.item.players ?? []).map((p) => ({ ...p, identity: identityOf(p.id, rowById) })));
+    const k = shown.length;
+    const subtitle = opt.mustHave.length ? `${k} of ${n} new lineup${n === 1 ? "" : "s"}, filtered` : `${n} new lineup${n === 1 ? "" : "s"}`;
+    lastExposure = { exposure: exposureOfLineups(players), subtitle };
+    parts.push(optExposureHtml(lastExposure.exposure, lastExposure.subtitle, opt.expSortDir, pick));
   } else {
     lastExposure = { exposure: {}, subtitle: "" };
   }
@@ -1694,12 +1754,40 @@ function wireExposureSort(container) {
       const section = container.querySelector(".opt-exposure");
       if (!section) return;
       const holder = document.createElement("div");
-      holder.innerHTML = optExposureHtml(lastExposure.exposure, lastExposure.subtitle, opt.expSortDir);
+      holder.innerHTML = optExposureHtml(lastExposure.exposure, lastExposure.subtitle, opt.expSortDir, pickOptions(currentRowById()));
       const fresh = holder.querySelector(".opt-exposure");
       if (!fresh) return;
       section.replaceWith(fresh);
       wireExposureSort(container);
+      wirePickButtons(fresh); // only the new section; the rest keep their handlers
     });
+  });
+}
+
+function currentRowById() {
+  return new Map((store.get().board?.rows ?? []).map((r) => [String(r.id), r]));
+}
+
+/** Adam 2026-10-11: a player's name (exposure row or lineup card, new or saved) adds him to the "only lineups with"
+ *  list or takes him out; a chip's × takes him out; Clear empties it. Page-only; nothing is saved or deleted. */
+function wirePickButtons(container) {
+  container.querySelectorAll("[data-action='opt-pick']").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const key = identityOf(btn.dataset.pickId, currentRowById());
+      if (!opt.mustHave.includes(key)) opt.mustHaveNames[key] = btn.dataset.pickName ?? key;
+      opt.mustHave = toggleMustHave(opt.mustHave, key);
+      commit();
+    });
+  });
+  container.querySelectorAll("[data-action='opt-pick-remove']").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      opt.mustHave = toggleMustHave(opt.mustHave, btn.dataset.pickKey);
+      commit();
+    });
+  });
+  container.querySelector("[data-action='opt-pick-clear']")?.addEventListener("click", () => {
+    clearMustHave();
+    commit();
   });
 }
 
@@ -1736,6 +1824,7 @@ function wireOptimizer(container) {
   bindValue("#opt-stack-own-more", "stackOwnOrMore", (el) => el.checked);
   bindValue("#opt-stack-opp-more", "stackOppOrMore", (el) => el.checked);
   wireExposureSort(container);
+  wirePickButtons(container);
   container.querySelector("#opt-go-btn")?.addEventListener("click", () => doGenerate());
   container.querySelectorAll("[data-action='opt-rule']").forEach((btn) => {
     btn.addEventListener("click", () => {
@@ -1758,7 +1847,7 @@ function wireOptimizer(container) {
     btn.addEventListener("click", () => discardGenerated(btn.dataset.uid));
   });
   container.querySelector("[data-action='opt-save-all']")?.addEventListener("click", () => {
-    saveGenerated((opt.results?.lineups ?? []).map((l) => l.uid)); // saved cards are skipped inside
+    saveGenerated(shownNewUids()); // only the shown lineups while filtered; saved cards are skipped inside
   });
   // D74: the New / Saved tabs; the pick is remembered for this page load.
   container.querySelectorAll("[data-action='opt-tab']").forEach((btn) => {
@@ -1786,7 +1875,19 @@ function wireOptimizer(container) {
     });
   });
   container.querySelector("[data-action='opt-discard-all']")?.addEventListener("click", () => {
-    resetOptimizerResults();
+    if (opt.mustHave.length && opt.results) {
+      // Filtered: discard only the lineups shown; the hidden ones stay untouched (Adam 2026-10-11).
+      const gone = new Set(shownNewUids());
+      opt.results.lineups = opt.results.lineups.filter((l) => !gone.has(l.uid));
+    } else {
+      resetOptimizerResults();
+    }
     commit();
   });
+}
+
+/** The uids of the new lineups on screen: all of them, or only those holding every chosen player. */
+function shownNewUids() {
+  const rowById = currentRowById();
+  return bulkUids(opt.results?.lineups ?? [], opt.mustHave, (l) => (l.players ?? []).map((p) => ({ ...p, identity: identityOf(p.id, rowById) })));
 }
