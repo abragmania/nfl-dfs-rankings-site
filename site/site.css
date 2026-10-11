@@ -104,3 +104,9 @@
   pointer-events: none;
   cursor: default;
 }
+
+/* Optimizer: it makes and saves lineups, so the read-only site does not show it. */
+.is-site .opt-panel,
+.is-site .opt-results {
+  display: none !important;
+}

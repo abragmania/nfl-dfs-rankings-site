@@ -17,9 +17,9 @@
 // with no row anymore (a stale localStorage entry, or last week's slate) is dropped instead of rendering
 // stale data or throwing.
 import { escapeHtml, money, dec1, textColourFor } from "./format.js";
-import { store, filterRows, sortRows, passesProjFloor, FLEX_POS, activeSlate, activeSlateRows, slateDisplayName } from "./state.js";
+import { store, filterRows, sortRows, passesProjFloor, FLEX_POS, activeSlate, activeSlateRows, activeSlateGames, slateDisplayName } from "./state.js";
 import { TEAM_BY_ABBR } from "./teams-data.js";
-import { postLineupOptimize, getLineups, postLineup, deleteLineup, putLineupName } from "./api.js";
+import { postLineupOptimize, postLineupGenerate, getLineups, postLineup, deleteLineup, putLineupName } from "./api.js";
 
 const LINEUP_SLOTS = ["QB", "RB", "RB", "WR", "WR", "WR", "TE", "FLEX", "DST"];
 const SALARY_CAP = 50000;
@@ -198,6 +198,8 @@ function validateAgainstBoard(board) {
     state.savedLineups = [];
     state.savedError = null;
     loadSavedLineups(savedKey);
+    resetOptimizerResults(); // new lineups belong to the week they were made for
+    opt.avoid.clear(); // avoid-game picks are games of that week
   }
   const rowById = new Map((board.rows ?? []).map((r) => [String(r.id), r]));
   for (const id of [...state.locks]) if (!rowById.has(id)) state.locks.delete(id);
@@ -215,6 +217,7 @@ export function renderLineupPanel(container) {
   lastContainer = container;
   hydrateFromStorage();
   validateAgainstBoard(store.get().board);
+  syncOptimizerSlate();
   // 🔵 finding 9: the pool's scroll position must survive the innerHTML rebuild below.
   const prevPool = container.querySelector(".lineup-rows-wrap");
   const savedScrollTop = prevPool ? prevPool.scrollTop : 0;
@@ -502,6 +505,7 @@ async function doSaveLineup(name) {
       state.savedLineups = Array.isArray(data.lineups) ? data.lineups : state.savedLineups;
       state.saveName = "";
       state.saveConfirm = `Saved "${data.lineup?.name ?? ""}".`;
+      markExposureStale(); // the saved set changed, so the Optimizer's exposure lists are no longer current
     }
   } catch (e) {
     state.saveError = `Could not reach the server: ${e.message}`;
@@ -527,7 +531,10 @@ async function doDeleteLineup(id) {
   commit();
   try {
     const data = await deleteLineup(id);
-    if (data && data.ok !== false && Array.isArray(data.lineups)) state.savedLineups = data.lineups;
+    if (data && data.ok !== false && Array.isArray(data.lineups)) {
+      state.savedLineups = data.lineups;
+      markExposureStale();
+    }
   } catch (e) {
     // Best-effort: nothing destructive happened locally, the list just won't reflect the delete until reloaded.
   }
@@ -582,6 +589,8 @@ function panelHtml() {
         ${rightColumnHtml(activeSlateRows(board), rowById)}
       </div>
     </div>
+    ${optimizerControlsHtml(rowById)}
+    ${optimizerResultsHtml(rowById)}
     ${savedLineupsSectionHtml(rowById)}`;
 }
 
@@ -648,9 +657,12 @@ function slotPlayerHtml(row) {
   const textColour = textColourFor(primary, secondary);
   const projText = row.proj == null ? "no proj" : dec1(row.proj);
   return `
-    <span class="lineup-slot-player">
-      <span class="team-chip-mini" style="background:${primary};color:${textColour}">${escapeHtml(row.team ?? "")}</span>
-      <span class="lineup-slot-name">${escapeHtml(row.name)}</span>
+    <span class="lineup-slot-player lineup-slot-player-2">
+      <span class="lineup-slot-top">
+        <span class="team-chip-mini" style="background:${primary};color:${textColour}">${escapeHtml(row.team ?? "")}</span>
+        <span class="lineup-slot-name">${escapeHtml(row.name)}</span>
+        <span class="lineup-slot-matchup">${escapeHtml(matchupOf(row))}</span>
+      </span>
       <span class="lineup-slot-detail">${money(row.salary)} &middot; ${projText} proj${escapeHtml(ownParen(row.own))}</span>
     </span>`;
 }
@@ -1047,5 +1059,512 @@ function wire(container) {
 
   container.querySelectorAll("[data-action='lineup-load']").forEach((btn) => {
     btn.addEventListener("click", () => doLoadLineup(btn.dataset.id));
+  });
+
+  wireOptimizer(container);
+}
+
+// --------------------------------------------------------------------------------------------------------
+// Optimizer (PROJECT.md Part 4 "Optimizer"; DECISIONS.md D55 as amended 2026-10-10, D43, D32, D57).
+// "Make N more lineups from these locks": the slots Adam has filled (plus any pool Lock) are the locks, the D55
+// rules are toggle chips (all on), and the per-position maximum exposure boxes are his own (blank = no cap).
+// POST /api/lineup/generate returns lineups that are NOT saved; each card is saved through the existing
+// save-lineup route or discarded. The form's values live in `opt` (typed text is kept as typed), so the whole
+// panel can re-render without losing a box; nothing here is written to localStorage.
+// --------------------------------------------------------------------------------------------------------
+
+const OPT_POSITIONS = ["QB", "RB", "WR", "TE", "DST"];
+const OPT_MAX_COUNT = 150;
+const OPT_MAX_UNIQUE = 8;
+const OPT_DEFAULT_COUNT = 5;
+const OPT_DEFAULT_UNIQUE = 1;
+const OPT_BUSY_TEXT = "Another set of lineups is still being made. Try again in a moment.";
+
+/** The seven D55 rules, in the server's rule keys (server/lineup/multi.js RULE_KEYS), with Adam's chip words. */
+export const OPT_RULES = [
+  { key: "starredQbOnly", label: "starred QBs only" },
+  { key: "qbStack", label: "QB stack" },
+  { key: "rbWithOwnQbOnlyIfCatcher", label: "RB with own QB only if pass catcher" },
+  { key: "oneOffensivePerOtherTeam", label: "one per other team" },
+  { key: "noSameTeamRbs", label: "no same-team RBs" },
+  { key: "noSameGameRbs", label: "no same-game RBs" },
+  { key: "noDstVsOwnPlayers", label: "no DST vs own players" },
+];
+
+const opt = {
+  count: String(OPT_DEFAULT_COUNT),
+  minUnique: String(OPT_DEFAULT_UNIQUE),
+  maxExp: { QB: "", RB: "", WR: "", TE: "", DST: "" }, // percent text as typed; blank = no cap
+  rules: Object.fromEntries(OPT_RULES.map((r) => [r.key, true])),
+  avoid: new Set(), // game ids such as "DET@ARI"
+  generating: false,
+  saving: false,
+  error: null, // the server's sentence for a refused or failed request
+  saveError: null,
+  formError: null, // a sentence naming a maximum-exposure box that is not a percent; blocks Go
+  results: null, // {slateKey, lineups: [{uid, ids, salary, proj, players}], exposure, notes, exposureStale} or null
+};
+let optSeq = 0;
+
+function resetOptimizerResults() {
+  opt.results = null;
+  opt.error = null;
+  opt.saveError = null;
+}
+
+// ---- Pure helpers (exported for tests/optimizer-ui.test.mjs) ----
+
+/** A whole number from a text box, clamped to [min, max]; anything that is not a number gives `fallback`. */
+export function parseWhole(text, min, max, fallback) {
+  const t = String(text ?? "").trim();
+  if (t === "") return fallback;
+  const n = Number(t);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.max(min, Math.min(max, Math.round(n)));
+}
+
+/** A percent box: blank is "no cap" (null); a number from 0 to 100 (a trailing % sign is allowed) is that number;
+ *  anything else (words, a negative, over 100) is NaN, which blocks Go (exposureProblem) and is never clamped. */
+export function parsePct(text) {
+  const t = String(text ?? "").trim().replace(/%$/, "").trim();
+  if (t === "") return null;
+  const n = Number(t);
+  if (!Number.isFinite(n) || n < 0 || n > 100) return NaN;
+  return n;
+}
+
+/** The first maximum-exposure box that is neither blank nor a number from 0 to 100, as a plain sentence naming
+ *  the position, else null. */
+export function exposureProblem(maxExp) {
+  for (const pos of OPT_POSITIONS) {
+    if (Number.isNaN(parsePct(maxExp?.[pos]))) {
+      return `${pos} maximum exposure must be a percent from 0 to 100, or blank for no cap.`;
+    }
+  }
+  return null;
+}
+
+/** D43: "vs DAL" at home, "@ DET" away, from the board's "AWAY@HOME" game id; the board's own opponent text when
+ *  the game id cannot tell. */
+export function matchupOf(row) {
+  const [away, home] = String(row?.gameId ?? "").split("@");
+  if (away && home && row.team === home) return `vs ${away}`;
+  if (away && home && row.team === away) return `@ ${home}`;
+  return row?.opp ? String(row.opp) : "";
+}
+
+/** The saved lineups or the board changed under the lists, so the exposure counts are no longer current. */
+function markExposureStale() {
+  if (opt.results) opt.results.exposureStale = true;
+}
+
+let lastOptSlateKey;
+/** New lineups belong to the slate they were made for (D57): switching the active slate clears them. */
+function syncOptimizerSlate() {
+  const key = store.get().activeSlateKey ?? null;
+  if (key !== lastOptSlateKey) {
+    if (lastOptSlateKey !== undefined) resetOptimizerResults();
+    lastOptSlateKey = key;
+  }
+}
+
+/** The locked player ids: every filled slot, then any pool Lock not already placed. Strings, no repeats. */
+export function lockedIds(slots, locks) {
+  const out = [];
+  const seen = new Set();
+  for (const s of slots ?? []) {
+    if (s && s.id != null && !seen.has(String(s.id))) {
+      seen.add(String(s.id));
+      out.push(String(s.id));
+    }
+  }
+  for (const id of locks ?? []) {
+    if (!seen.has(String(id))) {
+      seen.add(String(id));
+      out.push(String(id));
+    }
+  }
+  return out;
+}
+
+/** The `settings` object for POST /api/lineup/generate. maxExposure carries only {pct: N} for boxes that have a
+ *  number (a blank box is left out, never sent as 0); every rule is sent explicitly. */
+export function buildGenerateSettings(form) {
+  const maxExposure = {};
+  for (const pos of OPT_POSITIONS) {
+    const pct = parsePct(form.maxExposure?.[pos]);
+    if (pct !== null && !Number.isNaN(pct)) maxExposure[pos] = { pct };
+  }
+  const rules = {};
+  for (const r of OPT_RULES) rules[r.key] = form.rules?.[r.key] !== false;
+  return {
+    count: parseWhole(form.count, 1, OPT_MAX_COUNT, OPT_DEFAULT_COUNT),
+    minUnique: parseWhole(form.minUnique, 1, OPT_MAX_UNIQUE, OPT_DEFAULT_UNIQUE),
+    locks: (form.locks ?? []).map(String),
+    excludes: (form.excludes ?? []).map(String),
+    maxExposure,
+    rules,
+    avoidGames: [...(form.avoid ?? [])],
+  };
+}
+
+/** The whole request body: the active slate key (D57: "main" or the second slate's key) plus the settings. */
+export function buildGeneratePayload(form, slateKey) {
+  return { slate: slateKey || "main", settings: buildGenerateSettings(form) };
+}
+
+/** [{slot, playerId}] for POST /api/lineups. The server returns the nine players already in DraftKings slot order,
+ *  so a full lineup maps by position in the list; a short or odd one is placed by position name, spare RB/WR/TE
+ *  into FLEX. */
+export function slotsForSave(players) {
+  const list = players ?? [];
+  if (list.length === LINEUP_SLOTS.length) return list.map((p, i) => ({ slot: LINEUP_SLOTS[i], playerId: String(p.id) }));
+  const out = [];
+  const used = new Array(LINEUP_SLOTS.length).fill(false);
+  const place = (p, name) => {
+    const i = LINEUP_SLOTS.findIndex((s, k) => s === name && !used[k]);
+    if (i === -1) return false;
+    used[i] = true;
+    out.push({ slot: name, playerId: String(p.id) });
+    return true;
+  };
+  for (const p of list) if (!place(p, p.pos) && FLEX_POS.has(p.pos)) place(p, "FLEX");
+  return out;
+}
+
+/** Salary, projection and ownership totals of a generated lineup; ownership is null unless every player has a number. */
+export function lineupTotalsOf(lineup) {
+  const players = lineup?.players ?? [];
+  const salary = lineup?.salary ?? players.reduce((s, p) => s + (p.salary ?? 0), 0);
+  const proj = lineup?.proj ?? players.reduce((s, p) => s + (p.proj ?? 0), 0);
+  const allOwn = players.length > 0 && players.every((p) => p.own != null);
+  return { salary, proj, own: allOwn ? players.reduce((s, p) => s + p.own, 0) : null };
+}
+
+export function ruleChipsHtml(rules) {
+  return OPT_RULES.map(
+    (r) =>
+      `<button type="button" class="chip toggle-chip opt-chip${rules?.[r.key] !== false ? " active" : ""}" data-action="opt-rule" data-key="${escapeHtml(r.key)}" aria-pressed="${rules?.[r.key] !== false}">${escapeHtml(r.label)}</button>`
+  ).join("");
+}
+
+export function avoidChipsHtml(games, avoid) {
+  return (games ?? [])
+    .map((g) => {
+      const id = String(g.id ?? g);
+      const on = avoid?.has(id);
+      return `<button type="button" class="chip opt-chip opt-avoid-chip${on ? " active" : ""}" data-action="opt-avoid" data-game="${escapeHtml(id)}" aria-pressed="${on ? "true" : "false"}">${escapeHtml(id.replace("@", " @ "))}</button>`;
+    })
+    .join("");
+}
+
+function optPlayerRowHtml(p, slotName) {
+  const t = TEAM_BY_ABBR[p.team];
+  const primary = t?.colourPrimary ?? "#333333";
+  const secondary = t?.colourSecondary ?? "#ffffff";
+  const textColour = textColourFor(primary, secondary);
+  const projText = p.proj == null ? "—" : dec1(p.proj);
+  return `
+      <div class="opt-p">
+        <span class="opt-p-slot">${escapeHtml(slotName)}</span>
+        <span class="team-chip-mini" style="background:${primary};color:${textColour}">${escapeHtml(p.team ?? "")}</span>
+        <span class="opt-p-name">${escapeHtml(p.name ?? "")}</span>
+        <span class="opt-p-opp">${escapeHtml(p.opp ?? "")}</span>
+        <span class="opt-p-sal">${money(p.salary)}</span>
+        <span class="opt-p-proj">${projText}</span>
+        <span class="opt-p-own">${escapeHtml(ownParen(p.own))}</span>
+      </div>`;
+}
+
+/** One "new lineup" card: the nine players in DK slot order (name, matchup D43, salary, projection, own% D32),
+ *  the totals, and Save / Discard. `busy` disables both while a save is in flight. */
+export function optLineupCardHtml(lineup, index, busy) {
+  const totals = lineupTotalsOf(lineup);
+  const overCap = totals.salary > SALARY_CAP;
+  const rows = (lineup.players ?? []).map((p, i) => optPlayerRowHtml(p, LINEUP_SLOTS[i] ?? p.pos ?? "")).join("");
+  const ownText = totals.own == null ? "" : ` &middot; ${Math.round(totals.own)}% own`;
+  const uid = escapeHtml(lineup.uid ?? "");
+  return `
+    <div class="opt-card" data-uid="${uid}">
+      <div class="opt-card-head">
+        <span class="opt-card-title">Lineup ${index + 1}</span>
+        <span class="opt-card-actions">
+          <button type="button" class="saved-lineup-btn" data-action="opt-save" data-uid="${uid}"${busy ? " disabled" : ""}>Save</button>
+          <button type="button" class="saved-lineup-btn danger" data-action="opt-discard" data-uid="${uid}"${busy ? " disabled" : ""}>Discard</button>
+        </span>
+      </div>
+      <div class="opt-card-players">${rows}</div>
+      <div class="opt-card-totals"><span class="${overCap ? "saved-lineup-totals-over" : ""}">${money(totals.salary)}</span> &middot; ${dec1(totals.proj) ?? "—"} proj${ownText}</div>
+    </div>`;
+}
+
+function teamBadgeHtml(team) {
+  const t = TEAM_BY_ABBR[team];
+  const primary = t?.colourPrimary ?? "#333333";
+  const secondary = t?.colourSecondary ?? "#ffffff";
+  return `<span class="team-chip-mini" style="background:${primary};color:${textColourFor(primary, secondary)}">${escapeHtml(team ?? "")}</span>`;
+}
+
+/** Exposure by position, one list per position (D55). Each row is name + matchup (D43) + own% (D32) and how many
+ *  lineups (saved plus new) hold him. `exposure` is {QB: [{name, team, opp, own, count, pct}], ...}. */
+export function optExposureHtml(exposure, stale) {
+  const boxes = OPT_POSITIONS.map((pos) => {
+    const list = Array.isArray(exposure?.[pos]) ? exposure[pos] : [];
+    const rows = list.length
+      ? list
+          .map(
+            (e) => `
+          <div class="opt-exp-row">
+            ${teamBadgeHtml(e.team)}
+            <span class="opt-exp-name">${escapeHtml(e.name ?? "")}</span>
+            <span class="opt-exp-opp">${escapeHtml(e.opp ?? "")}</span>
+            <span class="opt-exp-own">${escapeHtml(ownParen(e.own))}</span>
+            <span class="opt-exp-pct">${escapeHtml(String(Math.round(e.pct ?? 0)))}% <span class="opt-exp-count">(${escapeHtml(String(e.count ?? 0))})</span></span>
+          </div>`
+          )
+          .join("")
+      : `<div class="opt-exp-empty">None</div>`;
+    return `<div class="opt-exp-box"><div class="opt-exp-title">${escapeHtml(pos)}</div><div class="opt-exp-list">${rows}</div></div>`;
+  }).join("");
+  const staleNote = stale ? `<span class="opt-sub">out of date: the lineups changed since the last Go</span>` : "";
+  return `
+    <div class="opt-exposure">
+      <h3 class="opt-title">Exposure by position <span class="opt-sub">saved plus new lineups</span> ${staleNote}</h3>
+      <div class="opt-exp-grid">${boxes}</div>
+    </div>`;
+}
+
+export function optNotesHtml(notes) {
+  return (notes ?? []).map((n) => `<div class="opt-note">${escapeHtml(n)}</div>`).join("");
+}
+
+// ---- Rendering inside the panel ----
+
+function lockedNames(rowById) {
+  return lockedIds(state.slots, state.locks)
+    .map((id) => rowById.get(id))
+    .filter(Boolean);
+}
+
+function optimizerControlsHtml(rowById) {
+  const board = store.get().board;
+  const locked = lockedNames(rowById);
+  const games = activeSlateGames(board);
+  const info = locked.length
+    ? `<span class="opt-lockinfo">${locked.length} locked: ${escapeHtml(locked.map((r) => r.name).join(", "))}</span>`
+    : `<span class="opt-warn">Nothing locked: these will be plain optimal lineups, rarely right for tournaments.</span>`;
+  const expInputs = OPT_POSITIONS.map(
+    (pos) => `
+        <label class="opt-exp-input">${pos}
+          <input type="text" inputmode="decimal" class="opt-input opt-input-pct" data-opt-exp="${pos}" value="${escapeHtml(opt.maxExp[pos])}" placeholder="%" aria-label="${pos} maximum exposure percent" />
+        </label>`
+  ).join("");
+  const avoidBlock = games.length
+    ? `<div class="opt-block"><span class="opt-block-label">Avoid game</span><div class="opt-chips">${avoidChipsHtml(games, opt.avoid)}</div></div>`
+    : "";
+  const formError = opt.formError ? `<div class="lineup-status lineup-status-error opt-form-error">${escapeHtml(opt.formError)}</div>` : "";
+  const busy = opt.generating || opt.saving;
+  return `
+    <div class="opt-panel" id="opt-panel">
+      <h3 class="opt-title">Optimizer</h3>
+      <div class="opt-row">
+        <span class="opt-inline">Make
+          <input type="number" min="1" max="${OPT_MAX_COUNT}" class="opt-input opt-input-num" id="opt-count" value="${escapeHtml(opt.count)}" aria-label="How many lineups" />
+          more lineups from these locks</span>
+        <span class="opt-inline">Min unique players
+          <input type="number" min="1" max="${OPT_MAX_UNIQUE}" class="opt-input opt-input-num" id="opt-min-unique" value="${escapeHtml(opt.minUnique)}" aria-label="Minimum unique players between lineups" />
+        </span>
+        <span class="opt-inline opt-inline-exp"><span class="opt-block-label">Max exposure <span class="opt-sub">blank = no cap</span></span>${expInputs}</span>
+        <button type="button" id="opt-go-btn" class="lineup-build-btn opt-go"${busy ? " disabled" : ""}>${opt.generating ? "Making…" : "Go"}</button>
+        ${info}
+      </div>
+      ${formError}
+      <div class="opt-row opt-row-chips">
+        <div class="opt-block"><span class="opt-block-label">Rules</span><div class="opt-chips">${ruleChipsHtml(opt.rules)}</div></div>
+        ${avoidBlock}
+      </div>
+    </div>`;
+}
+
+function optimizerResultsHtml(rowById) {
+  if (opt.generating && !opt.results) return `<div class="opt-results" id="opt-results"><div class="opt-sub">Making lineups…</div></div>`;
+  if (!opt.error && !opt.results) return "";
+  const parts = [];
+  if (opt.error) parts.push(`<div class="lineup-status lineup-status-error">${escapeHtml(opt.error)}</div>`);
+  const r = opt.results;
+  if (r) {
+    const n = r.lineups.length;
+    const busy = opt.saving || opt.generating;
+    const head = n
+      ? `<div class="opt-results-head">
+           <h3 class="opt-title">New lineups (not saved) <span class="opt-sub">${n} lineup${n === 1 ? "" : "s"}</span></h3>
+           <span class="opt-card-actions">
+             <button type="button" class="saved-lineup-btn" data-action="opt-save-all"${busy ? " disabled" : ""}>Save all</button>
+             <button type="button" class="saved-lineup-btn danger" data-action="opt-discard-all"${busy ? " disabled" : ""}>Discard all</button>
+           </span>
+         </div>`
+      : `<h3 class="opt-title">New lineups (not saved) <span class="opt-sub">none left</span></h3>`;
+    parts.push(head);
+    if (opt.saveError) parts.push(`<div class="lineup-status lineup-status-error">${escapeHtml(opt.saveError)}</div>`);
+    parts.push(optNotesHtml(r.notes));
+    if (n) parts.push(`<div class="opt-cards">${r.lineups.map((l, i) => optLineupCardHtml(l, i, busy)).join("")}</div>`);
+    parts.push(optExposureHtml(r.exposure, r.exposureStale));
+  }
+  return `<div class="opt-results" id="opt-results">${parts.join("")}</div>`;
+}
+
+// ---- Actions ----
+
+async function doGenerate() {
+  if (opt.generating || opt.saving) return;
+  opt.formError = exposureProblem(opt.maxExp);
+  if (opt.formError) {
+    commit();
+    return;
+  }
+  const board = store.get().board;
+  const slate = activeSlate(board);
+  const slateKey = slate ? slate.key : "main";
+  // The week and the slate on screen when Go was pressed: a response that arrives after either changed belongs to
+  // something no longer shown and is dropped.
+  const madeForWeek = seasonWeekKey(board);
+  const madeForSlate = store.get().activeSlateKey ?? null;
+  let locks = lockedIds(state.slots, state.locks);
+  const slateNotes = [];
+  let avoid = [...opt.avoid];
+  if (slate) {
+    // D57: the server builds from the second slate's games only and refuses a lock outside them, so those locks are
+    // left out of this request and said so, as the single Build does.
+    const inSlate = new Set(activeSlateRows(board).map((r) => String(r.id)));
+    const kept = locks.filter((id) => inSlate.has(id));
+    const leftOut = locks.length - kept.length;
+    locks = kept;
+    if (leftOut > 0) {
+      slateNotes.push(`${leftOut} locked player${leftOut === 1 ? " is" : "s are"} not in the ${slateDisplayName(slate)}'s games and ${leftOut === 1 ? "was" : "were"} left out of these lineups.`);
+    }
+  }
+  const gameIds = new Set(activeSlateGames(board).map((g) => String(g.id)));
+  avoid = avoid.filter((g) => gameIds.has(g));
+  const form = {
+    count: opt.count,
+    minUnique: opt.minUnique,
+    maxExposure: opt.maxExp,
+    rules: opt.rules,
+    avoid,
+    locks,
+    excludes: [...state.excludes],
+  };
+  opt.generating = true;
+  opt.error = null;
+  opt.saveError = null;
+  commit();
+  try {
+    const data = await postLineupGenerate(buildGeneratePayload(form, slateKey));
+    if (seasonWeekKey(store.get().board) !== madeForWeek || (store.get().activeSlateKey ?? null) !== madeForSlate) {
+      opt.generating = false;
+      commit();
+      return;
+    }
+    if (!data || data.ok === false) {
+      opt.error = data?.error?.code === "GENERATE_BUSY" ? data.error.message || OPT_BUSY_TEXT : data?.error?.message ?? "Could not make lineups.";
+    } else {
+      const lineups = (Array.isArray(data.lineups) ? data.lineups : []).map((l) => ({ ...l, uid: `n${++optSeq}` }));
+      const notes = [...slateNotes, ...(Array.isArray(data.notes) ? data.notes : [])];
+      if (!lineups.length && !notes.length) notes.push("No lineups could be made from these locks and settings.");
+      opt.results = { slateKey, lineups, exposure: data.exposure ?? {}, notes, exposureStale: false };
+    }
+  } catch (e) {
+    opt.error = `Could not reach the server: ${e.message}`;
+  }
+  opt.generating = false;
+  commit();
+  try {
+    lastContainer?.querySelector("#opt-results")?.scrollIntoView({ block: "start", behavior: "smooth" });
+  } catch (e) {
+    // Scrolling is a convenience only.
+  }
+}
+
+/** Saves the given new lineups one after another through the existing save-lineup route (D57: with the active slate
+ *  key). A saved card leaves the new list and lands in the saved list; the first failure stops the run and stays. */
+async function saveGenerated(uids) {
+  if (opt.saving || opt.generating || !opt.results) return;
+  opt.saving = true;
+  opt.saveError = null;
+  commit();
+  const results = opt.results;
+  const slateKey = results.slateKey ?? "main"; // the slate these lineups were made for, not the one on screen now
+  for (const uid of uids) {
+    const lineup = results.lineups.find((l) => l.uid === uid);
+    if (!lineup) continue;
+    try {
+      const data = await postLineup({ name: "", slots: slotsForSave(lineup.players), slate: slateKey });
+      if (!data || data.ok === false) {
+        opt.saveError = data?.error?.message ?? "Could not save the lineup.";
+        break;
+      }
+      if (Array.isArray(data.lineups)) state.savedLineups = data.lineups;
+      results.lineups = results.lineups.filter((l) => l.uid !== uid);
+    } catch (e) {
+      opt.saveError = `Could not reach the server: ${e.message}`;
+      break;
+    }
+  }
+  opt.saving = false;
+  commit();
+}
+
+function discardGenerated(uid) {
+  if (!opt.results) return;
+  opt.results.lineups = opt.results.lineups.filter((l) => l.uid !== uid);
+  opt.results.exposureStale = true;
+  commit();
+}
+
+function wireOptimizer(container) {
+  const bind = (sel, key) => {
+    const el = container.querySelector(sel);
+    el?.addEventListener("input", () => {
+      opt[key] = el.value;
+    });
+  };
+  bind("#opt-count", "count");
+  bind("#opt-min-unique", "minUnique");
+  container.querySelectorAll("[data-opt-exp]").forEach((el) => {
+    el.addEventListener("input", () => {
+      opt.maxExp[el.dataset.optExp] = el.value;
+      if (opt.formError) {
+        opt.formError = null;
+        container.querySelector(".opt-form-error")?.remove();
+      }
+    });
+  });
+  container.querySelector("#opt-go-btn")?.addEventListener("click", () => doGenerate());
+  container.querySelectorAll("[data-action='opt-rule']").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      opt.rules[btn.dataset.key] = !(opt.rules[btn.dataset.key] !== false);
+      commit();
+    });
+  });
+  container.querySelectorAll("[data-action='opt-avoid']").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const g = btn.dataset.game;
+      if (opt.avoid.has(g)) opt.avoid.delete(g);
+      else opt.avoid.add(g);
+      commit();
+    });
+  });
+  container.querySelectorAll("[data-action='opt-save']").forEach((btn) => {
+    btn.addEventListener("click", () => saveGenerated([btn.dataset.uid]));
+  });
+  container.querySelectorAll("[data-action='opt-discard']").forEach((btn) => {
+    btn.addEventListener("click", () => discardGenerated(btn.dataset.uid));
+  });
+  container.querySelector("[data-action='opt-save-all']")?.addEventListener("click", () => {
+    saveGenerated((opt.results?.lineups ?? []).map((l) => l.uid));
+  });
+  container.querySelector("[data-action='opt-discard-all']")?.addEventListener("click", () => {
+    resetOptimizerResults();
+    commit();
   });
 }

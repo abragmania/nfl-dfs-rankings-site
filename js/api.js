@@ -68,6 +68,10 @@ export function postLineupOptimize() {
   return readOnly();
 }
 
+export function postLineupGenerate() {
+  return readOnly();
+}
+
 export function postLineup() {
   return readOnly();
 }
