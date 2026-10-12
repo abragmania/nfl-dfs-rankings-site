@@ -46,7 +46,7 @@ export const STATUS_INFO = {
 export const DIM_STATUS_TOKENS = new Set(["o", "out", "ir", "d", "doubtful"]);
 
 const PROJ_FLAG_LABELS = {
-  thin: "Thin coverage: fewer than half the enabled sources cover this player, so the projection is shrunk toward a baseline.",
+  thin: "Sources making up less than half the blend's weight cover this player; the projection is theirs alone.",
   avgPoints: "No projection source covers this player; using DraftKings' average points per game instead.",
   imputed: "No DST-specific projection; imputed from average points per game.",
   injured: "Flagged injured; may affect availability this week.",
