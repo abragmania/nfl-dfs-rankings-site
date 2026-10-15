@@ -1,10 +1,13 @@
 {
-  "publishedAt": "2026-10-12T13:45:42.912Z",
+  "publishedAt": "2026-10-15T19:33:19.686Z",
   "season": 2026,
   "week": 5,
-  "boardGeneratedAt": "2026-10-12T13:45:25.233Z",
+  "boardGeneratedAt": "2026-10-15T19:33:04.401Z",
   "showdowns": [
     "2026-w03-ATLGB"
   ],
+  "sourceCommit": "63948851aae6cab4394be9a77233eb9cfdb1faf0",
+  "appCommit": "63948851aae6cab4394be9a77233eb9cfdb1faf0",
+  "machine": "desktop",
   "matchups": true
 }

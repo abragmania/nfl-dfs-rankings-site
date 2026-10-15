@@ -1,6 +1,5 @@
 // The Optimizer's engine (PROJECT.md Part 4 "Optimizer"; DECISIONS.md D55 as amended 2026-10-10, D73, D74): N DraftKings
-// classic lineups, one at a time, each the best lineup by the chosen objective (projection unless Adam picks
-// leverage or projection minus ownership; below, "projection" means that score) that keeps every rule Adam has switched on,
+// classic lineups, one at a time, each the best lineup by projection (the only objective since Adam 2026-10-15) that keeps every rule Adam has switched on,
 // every lock, the uniqueness he set against his saved lineups and every earlier lineup of the batch, and the
 // per-position exposure caps as they stand at that moment (counted over this batch only, D74). It is a pure function over board rows: no network, no
 // clock, no file writes. The single-lineup builder (optimize.js) is separate and unchanged.
@@ -19,6 +18,7 @@
 import { rowIsSidelined } from "../rank/sidelined.js"; // pure: the public site runs this engine in the browser (D69)
 import { assignSlots } from "./dk-entries.js";
 import { warn } from "../lib/log.js";
+import { retiredObjectiveNote } from "./optimize.js"; // pure: the site copies the engine (D69); one copy of the note
 
 // --------------------------------------------------------------------------------------------------------
 // Constants
@@ -60,9 +60,10 @@ export const RULE_KEYS = Object.freeze([
  *  "1 or more teammates" (true) or "0 or more" (false, no stack needed), as it always did, unless stackOwn is given. */
 export const LEGACY_RULE_KEYS = Object.freeze(["qbStack", "oneOffensivePerOtherTeam"]);
 
-/** What the lineups maximise, as optimize.js scores them: projection, leverage, or projection minus ownPenaltyK
- *  times own% (a player with no ownership number takes no penalty). */
-export const OBJECTIVES = Object.freeze(["proj", "lev", "projMinusOwn"]);
+/** What the lineups maximise, as optimize.js scores them: projection. "lev" and "projMinusOwn" are retired (Adam
+ *  2026-10-15, Lev measure to be redesigned; projection minus ownership removed): a request naming one is built on
+ *  projection with optimize.js retiredObjectiveNote's note. */
+export const OBJECTIVES = Object.freeze(["proj"]);
 
 /** D73: the most teammates and opponents the QB stack can ask for, and the default counts (each "or more" is
  *  ticked by default: 1 or more teammates, 0 or more opponents). */
@@ -192,16 +193,15 @@ function normaliseSettings(settings, slate, existingCount, notes) {
   const stackOwnOrMore = legacyStack ? true : orMore(s.stackOwnOrMore);
   const stackOppOrMore = orMore(s.stackOppOrMore);
 
-  // The objective, scored as optimize.js scores it. The ownership penalty is passed in by the caller from the rank
-  // settings (data/config/rank.json ownPenaltyK); this file reads no config, so without it there is no score.
+  // The objective, scored as optimize.js scores it: projection. A retired one (a request or saved setting from
+  // before 2026-10-15) is built on projection with a note, never refused.
   let fatal = null;
-  const objective = s.objective === undefined || s.objective === null ? "proj" : String(s.objective);
+  const asked = s.objective === undefined || s.objective === null ? "proj" : String(s.objective);
+  const retiredNote = retiredObjectiveNote(asked);
+  if (retiredNote) notes.push(retiredNote);
+  const objective = retiredNote ? "proj" : asked;
   if (!OBJECTIVES.includes(objective)) {
-    fatal = `The objective "${objective}" is not one the Optimizer knows; use Projection, Leverage or Projection minus ownership.`;
-  }
-  const ownPenaltyK = num(s.ownPenaltyK);
-  if (!fatal && objective === "projMinusOwn" && ownPenaltyK === null) {
-    fatal = "The ownership penalty from the rank settings did not reach the Optimizer, so it cannot score lineups on projection minus ownership.";
+    fatal = `The objective "${objective}" is not one the Optimizer knows; use Projection.`;
   }
 
   // Exposure: {pct: 50} is a percentage of this batch as asked for, rounded UP to whole lineups (50% of 5 allows
@@ -268,7 +268,6 @@ function normaliseSettings(settings, slate, existingCount, notes) {
     stackOpp,
     stackOppOrMore,
     objective,
-    ownPenaltyK,
     fatal,
     locks: idList(s.locks),
     excludes: new Set(idList(s.excludes)),
@@ -305,14 +304,8 @@ function stackNumber(value, fallback, max, what, notes) {
   return clamped;
 }
 
-/** The score one candidate adds under the objective (optimize.js scoreOf): leverage, projection, or projection minus
- *  ownPenaltyK times own% where the player has an ownership number. */
-function objectiveScore(row, proj, opts) {
-  if (opts.objective === "lev") return num(row.lev) ?? 0;
-  if (opts.objective === "projMinusOwn") {
-    const own = num(row.own);
-    return own === null ? proj : proj - opts.ownPenaltyK * own;
-  }
+/** The score one candidate adds under the objective (optimize.js scoreOf): his projection. */
+function objectiveScore(row, proj) {
   return proj;
 }
 
@@ -341,8 +334,7 @@ const oppStackActive = (opts) => !(opts.stackOpp === 0 && opts.stackOppOrMore);
  *   stackOwn (0-4, default 1), stackOwnOrMore (default true), stackOpp (0-3, default 0), stackOppOrMore (default
  *     true): D73, the lineup's quarterback with exactly (or, ticked, at least) that many offensive teammates (a
  *     running back only as a regular pass catcher) and offensive players of the team he faces; never the defense.
- *   objective: "proj" (default), "lev" or "projMinusOwn"; ownPenaltyK: the rank settings' ownership penalty,
- *     required for projMinusOwn (no lineups and a note without it).
+ *   objective: "proj" (default); the retired "lev" and "projMinusOwn" are built on projection with a note.
  *   allowRbGames, avoidGames: game keys as on the board (row.gameId, e.g. "DET@ARI").
  *   maxPerTeam: most players (defense included) from one team, as optimize.js maxFromTeam; default none. D76: it
  *     never limits the lineup quarterback's team or the team he faces, only every other team.
@@ -522,7 +514,6 @@ function prepare(rows, opts, notes) {
   }
 
   const byKey = new Map();
-  let leftNoLev = 0;
   for (const [id, row] of byId) {
     if (opts.excludes.has(id)) continue;
     const locked = lockSet.has(id);
@@ -551,19 +542,12 @@ function prepare(rows, opts, notes) {
     const game = upper(row.gameId) || null;
     const avoided = game !== null && opts.avoidGames.has(game);
     const unstarredQb = opts.rules.starredQbOnly && pos === "QB" && !row.starred;
-    // Leverage: a player with no leverage number has nothing to be scored on (optimize.js does the same).
-    const noLev = opts.objective === "lev" && num(row.lev) === null;
     if (!locked && (noProjection || sidelined || avoided || unstarredQb)) continue;
-    if (!locked && noLev) {
-      leftNoLev++;
-      continue;
-    }
     if (locked) {
       if (sidelined) notes.push(`Locked ${name} is listed ${row.status ?? "injured"}; he is kept because he is locked.`);
       if (noProjection) notes.push(`Locked ${name} has no projection from any source and counts as ${proj === null ? "0" : `his stand-in ${round2(proj)}`}.`);
       if (avoided) notes.push(`Locked ${name} plays in ${game}, a game set to avoid; he is kept because he is locked.`);
       if (unstarredQb) notes.push(`Locked ${name} is not starred; he is used because he is locked.`);
-      if (noLev) notes.push(`Locked ${name} has no leverage number and counts as 0.`);
     }
 
     let catcher = false;
@@ -591,7 +575,7 @@ function prepare(rows, opts, notes) {
       salary,
       proj: proj ?? 0,
       own: num(row.own),
-      score: Math.round(objectiveScore(row, proj ?? 0, opts) * SCORE_SCALE),
+      score: Math.round(objectiveScore(row, proj ?? 0) * SCORE_SCALE),
       catcher,
       stackOk: pos === "WR" || pos === "TE" || (pos === "RB" && catcher),
       locked,
@@ -613,9 +597,6 @@ function prepare(rows, opts, notes) {
   }
 
   const all = [...byKey.values()];
-  if (leftNoLev) {
-    notes.push(`${leftNoLev} player${leftNoLev === 1 ? " has" : "s have"} no leverage number (it needs a published ownership), so ${leftNoLev === 1 ? "he was" : "they were"} left out of lineups scored on leverage.`);
-  }
   st.teamCount = teamIx.size;
   st.gameCount = gameIx.size;
   st.allowRbGame = new Uint8Array(gameIx.size);
@@ -659,11 +640,6 @@ function prepare(rows, opts, notes) {
   const qbs = lockedQb ? [lockedQb] : byPos.QB;
   st.qbTeams = new Set(qbs.map((c) => c.teamIx));
   st.qbOppTeams = new Set(qbs.map((c) => c.oppIx).filter((i) => i >= 0));
-
-  if (opts.objective === "projMinusOwn") {
-    const withOwn = all.filter((c) => c.own !== null).length;
-    notes.push(`${withOwn} of the ${all.length} players in the pool had a real ownership number; the ownership penalty applied only to them, and everyone else was scored on projection alone.`);
-  }
 
   // Salary units for the knapsack bound: the common divisor of every salary and the cap when that is fine enough,
   // otherwise a coarse unit with costs rounded down and budgets rounded up (still an upper bound).

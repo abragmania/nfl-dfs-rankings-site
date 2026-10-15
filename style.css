@@ -46,7 +46,7 @@
   --row-hover: #eef0f3;
   --row-dim-text: #9aa2ad;
 
-  /* Value/Lev percentile grading (Adam's addition): v1 = top 20% within position, v5 = bottom 20%.
+  /* Value percentile grading (Adam's addition; Lev is never graded, Adam 2026-10-15): v1 = top 20% within position, v5 = bottom 20%.
      Each grade also carries a background tint (v1/v5 strongest) so the reading is a coloured cell, not
      just a coloured digit — the light-theme v2/v4 text colours below are too pale to read on their own
      (👁 visual-qa), so v2/v4 keep the neutral --text colour and rely on the tint to signal direction. */
@@ -234,6 +234,17 @@ html, body {
   color: var(--text-muted);
   font-size: var(--fs-base);
   white-space: nowrap;
+}
+/* A7: "SAMPLE DATA · nothing is saved" on a ?sample=1 page (header.js renderSlateLine). */
+.sample-tag {
+  font-size: var(--fs-sm);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: var(--danger);
+  border: 1px solid var(--danger);
+  border-radius: 4px;
+  padding: 2px 8px;
+  margin-right: var(--sp-2);
 }
 
 .header-actions {
@@ -757,6 +768,8 @@ body.table-expanded { overflow: hidden; }
   border-bottom: 1px solid var(--border);
   user-select: none;
 }
+/* The Lev header does not sort (Adam 2026-10-15, Lev measure to be redesigned; public/js/table.js). */
+.rankings-table th.not-sortable { cursor: default; }
 .rankings-table th.sorted { color: var(--text); }
 .rankings-table td {
   padding: 0 10px;
@@ -1056,6 +1069,13 @@ body.table-expanded { overflow: hidden; }
 .source-value-table td:nth-child(n+3):not(:last-child) {
   text-align: right;
   font-variant-numeric: tabular-nums;
+}
+/* D43: the Opp column ("vs DAL" / "@ DET", public/js/tabs.js) is text, left-aligned as on Rankings. It sits in
+   column 3, which the rule above right-aligns, so this one is more specific (0,3,2) and comes after it. */
+.source-value-table tr th.opp-col:not(:last-child),
+.source-value-table tr td.opp-col:not(:last-child) {
+  text-align: left;
+  font-variant-numeric: normal;
 }
 
 /* ---------- Lineup builder ---------- */
@@ -1399,9 +1419,6 @@ body.table-expanded { overflow: hidden; }
 .sd-cpt-col { color: var(--amber); }
 .rank-row.row-dimmed .sd-cpt-col { color: var(--row-dim-text); }
 th.sd-cpt-col.sorted { color: var(--amber); }
-/* Null CPT Lev dash: same colour as the plain Lev column's dash, not the gold column colour. */
-.sd-cpt-col .sd-dash { color: var(--text); }
-.rank-row.row-dimmed .sd-cpt-col .sd-dash { color: var(--row-dim-text); }
 /* Position pill (D41): replaces the old plain-text "QB"/"RB"/etc next to the team chip with a small
    coloured pill, one colour per position (tokens above), used identically in the Rankings table, the
    Lineup Builder pool and the CPT/FLEX slots (showdown side only — the classic screen's plain .pos-chip
@@ -1452,9 +1469,6 @@ th.sd-cpt-col.sorted { color: var(--amber); }
 .sd-pos-chip[data-pos="K"].active { background: var(--pos-k); border-color: var(--pos-k); color: var(--bg); }
 .sd-pos-chip[data-pos="DST"] { border-color: var(--pos-dst); color: var(--pos-dst); }
 .sd-pos-chip[data-pos="DST"].active { background: var(--pos-dst); border-color: var(--pos-dst); color: var(--bg); }
-/* Estimated and published ownership look the same (Adam, 2026-09-27: one font, no brighter/dimmer); the hover
-   text still says which it is. The class stays on the cell for that hover and for tests. */
-.sd-own-estimate { }
 
 /* Player cell truncation, showdown Rankings only (Adam): .rankings-table td carries white-space:nowrap;
    overflow:hidden;text-overflow:ellipsis (the shared classic rule above), which only produces a real

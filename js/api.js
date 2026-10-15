@@ -33,6 +33,12 @@ export function isSampleMode() {
   return false;
 }
 
+// The site has no sample mode (isSampleMode is always false); a caller that still asks for the refusal gets the
+// site's read-only refusal.
+export function sampleRefusal() {
+  return readOnly();
+}
+
 // A fresh copy of the baked board (the app may adjust what it is handed) with this browser's override changes merged
 // in, so a reload keeps them.
 export async function getBoard() {

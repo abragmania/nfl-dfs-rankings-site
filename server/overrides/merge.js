@@ -43,6 +43,49 @@ export function validateOverrides(obj) {
   }
 }
 
+const isPlainObject = (v) => typeof v === "object" && v !== null && !Array.isArray(v);
+
+function badShape(message) {
+  const err = new Error(`${message}, so nothing was saved.`);
+  err.code = "OVERRIDES_INVALID";
+  throw err;
+}
+
+/**
+ * A7: checks a change request before anything is applied. Throws OVERRIDES_INVALID (a plain sentence) unless
+ * `changes` is a plain object whose present sections have the change shape applyOverrideChanges reads: proj, own and
+ * notes plain objects keyed by player id, stars a plain object of player id to true or false. An array section is
+ * refused, never read as ids "0", "1", ... Then throws OVERRIDES_NOT_ON_SLATE (naming the ids) unless every player id
+ * the write names - each key of those sections, plus `extraIds` (the per-player reset's id) - is on the loaded slate.
+ * `slateIds`: the loaded slate's player ids (any iterable). A write for a player who is not on the slate (a sample
+ * page's fixture id, a stale tab from an earlier upload) is refused, never stored.
+ */
+export function assertIdsOnSlate(changes, slateIds, extraIds = []) {
+  if (!isPlainObject(changes)) badShape("A change to the overrides must be an object");
+  const known = new Set([...(slateIds ?? [])].map(String));
+  const named = new Set(extraIds.map(String));
+  for (const field of ["proj", "own", "stars", "notes"]) {
+    const section = changes[field];
+    if (section === undefined) continue;
+    if (!isPlainObject(section)) badShape(`"${field}" must be an object keyed by player id`);
+    if (field === "stars") {
+      for (const [id, v] of Object.entries(section)) {
+        if (typeof v !== "boolean") badShape(`The star for player id "${id}" must be true or false`);
+      }
+    }
+    for (const id of Object.keys(section)) named.add(id);
+  }
+  const unknown = [...named].filter((id) => !known.has(id));
+  if (!unknown.length) return;
+  const shown = unknown.slice(0, 5).map((id) => `"${id}"`).join(", ");
+  const more = unknown.length > 5 ? ` and ${unknown.length - 5} more` : "";
+  const err = new Error(
+    `${unknown.length === 1 ? "Player id" : "Player ids"} ${shown}${more} ${unknown.length === 1 ? "is" : "are"} not on the loaded slate, so nothing was saved.`
+  );
+  err.code = "OVERRIDES_NOT_ON_SLATE";
+  throw err;
+}
+
 /**
  * Pure function: applies `changes` ({ proj?, own?, stars?, notes? }, each keyed by player id) onto
  * `current`, returning a new overrides object without mutating the input. A null value for proj/own/

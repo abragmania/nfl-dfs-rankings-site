@@ -1,10 +1,11 @@
 // Lineup optimiser for the DraftKings classic slate (PROJECT.md D1: QB, RB, RB, WR, WR, WR, TE, FLEX (RB/WR/TE),
 // DST, $50,000 cap). It is a pure function over board rows (server/rank/board.js gives id, dkId, name, pos,
-// rosterPositions, team, opp, gameId, salary, proj, own, value, lev, flags, status): no network, no date or time
-// logic at all (D30). It reads no file, so the public site can run it in a browser (DECISIONS.md D71): the
-// ownership penalty arrives as options.ownPenaltyK from the caller, which reads it from data/config/rank.json
-// (server/rank/value.js loadRankConfig) the same way it reads lambda. Overrides are already merged into the rows
-// it receives (D28), and it only ever rosters players the DraftKings CSV supplied (D27).
+// rosterPositions, team, opp, gameId, salary, proj, own, value, flags, status): no network, no date or time
+// logic at all (D30). It reads no file, so the public site can run it in a browser (DECISIONS.md D71). It
+// maximises projection; the "lev" and "projMinusOwn" objectives are retired (Adam 2026-10-15, Lev measure to be
+// redesigned; projection minus ownership removed) and a request naming one is built on projection with a note
+// (retiredObjectiveNote). Overrides are already merged into the rows it receives (D28), and it only ever rosters
+// players the DraftKings CSV supplied (D27).
 //
 // It never throws. Bad input, impossible locks, or a cap that cannot be met all come back as
 // { feasible: false, message, notes: [] } with a sentence a human can act on (PROJECT.md Part 4, Lineup Builder
@@ -12,10 +13,6 @@
 // `message` empty, so the UI can show the infeasibility sentence and the remarks in different places.
 import { warn } from "../lib/log.js";
 import { rowIsSidelined } from "../rank/sidelined.js"; // pure: the public site runs this in a browser (D71)
-// The one copy of the default ownership penalty (pure, D71). The score for "projMinusOwn" is proj - k * own%;
-// k = 0.15 means a player needs roughly 1.5 extra projected points to justify being 10% more owned, which is the
-// trade-off the leverage column already implies at the default lambda.
-import { DEFAULT_RANK_CONFIG } from "../rank/value-core.js";
 
 // --------------------------------------------------------------------------------------------------------
 // Constants
@@ -24,7 +21,19 @@ import { DEFAULT_RANK_CONFIG } from "../rank/value-core.js";
 const DEFAULT_CAP = 50000;
 const DEFAULT_SLOTS = Object.freeze(["QB", "RB", "RB", "WR", "WR", "WR", "TE", "FLEX", "DST"]);
 const DEFAULT_FLEX = Object.freeze(["RB", "WR", "TE"]);
-const OBJECTIVES = Object.freeze(new Set(["proj", "lev", "projMinusOwn"]));
+const OBJECTIVES = Object.freeze(new Set(["proj"]));
+
+/**
+ * The note a build carries when its request (or a setting saved before 2026-10-15) names a retired objective:
+ * "lev" (Adam 2026-10-15, Lev measure to be redesigned) or "projMinusOwn" (Adam 2026-10-15: projection minus
+ * ownership removed). Such a request is built on projection instead, never refused. Null for any other value.
+ * The one copy: multi.js, showdown.js and the routes use it too.
+ */
+export function retiredObjectiveNote(objective) {
+  if (objective === "lev") return "Leverage is no longer an objective (it has no measure yet), so these lineups maximise projection.";
+  if (objective === "projMinusOwn") return "Projection minus ownership is no longer an objective, so these lineups maximise projection.";
+  return null;
+}
 const PASS_CATCHER = Object.freeze(new Set(["WR", "TE"]));
 const BUILD_MODES = Object.freeze(["score", "perDollar", "cheap"]);
 
@@ -70,13 +79,6 @@ function idList(value) {
   return out;
 }
 
-/** The ownership penalty for objective "projMinusOwn": options.ownPenaltyK, which every caller reads from
- *  data/config/rank.json (loadRankConfig) and passes in; DEFAULT_RANK_CONFIG.ownPenaltyK when it is missing (D71: no file
- *  read here). */
-function ownPenaltyK(options) {
-  return num(options && options.ownPenaltyK) ?? DEFAULT_RANK_CONFIG.ownPenaltyK;
-}
-
 /** The real positions a row can play, ignoring the FLEX marker DraftKings puts in Roster Position. */
 function rowPositions(row) {
   const list = Array.isArray(row.rosterPositions) ? row.rosterPositions.map((p) => String(p).trim().toUpperCase()) : [];
@@ -104,18 +106,10 @@ function eligibleForSlot(cand, slot, flexPositions) {
   return cand.positions.includes(slot);
 }
 
-/** Objective score for one row. A missing projection counts as 0 so a locked player without one never poisons
- *  the arithmetic (his zero is reported as a note instead). A player with no ownership number (nobody published
- *  one and Adam typed none) takes no ownership penalty at all: the penalty does not apply to him, and the app
- *  never makes up a number to penalise him with. The build's notes say how many players had a real number. */
-function scoreOf(row, objective, k) {
-  if (objective === "lev") return num(row.lev) ?? 0;
-  const proj = num(row.proj) ?? 0;
-  if (objective === "projMinusOwn") {
-    const own = num(row.own);
-    return own === null ? proj : proj - k * own;
-  }
-  return proj;
+/** Objective score for one row: his projection. A missing projection counts as 0 so a locked player without one
+ *  never poisons the arithmetic (his zero is reported as a note instead). */
+function scoreOf(row) {
+  return num(row.proj) ?? 0;
 }
 
 function failure(message, cap) {
@@ -142,23 +136,27 @@ function failure(message, cap) {
  * @param {object}  [options]
  * @param {Array}   [options.locks]          player ids that must appear
  * @param {Array}   [options.excludes]       player ids that must not appear
- * @param {string}  [options.objective]      "proj" | "lev" | "projMinusOwn"
+ * @param {string}  [options.objective]      "proj" (the retired "lev" and "projMinusOwn" build on projection, with a note)
  * @param {number}  [options.cap]            salary cap, default 50000 (D1)
  * @param {Array}   [options.slots]          slot names in display order, default the classic nine (D1)
  * @param {Array}   [options.flexPositions]  positions the FLEX slot accepts, default RB/WR/TE (D1)
  * @param {number}  [options.maxFromTeam]    most players from one NFL team, null for no limit
  * @param {number}  [options.stackQbWith]    minimum WR/TE from each rostered QB's own team
- * @param {number}  [options.ownPenaltyK]    ownership penalty for projMinusOwn (the caller reads data/config/rank.json), default DEFAULT_RANK_CONFIG.ownPenaltyK
  * @returns {{lineup:Array,salaryUsed:number,salaryLeft:number,totalProj:number,totalOwn:(number|null),feasible:boolean,message:string,notes:Array<string>}}
  */
 export function optimizeLineup(rows, options = {}) {
   const cap = num(options && options.cap) ?? DEFAULT_CAP;
+  let result;
   try {
-    return run(rows, options || {}, cap);
+    result = run(rows, options || {}, cap);
   } catch (e) {
     warn("lineup: optimise failed", { error: e && e.message });
-    return failure(`Could not build a lineup: ${e && e.message ? e.message : "unexpected error"}.`, cap);
+    result = failure(`Could not build a lineup: ${e && e.message ? e.message : "unexpected error"}.`, cap);
   }
+  // Adam 2026-10-15: a request naming a retired objective is told so whatever happens, an infeasible build included.
+  const retiredNote = retiredObjectiveNote(options && options.objective);
+  if (retiredNote && !result.notes.includes(retiredNote)) result = { ...result, notes: [retiredNote, ...result.notes] };
+  return result;
 }
 
 function run(rows, options, cap) {
@@ -169,9 +167,11 @@ function run(rows, options, cap) {
   if (!Number.isFinite(cap) || cap <= 0) {
     return failure("The salary cap must be a positive number.", DEFAULT_CAP);
   }
-  const objective = options.objective === undefined || options.objective === null ? "proj" : String(options.objective);
+  const asked = options.objective === undefined || options.objective === null ? "proj" : String(options.objective);
+  const retiredNote = retiredObjectiveNote(asked);
+  const objective = retiredNote ? "proj" : asked;
   if (!OBJECTIVES.has(objective)) {
-    return failure(`Unknown objective "${objective}". Use proj, lev or projMinusOwn.`, cap);
+    return failure(`Unknown objective "${objective}". Use proj.`, cap);
   }
   const slots = (Array.isArray(options.slots) && options.slots.length ? options.slots : DEFAULT_SLOTS)
     .map((s) => String(s).trim().toUpperCase());
@@ -181,7 +181,6 @@ function run(rows, options, cap) {
     : DEFAULT_FLEX).map((p) => String(p).trim().toUpperCase());
   const maxFromTeam = num(options.maxFromTeam);
   const stackQbWith = Math.max(0, Math.trunc(num(options.stackQbWith) ?? 0));
-  const penaltyK = ownPenaltyK(options);
 
   const lockIds = idList(options.locks);
   const excludeIds = new Set(idList(options.excludes));
@@ -217,7 +216,7 @@ function run(rows, options, cap) {
 
   // ---- candidates ---------------------------------------------------------------------------------------
   const lockedSet = new Set(lockIds);
-  const notes = [];
+  const notes = retiredNote ? [retiredNote] : [];
   const all = [];
   for (const [key, row] of byId) {
     if (excludeIds.has(key)) continue; // an excluded player never appears, locked or not (that clash was caught above)
@@ -228,7 +227,6 @@ function run(rows, options, cap) {
     // D28: a projection Adam typed in overrides the "no projection" fallback, so the player competes for a slot.
     const overridden = num(row.override && row.override.proj) !== null;
     const noProjection = !overridden && flags.includes("no projection");
-    const lev = num(row.lev);
     if (locked && salary === null) {
       // Missing money is never zero: a player the DraftKings CSV never priced cannot be weighed against the cap
       // at all, so a lineup containing him would be a lie about what it costs.
@@ -242,7 +240,6 @@ function run(rows, options, cap) {
       if (noProjection) continue;         // no source projected him: the AvgPointsPerGame stand-in is not a projection
       if (rowIsSidelined(row)) continue;  // out / IR / doubtful / suspended: never auto-rostered
       if (salary === null) continue;      // no price means he cannot be costed against the cap
-      if (objective === "lev" && lev === null) continue; // no leverage number: nothing to optimise him on
     }
     const positions = rowPositions(row);
     if (!positions.length) {
@@ -256,9 +253,6 @@ function run(rows, options, cap) {
     } else if (locked && noProjection) {
       notes.push(`Locked ${row.name ?? key} has no projection from any source; his average points per game stands in for one.`);
     }
-    if (locked && objective === "lev" && lev === null) {
-      notes.push(`Locked ${row.name ?? key} has no leverage number and counts as 0.`);
-    }
     all.push({
       id: key,
       dkKey: dkKeyOf(row, key),
@@ -269,17 +263,9 @@ function run(rows, options, cap) {
       salary: salary ?? 0,
       proj,
       own: num(row.own),
-      lev,
-      score: scoreOf(row, objective, penaltyK),
+      score: scoreOf(row),
       locked
     });
-  }
-
-  if (objective === "projMinusOwn") {
-    const withOwn = all.filter((c) => c.own !== null).length;
-    notes.push(
-      `${withOwn} of the ${all.length} players in the pool had a real ownership number; the ownership penalty applied only to them, and everyone else was ranked on projection alone.`
-    );
   }
 
   const base = {
@@ -860,18 +846,7 @@ function present(lineup, ctx, notes) {
       own: c.own
     });
   }
-  // Under projMinusOwn a rostered player with no ownership number took no penalty. Adam is told who, so he can
-  // type a number in if he has one; nothing is imputed for them.
   const outNotes = [...notes];
-  if (ctx.objective === "projMinusOwn") {
-    const blind = out.filter((s) => s.own === null).map((s) => s.name);
-    if (blind.length) {
-      const names = blind.length === 1 ? blind[0] : `${blind.slice(0, -1).join(", ")} and ${blind[blind.length - 1]}`;
-      outNotes.push(
-        `${names} ${blind.length === 1 ? "has" : "have"} no published ownership number and took no ownership penalty; type one in if you have it.`
-      );
-    }
-  }
   return {
     lineup: out,
     salaryUsed,

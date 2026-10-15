@@ -1,5 +1,5 @@
 // Optimizer tab (PROJECT.md D21/D32, D70, Part 4 Lineup Builder screen). Secondary tab, never the main
-// page. Top: the Optimizer band (its objective, max-per-team and D73 QB-stack controls included). Left column: the
+// page. Top: the Optimizer band (its max-per-team and D73 QB-stack controls included). Left column: the
 // nine DraftKings classic slots (D1), a salary bar, totals, Clear all and Save lineup. Right column: the same rows the Rankings
 // tab is currently showing — same store, same filters (its own position chips set them), same sort (its headers set
 // it) — with per-row Lock, Exclude and Add-to-slot buttons.
@@ -19,6 +19,7 @@
 import { escapeHtml, money, dec1, dec2, textColourFor } from "./format.js";
 import { store, filterRows, sortRows, passesProjFloor, FLEX_POS, defaultDirFor, activeSlate, activeSlateRows, activeSlateGames, slateDisplayName } from "./state.js";
 import { sortableHeadHtml } from "./tabs.js";
+import { matchupText } from "./table.js"; // D43: the one copy of "vs DAL" / "@ DET"
 import { posChipsHtml } from "./filterbar.js";
 import { filterLineups, bulkUids, bulkLabel, toggleMustHave, pickButtonHtml, filterBarHtml } from "./lineup-filter.js";
 import { TEAM_BY_ABBR } from "./teams-data.js";
@@ -28,10 +29,11 @@ import { phoneMinHeight } from "./expand.js";
 
 const LINEUP_SLOTS = ["QB", "RB", "RB", "WR", "WR", "WR", "TE", "FLEX", "DST"];
 const SALARY_CAP = 50000;
+// The lineups maximise projection; the Leverage and Projection-minus-ownership objectives are gone (Adam 2026-10-15,
+// Lev measure to be redesigned; projection minus ownership removed), and with one objective left the band has no
+// Objective menu. The server builds any older request naming a retired one on projection, with a note.
 const OBJECTIVES = [
   { value: "proj", label: "Projection" },
-  { value: "lev", label: "Leverage" },
-  { value: "projMinusOwn", label: "Projection minus ownership" },
 ];
 const MAX_TEAM_OPTIONS = ["", "1", "2", "3", "4"];
 const STORAGE_KEY = "nfldfs.lineupBuilder.v1";
@@ -541,7 +543,7 @@ function slotPlayerHtml(row) {
       <span class="lineup-slot-top">
         <span class="team-chip-mini" style="background:${primary};color:${textColour}">${escapeHtml(row.team ?? "")}</span>
         <span class="lineup-slot-name">${escapeHtml(row.name)}</span>
-        <span class="lineup-slot-matchup">${escapeHtml(matchupOf(row))}</span>
+        <span class="lineup-slot-matchup">${escapeHtml(matchupText(row))}</span>
       </span>
       <span class="lineup-slot-detail">${money(row.salary)} &middot; ${projText} proj${escapeHtml(ownParen(row.own))}</span>
     </span>`;
@@ -748,7 +750,7 @@ export function savedLineupPlayers(lineup, rowById) {
     const id = String(s.playerId);
     const row = rowById.get(id);
     return row
-      ? { id, name: row.name, pos: row.pos, team: row.team, opp: matchupOf(row), own: row.own ?? null, identity: dkIdentity(row) }
+      ? { id, name: row.name, pos: row.pos, team: row.team, opp: matchupText(row), own: row.own ?? null, identity: dkIdentity(row) }
       : { id, name: s.name, pos: s.pos, team: s.team, opp: "", own: s.own ?? null, identity: id };
   });
 }
@@ -1115,15 +1117,6 @@ export function exposureProblem(maxExp) {
     }
   }
   return null;
-}
-
-/** D43: "vs DAL" at home, "@ DET" away, from the board's "AWAY@HOME" game id; the board's own opponent text when
- *  the game id cannot tell. */
-export function matchupOf(row) {
-  const [away, home] = String(row?.gameId ?? "").split("@");
-  if (away && home && row.team === home) return `vs ${away}`;
-  if (away && home && row.team === away) return `@ ${home}`;
-  return row?.opp ? String(row.opp) : "";
 }
 
 /** D74: exposure by position over one set of lineups, computed here so each results tab shows its own set. Each
@@ -1501,9 +1494,6 @@ function optimizerControlsHtml(rowById) {
       </div>
       ${formError}
       <div class="opt-row">
-        <label class="opt-inline">Objective
-          <select id="opt-objective" class="opt-input opt-select">${options(OBJECTIVES.map((o) => o.value), opt.objective, (v) => OBJECTIVES.find((o) => o.value === v).label)}</select>
-        </label>
         <label class="opt-inline" title="Not applied to the quarterback's team or the team he faces (D76)">Max per team <span class="opt-sub">outside QB game</span>
           <select id="opt-max-team" class="opt-input opt-select">${options(MAX_TEAM_OPTIONS, opt.maxPerTeam, (v) => (v === "" ? "No limit" : v))}</select>
         </label>
@@ -1811,7 +1801,7 @@ function wireOptimizer(container) {
       }
     });
   });
-  // Objective, Max per team and the D73 stack: the value is kept in `opt`; nothing else on the panel depends on it,
+  // Max per team and the D73 stack: the value is kept in `opt`; nothing else on the panel depends on it,
   // so no re-render.
   const bindValue = (sel, key, read) => {
     const el = container.querySelector(sel);
@@ -1819,7 +1809,6 @@ function wireOptimizer(container) {
       opt[key] = read(el);
     });
   };
-  bindValue("#opt-objective", "objective", (el) => el.value);
   bindValue("#opt-max-team", "maxPerTeam", (el) => el.value);
   bindValue("#opt-stack-own", "stackOwn", (el) => Number(el.value));
   bindValue("#opt-stack-opp", "stackOpp", (el) => Number(el.value));

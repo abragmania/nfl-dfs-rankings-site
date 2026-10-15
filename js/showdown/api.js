@@ -57,24 +57,12 @@ export function postShowdownProjectionsPaste() {
   return readOnly();
 }
 
-// The ownership penalty for "projection minus ownership": the rank settings' value the baked board carries as
-// config.ownPenaltyK (the showdown board when it has one, else the classic board); undefined means the engine's default.
-async function ownPenaltyKFor(board) {
-  if (typeof board?.config?.ownPenaltyK === "number") return board.config.ownPenaltyK;
-  try {
-    const classic = await getJson("baked/board.json");
-    return typeof classic?.config?.ownPenaltyK === "number" ? classic.config.ownPenaltyK : undefined;
-  } catch {
-    return undefined;
-  }
-}
-
 // Body and answer as POST /api/showdown/<key>/lineup/optimize. Never throws: there is no server on the site, so a
 // failure is answered as the route's own LINEUP_OPTIMIZE_FAILED, never as an unreachable server.
 export async function postShowdownLineupOptimize(key, payload) {
   try {
     const board = await getShowdownBoard(key);
-    return showdownOptimizeResponse(board, payload, await ownPenaltyKFor(board));
+    return showdownOptimizeResponse(board, payload);
   } catch (e) {
     console.error("showdown optimize: failed", e);
     return errorBody("LINEUP_OPTIMIZE_FAILED", "Could not build a showdown lineup.");

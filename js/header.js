@@ -2,7 +2,7 @@
 // refresh, and the amber pill row: one pill per stale or failed source, plus collapsed CSV warnings. Board
 // notes are never header pills; the few that exist are shown as a quiet line inside their own tab (tabs.js).
 import { escapeHtml, localStamp, collapseWarnings, kickoffClockPart } from "./format.js";
-import { uploadCsv } from "./api.js";
+import { uploadCsv, isSampleMode } from "./api.js";
 import { slateTileText } from "./state.js";
 
 // Builds one amber pill per stale-or-failed source id. `sources` may be null/empty (right after an
@@ -15,6 +15,12 @@ function sourcePillHtml(id, sources) {
   const label = source?.label ?? id;
   if (FAILED_STATUSES.has((source?.status ?? "").toLowerCase())) {
     return `<li class="pill pill-warning" title="${escapeHtml(label)} · failed">${escapeHtml(label)} · failed</li>`;
+  }
+  // A1: a source that came in for some positions and failed, with no cached copy, for others says which.
+  const missing = Array.isArray(source?.missingPositions) ? source.missingPositions.filter(Boolean) : [];
+  if (missing.length) {
+    const text = `${label} · ${missing.join(", ")} failed`;
+    return `<li class="pill pill-warning" title="${escapeHtml(`${text}; those players are blended without it`)}">${escapeHtml(text)}</li>`;
   }
   const time = localStamp(source?.fetchedAt)?.clock ?? ""; // Adam's local time, not the UTC clock in the stamp
   const suffix = time ? `cached ${time}` : "cached";
@@ -61,7 +67,8 @@ export function renderPills(container, { staleIds = [], sources = null, warnings
 export function pillsSummaryText(ids, sources, warningCount = 0, now = Date.now()) {
   const list = ids ?? [];
   const of = (id) => (sources ?? []).find((s) => s.id === id);
-  const isFailed = (id) => FAILED_STATUSES.has((of(id)?.status ?? "").toLowerCase());
+  // A1: a source missing whole positions counts as failed here too, as its own pill says.
+  const isFailed = (id) => FAILED_STATUSES.has((of(id)?.status ?? "").toLowerCase()) || (of(id)?.missingPositions?.length ?? 0) > 0;
   const cachedIds = list.filter((id) => !isFailed(id));
   const failed = list.length - cachedIds.length;
   const unknownTime = cachedIds.some((id) => !of(id)?.fetchedAt);
@@ -93,7 +100,11 @@ export function renderSlateLine(container, slate) {
   }
   const games = Array.isArray(slate.games) ? slate.games.length : 0;
   const weekLabel = slate.week != null ? slate.week : "?";
-  container.textContent = `${slate.season ?? "?"} · Week ${weekLabel} · ${games} game${games === 1 ? "" : "s"}`;
+  const line = `${slate.season ?? "?"} · Week ${weekLabel} · ${games} game${games === 1 ? "" : "s"}`;
+  // A7: ?sample=1 shows the frozen dev fixture board; the page says so, and api.js refuses every write.
+  container.innerHTML = isSampleMode()
+    ? `<span class="sample-tag" title="Sample data from the dev fixture board. Stars, notes, typed numbers and every other change are refused; nothing reaches the server.">SAMPLE DATA · nothing is saved</span> ${escapeHtml(line)}`
+    : escapeHtml(line);
 }
 
 // The line shown after an upload that the server saved as a second slate (D57). Players the server could not

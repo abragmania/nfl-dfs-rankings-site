@@ -9,8 +9,8 @@
 // off the baked board's rows, which carry every one of them), so a visitor can change or clear what Adam typed or
 // starred, and Adam's later publishes of the same week still show through wherever the visitor has not touched a
 // player. A cleared number whose published value has since changed is dropped on reading, so Adam's revision shows.
-// The result is merged by the app's own remerge (server/rank/remerge.js) with the baked board's rank settings, so the
-// board answers as the app's override routes do. Stars are per week and second slates read the main board's rows, so
+// The result is merged by the app's own remerge (server/rank/remerge.js), so the board answers as the app's override
+// routes do. Stars are per week and second slates read the main board's rows, so
 // stars carry across slates as in the app (D53, D57).
 //
 // The cell's reset x (a null for one number): a number the visitor typed goes first, which shows Adam's number again
@@ -154,7 +154,7 @@ function effective(published, edits) {
 
 /** The baked board with Adam's published overrides plus `edits` merged by the app's remerge, flagged for Reset all. */
 function remerged(board, slate, published, edits) {
-  const merged = remergeOverrides(board, slate, effective(published, edits), board.config);
+  const merged = remergeOverrides(board, slate, effective(published, edits));
   return { ...merged, siteTypedNumbers: hasTypedNumbers(edits) };
 }
 

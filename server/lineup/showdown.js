@@ -2,17 +2,18 @@
 // position including K and DST, $50,000. A thin wrapper around the classic optimiser (server/lineup/optimize.js),
 // which is used unchanged:
 //   - every person on the showdown board becomes two candidates: a Captain (position "CPT", 1.5x projection,
-//     Captain price, Captain ownership and leverage) and a FLEX (real position, FLEX price, FLEX ownership and
-//     leverage). Both carry the person's id as their DraftKings key, so the optimiser never rosters one man twice;
+//     Captain price, Captain ownership) and a FLEX (real position, FLEX price, FLEX ownership). Both carry the person's id as their DraftKings key, so the optimiser never rosters one man twice;
 //   - slots are CPT plus FLEX x5, FLEX accepts QB/RB/WR/TE/K/DST;
 //   - at most five from one team, so both teams appear (DraftKings requires it).
 // Locks and excludes use candidate ids: a person's FLEX id (row.id) means his FLEX candidate for a lock, and a
 // Captain id (row.cptId) means his Captain candidate. Excluding a FLEX id (row.id) removes the person entirely;
 // excluding a Captain id removes only his Captain candidate. Rows flagged "no projection" are never auto-rostered
 // (the classic optimiser's own rule, kept because the candidates carry the row's flags and override).
-import { optimizeLineup } from "./optimize.js";
+// The lineups maximise projection: the "lev" and "projMinusOwn" objectives are retired (Adam 2026-10-15, Lev
+// measure to be redesigned; projection minus ownership removed), and a request naming one is built on projection
+// with the classic optimiser's note (optimize.js retiredObjectiveNote).
+import { optimizeLineup, retiredObjectiveNote } from "./optimize.js";
 import { rowIsSidelined } from "../rank/sidelined.js"; // pure: the public site runs this in a browser (D71)
-import { DEFAULT_RANK_CONFIG } from "../rank/value-core.js"; // the one copy of the default ownership penalty
 
 export const SHOWDOWN_SLOTS = Object.freeze(["CPT", "FLEX", "FLEX", "FLEX", "FLEX", "FLEX"]);
 export const SHOWDOWN_FLEX = Object.freeze(["QB", "RB", "WR", "TE", "K", "DST"]);
@@ -30,8 +31,8 @@ function idList(value) {
 
 /**
  * The two candidate rows for one showdown board row. Exported for the tests.
- * Captain: id = cptId, pos "CPT", proj x1.5, salary = cptSalary (read from the CSV, never computed), own = ownCpt,
- * lev = levCpt. FLEX: id = row id, real position, salary, own = ownFlex, lev = levFlex. Both: dkId = person id.
+ * Captain: id = cptId, pos "CPT", proj x1.5, salary = cptSalary (read from the CSV, never computed), own = ownCpt.
+ * FLEX: id = row id, real position, salary, own = ownFlex. Both: dkId = person id.
  * A Captain row with no FLEX partner (its id is its own Captain id) or a row with no FLEX price has no FLEX
  * candidate at all: there is nothing DraftKings would let him be rostered as in a FLEX slot.
  */
@@ -57,7 +58,6 @@ export function showdownCandidates(row) {
       salary: num(row.cptSalary),
       proj: proj === null ? null : proj * CPT_MULTIPLIER,
       own: num(row.ownCpt),
-      lev: num(row.levCpt),
       override: { proj: overrideProj === null ? null : overrideProj * CPT_MULTIPLIER },
       personId: person,
       realPos: row.pos
@@ -73,7 +73,6 @@ export function showdownCandidates(row) {
     salary: num(row.salary),
     proj,
     own: num(row.ownFlex),
-    lev: num(row.levFlex),
     override: { proj: overrideProj },
     personId: person,
     realPos: row.pos
@@ -81,27 +80,20 @@ export function showdownCandidates(row) {
   return out;
 }
 
-/** The classic optimiser's objective score for one candidate (server/lineup/optimize.js scoreOf), used only to
- *  compare the per-Captain results with each other. */
-function scoreOf(c, objective, k) {
-  if (objective === "lev") return num(c.lev) ?? 0;
-  const proj = num(c.proj) ?? 0;
-  if (objective === "projMinusOwn") {
-    const own = num(c.own);
-    return own === null ? proj : proj - k * own;
-  }
-  return proj;
+/** The classic optimiser's objective score for one candidate (server/lineup/optimize.js scoreOf): his projection,
+ *  used only to compare the per-Captain results with each other. */
+function scoreOf(c) {
+  return num(c.proj) ?? 0;
 }
 
 /** Would the classic optimiser auto-roster this candidate? (Its own filter, repeated because a Captain is locked
  *  in below, and a locked candidate skips that filter.) */
-function rosterable(c, objective) {
+function rosterable(c) {
   const overridden = num(c.override?.proj) !== null;
   if (num(c.proj) === null) return false;
   if (!overridden && c.flags.includes("no projection")) return false;
   if (rowIsSidelined(c)) return false;
   if (num(c.salary) === null) return false;
-  if (objective === "lev" && num(c.lev) === null) return false;
   return true;
 }
 
@@ -184,7 +176,7 @@ function exactSearch(pool, { lockIds, cap, maxFromTeam, floor }) {
  * (exactSearch above) then finds the provably best lineup. That lineup is handed back to the classic optimiser with
  * all six locked, so the result is checked for legality and presented exactly as classic presents a lineup.
  */
-export function optimizeShowdown(rows, { objective = "proj", locks, excludes, cap = 50000, ownPenaltyK } = {}) {
+export function optimizeShowdown(rows, { objective = "proj", locks, excludes, cap = 50000 } = {}) {
   const list = Array.isArray(rows) ? rows : [];
   const excludeIds = new Set(idList(excludes));
   const lockIds = idList(locks);
@@ -203,9 +195,8 @@ export function optimizeShowdown(rows, { objective = "proj", locks, excludes, ca
   for (const c of candidates) if (personExcluded.has(c.personId) && !allExcludes.includes(c.id)) allExcludes.push(c.id);
   const excluded = new Set(allExcludes);
 
-  // The caller reads the penalty from data/config/rank.json and passes it in (D71: no file read here); without it
-  // the same default the config falls back to applies.
-  const k = num(ownPenaltyK) ?? DEFAULT_RANK_CONFIG.ownPenaltyK;
+  // The asked objective goes to the classic optimiser as asked, so a retired one gets its note there and is built
+  // on projection.
   const options = {
     excludes: allExcludes,
     objective,
@@ -213,23 +204,23 @@ export function optimizeShowdown(rows, { objective = "proj", locks, excludes, ca
     slots: [...SHOWDOWN_SLOTS],
     flexPositions: [...SHOWDOWN_FLEX],
     maxFromTeam: SHOWDOWN_MAX_FROM_TEAM,
-    stackQbWith: 0,
-    ownPenaltyK: k
+    stackQbWith: 0
   };
 
   const plain = optimizeLineup(candidates, { ...options, locks: lockIds });
   let result = plain;
   // A request the classic optimiser refused outright (bad objective, clashing or unknown locks, a lock with no price)
   // stays refused; the exact search runs only on a request it could make sense of.
-  const validRequest = plain.feasible || (typeof objective === "string" && ["proj", "lev", "projMinusOwn"].includes(objective)
+  const knownObjective = objective === "proj" || retiredObjectiveNote(objective) !== null;
+  const validRequest = plain.feasible || (typeof objective === "string" && knownObjective
     && lockIds.every((id) => byCandId.has(id) && !excluded.has(id) && num(byCandId.get(id).salary) !== null)
     && Number.isFinite(cap) && cap > 0);
   if (validRequest) {
     const locked = new Set(lockIds);
     const pool = candidates
-      .filter((c) => !excluded.has(c.id) && (locked.has(c.id) || rosterable(c, objective)))
-      .map((c) => ({ ...c, salary: num(c.salary) ?? 0, score: scoreOf(c, objective, k) }));
-    const plainScore = plain.feasible ? plain.lineup.reduce((a, e) => a + scoreOf(byCandId.get(String(e.id)), objective, k), 0) : -Infinity;
+      .filter((c) => !excluded.has(c.id) && (locked.has(c.id) || rosterable(c)))
+      .map((c) => ({ ...c, salary: num(c.salary) ?? 0, score: scoreOf(c) }));
+    const plainScore = plain.feasible ? plain.lineup.reduce((a, e) => a + scoreOf(byCandId.get(String(e.id))), 0) : -Infinity;
     const best = exactSearch(pool, { lockIds, cap, maxFromTeam: SHOWDOWN_MAX_FROM_TEAM, floor: plainScore });
     if (best) {
       const exact = optimizeLineup(candidates, { ...options, locks: best.map((c) => c.id) });

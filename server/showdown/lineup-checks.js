@@ -9,7 +9,14 @@
 /** What a showdown with no known week answers when asked to keep a lineup: the app's route and the site say the same. */
 export const WEEK_UNKNOWN_MESSAGE = "This showdown's week is not known yet; re-upload once the week resolves.";
 
-export const LINEUP_OBJECTIVES =new Set(["proj", "lev", "projMinusOwn"]);
+export const LINEUP_OBJECTIVES = new Set(["proj"]);
+// Objectives the showdown optimiser no longer offers. A request (or an old page) naming one builds by projection and
+// carries this note, never an error: "projection minus ownership" was removed (Adam, 2026-10-15), and Lev has no
+// measure (Adam 2026-10-15, Lev measure to be redesigned).
+export const RETIRED_OBJECTIVES = Object.freeze({
+  projMinusOwn: "\"Projection minus ownership\" has been removed, so this lineup was built by projection.",
+  lev: "Leverage has no measure yet, so this lineup was built by projection."
+});
 const SHOWDOWN_SLOT_NAMES = new Set(["CPT", "FLEX"]);
 const MAX_FLEX = 5;
 
@@ -22,10 +29,19 @@ function validateIdArray(value, name) {
   return { ids: value };
 }
 
-/** The body of POST .../lineup/optimize ({objective, locks, excludes}, all optional) -> {objective, locks, excludes} or {error}. */
+/**
+ * The body of POST .../lineup/optimize ({objective, locks, excludes}, all optional) -> {objective, locks, excludes,
+ * objectiveNote} or {error}. A retired objective becomes "proj" with objectiveNote saying so; objectiveNote is null
+ * otherwise.
+ */
 export function validateOptimizeBody(body) {
   body = body ?? {};
-  const objective = body.objective === undefined || body.objective === null ? "proj" : body.objective;
+  let objective = body.objective === undefined || body.objective === null ? "proj" : body.objective;
+  let objectiveNote = null;
+  if (typeof objective === "string" && Object.prototype.hasOwnProperty.call(RETIRED_OBJECTIVES, objective)) {
+    objectiveNote = RETIRED_OBJECTIVES[objective];
+    objective = "proj";
+  }
   if (typeof objective !== "string" || !LINEUP_OBJECTIVES.has(objective)) {
     return { error: `objective must be one of ${[...LINEUP_OBJECTIVES].join(", ")}` };
   }
@@ -33,7 +49,7 @@ export function validateOptimizeBody(body) {
   if (locks.error) return { error: locks.error };
   const excludes = validateIdArray(body.excludes, "excludes");
   if (excludes.error) return { error: excludes.error };
-  return { objective, locks: locks.ids, excludes: excludes.ids };
+  return { objective, locks: locks.ids, excludes: excludes.ids, objectiveNote };
 }
 
 /** {slots}: a non-empty array of {slot: CPT|FLEX, playerId}, at most one Captain and five FLEX, no player twice. */
@@ -64,7 +80,7 @@ const isNum = (v) => typeof v === "number" && Number.isFinite(v);
  * The saved snapshot of validated `slots` (from validateShowdownSlots) against the board's `rows`. A player may be
  * named by his FLEX id or his Captain id; both find the same row. D39: the Captain scores 1.5x and costs his Captain
  * price from the CSV; a missing price must never count as $0 toward the cap. Returns {error} or
- * {slots, salaryUsed, totalProj}.
+ * {slots, salaryUsed, totalProj}; totalProj is null when any slot has no projection.
  */
 export function buildShowdownSnapshot(slots, rows) {
   const rowById = new Map();
@@ -84,7 +100,7 @@ export function buildShowdownSnapshot(slots, rows) {
     if (cpt ? !isNum(row.cptSalary) : !isNum(row.salary)) {
       return { error: `${row.name} has no ${cpt ? "Captain" : "FLEX"} price in the salary file` };
     }
-    const proj = cpt ? (isNum(row.cptProj) ? row.cptProj : isNum(row.proj) ? row.proj * 1.5 : null) : (row.proj ?? null);
+    const proj = cpt ? (isNum(row.cptProj) ? row.cptProj : isNum(row.proj) ? row.proj * 1.5 : null) : (isNum(row.proj) ? row.proj : null);
     snapshotSlots.push({
       slot: item.slot,
       playerId: item.playerId,
@@ -97,6 +113,8 @@ export function buildShowdownSnapshot(slots, rows) {
     });
   }
   const salaryUsed = snapshotSlots.reduce((sum, s) => sum + (s.salary ?? 0), 0);
-  const totalProj = snapshotSlots.reduce((sum, s) => sum + (s.proj ?? 0), 0);
+  // Missing is missing (D29 spirit, router Data rules): one slot with no projection makes the total unknown, never a
+  // sum that quietly counts him as 0.
+  const totalProj = snapshotSlots.every((s) => isNum(s.proj)) ? snapshotSlots.reduce((sum, s) => sum + s.proj, 0) : null;
   return { slots: snapshotSlots, salaryUsed, totalProj };
 }

@@ -13,10 +13,10 @@ import { posPillHtml } from "./table.js";
 
 const SALARY_CAP = 50000;
 const FLEX_COUNT = 5;
+// "Projection minus ownership" was removed and Leverage has no measure (Adam 2026-10-15, Lev measure to be
+// redesigned); the server answers either name by building by projection with an objectiveNote.
 const OBJECTIVES = [
   { value: "proj", label: "Projection" },
-  { value: "lev", label: "Leverage" },
-  { value: "projMinusOwn", label: "Projection minus ownership" },
 ];
 
 const state = {
@@ -77,19 +77,30 @@ function isPlacedFlex(id) {
   return state.flex.some((s) => s && String(s.id) === String(id));
 }
 
-function computeTotals(board) {
+/**
+ * Salary used, salary left and total projection of the placed players (`picked` = {cpt, flex}, the panel's state by
+ * default; exported for the tests). Missing is missing: a placed player who is no longer on the board makes both
+ * the salary and the projection unknown (null), and one with no projection makes the projection unknown.
+ */
+export function computeTotals(board, picked = state) {
   const entries = [];
-  if (state.cpt) entries.push({ id: state.cpt.id, cpt: true });
-  for (const s of state.flex) if (s) entries.push({ id: s.id, cpt: false });
+  if (picked.cpt) entries.push({ id: picked.cpt.id, cpt: true });
+  for (const s of picked.flex ?? []) if (s) entries.push({ id: s.id, cpt: false });
   let salaryUsed = 0;
   let totalProj = 0;
   for (const { id, cpt } of entries) {
     const row = findRow(board, id);
-    if (!row) continue;
-    salaryUsed += (cpt ? row.cptSalary : row.salary) ?? 0;
-    totalProj += (cpt ? row.cptProj : row.proj) ?? 0;
+    if (!row) {
+      salaryUsed = null;
+      totalProj = null;
+      continue;
+    }
+    if (salaryUsed !== null) salaryUsed += (cpt ? row.cptSalary : row.salary) ?? 0;
+    // Missing is missing: a placed player with no projection makes the total unknown, never a sum counting him as 0.
+    const proj = cpt ? row.cptProj : row.proj;
+    totalProj = totalProj !== null && Number.isFinite(proj) ? totalProj + proj : null;
   }
-  return { salaryUsed, salaryLeft: SALARY_CAP - salaryUsed, totalProj, filled: entries.length };
+  return { salaryUsed, salaryLeft: salaryUsed === null ? null : SALARY_CAP - salaryUsed, totalProj, filled: entries.length };
 }
 
 // D39: both teams required. Reports which of the game's two teams are (not yet) represented among the
@@ -186,9 +197,11 @@ async function doBuild(key) {
       const personIdOf = (e) => String(e.personId ?? e.playerId ?? e.id);
       state.cpt = cptEntry ? { id: personIdOf(cptEntry) } : null;
       state.flex = new Array(FLEX_COUNT).fill(null).map((_, i) => (flexEntries[i] ? { id: personIdOf(flexEntries[i]) } : null));
-      state.lastResult = { feasible: true, message: data.message ?? "", salaryUsed: data.salaryUsed, totalProj: data.totalProj };
+      const message = [data.objectiveNote, data.message].filter(Boolean).join(" ");
+      state.lastResult = { feasible: true, message, salaryUsed: data.salaryUsed, totalProj: data.totalProj };
     } else {
-      state.lastResult = { feasible: false, message: data.message ?? "No legal lineup fits the salary cap and both-teams rule." };
+      const message = [data.objectiveNote, data.message ?? "No legal lineup fits the salary cap and both-teams rule."].filter(Boolean).join(" ");
+      state.lastResult = { feasible: false, message };
     }
   } catch (e) {
     state.lastResult = { feasible: false, message: `Could not reach the server: ${e.message}` };
@@ -365,7 +378,7 @@ function placedIdSet() {
 }
 
 // Status pill for Out/IR (and Doubtful/Questionable) players, same badge as the Rankings table (👁
-// visual-qa item I); ownParen (D32) prints published or estimated ownership, blank when there is none.
+// visual-qa item I); ownParen (D32) prints published or typed ownership, blank when there is none.
 function statusPillHtml(row) {
   const raw = (row.status ?? "").trim();
   const info = STATUS_INFO[raw.toLowerCase()];
@@ -451,10 +464,13 @@ function savedLineupCardHtml(lineup, board) {
       // The snapshot's own "salary" field is already the right one for its slot (CPT or FLEX) — routes.js
       // resolves that at save time (~line 559); there is no separate snap.cptSalary (🔵 review item 11).
       salaryUsed += e.snap.salary ?? 0;
+      // A player no longer on the board has no current projection: the total is unknown.
+      totalProj = null;
       continue;
     }
     salaryUsed += (e.slot === "CPT" ? row.cptSalary : row.salary) ?? 0;
-    totalProj += (e.slot === "CPT" ? row.cptProj : row.proj) ?? 0;
+    const proj = e.slot === "CPT" ? row.cptProj : row.proj;
+    totalProj = totalProj !== null && Number.isFinite(proj) ? totalProj + proj : null;
   }
   const overCap = salaryUsed > SALARY_CAP;
   const incomplete = entries.length < FLEX_COUNT + 1;
@@ -490,7 +506,7 @@ function savedLineupCardHtml(lineup, board) {
       <div class="saved-lineup-slots">${rowsHtml}</div>
       <div class="saved-lineup-totals">
         <span class="${overCap ? "saved-lineup-totals-over" : ""}">${salaryText}</span>
-        <span>&middot; ${dec1(totalProj)} proj</span>
+        <span>&middot; ${totalProj === null ? "proj unknown (a player has no projection)" : `${dec1(totalProj)} proj`}</span>
       </div>
       <div class="saved-lineup-actions">
         <button type="button" class="saved-lineup-btn" data-action="sd-load" data-id="${escapeHtml(lineup.id)}">Load</button>
@@ -519,10 +535,12 @@ function savedLineupsSectionHtml(board) {
 
 function panelHtml(board) {
   const totals = computeTotals(board);
-  const overCap = totals.salaryUsed > SALARY_CAP;
-  const fillPct = Math.max(0, Math.min(100, (totals.salaryUsed / SALARY_CAP) * 100));
-  const salaryText =
-    totals.salaryLeft < 0 ? `${money(totals.salaryUsed)} used · ${money(-totals.salaryLeft)} over` : `${money(totals.salaryUsed)} used · ${money(totals.salaryLeft)} left`;
+  const salaryKnown = totals.salaryUsed !== null;
+  const overCap = salaryKnown && totals.salaryUsed > SALARY_CAP;
+  const fillPct = salaryKnown ? Math.max(0, Math.min(100, (totals.salaryUsed / SALARY_CAP) * 100)) : 0;
+  const salaryText = !salaryKnown
+    ? "Salary unknown: a placed player is no longer on the board"
+    : totals.salaryLeft < 0 ? `${money(totals.salaryUsed)} used · ${money(-totals.salaryLeft)} over` : `${money(totals.salaryUsed)} used · ${money(totals.salaryLeft)} left`;
   return `
     <div class="lineup-layout">
       <div class="lineup-left">
@@ -532,7 +550,7 @@ function panelHtml(board) {
           <div class="salary-bar-track"><div class="salary-bar-fill${overCap ? " over" : ""}" style="width:${fillPct}%"></div></div>
           <span class="salary-bar-label${overCap ? " over" : ""}">${escapeHtml(salaryText)}</span>
         </div>
-        <div class="lineup-totals">Total projection ${dec1(totals.totalProj)} &middot; ${totals.filled} of 6 slots filled</div>
+        <div class="lineup-totals">Total projection ${totals.totalProj === null ? "unknown (a player has no projection)" : dec1(totals.totalProj)} &middot; ${totals.filled} of 6 slots filled</div>
         ${buildStatusHtml(board)}
       </div>
       <div class="lineup-right">

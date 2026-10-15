@@ -51,17 +51,16 @@ function usableBoard(board) {
 }
 
 /**
- * The optimise route's work on the baked board. `payload`: {objective, locks, excludes}. `ownPenaltyK`: the rank
- * settings' ownership penalty, which the route reads from data/config/rank.json (the engine reads no file, D71);
- * undefined means the engine's default. Returns the route's body.
+ * The optimise route's work on the baked board. `payload`: {objective, locks, excludes}; a retired objective builds
+ * by projection with the route's objectiveNote (server/showdown/lineup-checks.js). Returns the route's body.
  */
-export function showdownOptimizeResponse(board, payload, ownPenaltyK) {
+export function showdownOptimizeResponse(board, payload) {
   if (!usableBoard(board)) return board && board.ok === false && board.error ? board : errorBody("NO_SLATE", "No showdown slate has been uploaded.");
   const checked = validateOptimizeBody(payload);
   if (checked.error) return errorBody("VALIDATION_ERROR", checked.error);
   try {
-    const result = optimizeShowdown(board.rows, { objective: checked.objective, locks: checked.locks, excludes: checked.excludes, ownPenaltyK });
-    return envelope(result, { stale: board.stale ?? [] });
+    const result = optimizeShowdown(board.rows, { objective: checked.objective, locks: checked.locks, excludes: checked.excludes });
+    return envelope({ ...result, objectiveNote: checked.objectiveNote }, { stale: board.stale ?? [] });
   } catch (e) {
     console.error("showdown optimize: failed", e);
     return errorBody("LINEUP_OPTIMIZE_FAILED", "Could not build a showdown lineup.");

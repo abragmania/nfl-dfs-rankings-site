@@ -4,6 +4,7 @@ import { escapeHtml, dec1, localStamp } from "./format.js";
 import { store, passesProjFloor, CLASSIC_PROJ_FLOOR, activeSlateRows, sortRows } from "./state.js";
 import { favoritesTabLabel } from "./favorites.js";
 import { unmatchedPartsHtml, slateTeamSet } from "./unmatched.js";
+import { matchupText, sourceFailedMarkerHtml } from "./table.js";
 
 // The classic projection floor (D52) as it applies to the two source tables: the same predicate and the same
 // "Show all players" toggle as the Rankings table, nothing else from the filter bar. These tabs have no search
@@ -135,6 +136,7 @@ export function projectionColumns(sources, isNotUsed = isProjectionNotUsed) {
   return [
     { key: "player", label: "Player" },
     { key: "team", label: "Team" },
+    { key: "opp", label: "Opp", cls: "opp-col" }, // D43: "vs DAL" / "@ DET", left-aligned (style.css .opp-col)
     { key: "proj", label: "Proj" },
     ...sources.filter((s) => !isNotUsed(s)).map((s) => ({ key: `src:${s.id}`, label: s.label })),
     ...sources.filter(isNotUsed).map((s) => ({ key: `src:${s.id}`, label: `${s.label} (not used)` })),
@@ -174,6 +176,7 @@ export function renderProjectionsPanel(container, board, callbacks) {
   const valueOf = (r, col) => {
     if (col === "player") return r.name ?? null;
     if (col === "team") return r.team ?? null;
+    if (col === "opp") return matchupText(r) || null;
     if (col === "proj") return r.proj ?? null;
     if (col === "cov") return r.coverage ?? null;
     return r.projBySource?.[col.slice(4)] ?? null;
@@ -186,7 +189,8 @@ export function renderProjectionsPanel(container, board, callbacks) {
   const shownRows = floorRows(activeSlateRows(board));
   const draw = () => {
     theadEl.innerHTML = sortableHeadHtml(cols, projSort);
-    tbodyEl.innerHTML = sortableBodyHtml(shownRows, cols, projSort, valueOf);
+    // A1: a player blended without a source that failed for his position says so beside his coverage.
+    tbodyEl.innerHTML = sortableBodyHtml(shownRows, cols, projSort, valueOf, (r) => sourceFailedMarkerHtml(r, board.sources));
     theadEl.querySelectorAll("th[data-col]").forEach((th) => {
       th.addEventListener("click", () => {
         const col = th.dataset.col;
@@ -228,9 +232,9 @@ export function renderProjectionsPanel(container, board, callbacks) {
 // floor toggle. Default Own% high to low, as on Rankings. Column keys: player, team, own, cov, or "src:<id>".
 let ownSort = { col: "own", dir: "desc" };
 
-// Player and Team start A to Z; every number column starts high to low (the Rankings pattern, state.js).
+// Player, Team and Opp start A to Z; every number column starts high to low (the Rankings pattern, state.js).
 export function sortDefaultDir(col) {
-  return col === "player" || col === "team" ? "asc" : "desc";
+  return col === "player" || col === "team" || col === "opp" ? "asc" : "desc";
 }
 
 // Projected Ownership table (Adam, 2026-10-10: Own% close to the left, every column sortable). Columns: Player,
@@ -243,6 +247,7 @@ function ownershipColumns(sources, isNotUsed) {
   return [
     { key: "player", label: "Player" },
     { key: "team", label: "Team" },
+    { key: "opp", label: "Opp", cls: "opp-col" }, // D43: "vs DAL" / "@ DET", left-aligned (style.css .opp-col)
     { key: "own", label: "Own%" },
     ...sources.filter((s) => !isNotUsed(s)).map((s) => ({ key: `src:${s.id}`, label: s.label })),
     ...sources.filter(isNotUsed).map((s) => ({ key: `src:${s.id}`, label: `${s.label} (not used)` })),
@@ -254,20 +259,23 @@ export function sortableHeadHtml(cols, sort) {
   const head = cols
     .map((c) => {
       const arrow = sort.col === c.key ? (sort.dir === "asc" ? " ▲" : " ▼") : "";
-      return `<th data-col="${escapeHtml(c.key)}" class="sortable${sort.col === c.key ? " sorted" : ""}">${escapeHtml(c.label)}${arrow}</th>`;
+      const extra = c.cls ? ` ${escapeHtml(c.cls)}` : ""; // a column's own class (the Opp column's opp-col)
+      return `<th data-col="${escapeHtml(c.key)}" class="sortable${sort.col === c.key ? " sorted" : ""}${extra}">${escapeHtml(c.label)}${arrow}</th>`;
     })
     .join("");
   return `<tr>${head}</tr>`;
 }
 
-function sortableBodyHtml(rows, cols, sort, valueOf) {
+// `covMark(row)`: optional extra HTML after the Coverage number (the Projections tab's A1 marker).
+function sortableBodyHtml(rows, cols, sort, valueOf, covMark = () => "") {
   return sortRows(rows, sort.col, sort.dir, valueOf)
     .map((r) => {
       const cells = cols
         .map((c) => {
           const v = valueOf(r, c.key);
+          if (c.key === "opp") return `<td class="opp-col">${escapeHtml(v ?? "")}</td>`; // D43, left-aligned (style.css)
           if (c.key === "player" || c.key === "team") return `<td>${escapeHtml(v ?? "")}</td>`;
-          if (c.key === "cov") return `<td>${v == null ? "—" : `${Math.round(v * 100)}%`}</td>`;
+          if (c.key === "cov") return `<td>${v == null ? "—" : `${Math.round(v * 100)}%`}${covMark(r)}</td>`;
           return `<td>${v == null ? "—" : dec1(v)}</td>`;
         })
         .join("");
@@ -317,6 +325,7 @@ export function renderOwnershipPanel(container, board, callbacks) {
   const valueOf = (r, col) => {
     if (col === "player") return r.name ?? null;
     if (col === "team") return r.team ?? null;
+    if (col === "opp") return matchupText(r) || null;
     if (col === "own") return r.own ?? null;
     if (col === "cov") return coverageFn(r);
     return r.ownBySource?.[col.slice(4)] ?? null;

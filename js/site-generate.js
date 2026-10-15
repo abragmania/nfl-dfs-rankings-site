@@ -48,10 +48,7 @@ export function generateResponse({ board, slate, body: rawBody, saved }) {
 
   const stale = Array.isArray(board.stale) ? board.stale : [];
   try {
-    // The ownership penalty for "projection minus ownership" comes from the baked board's rank settings, as the
-    // route takes it from the live board's (board.config is data/config/rank.json; the engine reads no file, D71).
-    const ownPenaltyK = board.config?.ownPenaltyK;
-    const result = generateLineups({ rows, slate, settings: { ...checked.settings, fpCatches, ownPenaltyK }, existing });
+    const result = generateLineups({ rows, slate, settings: { ...checked.settings, fpCatches }, existing });
     return envelope(enrichGenerateResult(result, rowById), { stale });
   } catch (e) {
     console.error("lineup generate: failed", e);

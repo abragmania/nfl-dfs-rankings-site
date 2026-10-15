@@ -1,14 +1,14 @@
-// Visual grading for the Value and Lev columns (Adam's addition): each row is placed into a quintile of
+// Visual grading for the Value column (Adam's addition): each row is placed into a quintile of
 // its own position (rows with a number for that field only) and tagged with a grade class v1..v5 —
 // v1 the top 20% (best), v3 the middle 40-60% (neutral), v5 the bottom 20% (worst). Own and Proj are
 // never graded. Percentiles are computed once, over the whole position (not the currently filtered/
 // visible rows), so filtering never changes a row's grade.
 // D42: Value grades require projected points >= 3.0; rows under that floor get valueGrade null.
+// Lev has no measure and is never graded (Adam 2026-10-15).
 
 // D50: a position needs at least this many rows with a number before any of them is graded. In a showdown
 // there are two kickers, two defences and often two quarterbacks, and comparing two players makes one
-// green and one red for nothing, so a thinner position gets grade null (no tint) for that field. One
-// place for both Value and Lev (both go through percentileGrades).
+// green and one red for nothing, so a thinner position gets grade null (no tint) for that field.
 const GRADE_MIN_PER_POS = 3;
 
 function gradeForPercentile(pct) {
@@ -40,16 +40,14 @@ function percentileGrades(rows, field) {
   return gradeById;
 }
 
-/** Returns a new rows array with valueGrade/levGrade ("v1".."v5" or null) attached to every row. */
+/** Returns a new rows array with valueGrade ("v1".."v5" or null) attached to every row. */
 export function applyGrades(rows) {
   const list = rows ?? [];
   // D42: Value grades are computed only among rows with proj >= 3; rows below that floor get valueGrade null.
   const listForValue = list.filter((r) => r.proj != null && r.proj >= 3);
   const valueGrades = percentileGrades(listForValue, "value");
-  const levGrades = percentileGrades(list, "lev");
   return list.map((r) => ({
     ...r,
     valueGrade: valueGrades.get(r.id) ?? null,
-    levGrade: levGrades.get(r.id) ?? null,
   }));
 }

@@ -3,7 +3,8 @@
 // column default to descending on their own first click, see state.js's defaultDirFor). Proj and Own%
 // are editable in place; an override shows a marker plus the base value on hover and a reset icon. Rows
 // with a null projection show "no proj" and stay visible (D27). A player nobody published an ownership number
-// for shows an em dash in Own% (still click-to-edit, D28) and a blank Lev; the app never estimates one.
+// for shows an em dash in Own% (still click-to-edit, D28); the app never estimates one. The Lev column is
+// empty for everyone (Adam 2026-10-15, Lev measure to be redesigned).
 //
 // Event handling is delegated once onto the tbody element itself (wireDelegation), rather than
 // re-attached to every cell on every render: that lets a single row (updateRow) or a single cell
@@ -11,6 +12,7 @@
 // rebuilding the whole tbody and losing whatever the next click was about to land on.
 import { escapeHtml, money, dec1, dec2, textColourFor, logoFor } from "./format.js";
 import { TEAM_BY_ABBR } from "./teams-data.js";
+import { store } from "./state.js";
 
 const BASE_COLUMNS = [
   { key: "star", label: "★" },
@@ -22,7 +24,9 @@ const BASE_COLUMNS = [
   { key: "proj", label: "Proj" },
   { key: "own", label: "Own%" },
   { key: "value", label: "Value" },
-  { key: "lev", label: "Lev" },
+  // Adam 2026-10-15, Lev measure to be redesigned: the column stays, every cell empty, the header says why and does
+  // not sort (there is nothing to sort on).
+  { key: "lev", label: "Lev", title: "Lev: no measure yet", sortable: false },
   { key: "tags", label: "Tags" },
   { key: "status", label: "Status" },
 ];
@@ -52,10 +56,23 @@ const PROJ_FLAG_LABELS = {
   injured: "Flagged injured; may affect availability this week.",
 };
 
+// Every tag is a researched one (review Q1, Adam 2026-10-14: the computed chalk and value tags are gone); a
+// researcher's "chalk" and "value" keep their colours.
 function tagClass(tag) {
   if (tag === "chalk") return "tag-pill tag-chalk";
   if (tag === "value") return "tag-pill tag-value";
   return "tag-pill tag-other";
+}
+
+/** D43: the matchup as "vs DAL" (his team is at home) or "@ DET" (away), from the game key "AWAY@HOME"; the row's
+ *  own opponent text when the game key does not place his team, and blank with neither. The one copy: the Rankings,
+ *  Favorites, Projections and Projected Ownership tables and the Optimizer (lineup.js) all use it. */
+export function matchupText(row) {
+  const m = /^([A-Z0-9]+)@([A-Z0-9]+)$/i.exec(String(row?.gameId ?? ""));
+  const team = String(row?.team ?? "").toUpperCase();
+  if (m && team && m[2].toUpperCase() === team) return `vs ${m[1]}`;
+  if (m && team && m[1].toUpperCase() === team) return `@ ${m[2]}`;
+  return row?.opp ? String(row.opp) : "";
 }
 
 function idAttr(row) {
@@ -83,10 +100,32 @@ function playerCellHtml(row) {
     </div>`;
 }
 
+/**
+ * A1: one sentence per blended source that failed for this player's position this run ("sourceFailed:<id>" flags,
+ * server/rank/board.js), named by its label: "CBS Sports failed for TE this run and has no cached copy, so Proj is
+ * blended without it." `sources`: board.sources (the loaded board's by default); the id stands in for a source the
+ * board does not list. Shared by the Rankings and Favorites Proj cell and the Projections tab's Coverage cell.
+ */
+export function sourceFailedTexts(row, sources = store.get().board?.sources) {
+  const labelOf = (id) => (sources ?? []).find((s) => s && s.id === id)?.label ?? id;
+  const pos = row?.pos ? String(row.pos) : "his position";
+  return (row?.flags ?? [])
+    .filter((f) => typeof f === "string" && f.startsWith("sourceFailed:"))
+    .map((f) => `${labelOf(f.slice("sourceFailed:".length))} failed for ${pos} this run and has no cached copy, so Proj is blended without it.`);
+}
+
+/** A1: the Rankings flag marker (a small dot with the sentences on hover) for the sourceFailed flags alone, or "". */
+export function sourceFailedMarkerHtml(row, sources) {
+  const texts = sourceFailedTexts(row, sources);
+  return texts.length ? `<sup class="row-flag-marker" title="${escapeHtml(texts.join(" "))}">&#8226;</sup>` : "";
+}
+
 function projFlagMarkerHtml(row) {
-  const present = ["thin", "avgPoints", "imputed", "injured"].filter((f) => (row.flags ?? []).includes(f));
-  if (!present.length) return "";
-  const title = present.map((f) => PROJ_FLAG_LABELS[f] ?? f).join(" ");
+  const flags = row.flags ?? [];
+  const present = ["thin", "avgPoints", "imputed", "injured"].filter((f) => flags.includes(f));
+  const failedText = sourceFailedTexts(row);
+  if (!present.length && !failedText.length) return "";
+  const title = [...present.map((f) => PROJ_FLAG_LABELS[f] ?? f), ...failedText].join(" ");
   return `<sup class="row-flag-marker" title="${escapeHtml(title)}">&#8226;</sup>`;
 }
 
@@ -189,12 +228,12 @@ function rowHtml(row, hasNoteColumn) {
       <td>${playerCellHtml(row)}</td>
       <td>${escapeHtml(row.pos)}</td>
       <td>${escapeHtml(row.team)}</td>
-      <td>${escapeHtml(row.opp ?? "")}</td>
+      <td>${escapeHtml(matchupText(row))}</td>
       <td>${money(row.salary)}</td>
       <td>${editableCellHtml(row, "proj")}</td>
       <td>${editableCellHtml(row, "own")}</td>
       <td>${gradedCellHtml(row.value, row.valueGrade)}</td>
-      <td>${gradedCellHtml(row.lev, row.levGrade)}</td>
+      <td></td>
       <td class="tags-cell" title="${escapeHtml(tagsCellTitle(row))}">${tagsCellHtml(row)}</td>
       <td class="status-cell">${statusCellHtml(row)}</td>
       ${hasNoteColumn ? `<td>${noteCellHtml(row)}</td>` : ""}
@@ -205,8 +244,11 @@ export function renderTableHead(theadEl, sort, onSortClick, hasNoteColumn = fals
   const cols = hasNoteColumn ? [...BASE_COLUMNS, NOTE_COLUMN] : BASE_COLUMNS;
   const cells = cols
     .map((c) => {
+      const title = c.title ? ` title="${escapeHtml(c.title)}"` : "";
+      // A column with nothing to sort on (Lev) has no data-col, so no click handler, and no sortable class.
+      if (c.sortable === false) return `<th class="not-sortable"${title}>${escapeHtml(c.label)}</th>`;
       const arrow = sort.col === c.key ? (sort.dir === "asc" ? " ▲" : " ▼") : "";
-      return `<th data-col="${c.key}" class="sortable${sort.col === c.key ? " sorted" : ""}">${escapeHtml(c.label)}${arrow}</th>`;
+      return `<th data-col="${c.key}" class="sortable${sort.col === c.key ? " sorted" : ""}"${title}>${escapeHtml(c.label)}${arrow}</th>`;
     })
     .join("");
   theadEl.innerHTML = `<tr>${cells}</tr>`;

@@ -3,9 +3,8 @@
 // value.js re-exports both functions, so every other caller is unchanged.
 
 // A player carrying one of these, from the DraftKings CSV's Status column or from ESPN's injury report, is not
-// expected to play. He keeps his projection (it still says what he would score if he did) but he is no leverage
-// play, so lev is blank and he sorts to the bottom whenever the board is sorted by Lev. "Questionable" is
-// deliberately absent: a questionable player is a normal play.
+// expected to play. He keeps his projection (it still says what he would score if he did), but the Optimizer
+// leaves him out unless he is locked. "Questionable" is deliberately absent: a questionable player is a normal play.
 const SIDELINED = new Set([
   "OUT", "O", "INACTIVE", "IR", "INJURED RESERVE", "DOUBTFUL", "D",
   "SUSPENDED", "SUSPENSION", "PUP", "PHYSICALLY UNABLE TO PERFORM", "NFI", "NON-FOOTBALL INJURY"

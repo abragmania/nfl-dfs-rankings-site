@@ -133,41 +133,37 @@ function ownershipSourceCardHtml(s) {
     </div>`;
 }
 
-// "published" | "estimate" | "override" | null, labelled plainly (🔵 review item 4: override reads "your
-// override", not the internal token; a name a named source published reads "published", never "quoted").
+// "published" | "override" | null, labelled plainly (🔵 review item 4: override reads "your override", not the
+// internal token; a name a named source published reads "published", never "quoted"); null is missing (D29).
 function kindLabel(kind) {
-  if (kind === "estimate") return "estimate";
   if (kind === "published") return "published";
   if (kind === "override") return "your override";
   return "—";
 }
-function ownCellClass(kind) {
-  return kind === "estimate" ? "sd-own-estimate" : "";
-}
 
 // FLEX and Captain each carry their own kind (ownKindFlex/ownKindCpt) — a player can be published at one
-// side and an estimate at the other, so each cell is styled and labelled from its own kind, not a single
-// row-level flag (🔵 review item 4).
+// side and missing at the other, so each cell is labelled from its own kind, not a single row-level flag
+// (🔵 review item 4).
 function ownershipRowHtml(r) {
   return `<tr>
     <td>${escapeHtml(r.name)}</td>
     <td>${escapeHtml(r.team ?? "")}</td>
-    <td class="${ownCellClass(r.ownKindFlex)}">${r.ownFlex == null ? "—" : `${dec1(r.ownFlex)}%`}</td>
+    <td>${r.ownFlex == null ? "—" : `${dec1(r.ownFlex)}%`}</td>
     <td>${escapeHtml(kindLabel(r.ownKindFlex))}</td>
-    <td class="${ownCellClass(r.ownKindCpt)}">${r.ownCpt == null ? "—" : `${dec1(r.ownCpt)}%`}</td>
+    <td>${r.ownCpt == null ? "—" : `${dec1(r.ownCpt)}%`}</td>
     <td>${escapeHtml(kindLabel(r.ownKindCpt))}</td>
     <td class="sd-recipe-cell" title="${escapeHtml(r.ownHow ?? "")}">${escapeHtml(r.ownHow ?? "")}</td>
   </tr>`;
 }
 
 // Projected Ownership tab (brief): a table of each player's published sources (board.ownershipSources),
-// the consolidated number per side, published vs estimate vs override, and the recipe text (row.ownHow).
+// the consolidated number per side, published vs override vs missing, and the recipe text (row.ownHow).
 export function renderShowdownOwnershipPanel(container, board) {
   const sources = board.ownershipSources ?? [];
   const cards = sources.map(ownershipSourceCardHtml).join("");
   const rows = (board.rows ?? []).map(ownershipRowHtml).join("");
   container.innerHTML = `
-    <p class="tab-note">Own FLEX/CPT is consolidated from the published sources below (D40). A player nobody published a number for is filled in as an <i>estimate</i> (shown in italics), sharing out the ownership left over by projection and value; a number Adam typed in shows as "your override". Hover the Recipe column, or any Own cell on the Rankings tab, for exactly how each number was made.</p>
+    <p class="tab-note">Own FLEX/CPT is consolidated from the published sources below (D40). A player nobody published a number for shows a dash until a source publishes one. A number Adam typed in shows as "your override". Hover the Recipe column, or any Own cell on the Rankings tab, for exactly how each number was made.</p>
     <div class="source-card-grid">${cards}</div>
     <div class="tab-table-wrap scroll-panel">
       <table class="source-value-table">

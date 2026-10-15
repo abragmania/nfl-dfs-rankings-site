@@ -47,11 +47,14 @@ export function favoritesTabLabel(count) {
 }
 
 /** Draws the panel's contents. `els` = { note, empty, wrap, thead, tbody } (the elements in
- * index.html's #favorites-panel); `rows` = the whole board's rows. */
-export function renderFavoritesPanel(els, rows, callbacks, hasNoteColumn) {
+ * index.html's #favorites-panel); `rows` = the whole board's rows; `boardNotes` = board.tabNotes.favorites (A5: an
+ * unreadable overrides file, which means the stars could not be read), shown after the note line, always. */
+export function renderFavoritesPanel(els, rows, callbacks, hasNoteColumn, boardNotes = []) {
   const favs = favoriteRows(rows);
   const none = favs.length === 0;
-  els.note.hidden = none;
+  const extra = (boardNotes ?? []).filter(Boolean);
+  els.note.textContent = [none ? "" : FAVORITES_NOTE_TEXT, ...extra].filter(Boolean).join(" ");
+  els.note.hidden = none && !extra.length;
   els.empty.hidden = !none;
   els.empty.innerHTML = `<span>${FAVORITES_EMPTY_LEAD}</span> <span class="favorites-empty-hint">${FAVORITES_EMPTY_HINT}</span>`;
   els.wrap.hidden = none;

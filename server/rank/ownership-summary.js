@@ -28,7 +28,7 @@ export function ownershipRecipe(sources = []) {
     lines.push(`${listInWords(kept)} ${kept.length === 1 ? "is" : "are"} downloaded, stored and shown in ${kept.length === 1 ? "its" : "their"} own column, but never averaged into Own% (weight 0).`);
   }
   lines.push("A number Adam types into the Own% cell replaces the published one for that player.");
-  lines.push("A player with no published number is left blank: the app never estimates ownership, so Lev, the chalk tag and game popularity exist only where a real number does.");
+  lines.push("A player with no published number is left blank: the app never estimates ownership, so game popularity exists only where a real number does.");
   return lines.join(" ");
 }
 

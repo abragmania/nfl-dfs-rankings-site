@@ -7,9 +7,10 @@ const FLEX_POS = new Set(["RB", "WR", "TE"]);
 
 // Star and every numeric column default to descending on the first click of a new column; text columns
 // (player, pos, team, opp, tags, status) default ascending. Value is the table's own default sort, set once
-// at load rather than from a click: Lev exists only for players with a real ownership number, which is
-// usually a small part of the slate, so it cannot order the whole board.
-const DESC_FIRST_COLUMNS = new Set(["star", "salary", "proj", "own", "value", "lev"]);
+// at load rather than from a click. The Lev column has no number at all (Adam 2026-10-15, Lev measure to be
+// redesigned), so it is not sortable (table.js); a leftover sort on "lev" reads null for every row and keeps the
+// board's order.
+const DESC_FIRST_COLUMNS = new Set(["star", "salary", "proj", "own", "value"]);
 export function defaultDirFor(col) {
   return DESC_FIRST_COLUMNS.has(col) ? "desc" : "asc";
 }
@@ -33,14 +34,26 @@ export function defaultFilters() {
 // gets no tint"), which is a colouring rule and stays as it is.
 export const CLASSIC_PROJ_FLOOR = 3;
 
+// D52: true when the row's projection is a real one - a source projected him, or Adam typed one (D28). A row
+// flagged "no projection" whose proj is DraftKings' average (the server's "avgPoints" stand-in) is not, and is
+// hidden and ungraded like any unprojected player. The browser's copy of server/rank/value-core.js
+// hasRealProjection (the browser cannot import server files); keep the two identical.
+export function hasRealProjection(row) {
+  const proj = row?.proj;
+  if (proj == null || proj === "" || !Number.isFinite(Number(proj))) return false;
+  const typed = row?.override?.proj;
+  if (typed != null && typed !== "" && Number.isFinite(Number(typed))) return true;
+  return !(Array.isArray(row?.flags) && row.flags.includes("no projection"));
+}
+
 // The one predicate behind every classic player list (Rankings table, Projections tab, Projected Ownership
 // tab, Lineup Builder pool). `row.proj` is the final projection (a typed-in override included); a player with
-// no projection is hidden too. Skipped when "Show all players" is on, and while the search box has text so
-// that typing a name always finds the player.
+// no projection, or only the D52 stand-in, is hidden too. Skipped when "Show all players" is on, and while the
+// search box has text so that typing a name always finds the player.
 export function passesProjFloor(row, filters) {
   if (filters?.showAllPlayers) return true;
   if (filters?.search && filters.search.trim()) return true;
-  return row.proj != null && row.proj > CLASSIC_PROJ_FLOOR;
+  return hasRealProjection(row) && row.proj > CLASSIC_PROJ_FLOOR;
 }
 
 class Store {
@@ -182,8 +195,6 @@ function sortValue(row, col) {
       return row.own ?? null;
     case "value":
       return row.value ?? null;
-    case "lev":
-      return row.lev ?? null;
     case "tags":
       return row.tags && row.tags.length ? row.tags.map((t) => t.tag).join(",") : null;
     case "status":

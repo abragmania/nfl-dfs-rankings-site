@@ -404,7 +404,7 @@ function applyMode() {
 function ownBannerText(rows) {
   const published = (rows ?? []).filter((r) => r.ownKind === "quoted").length;
   if (published === 0) {
-    return "No published DraftKings ownership numbers yet for this week. Own% and Lev are blank until real numbers are added.";
+    return "No published DraftKings ownership numbers yet for this week. Own% is blank until real numbers are added.";
   }
   return `Own% shows published DraftKings numbers only (${published} player${published === 1 ? "" : "s"}). Everyone else is blank.`;
 }
@@ -534,7 +534,7 @@ function renderDynamic() {
     });
   } else if (activeTab === "favorites") {
     // Every starred player on the slate; the Rankings filters and the projection floor do not apply.
-    renderFavoritesPanel(el.favorites, slateRows, tableCallbacks, slateRows.some((r) => r.note));
+    renderFavoritesPanel(el.favorites, slateRows, tableCallbacks, slateRows.some((r) => r.note), board.tabNotes?.favorites ?? []);
   } else if (activeTab === "projections") {
     renderProjectionsPanel(el.projectionsPanel, board, sourceCallbacks);
   } else if (activeTab === "ownership") {

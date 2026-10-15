@@ -99,13 +99,14 @@ function normalizeRow(r) {
     projHow: r.projHow ?? "",
     ownFlex: r.ownFlex ?? null,
     ownCpt: r.ownCpt ?? null,
-    // Real per-side kinds (🔵 finding): "published" | "estimate" | "override", independently for FLEX and
-    // Captain — a player can be published at FLEX and an estimate at Captain, or vice versa.
+    // Real per-side kinds (🔵 finding): "published" | "override" | null (missing, D29), independently for FLEX
+    // and Captain — a player can be published at FLEX and missing at Captain, or vice versa.
     ownKindFlex: r.ownKindFlex ?? null,
     ownKindCpt: r.ownKindCpt ?? null,
     ownHow: r.ownHow ?? "",
-    levFlex: r.levFlex ?? null,
-    levCpt: r.levCpt ?? null,
+    // No Lev measure yet (Adam 2026-10-15, Lev measure to be redesigned): always null, whatever an older board sent.
+    levFlex: null,
+    levCpt: null,
     flags: r.flags ?? [],
     tags: r.tags ?? [],
     note: r.note ?? "",
@@ -141,16 +142,14 @@ const NO_TINT_STATUS = new Set(["o", "out", "ir"]);
 
 function normalizeBoard(raw) {
   if (!raw || !raw.ok) return raw;
-  // Lev is graded by the same applyGrades quintile-within-position as Val (which reads a row's `lev`
-  // field): one pass with lev = levFlex gives levGrade, one with lev = levCpt gives levCptGrade.
+  // Val is graded by applyGrades' quintile-within-position. Lev has no measure and is never graded (Adam 2026-10-15,
+  // Lev measure to be redesigned).
   const normalized = (raw.rows ?? []).map(normalizeRow);
-  const flexGraded = applyGrades(normalized.map((r) => ({ ...r, lev: r.levFlex })));
-  const cptGraded = applyGrades(normalized.map((r) => ({ ...r, lev: r.levCpt })));
-  const rows = flexGraded.map((g, i) => {
+  const rows = applyGrades(normalized.map((r) => ({ ...r, lev: null }))).map((g) => {
     const { lev, ...r } = g;
-    const graded = { ...r, levCptGrade: cptGraded[i].levGrade };
+    const graded = { ...r, levGrade: null, levCptGrade: null };
     const statusKey = (graded.status ?? "").trim().toLowerCase();
-    return NO_TINT_STATUS.has(statusKey) ? { ...graded, valueGrade: null, levGrade: null, levCptGrade: null } : graded;
+    return NO_TINT_STATUS.has(statusKey) ? { ...graded, valueGrade: null } : graded;
   });
   const sources = (raw.sources ?? []).map((s) => normalizeSource(s, raw.unmatched));
   return { ...raw, rows, sources };
@@ -290,11 +289,11 @@ function renderLegend() {
   const hasKickerCard = sources.some((s) => s.kind === "kicker");
   const ownLabels = joinWords((state.board?.ownershipSources ?? []).map((s) => s.label));
   const projText = projLabels ? `Proj from ${projLabels}${hasKickerCard ? " (kickers as consolidated)" : ""}` : "";
-  const ownText = ownLabels ? `Own from ${ownLabels}, estimates for the rest` : "";
+  const ownText = ownLabels ? `Own from ${ownLabels}; a dash where nobody has published one` : "Own: no source has published showdown ownership yet";
   const sourceSentence = [projText, ownText].filter(Boolean).join("; ");
   const legendText = [
     sourceSentence,
-    "published and estimated ownership look the same; hover any Proj or Own cell for exactly how that number was made and, for Own, whether it was published or estimated",
+    "hover any Proj or Own cell for exactly how that number was made",
   ]
     .filter(Boolean)
     .join(" · ");

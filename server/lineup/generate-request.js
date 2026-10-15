@@ -6,6 +6,7 @@
 // Pure and browser-safe: no node modules, no network, no storage, no logging. tools/publish.mjs copies it, unchanged,
 // to out/server/lineup/ beside the engine and privacy-scans it.
 import { RULE_KEYS, LEGACY_RULE_KEYS, OBJECTIVES, STACK_OWN_MAX, STACK_OPP_MAX } from "./multi.js";
+import { retiredObjectiveNote } from "./optimize.js";
 
 // An older saved request may still carry the D55 rule keys D73 replaced; they are accepted (and must be booleans).
 const GENERATE_RULE_KEYS = [...RULE_KEYS, ...LEGACY_RULE_KEYS];
@@ -133,7 +134,9 @@ export function validateGenerateSettings(raw, ctx) {
     out.maxPerTeam = raw.maxPerTeam;
   }
   if (raw.objective !== undefined && raw.objective !== null) {
-    if (!OBJECTIVES.includes(raw.objective)) return { error: `objective must be one of ${OBJECTIVES.join(", ")}` };
+    // A retired objective ("lev", "projMinusOwn": Adam 2026-10-15) passes through; multi.js builds it on projection
+    // with a note, so a saved setting from before the change never fails.
+    if (!OBJECTIVES.includes(raw.objective) && retiredObjectiveNote(raw.objective) === null) return { error: `objective must be one of ${OBJECTIVES.join(", ")}` };
     out.objective = raw.objective;
   }
   for (const { key, max, words } of GENERATE_STACK_NUMBERS) {
