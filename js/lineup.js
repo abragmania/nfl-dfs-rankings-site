@@ -474,7 +474,9 @@ function panelHtml() {
 
   // The Optimizer band is the first thing in the tab (DECISIONS.md D70, Adam 2026-10-10: "move the optimizer stuff up"); the lineup
   // it builds from sits right under it, its results and the saved lineups below.
+  const injuryNoteHtml = board?.injuryNote ? `<p class="tab-note">${escapeHtml(board.injuryNote)}</p>` : "";
   return `
+    ${injuryNoteHtml}
     ${optimizerControlsHtml(rowById)}
     <div class="lineup-layout">
       <div class="lineup-left">

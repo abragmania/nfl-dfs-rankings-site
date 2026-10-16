@@ -9,6 +9,7 @@ import { computeValue } from "./value-core.js";
 import { computeTags } from "./tags-core.js";
 import { buildGames } from "./games.js";
 import { summariseOwnership } from "./ownership-summary.js";
+import { zeroOutRows } from "./sidelined.js";
 
 export function reconstructBaseRows(rows) {
   return rows.map((r) => ({ ...r, proj: r.projBase, own: r.ownBase }));
@@ -54,7 +55,7 @@ export function reconstructGamesById(games) {
  */
 export function remergeOverrides(previousBoard, full, overrides) {
   const baseRows = reconstructBaseRows(previousBoard.rows);
-  const rows = mergeOverridesIntoRows(baseRows, overrides);
+  const rows = zeroOutRows(mergeOverridesIntoRows(baseRows, overrides));
   // No lev on the rows: Adam 2026-10-15, Lev measure to be redesigned.
   const valued = computeValue(rows);
   for (const row of rows) row.value = valued.get(row.id)?.value ?? null;

@@ -33,7 +33,7 @@ const BASE_COLUMNS = [
 const NOTE_COLUMN = { key: "note", label: "Note" };
 export const COLUMNS = BASE_COLUMNS;
 
-// DK status tokens (D11/D32 context): O/OUT/IR/D/DOUBTFUL dim the row; Q/QUESTIONABLE and SUSPENDED get
+// Injury-report status words (R82): O/OUT/IR/D/DOUBTFUL dim the row; Q/QUESTIONABLE and SUSPENDED get
 // a badge but stay at full opacity.
 // Exported so public/js/showdown/table.js and lineup.js can reuse these instead of keeping their own
 // copies (🔵 review cleanup).
@@ -54,6 +54,7 @@ const PROJ_FLAG_LABELS = {
   avgPoints: "No projection source covers this player; using DraftKings' average points per game instead.",
   imputed: "No DST-specific projection; imputed from average points per game.",
   injured: "Flagged injured; may affect availability this week.",
+  injuryUnknown: "No projection: no source covers this player and the injury report is missing, so his average does not stand in.",
 };
 
 // Every tag is a researched one (review Q1, Adam 2026-10-14: the computed chalk and value tags are gone); a
@@ -122,7 +123,7 @@ export function sourceFailedMarkerHtml(row, sources) {
 
 function projFlagMarkerHtml(row) {
   const flags = row.flags ?? [];
-  const present = ["thin", "avgPoints", "imputed", "injured"].filter((f) => flags.includes(f));
+  const present = ["thin", "avgPoints", "imputed", "injured", "injuryUnknown"].filter((f) => flags.includes(f));
   const failedText = sourceFailedTexts(row);
   if (!present.length && !failedText.length) return "";
   const title = [...present.map((f) => PROJ_FLAG_LABELS[f] ?? f), ...failedText].join(" ");

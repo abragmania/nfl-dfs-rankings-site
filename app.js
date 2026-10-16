@@ -263,6 +263,7 @@ function renderStatic(board) {
     staleIds: board.stale,
     sources: board.sources,
     warnings: board.warnings,
+    injuryReport: board.injuryReport,
   });
   renderFilterBarNow(board);
   renderSlateChrome(); // the header label and the one-line note follow the slate on screen
@@ -519,7 +520,7 @@ function renderDynamic() {
       onToggleCollapse: onToggleGamestripCollapse,
     });
     const allRows = slateRows;
-    el.ownBanner.textContent = ownBannerText(allRows);
+    el.ownBanner.textContent = [ownBannerText(allRows), board.injuryNote].filter(Boolean).join(" ");
     const filtered = filterRows(allRows, filters);
     const sorted = sortRows(filtered, sort.col, sort.dir);
     const hasNoteColumn = allRows.some((r) => r.note);
@@ -534,7 +535,7 @@ function renderDynamic() {
     });
   } else if (activeTab === "favorites") {
     // Every starred player on the slate; the Rankings filters and the projection floor do not apply.
-    renderFavoritesPanel(el.favorites, slateRows, tableCallbacks, slateRows.some((r) => r.note), board.tabNotes?.favorites ?? []);
+    renderFavoritesPanel(el.favorites, slateRows, tableCallbacks, slateRows.some((r) => r.note), [...(board.tabNotes?.favorites ?? []), board.injuryNote].filter(Boolean));
   } else if (activeTab === "projections") {
     renderProjectionsPanel(el.projectionsPanel, board, sourceCallbacks);
   } else if (activeTab === "ownership") {

@@ -451,7 +451,7 @@ function render() {
 
   // The gold band and stale/failed source pills show on all four tabs (brief).
   renderBand();
-  renderPills(els.pillsRow, { staleIds: state.board.stale ?? [], sources: state.board.sources ?? null, warnings: [] });
+  renderPills(els.pillsRow, { staleIds: state.board.stale ?? [], sources: state.board.sources ?? null, warnings: [], injuryReport: state.board.injuryReport });
 
   if (state.activeTab === "rankings") {
     renderGameLine();
@@ -517,5 +517,5 @@ export async function forceReloadShowdown(key) {
 // Exported for app.js's upload flow (🔵 finding): the upload response's own stale list is shown
 // immediately, the same way the classic header's wireUpload shows pills before the board reload lands.
 export function showUploadPills(staleIds) {
-  renderPills(els.pillsRow, { staleIds: staleIds ?? [], sources: state.board?.sources ?? null, warnings: [] });
+  renderPills(els.pillsRow, { staleIds: staleIds ?? [], sources: state.board?.sources ?? null, warnings: [], injuryReport: state.board?.injuryReport });
 }

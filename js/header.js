@@ -10,9 +10,21 @@ import { slateTileText } from "./state.js";
 // 🔵 review requirement that pills must appear before the board reloads.
 const FAILED_STATUSES = new Set(["failed", "error"]);
 
-function sourcePillHtml(id, sources) {
+const INJURY_SOURCE_ID = "espn-injuries";
+function injuryPillSuffix(injuryReport) {
+  if (!injuryReport?.state) return null;
+  if (injuryReport.state === "missing") return "no report";
+  if (injuryReport.source === "Sleeper") return injuryReport.state === "ok" ? "using Sleeper" : "using a saved Sleeper copy";
+  return null;
+}
+
+function sourcePillHtml(id, sources, injuryReport = null) {
   const source = (sources ?? []).find((s) => s.id === id);
   const label = source?.label ?? id;
+  const injurySuffix = id === INJURY_SOURCE_ID ? injuryPillSuffix(injuryReport) : null;
+  if (injurySuffix) {
+    return `<li class="pill pill-warning" title="${escapeHtml(label)} · ${injurySuffix}">${escapeHtml(label)} · ${injurySuffix}</li>`;
+  }
   if (FAILED_STATUSES.has((source?.status ?? "").toLowerCase())) {
     return `<li class="pill pill-warning" title="${escapeHtml(label)} · failed">${escapeHtml(label)} · failed</li>`;
   }
@@ -36,10 +48,10 @@ function warningPillHtml(w) {
 // `failedIds`: extra ids whose source status is "failed" but which may not be listed in staleIds. Every id
 // is shown once however many lists name it. With nothing to show the row is hidden outright, so it takes no
 // vertical space (its top margin included).
-export function renderPills(container, { staleIds = [], sources = null, warnings = [] } = {}) {
+export function renderPills(container, { staleIds = [], sources = null, warnings = [], injuryReport = null } = {}) {
   const failedIds = (sources ?? []).filter((s) => FAILED_STATUSES.has((s.status ?? "").toLowerCase())).map((s) => s.id);
   const ids = [...new Set([...(staleIds ?? []), ...failedIds])];
-  const sourcePills = ids.map((id) => sourcePillHtml(id, sources)).join("");
+  const sourcePills = ids.map((id) => sourcePillHtml(id, sources, injuryReport)).join("");
   const collapsed = collapseWarnings(warnings);
   const warningPills = collapsed.map(warningPillHtml).join("");
   const all = sourcePills + warningPills;
@@ -50,7 +62,7 @@ export function renderPills(container, { staleIds = [], sources = null, warnings
   const wasOpen = Boolean(container.querySelector(".pills-list")?.classList.contains("open"));
   const open = many && wasOpen;
   const summary = many
-    ? `<li class="pill pill-warning pills-summary"><button type="button" class="pills-toggle" aria-expanded="${open}">${escapeHtml(pillsSummaryText(ids, sources, collapsed.length))}</button></li>`
+    ? `<li class="pill pill-warning pills-summary"><button type="button" class="pills-toggle" aria-expanded="${open}">${escapeHtml(pillsSummaryText(ids, sources, collapsed.length, undefined, injuryReport))}</button></li>`
     : "";
   container.innerHTML = all ? `<ul class="pills-list${many ? " collapsible" : ""}${open ? " open" : ""}">${summary}${all}</ul>` : "";
   container.hidden = !all;
@@ -64,11 +76,13 @@ export function renderPills(container, { staleIds = [], sources = null, warnings
  *  Oct 10 23:10" when that is not today, local), plus "2 failed" and "3 warnings" when there are any. A cached source with no time known
  *  (no fetchedAt, or not in `sources`) makes it plain "cached", never a newer-looking time; an unparseable
  *  fetchedAt is ignored. `ids`: the stale or failed source ids; `warningCount`: collapsed warnings. */
-export function pillsSummaryText(ids, sources, warningCount = 0, now = Date.now()) {
+export function pillsSummaryText(ids, sources, warningCount = 0, now = Date.now(), injuryReport = null) {
   const list = ids ?? [];
   const of = (id) => (sources ?? []).find((s) => s.id === id);
   // A1: a source missing whole positions counts as failed here too, as its own pill says.
-  const isFailed = (id) => FAILED_STATUSES.has((of(id)?.status ?? "").toLowerCase()) || (of(id)?.missingPositions?.length ?? 0) > 0;
+  const isFailed = (id) =>
+    FAILED_STATUSES.has((of(id)?.status ?? "").toLowerCase()) || (of(id)?.missingPositions?.length ?? 0) > 0 ||
+    (id === INJURY_SOURCE_ID && injuryPillSuffix(injuryReport) !== null);
   const cachedIds = list.filter((id) => !isFailed(id));
   const failed = list.length - cachedIds.length;
   const unknownTime = cachedIds.some((id) => !of(id)?.fetchedAt);
