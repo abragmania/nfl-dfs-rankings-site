@@ -13,6 +13,9 @@
 // instead of reusing the classic one.
 import { escapeHtml, dec1, localStamp } from "../format.js";
 import { unmatchedPartsHtml, slateTeamSet } from "../unmatched.js";
+import { shownRows } from "./table.js";
+import { showAllToggleHtml, wireShowAllButtons } from "../filterbar.js";
+import { store } from "../state.js";
 
 const TABS = [
   { key: "rankings", label: "Rankings" },
@@ -161,9 +164,9 @@ function ownershipRowHtml(r) {
 export function renderShowdownOwnershipPanel(container, board) {
   const sources = board.ownershipSources ?? [];
   const cards = sources.map(ownershipSourceCardHtml).join("");
-  const rows = (board.rows ?? []).map(ownershipRowHtml).join("");
+  const rows = shownRows(board.rows ?? []).map(ownershipRowHtml).join("");
   container.innerHTML = `
-    <p class="tab-note">Own FLEX/CPT is consolidated from the published sources below (D40). A player nobody published a number for shows a dash until a source publishes one. A number Adam typed in shows as "your override". Hover the Recipe column, or any Own cell on the Rankings tab, for exactly how each number was made.</p>
+    <p class="tab-note">${showAllToggleHtml(store.get().filters.showAllPlayers, `data-action="show-all"`)} Own FLEX/CPT is consolidated from the published sources below (D40). A player nobody published a number for shows a dash until a source publishes one. A number Adam typed in shows as "your override". Hover the Recipe column, or any Own cell on the Rankings tab, for exactly how each number was made.</p>
     <div class="source-card-grid">${cards}</div>
     <div class="tab-table-wrap scroll-panel">
       <table class="source-value-table">
@@ -171,6 +174,7 @@ export function renderShowdownOwnershipPanel(container, board) {
         <tbody>${rows}</tbody>
       </table>
     </div>`;
+  wireShowAllButtons(container);
 }
 
 export { renderShowdownLineupPanel } from "./lineup.js";

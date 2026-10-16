@@ -6,7 +6,12 @@
 // column list for Showdown Rankings has no star or edit affordance, only display plus sort and filter.
 import { escapeHtml, money, dec1, dec2, textColourFor, logoFor } from "../format.js";
 import { TEAM_BY_ABBR } from "../teams-data.js";
-import { STATUS_INFO, DIM_STATUS_TOKENS } from "../table.js";
+import { STATUS_INFO, rowIsOut } from "../table.js";
+import { store } from "../state.js";
+
+export function shownRows(rows) {
+  return store.get().filters.showAllPlayers ? rows : rows.filter((row) => !rowIsOut(row));
+}
 
 export const SD_COLUMNS = [
   { key: "player", label: "Player" },
@@ -95,8 +100,7 @@ function noteCellHtml(row) {
 }
 
 function rowHtml(row) {
-  const statusKey = (row.status ?? "").trim().toLowerCase();
-  const dimmed = DIM_STATUS_TOKENS.has(statusKey);
+  const dimmed = rowIsOut(row);
   return `
     <tr class="rank-row${dimmed ? " row-dimmed" : ""}" data-id="${escapeHtml(String(row.id))}">
       <td>${playerCellHtml(row)}</td>

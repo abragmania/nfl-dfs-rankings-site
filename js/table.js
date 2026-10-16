@@ -49,6 +49,12 @@ export const STATUS_INFO = {
 };
 export const DIM_STATUS_TOKENS = new Set(["o", "out", "ir", "d", "doubtful"]);
 
+export function rowIsOut(row) {
+  const flags = row?.flags ?? [];
+  if (flags.includes("revived")) return false;
+  return DIM_STATUS_TOKENS.has(String(row?.status ?? "").trim().toLowerCase()) || flags.includes("injured");
+}
+
 const PROJ_FLAG_LABELS = {
   thin: "Sources making up less than half the blend's weight cover this player; the projection is theirs alone.",
   avgPoints: "No projection source covers this player; using DraftKings' average points per game instead.",
@@ -123,7 +129,7 @@ export function sourceFailedMarkerHtml(row, sources) {
 
 function projFlagMarkerHtml(row) {
   const flags = row.flags ?? [];
-  const present = ["thin", "avgPoints", "imputed", "injured", "injuryUnknown"].filter((f) => flags.includes(f));
+  const present = ["thin", "avgPoints", "imputed", "injured", "injuryUnknown"].filter((f) => flags.includes(f) && !(f === "injured" && flags.includes("revived")));
   const failedText = sourceFailedTexts(row);
   if (!present.length && !failedText.length) return "";
   const title = [...present.map((f) => PROJ_FLAG_LABELS[f] ?? f), ...failedText].join(" ");
@@ -134,10 +140,14 @@ function editableInnerHtml(row, field, displayHtml, extraHtml = "") {
   const hasOverride = row.override && row.override[field] != null;
   const baseValue = field === "proj" ? row.projBase : row.ownBase;
   const baseDisplay = escapeHtml(baseValue == null ? "none" : dec1(baseValue));
+  // A listed-out player resets to 0, not to the blend's projBase (R82: out = 0).
+  const out = field === "proj" && (rowIsOut(row) || (row.flags ?? []).includes("revived"));
+  const outLabel = escapeHtml(STATUS_INFO[String(row.status ?? "").trim().toLowerCase()]?.label || row.status || "injured");
+  const backText = out ? `Back to 0 (listed ${outLabel})` : `Back to the original (${baseDisplay})`;
   // An edited number is coloured (no word beside it); the small x puts the original back.
-  const valueAttrs = hasOverride ? ` class="cell-value is-override" title="Your number. Original: ${baseDisplay}"` : ` class="cell-value"`;
+  const valueAttrs = hasOverride ? ` class="cell-value is-override" title="Your number. ${out ? `Without it: 0 (listed ${outLabel})` : `Original: ${baseDisplay}`}"` : ` class="cell-value"`;
   const resetBtn = hasOverride
-    ? `<button type="button" class="reset-icon" data-action="reset-${field}" data-id="${idAttr(row)}" title="Back to the original (${baseDisplay})" aria-label="Back to the original (${baseDisplay})">&times;</button>`
+    ? `<button type="button" class="reset-icon" data-action="reset-${field}" data-id="${idAttr(row)}" title="${backText}" aria-label="${backText}">&times;</button>`
     : "";
   return `<span${valueAttrs}>${displayHtml}</span>${extraHtml}${resetBtn}`;
 }
@@ -221,8 +231,7 @@ function noteCellHtml(row) {
 }
 
 function rowHtml(row, hasNoteColumn) {
-  const statusKey = (row.status ?? "").trim().toLowerCase();
-  const dimmed = DIM_STATUS_TOKENS.has(statusKey) || (row.flags ?? []).includes("injured");
+  const dimmed = rowIsOut(row);
   return `
     <tr class="rank-row${dimmed ? " row-dimmed" : ""}" data-id="${idAttr(row)}">
       <td><button type="button" class="star-btn${row.starred ? " active" : ""}" data-action="toggle-star" data-id="${idAttr(row)}">${row.starred ? "★" : "☆"}</button></td>

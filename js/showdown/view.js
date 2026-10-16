@@ -7,8 +7,9 @@ import { renderPills, kickoffDateAndClock } from "../header.js";
 import { escapeHtml, dec1 } from "../format.js";
 import { TEAM_BY_ABBR } from "../teams-data.js";
 import { applyGrades } from "../grade.js";
-import { DIM_STATUS_TOKENS } from "../table.js";
-import { renderShowdownTableHead, renderShowdownTableBody } from "./table.js";
+import { showAllToggleHtml, wireShowAllButtons } from "../filterbar.js";
+import { store } from "../state.js";
+import { renderShowdownTableHead, renderShowdownTableBody, shownRows } from "./table.js";
 import { renderShowdownTabs, renderShowdownProjectionsPanel, renderShowdownOwnershipPanel, renderShowdownLineupPanel } from "./tabs.js";
 
 const state = {
@@ -149,7 +150,7 @@ function normalizeBoard(raw) {
     const { lev, ...r } = g;
     const graded = { ...r, levGrade: null, levCptGrade: null };
     const statusKey = (graded.status ?? "").trim().toLowerCase();
-    return NO_TINT_STATUS.has(statusKey) ? { ...graded, valueGrade: null } : graded;
+    return NO_TINT_STATUS.has(statusKey) && !(graded.flags ?? []).includes("revived") ? { ...graded, valueGrade: null } : graded;
   });
   const sources = (raw.sources ?? []).map((s) => normalizeSource(s, raw.unmatched));
   return { ...raw, rows, sources };
@@ -233,7 +234,7 @@ function filterRows(rows, filters, game) {
 
 function computeVisibleRows() {
   const rows = state.board?.rows ?? [];
-  const filtered = filterRows(rows, state.filters, state.board?.game);
+  const filtered = filterRows(shownRows(rows), state.filters, state.board?.game);
   return sortRows(filtered, state.sort.col, state.sort.dir);
 }
 
@@ -341,9 +342,11 @@ function renderFilterBar() {
         <label>Max FLEX salary <input id="sd-max-salary" type="number" step="200" placeholder="any" value="${state.filters.maxSalary ?? ""}" /></label>
         <label>Min FLEX pts <input id="sd-min-proj" type="number" step="1" placeholder="any" value="${state.filters.minProj ?? ""}" /></label>
       </div>
+      ${showAllToggleHtml(store.get().filters.showAllPlayers, `data-action="show-all"`)}
       <span id="sd-filter-count" class="filter-count"></span>
       <button type="button" id="sd-clear-filters-btn" class="link-btn">Clear filters</button>
     </div>`;
+  wireShowAllButtons(els.filterbar);
   els.filterbar.querySelectorAll("[data-team-filter]").forEach((btn) => {
     btn.addEventListener("click", () => {
       state.filters.team = btn.dataset.teamFilter;
@@ -361,6 +364,8 @@ function renderFilterBar() {
   // Same as classic's "Clear filters": a deliberate click, so a full rebuild of the bar is fine.
   els.filterbar.querySelector("#sd-clear-filters-btn")?.addEventListener("click", () => {
     state.filters = { team: "both", pos: "All", maxSalary: null, minProj: null };
+    document.querySelector("#show-all-toggle")?.classList.remove("active");
+    store.setFilters({ showAllPlayers: false });
     renderFilterBar();
     renderRankingsTable();
   });
@@ -474,6 +479,10 @@ function render() {
     renderShowdownLineupPanel(els.lineupPanel, state.board, state.boardKey);
   }
 }
+
+store.subscribe(() => {
+  if (state.board && document.getElementById("showdown-main")?.hidden === false) render();
+});
 
 els.refreshBtn?.addEventListener("click", async () => {
   const key = state.boardKey ?? state.requestedKey;

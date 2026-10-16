@@ -3,6 +3,7 @@
 import { escapeHtml, dec1, localStamp } from "./format.js";
 import { store, passesProjFloor, CLASSIC_PROJ_FLOOR, activeSlateRows, sortRows } from "./state.js";
 import { favoritesTabLabel } from "./favorites.js";
+import { showAllToggleHtml, wireShowAllButtons } from "./filterbar.js";
 import { unmatchedPartsHtml, slateTeamSet } from "./unmatched.js";
 import { matchupText, sourceFailedMarkerHtml } from "./table.js";
 
@@ -14,12 +15,15 @@ function floorRows(rows) {
   return rows.filter((r) => passesProjFloor(r, filters));
 }
 
-// One line above a source table when the floor is hiding rows; nothing when no row is hidden.
+// One line above a source table when the floor is hiding rows.
 function floorNoteHtml(allRows, shownRows) {
   const hidden = allRows.length - shownRows.length;
-  if (hidden <= 0) return "";
-  const text = `Showing ${shownRows.length} of ${allRows.length} players. ${hidden} ${hidden === 1 ? "is" : "are"} hidden: projected for ${CLASSIC_PROJ_FLOOR.toFixed(1)} points or fewer, or no projection. 'Show all players' on the Rankings tab shows them.`;
-  return `<p class="tab-note">${escapeHtml(text)}</p>`;
+  const showAll = Boolean(store.get().filters.showAllPlayers);
+  if (hidden <= 0 && !showAll) return "";
+  const text = hidden > 0
+    ? `Showing ${shownRows.length} of ${allRows.length} players. ${hidden} ${hidden === 1 ? "is" : "are"} hidden: projected for ${CLASSIC_PROJ_FLOOR.toFixed(1)} points or fewer, or no projection.`
+    : `Showing all ${allRows.length} players.`;
+  return `<p class="tab-note">${escapeHtml(text)} ${showAllToggleHtml(showAll, `data-action="show-all"`)}</p>`;
 }
 
 const TABS = [
@@ -169,6 +173,7 @@ export function renderProjectionsPanel(container, board, callbacks) {
   `;
 
   wireSourceCards(container, callbacks.onSourceChange);
+  wireShowAllButtons(container);
 
   // The player table sorts like the Projected Ownership table (Adam, 2026-10-10): the wrapper and <table> are
   // rendered once above; a header click rebuilds only thead and tbody.
@@ -320,6 +325,7 @@ export function renderOwnershipPanel(container, board, callbacks) {
   `;
 
   wireSourceCards(container, callbacks.onSourceChange);
+  wireShowAllButtons(container);
 
   const cols = ownershipColumns(sources, isKeptOnly);
   const valueOf = (r, col) => {

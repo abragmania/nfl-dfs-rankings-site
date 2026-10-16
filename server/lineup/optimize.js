@@ -12,7 +12,7 @@
 // screen: "infeasibility explained in a sentence"). A successful build carries its remarks in `notes` and leaves
 // `message` empty, so the UI can show the infeasibility sentence and the remarks in different places.
 import { warn } from "../lib/log.js";
-import { rowIsSidelined } from "../rank/sidelined.js"; // pure: the public site runs this in a browser (D71)
+import { rowIsOut } from "../rank/sidelined.js"; // pure: the public site runs this in a browser (D71)
 
 // --------------------------------------------------------------------------------------------------------
 // Constants
@@ -238,7 +238,7 @@ function run(rows, options, cap) {
     if (!locked) {
       if (proj === null) continue;        // no projection: never auto-rostered (D27 keeps him visible on the board)
       if (noProjection) continue;         // no source projected him: the AvgPointsPerGame stand-in is not a projection
-      if (rowIsSidelined(row)) continue;  // out / IR / doubtful / suspended: never auto-rostered
+      if (rowIsOut(row)) continue;        // out / IR / doubtful / suspended: never auto-rostered
       if (salary === null) continue;      // no price means he cannot be costed against the cap
     }
     const positions = rowPositions(row);

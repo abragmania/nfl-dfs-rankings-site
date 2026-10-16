@@ -985,6 +985,7 @@ body.table-expanded { overflow: hidden; }
 .tab-recipe details summary { cursor: pointer; color: var(--text); font-weight: 600; }
 .tab-recipe details[open] summary { margin-bottom: var(--sp-1); }
 .tab-note { font-size: var(--fs-sm); color: var(--text-muted); margin: 0 0 var(--sp-3); }
+.tab-note .toggle-chip { margin-left: var(--sp-2); } /* the "Show all players" button after a list's hidden-count note */
 /* Favorites tab: same table as Rankings, but its headers do not sort, so they do not look clickable. */
 .favorites-table th { cursor: default; }
 

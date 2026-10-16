@@ -9,7 +9,9 @@ import { escapeHtml, money, dec1, textColourFor } from "../format.js";
 import { TEAM_BY_ABBR } from "../teams-data.js";
 import { STATUS_INFO } from "../table.js";
 import { postShowdownLineupOptimize, getShowdownLineups, postShowdownLineup, deleteShowdownLineup, putShowdownLineupName } from "./api.js";
-import { posPillHtml } from "./table.js";
+import { posPillHtml, shownRows } from "./table.js";
+import { showAllToggleHtml, wireShowAllButtons } from "../filterbar.js";
+import { store } from "../state.js";
 
 const SALARY_CAP = 50000;
 const FLEX_COUNT = 5;
@@ -417,9 +419,8 @@ function rightRowHtml(row, placed) {
 
 function rightColumnHtml(board) {
   // Default sort is Proj descending, matching the Rankings tab (coordinator fix); a null projection
-  // always sorts last. Every player stays in the list regardless of projection or status (Adam: never
-  // hide or filter a player who has any row on the board — this is a sort order, not a filter).
-  const rows = [...(board?.rows ?? [])].sort((a, b) => (b.proj ?? -Infinity) - (a.proj ?? -Infinity));
+  // always sorts last.
+  const rows = [...shownRows(board?.rows ?? [])].sort((a, b) => (b.proj ?? -Infinity) - (a.proj ?? -Infinity));
   const placed = placedIdSet();
   const bodyRows = rows.map((r) => rightRowHtml(r, placed)).join("");
   return `
@@ -555,6 +556,7 @@ function panelHtml(board) {
       </div>
       <div class="lineup-right">
         <h3 class="lineup-right-title">Showdown players (sorted by Proj)</h3>
+        <div class="chip-group lineup-pos-chips">${showAllToggleHtml(store.get().filters.showAllPlayers, `data-action="show-all"`)}</div>
         ${rightColumnHtml(board)}
       </div>
     </div>
@@ -562,6 +564,7 @@ function panelHtml(board) {
 }
 
 function wire(container, board, key) {
+  wireShowAllButtons(container);
   container.querySelector("#sd-lineup-objective")?.addEventListener("change", (e) => {
     state.objective = e.target.value;
     state.lastResult = null;

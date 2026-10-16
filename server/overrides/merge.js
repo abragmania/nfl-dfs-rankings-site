@@ -35,6 +35,16 @@ export function validateOverrides(obj) {
     seen.add(id);
   }
 
+  // revive: ids whose projection was typed while the board listed them out.
+  const revive = obj.revive ?? [];
+  if (!Array.isArray(revive)) invalid("revive", "must be an array");
+  const seenRevive = new Set();
+  for (const id of revive) {
+    if (typeof id !== "string" || id.length === 0) invalid("revive", "ids must be non-empty strings");
+    if (seenRevive.has(id)) invalid("revive", `duplicate id "${id}"`);
+    seenRevive.add(id);
+  }
+
   const notes = obj.notes ?? {};
   if (typeof notes !== "object" || Array.isArray(notes)) invalid("notes", "must be an object");
   for (const [id, v] of Object.entries(notes)) {
@@ -91,18 +101,23 @@ export function assertIdsOnSlate(changes, slateIds, extraIds = []) {
  * `current`, returning a new overrides object without mutating the input. A null value for proj/own/
  * notes removes that id's override; stars takes true (add) or false (remove).
  */
-export function applyOverrideChanges(current, changes = {}) {
+export function applyOverrideChanges(current, changes = {}, sidelinedIds = null) {
   const next = {
     proj: { ...current.proj },
     own: { ...current.own },
     stars: [...current.stars],
     notes: { ...current.notes },
+    revive: [...(current.revive ?? [])],
     updatedAt: current.updatedAt
   };
 
   for (const [id, v] of Object.entries(changes.proj ?? {})) {
+    next.revive = next.revive.filter((r) => r !== id);
     if (v === null) delete next.proj[id];
-    else next.proj[id] = v;
+    else {
+      next.proj[id] = v;
+      if (v > 0 && sidelinedIds && sidelinedIds.has(id)) next.revive.push(id);
+    }
   }
   for (const [id, v] of Object.entries(changes.own ?? {})) {
     if (v === null) delete next.own[id];
@@ -131,6 +146,7 @@ export function resetPlayer(current, id) {
     own: { ...current.own },
     stars: [...(current.stars ?? [])],
     notes: { ...(current.notes ?? {}) },
+    revive: (current.revive ?? []).filter((r) => r !== id),
     updatedAt: current.updatedAt
   };
   delete next.proj[id];
@@ -143,7 +159,7 @@ export function resetPlayer(current, id) {
  * Stars and notes stay (DECISIONS.md D72): Adam's stars outlive a reset of the numbers.
  */
 export function resetAll(current) {
-  return { proj: {}, own: {}, stars: [...(current.stars ?? [])], notes: { ...(current.notes ?? {}) }, updatedAt: current.updatedAt };
+  return { proj: {}, own: {}, stars: [...(current.stars ?? [])], notes: { ...(current.notes ?? {}) }, revive: [], updatedAt: current.updatedAt };
 }
 
 /**
@@ -156,17 +172,19 @@ export function mergeOverridesIntoRows(rows, overrides) {
   const own = overrides?.own ?? {};
   const stars = new Set(overrides?.stars ?? []);
   const notes = overrides?.notes ?? {};
+  const revive = new Set(overrides?.revive ?? []);
 
   return rows.map((row) => {
     const hasProj = Object.prototype.hasOwnProperty.call(proj, row.id);
     const hasOwn = Object.prototype.hasOwnProperty.call(own, row.id);
+    const marked = hasProj && revive.has(row.id);
     return {
       ...row,
       projBase: row.proj,
       ownBase: row.own,
       proj: hasProj ? proj[row.id] : row.proj,
       own: hasOwn ? own[row.id] : row.own,
-      override: { proj: hasProj ? proj[row.id] : null, own: hasOwn ? own[row.id] : null },
+      override: { proj: hasProj ? proj[row.id] : null, own: hasOwn ? own[row.id] : null, ...(marked ? { revive: true } : {}) },
       starred: stars.has(row.id),
       note: Object.prototype.hasOwnProperty.call(notes, row.id) ? notes[row.id] : null
     };

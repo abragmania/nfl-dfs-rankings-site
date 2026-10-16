@@ -13,7 +13,7 @@
 // measure to be redesigned; projection minus ownership removed), and a request naming one is built on projection
 // with the classic optimiser's note (optimize.js retiredObjectiveNote).
 import { optimizeLineup, retiredObjectiveNote } from "./optimize.js";
-import { rowIsSidelined } from "../rank/sidelined.js"; // pure: the public site runs this in a browser (D71)
+import { rowIsOut } from "../rank/sidelined.js"; // pure: the public site runs this in a browser (D71)
 
 export const SHOWDOWN_SLOTS = Object.freeze(["CPT", "FLEX", "FLEX", "FLEX", "FLEX", "FLEX"]);
 export const SHOWDOWN_FLEX = Object.freeze(["QB", "RB", "WR", "TE", "K", "DST"]);
@@ -41,6 +41,7 @@ export function showdownCandidates(row) {
   const person = String(row.id);
   const proj = num(row.proj);
   const overrideProj = num(row.override?.proj);
+  const revive = row.override?.revive === true;
   const common = {
     dkId: person,
     name: row.name,
@@ -58,7 +59,7 @@ export function showdownCandidates(row) {
       salary: num(row.cptSalary),
       proj: proj === null ? null : proj * CPT_MULTIPLIER,
       own: num(row.ownCpt),
-      override: { proj: overrideProj === null ? null : overrideProj * CPT_MULTIPLIER },
+      override: { proj: overrideProj === null ? null : overrideProj * CPT_MULTIPLIER, revive },
       personId: person,
       realPos: row.pos
     });
@@ -73,7 +74,7 @@ export function showdownCandidates(row) {
     salary: num(row.salary),
     proj,
     own: num(row.ownFlex),
-    override: { proj: overrideProj },
+    override: { proj: overrideProj, revive },
     personId: person,
     realPos: row.pos
   });
@@ -92,7 +93,7 @@ function rosterable(c) {
   const overridden = num(c.override?.proj) !== null;
   if (num(c.proj) === null) return false;
   if (!overridden && c.flags.includes("no projection")) return false;
-  if (rowIsSidelined(c)) return false;
+  if (rowIsOut(c)) return false;
   if (num(c.salary) === null) return false;
   return true;
 }

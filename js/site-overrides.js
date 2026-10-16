@@ -24,6 +24,7 @@
 // null means unavailable. Pure apart from that: no network, no page.
 import { applyOverrideChanges, validateOverrides } from "../server/overrides/merge.js";
 import { remergeOverrides } from "../server/rank/remerge.js";
+import { sidelinedIdsOf } from "../server/rank/sidelined.js";
 
 export const STORAGE_PREFIX = "nfldfs-site-overrides:";
 export const STORAGE_UNAVAILABLE_MESSAGE = "This browser is not letting the site keep your changes (storage is switched off or full), so nothing was saved.";
@@ -112,11 +113,12 @@ function writeEdits(storage, season, week, edits) {
 
 /** Adam's published overrides, read back off the baked board's rows (mergeOverridesIntoRows put every one there). */
 export function publishedOverrides(board) {
-  const out = { proj: {}, own: {}, stars: [], notes: {}, updatedAt: null };
+  const out = { proj: {}, own: {}, stars: [], notes: {}, revive: [], updatedAt: null };
   for (const row of board?.rows ?? []) {
     if (!row || row.id == null) continue;
     const id = String(row.id);
     if (row.override?.proj != null) out.proj[id] = row.override.proj;
+    if (row.override?.revive === true) out.revive.push(id);
     if (row.override?.own != null) out.own[id] = row.override.own;
     if (row.starred === true && !out.stars.includes(id)) out.stars.push(id);
     if (row.note != null) out.notes[id] = row.note;
@@ -147,14 +149,14 @@ function recordChanges(edits, changes, published) {
 }
 
 /** Adam's published overrides with the visitor's changes applied (the `cleared` record is not part of them). */
-function effective(published, edits) {
+function effective(published, edits, board) {
   const { cleared: _cleared, ...changes } = edits;
-  return applyOverrideChanges(published, changes);
+  return applyOverrideChanges(published, changes, sidelinedIdsOf(board?.rows));
 }
 
 /** The baked board with Adam's published overrides plus `edits` merged by the app's remerge, flagged for Reset all. */
 function remerged(board, slate, published, edits) {
-  const merged = remergeOverrides(board, slate, effective(published, edits));
+  const merged = remergeOverrides(board, slate, effective(published, edits, board));
   return { ...merged, siteTypedNumbers: hasTypedNumbers(edits) };
 }
 
@@ -168,7 +170,7 @@ export function boardWithEdits(board, slate, storage, season, week) {
   const edits = readEdits(storage, season, week, published);
   if (isEmpty(edits)) return { ...board, siteTypedNumbers: false };
   try {
-    validateOverrides(effective(published, edits));
+    validateOverrides(effective(published, edits, board));
     return remerged(board, slate, published, edits);
   } catch (e) {
     console.warn("site overrides: saved changes not applied", e);
@@ -183,7 +185,7 @@ function write(storage, season, week, board, slate, nextFrom) {
   const published = publishedOverrides(board);
   const next = nextFrom(readEdits(storage, season, week, published), published);
   try {
-    validateOverrides(effective(published, next));
+    validateOverrides(effective(published, next, board));
   } catch (e) {
     return { error: { code: e.code ?? "OVERRIDES_INVALID", message: e.message } };
   }

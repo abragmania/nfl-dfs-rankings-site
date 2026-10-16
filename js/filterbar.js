@@ -39,6 +39,20 @@ export function posChipsHtml(currentPos, extraAttrs = "") {
   ).join("");
 }
 
+export function showAllToggleHtml(active, extraAttrs = "") {
+  return `<button type="button"${extraAttrs ? ` ${extraAttrs}` : ""} class="chip toggle-chip${active ? " active" : ""}">Show all players</button>`;
+}
+
+export function wireShowAllButtons(container) {
+  container.querySelectorAll("[data-action='show-all']").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const on = !store.get().filters.showAllPlayers;
+      if (typeof document !== "undefined") document.querySelector("#show-all-toggle")?.classList.toggle("active", on);
+      store.setFilters({ showAllPlayers: on });
+    });
+  });
+}
+
 export function renderFilterBar(container, teamAbbrs, filters, callbacks, hasOverrides = true) {
   const chipsHtml = posChipsHtml(filters.pos);
 
@@ -65,7 +79,7 @@ export function renderFilterBar(container, teamAbbrs, filters, callbacks, hasOve
         <label><input id="salary-max" type="number" step="100" placeholder="max" value="${filters.salaryMax ?? ""}" /></label>
       </div>
       <button type="button" id="starred-toggle" class="chip toggle-chip${filters.starredOnly ? " active" : ""}">★ Starred only</button>
-      <button type="button" id="show-all-toggle" class="chip toggle-chip${filters.showAllPlayers ? " active" : ""}">Show all players</button>
+      ${showAllToggleHtml(filters.showAllPlayers, `id="show-all-toggle"`)}
       <button type="button" id="reset-overrides-btn" class="reset-btn"${hasOverrides ? "" : " disabled"}>Reset all overrides</button>
     </div>
     <div class="filter-row">

@@ -19,8 +19,8 @@
 import { escapeHtml, money, dec1, dec2, textColourFor } from "./format.js";
 import { store, filterRows, sortRows, passesProjFloor, FLEX_POS, defaultDirFor, activeSlate, activeSlateRows, activeSlateGames, slateDisplayName } from "./state.js";
 import { sortableHeadHtml } from "./tabs.js";
-import { matchupText } from "./table.js"; // D43: the one copy of "vs DAL" / "@ DET"
-import { posChipsHtml } from "./filterbar.js";
+import { matchupText, rowIsOut } from "./table.js"; // D43: the one copy of "vs DAL" / "@ DET"
+import { posChipsHtml, showAllToggleHtml, wireShowAllButtons } from "./filterbar.js";
 import { filterLineups, bulkUids, bulkLabel, toggleMustHave, pickButtonHtml, filterBarHtml } from "./lineup-filter.js";
 import { TEAM_BY_ABBR } from "./teams-data.js";
 import { postLineupGenerate, getLineups, postLineup, deleteLineup, putLineupName } from "./api.js";
@@ -51,7 +51,6 @@ const STATUS_INFO = {
   ir: { label: "IR", cls: "status-ir" },
   suspended: { label: "Suspended", cls: "status-ir" },
 };
-const DIM_STATUS_TOKENS = new Set(["o", "out", "ir", "d", "doubtful"]);
 
 const state = {
   slots: new Array(LINEUP_SLOTS.length).fill(null), // each: {id, slot} or null; row fields are read live
@@ -326,8 +325,7 @@ function legalSlotIndex(pos) {
 function addWarning(row) {
   const reasons = [];
   const statusKey = (row.status ?? "").trim().toLowerCase();
-  const sidelined = DIM_STATUS_TOKENS.has(statusKey) || (row.flags ?? []).includes("injured");
-  if (sidelined) {
+  if (rowIsOut(row)) {
     const label = STATUS_INFO[statusKey]?.label ?? row.status;
     reasons.push(`is listed ${label} and may not play`);
   }
@@ -770,11 +768,12 @@ function placedIdentities(rowById) {
 }
 
 /** The Rankings filter bar's position chips (filterbar.js's one copy), setting the same global position filter. */
-function poolPosChipsHtml() {
-  return `<div class="chip-group lineup-pos-chips">${posChipsHtml(store.get().filters.pos, `data-action="pool-pos"`)}</div>`;
+export function poolPosChipsHtml() {
+  const { pos, showAllPlayers } = store.get().filters;
+  return `<div class="chip-group lineup-pos-chips">${posChipsHtml(pos, `data-action="pool-pos"`)}${showAllToggleHtml(showAllPlayers, `data-action="show-all"`)}</div>`;
 }
 
-function rightColumnHtml(rows, rowById) {
+export function rightColumnHtml(rows, rowById) {
   const { filters, sort } = store.get();
   // The classic projection floor (D52) applies to this pool like every other classic list, with one exception:
   // a player already locked or excluded stays listed so his lock or exclude can still be undone here.
@@ -836,8 +835,7 @@ function rightRowHtml(row, placedSet, hasStatus, maxMap = {}) {
   // 🔵 finding 6: "already placed" is a DraftKings-identity comparison, not a board-id comparison.
   const placed = placedSet.has(dkIdentity(row));
   // 🔵 finding 8: same dimming rule as the Rankings table.
-  const statusKey = (row.status ?? "").trim().toLowerCase();
-  const dimmed = DIM_STATUS_TOKENS.has(statusKey) || (row.flags ?? []).includes("injured");
+  const dimmed = rowIsOut(row);
   const rowClass = `${excluded ? " lineup-row-excluded" : locked ? " lineup-row-locked" : ""}${dimmed ? " row-dimmed" : ""}`;
   return `
     <tr class="lineup-row${rowClass}" data-id="${escapeHtml(id)}">
@@ -928,6 +926,7 @@ function wire(container) {
       store.setFilters({ pos });
     });
   });
+  wireShowAllButtons(container);
   container.querySelectorAll(".lineup-rows-table th[data-col]").forEach((th) => {
     th.addEventListener("click", () => {
       const col = th.dataset.col;

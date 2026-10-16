@@ -1,13 +1,11 @@
 {
-  "publishedAt": "2026-10-16T03:16:30.408Z",
+  "publishedAt": "2026-10-16T15:42:58.191Z",
   "season": 2026,
   "week": 6,
-  "boardGeneratedAt": "2026-10-16T03:16:18.969Z",
-  "showdowns": [
-    "2026-w06-SEADEN"
-  ],
-  "sourceCommit": "98554734d1429d0f963579d596fec96398fb5f4a",
-  "appCommit": "98554734d1429d0f963579d596fec96398fb5f4a",
+  "boardGeneratedAt": "2026-10-16T15:42:48.834Z",
+  "showdowns": [],
+  "sourceCommit": "d11b1bb6d3c92b7b6e60c82dfdf37d3de3fd6f97",
+  "appCommit": "d11b1bb6d3c92b7b6e60c82dfdf37d3de3fd6f97",
   "machine": "desktop",
   "matchups": false
 }

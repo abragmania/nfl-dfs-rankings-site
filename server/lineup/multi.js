@@ -15,7 +15,7 @@
 // Lineups are ranked by total projection, then by lower salary, then by the sorted player ids, so ties are settled
 // the same way on every machine. Projections are compared as integers (millionths of a point) so float rounding
 // never decides anything.
-import { rowIsSidelined } from "../rank/sidelined.js"; // pure: the public site runs this engine in the browser (D69)
+import { rowIsOut } from "../rank/sidelined.js"; // pure: the public site runs this engine in the browser (D69)
 import { assignSlots } from "./dk-entries.js";
 import { warn } from "../lib/log.js";
 import { retiredObjectiveNote } from "./optimize.js"; // pure: the site copies the engine (D69); one copy of the note
@@ -538,7 +538,7 @@ function prepare(rows, opts, notes) {
     const flags = Array.isArray(row.flags) ? row.flags : [];
     const overridden = num(row.override && row.override.proj) !== null;
     const noProjection = proj === null || (!overridden && flags.includes("no projection"));
-    const sidelined = rowIsSidelined(row);
+    const sidelined = rowIsOut(row);
     const game = upper(row.gameId) || null;
     const avoided = game !== null && opts.avoidGames.has(game);
     const unstarredQb = opts.rules.starredQbOnly && pos === "QB" && !row.starred;

@@ -360,7 +360,7 @@ export function assignSlots(playerIds, pool, kickoffById) {
  * flags as injured), `salaryCap` (default 50000).
  * Returns { errors, warnings, salary, games }; every error and warning is one plain sentence.
  */
-export function validateLineup(slots, pool, { statusById, sidelinedIds, salaryCap = 50000 } = {}) {
+export function validateLineup(slots, pool, { statusById, sidelinedIds, revived, salaryCap = 50000 } = {}) {
   const errors = structureErrors(slots, pool);
   const warnings = [];
   const ids = Array.isArray(slots) ? [...new Set(slots)] : [];
@@ -392,6 +392,11 @@ export function validateLineup(slots, pool, { statusById, sidelinedIds, salaryCa
   for (const id of known) {
     const status = lookup(statusById, id);
     const statusText = status === null || status === undefined ? "" : String(status).trim();
+    const typed = lookup(revived, id);
+    if (typed !== undefined && typed !== null) {
+      warnings.push(`${describe(pool, id)} is listed ${statusText || "injured"}; kept because you typed ${typed} after he was ruled out.`);
+      continue;
+    }
     if (isSidelined(statusText) || inSet(sidelinedIds, id)) {
       errors.push(`${describe(pool, id)} is sidelined${statusText ? ` (status ${statusText})` : " (flagged injured on the board)"}.`);
     } else if (["Q", "QUESTIONABLE"].includes(statusText.toUpperCase())) {

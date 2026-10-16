@@ -61,12 +61,29 @@ export function rowIsSidelined(row) {
   return isSidelined(row?.status) || Boolean(row?.flags?.includes?.("injured"));
 }
 
+// A projection above 0 typed after the board listed him out puts him back in (Adam 2026-10-16).
+export function isRevived(row) {
+  const typed = row?.override?.proj;
+  return rowIsSidelined(row) && row?.override?.revive === true && typeof typed === "number" && Number.isFinite(typed) && typed > 0;
+}
+
+export function sidelinedIdsOf(rows) {
+  return new Set((rows ?? []).filter((row) => rowIsSidelined(row)).map((row) => String(row.id)));
+}
+
+export function rowIsOut(row) {
+  return rowIsSidelined(row) && !isRevived(row);
+}
+
 // Adam 2026-10-15: out = 0 projection and ceiling.
 export function zeroOutRows(rows) {
   return rows.map((row) => {
-    if (!rowIsSidelined(row)) return row;
-    const zeroed = { ...row, proj: 0 };
-    if (Object.prototype.hasOwnProperty.call(row, "ceiling")) zeroed.ceiling = 0;
+    const had = Array.isArray(row.flags) && row.flags.includes("revived");
+    const base = had ? { ...row, flags: row.flags.filter((f) => f !== "revived") } : row;
+    if (!rowIsSidelined(base)) return base;
+    if (isRevived(base)) return { ...base, flags: [...(base.flags ?? []), "revived"] };
+    const zeroed = { ...base, proj: 0 };
+    if (Object.prototype.hasOwnProperty.call(base, "ceiling")) zeroed.ceiling = 0;
     return zeroed;
   });
 }
