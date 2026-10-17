@@ -234,12 +234,29 @@ export function mustPlan(withKeys, placed, groups, idxOf, candByKey) {
     const h = groups.findIndex((g) => g.pos === pos);
     const at = h < 0 ? undefined : idxOf[h].get(key);
     if (at === undefined) return null;
-    spots.push({ key, h, at });
+    spots.push({ key, h, at, c: candByKey.get(key) });
   }
   return spots;
 }
 
-export function withReachable(spots, placed, groups, gi, kRem, start, cnt) {
+// Rules-repo review 2026-10-17 finding 3: a "must" player at a cap takes his QB out of every later lineup; one note per QB per batch.
+export function cappedMustNotes(qbs, candByKey, capOf, noted, lineupNo) {
+  const out = [];
+  for (const qb of qbs) {
+    if (!qb.rule || noted.has(qb.key)) continue;
+    for (const key of qb.rule.withKeys) {
+      const c = candByKey.get(key);
+      const cap = c && !c.locked ? capOf(c) : null;
+      if (cap === null) continue;
+      noted.add(qb.key);
+      out.push(`${qb.name} is left out of lineup ${lineupNo} onward: ${c.name}, marked "must" for him, has reached ${cap}.`);
+      break;
+    }
+  }
+  return out;
+}
+
+export function withReachable(spots, placed, groups, gi, kRem, start, cnt, canAdd = null) {
   if (spots === null) return false;
   cnt.fill(0);
   for (const s of spots) {
@@ -247,6 +264,7 @@ export function withReachable(spots, placed, groups, gi, kRem, start, cnt) {
       if (!placed.some((p) => p.key === s.key)) return false;
       continue;
     }
+    if (canAdd && !canAdd(s.c)) return false; // the search's own add test only tightens down a branch — rules-repo review 2026-10-17 finding 5
     cnt[s.h]++;
   }
   for (let h = gi; h < groups.length; h++) if (cnt[h] > (h === gi ? kRem : groups[h].need)) return false;

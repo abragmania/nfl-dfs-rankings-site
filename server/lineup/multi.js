@@ -20,7 +20,7 @@ import { rowIsOut } from "../rank/sidelined.js"; // pure: the public site runs t
 import { assignSlots } from "./dk-entries.js";
 import { warn } from "../lib/log.js";
 import { retiredObjectiveNote } from "./optimize.js"; // pure: the site copies the engine (D69); one copy of the note
-import { parseEntries, qbStackPrepare, globalRule, mustPlan, withReachable, stackTrials } from "./qb-stacks.js"; // pure; per-QB stack settings
+import { parseEntries, qbStackPrepare, globalRule, mustPlan, withReachable, stackTrials, cappedMustNotes } from "./qb-stacks.js"; // pure; per-QB stack settings
 
 // --------------------------------------------------------------------------------------------------------
 // Constants
@@ -464,18 +464,20 @@ function run(rows, slate, settings, existing, notes) {
     }
   }
 
-  entryQbChecks(rows, settings, slate, existingList.length, prevKeys, opts, st, notes);
+  // One step budget; the quarterback checks never take the half kept for the lineups — rules-repo review 2026-10-17 finding 4
+  opts.budget = { used: 0, floor: Math.ceil(opts.batchNodeLimit / 2) };
+  const mustNoted = entryQbChecks(rows, settings, slate, existingList.length, prevKeys, opts, st, notes);
 
   if (opts.stats) opts.stats.exactSalaryUnits = st.exact;
   const lineups = [];
   let aborted = false;
-  let batchNodes = 0;
   for (let n = 0; n < opts.count; n++) {
     const avail = availableLists(st, opts, counts, prev);
-    const batchLeft = opts.batchNodeLimit - batchNodes;
+    if (st.perQb && st.locksAt.QB === 0) notes.push(...cappedMustNotes(avail.QB, st.candByKey, (c) => mustCapCause(c, counts, st, opts), mustNoted, n + 1));
+    const batchLeft = opts.batchNodeLimit - opts.budget.used;
     const batchBinds = batchLeft <= opts.nodeLimit;
     const result = searchOne(st, avail, prev, opts, Math.max(0, Math.min(opts.nodeLimit, batchLeft)));
-    batchNodes += result.nodes;
+    opts.budget.used += result.nodes;
     if (opts.stats) {
       opts.stats.nodes = (opts.stats.nodes ?? 0) + result.nodes;
       opts.stats.trimmed = (opts.stats.trimmed ?? 0) + avail.trimmed;
@@ -514,9 +516,10 @@ function run(rows, slate, settings, existing, notes) {
   return { lineups, exposure: exposureOf(st, prevKeys, opts), notes };
 }
 
-/** Per-QB entries: each unlocked entry QB is tried alone first; one who fits no lineup gets a note (skipped when a QB is locked). */
+/** Per-QB entries: each unlocked entry QB is tried alone first; one who fits no lineup gets a note; returns the keys noted. */
 function entryQbChecks(rows, settings, slate, existingCount, prevKeys, opts, st, notes) {
-  if (!st.perQb || st.lockCands.some((c) => c.pos === "QB") || opts.capCount.QB === 0) return;
+  const reported = new Set();
+  if (!st.perQb || st.lockCands.some((c) => c.pos === "QB") || opts.capCount.QB === 0) return reported;
   const base = settings && typeof settings === "object" ? settings : {};
   for (const qb of st.byPos.QB) {
     if (!qb.rule || st.qbNoted.has(qb.key) || st.playerCapN.get(qb.key) === 0) continue;
@@ -525,12 +528,54 @@ function entryQbChecks(rows, settings, slate, existingCount, prevKeys, opts, st,
     o2.capCount = opts.capCount;
     const st2 = prepare(rows, o2, scratch);
     if (st2.fatal) continue; // he and the locks do not fit together (salary or slots): not his stack settings, as for any quarterback
+    const lim = stepsLeft(opts, opts.diagNodeLimit, opts.budget.floor);
+    if (lim === 0) {
+      notes.push(uncheckedQbNote(qb.name, opts, true));
+      reported.add(qb.key);
+      continue;
+    }
     const prev2 = makePrevIndex(st2, prevKeys, 1);
-    const r = searchOne(st2, availableLists(st2, o2, new Map(), prev2), prev2, o2, opts.diagNodeLimit);
+    const r = searchOne(st2, availableLists(st2, o2, new Map(), prev2), prev2, o2, lim);
+    opts.budget.used += r.nodes;
     if (opts.stats) opts.stats.checkNodes = (opts.stats.checkNodes ?? 0) + r.nodes;
-    if (r.best || r.aborted) continue;
+    if (r.best) continue;
+    reported.add(qb.key);
+    if (r.aborted) {
+      notes.push(uncheckedQbNote(qb.name, opts, lim < opts.diagNodeLimit)); // never a silent drop — rules-repo review 2026-10-17 finding 3
+      continue;
+    }
     notes.push(`${qb.name} cannot be in any lineup with his stack settings: ${diagnose(rows, settings, slate, existingCount, prevKeys, opts, 0, qb.id)}.`);
   }
+  return reported;
+}
+
+/** The step limit for one check or diagnosis trial: `cap`, cut to what is left above `floor` (0 once reached). */
+function stepsLeft(opts, cap, floor) {
+  return Math.max(0, Math.min(cap, opts.batchNodeLimit - floor - opts.budget.used));
+}
+
+/** "the <who> used up their share of the request's step limit (S of L)": the words both kinds of check notes use. */
+function checksShareText(opts, who) {
+  const share = opts.batchNodeLimit - opts.budget.floor;
+  return `the ${who} used up their share of the request's step limit (${share.toLocaleString("en-US")} of ${opts.batchNodeLimit.toLocaleString("en-US")})`;
+}
+
+/** An entry quarterback whose solo check ran out of steps (its own limit, or the checks' share when `budgetSpent`). */
+function uncheckedQbNote(name, opts, budgetSpent) {
+  const why = budgetSpent ? checksShareText(opts, "quarterback checks") : `the check hit its step limit of ${opts.diagNodeLimit.toLocaleString("en-US")}`;
+  return `${name}'s stack settings could not be checked (${why}); if he is in no lineup, they may be why.`;
+}
+
+/** The cap a "must" player has reached for this lineup (his own Max % first, then his position's), or null. */
+function mustCapCause(c, counts, st, opts) {
+  const used = counts.get(c.key) ?? 0;
+  const own = st.playerCapN.get(c.key);
+  if (own !== undefined && used >= own) {
+    const pct = opts.playerCap.get(c.id)?.pct;
+    return `his Max %${pct === undefined ? "" : ` of ${pct}%`} (${own} of ${opts.count} lineups)`;
+  }
+  const capN = opts.capCount[c.pos];
+  return capN !== undefined && used >= capN ? `the ${c.pos} maximum exposure (${opts.capLabel[c.pos]})` : null;
 }
 
 // --------------------------------------------------------------------------------------------------------
@@ -741,22 +786,6 @@ function prepare(rows, opts, notes) {
   st.byPos = byPos;
   st.playerCapN = playerCapsByKey(keyOfId, opts.playerCap);
 
-  // Spread defenses: cap = max(ceil(20% of count), ceil(count / usable DSTs)), folded into the DST exposure cap.
-  st.spreadCap = null;
-  if (opts.spreadDst) {
-    if (locksAt.DST > 0) {
-      st.fatal = "A locked defense can't be spread; unlock it or turn off Spread defenses.";
-      return st;
-    }
-    const facesLock = (d) => opts.rules.noDstVsOwnPlayers && d.oppIx >= 0 && lockCands.some((c) => c.teamIx === d.oppIx);
-    const room = byPos.DST.filter((d) => !facesLock(d)).map((d) => st.playerCapN.get(d.key) ?? Infinity).filter((n) => n > 0);
-    let share = 1;
-    while (share < opts.count && room.reduce((t, n) => t + Math.min(n, share), 0) < opts.count) share++;
-    const spread = Math.max(pctToLineups(20, opts.count), room.length ? share : 0);
-    st.spreadCap = Math.min(spread, opts.capCount.DST ?? Infinity);
-    notes.push(`Spread defenses: no defense in more than ${st.spreadCap} of ${opts.count} lineups.`);
-  }
-
   // Teams that could be the quarterback's, and the teams he could face: the locked QB's, or every QB's in the pool.
   const lockedQb = lockCands.find((c) => c.pos === "QB");
   const qbs = lockedQb ? [lockedQb] : byPos.QB;
@@ -765,6 +794,22 @@ function prepare(rows, opts, notes) {
   const entryQbs = qbs.filter((c) => c.rule);
   st.entryOwnTeams = new Set(entryQbs.map((c) => c.teamIx));
   st.entryOppTeams = new Set(entryQbs.filter((c) => c.rule.oppBinds && c.oppIx >= 0).map((c) => c.oppIx));
+
+  // Spread defenses: cap = max(ceil(20% of count), ceil(count / usable DSTs)), folded into the DST exposure cap.
+  st.spreadCap = null;
+  if (opts.spreadDst) {
+    if (locksAt.DST > 0) {
+      st.fatal = "A locked defense can't be spread; unlock it or turn off Spread defenses.";
+      return st;
+    }
+    const live = qbs.filter((q) => !st.qbNoted.has(q.key));
+    const room = usableDsts(byPos.DST, live, lockCands, opts.rules, st.playerCapN, oppStackActive(opts) ? opts.stackOpp : 0, byKey).map((d) => st.playerCapN.get(d.key) ?? Infinity);
+    let share = 1;
+    while (share < opts.count && room.reduce((t, n) => t + Math.min(n, share), 0) < opts.count) share++;
+    const spread = Math.max(pctToLineups(20, opts.count), room.length ? share : 0);
+    st.spreadCap = Math.min(spread, opts.capCount.DST ?? Infinity);
+    notes.push(`Spread defenses: no defense in more than ${st.spreadCap} of ${opts.count} lineups.`);
+  }
 
   // Salary units for the knapsack bound: the common divisor of every salary and the cap when that is fine enough,
   // otherwise a coarse unit with costs rounded down and budgets rounded up (still an upper bound).
@@ -796,6 +841,18 @@ function prepare(rows, opts, notes) {
     st.configs.push({ index: ci, groups, ...boundTables(groups, knap, st.S) });
   }
   return st;
+}
+
+/** Spread defenses (pure): a defense with Max % room counts unless, under the defense rule, he faces a locked player or no
+ *  usable QB can take him (QB faces him, or is his team's and needs an opponent) — rules-repo review 2026-10-17 finding 2. */
+export function usableDsts(dsts, qbs, lockCands, rules, playerCapN, globalNeedOpp, candByKey) {
+  const qbOk = qbs.filter((q) => playerCapN.get(q.key) !== 0);
+  const needsOpp = (q) => (q.rule ? q.rule.needOpp > 0 || q.rule.withKeys.some((k) => candByKey.get(k)?.teamIx === q.oppIx) : globalNeedOpp > 0);
+  return dsts.filter((d) => {
+    if ((playerCapN.get(d.key) ?? Infinity) <= 0) return false;
+    if (!rules.noDstVsOwnPlayers || d.oppIx < 0) return true;
+    return !lockCands.some((c) => c.teamIx === d.oppIx) && qbOk.some((q) => q.teamIx !== d.oppIx && !(d.teamIx === q.teamIx && needsOpp(q)));
+  });
 }
 
 /** Projection descending, then salary ascending, then id: the order every list is searched in. */
@@ -1189,7 +1246,7 @@ function searchOne(st, avail, prev, opts, nodeLimit) {
     /** False when the slots left (kRem in group gi from `start`, then every later group) cannot hold the
      *  teammates and opponents still needed. */
     const stackReachable = (gi, kRem, start) => {
-      if (rule.withKeys.length && !withReachable(must, placed, groups, gi, kRem, start, mustCnt)) return false;
+      if (rule.withKeys.length && !withReachable(must, placed, groups, gi, kRem, start, mustCnt, canAdd)) return false;
       const wantOwn = rule.needOwn - mates;
       const wantOpp = rule.needOpp - opps;
       if (wantOwn <= 0 && wantOpp <= 0) return true;
@@ -1221,10 +1278,11 @@ function searchOne(st, avail, prev, opts, nodeLimit) {
     };
 
     const dfs = (gi, kRem, start, rem, score) => {
-      if (++nodes > nodeLimit) {
-        aborted = true;
+      if (nodes >= nodeLimit) {
+        aborted = true; // the count never passes the limit, so the shared budget is never overdrawn — rules-repo review 2026-10-17 finding 4
         return;
       }
+      nodes++;
       if (gi === groups.length) {
         leaf(score, rem);
         return;
@@ -1347,6 +1405,8 @@ function diagnose(rows, settings, slate, existingCount, prevKeys, opts, n, pin =
 
   const found = [];
   const unchecked = [];
+  const skipped = [];
+  const floor = pin ? opts.budget.floor : 0; // a quarterback check's diagnosis keeps the lineups' half; a failed lineup's need not
   for (const t of trials) {
     const scratch = [];
     const o2 = normaliseSettings({ ...base, ...t.patch, count: opts.count }, slate, existingCount, scratch);
@@ -1356,13 +1416,22 @@ function diagnose(rows, settings, slate, existingCount, prevKeys, opts, n, pin =
     }
     const st2 = prepare(rows, o2, scratch);
     if (st2.fatal) continue;
+    const lim = stepsLeft(opts, opts.diagNodeLimit, floor);
+    if (lim === 0) {
+      skipped.push(t.label);
+      continue;
+    }
     const prev2 = makePrevIndex(st2, prevKeys, 1);
     const avail = availableLists(st2, o2, batchCounts, prev2);
-    const r = searchOne(st2, avail, prev2, o2, opts.diagNodeLimit);
+    const r = searchOne(st2, avail, prev2, o2, lim);
+    opts.budget.used += r.nodes;
+    if (opts.stats) opts.stats.diagNodes = (opts.stats.diagNodes ?? 0) + r.nodes;
     if (r.best) found.push(t.label);
-    else if (r.aborted) unchecked.push(t.label);
+    else if (r.aborted) (lim < opts.diagNodeLimit ? skipped : unchecked).push(t.label);
   }
-  const uncheckedText = unchecked.length ? `; these could not be checked in time: ${unchecked.join("; ")}` : "";
+  const spent = pin ? checksShareText(opts, "quarterback checks") : `the step limit of ${opts.batchNodeLimit.toLocaleString("en-US")} for the whole request was used up`;
+  const uncheckedText = (unchecked.length ? `; these could not be checked in time: ${unchecked.join("; ")}` : "")
+    + (skipped.length ? `; ${spent} before these could be checked: ${skipped.join("; ")}` : "");
   if (!pin && !opts.locks.some((id) => rowPos(rowOf.get(id) ?? {}) === "QB") && found.includes(`the rule "${RULE_LABELS.starredQbOnly}"`)) {
     const cause = starredQbCause(rows, opts);
     if (cause && (cause.plainly || found.length === 1)) return cause.text; // another fix beside the rule keeps the usual sentence
@@ -1370,7 +1439,7 @@ function diagnose(rows, settings, slate, existingCount, prevKeys, opts, n, pin =
   if (found.length) {
     return `no lineup keeps every setting; relaxing ${found.length === 1 ? "this one alone" : "any one of these alone"} would allow one: ${found.join("; ")}${uncheckedText}`;
   }
-  if (unchecked.length) {
+  if (unchecked.length || skipped.length) {
     return `no lineup keeps every setting; no single setting was found to be the cause${uncheckedText}`;
   }
   return `no lineup keeps every setting, and no single setting is the cause (the rules together, ${opts.qbStacks.size ? "the per-quarterback stack settings, " : ""}the locks${n > 0 || existingCount > 0 ? ", the earlier lineups" : ""} and the ${money(opts.cap)} cap leave nothing legal)`;
