@@ -1910,8 +1910,8 @@ select.opt-input { text-align: left; padding: 3px 4px; }
 .lineup-slot-matchup { color: var(--text-muted); font-size: var(--fs-sm); white-space: nowrap; }
 .lineup-slot-player-2 .lineup-slot-detail { white-space: normal; overflow: visible; text-overflow: clip; }
 
-/* ---------- Entries (Lineup Builder tab, under Saved lineups): Adam's DraftKings entries file, one picker per entry ---------- */
-.entries-section { width: 100%; margin-top: var(--sp-5); padding-top: var(--sp-3); border-top: 1px solid var(--border); display: flex; flex-direction: column; gap: var(--sp-2); }
+/* ---------- Entries (its own tab, rules repo 2026-10-17): Adam's DraftKings entries file, one picker per entry ---------- */
+.entries-section { width: 100%; display: flex; flex-direction: column; gap: var(--sp-2); } /* 👁 2026-10-17: no top rule or gap now that it opens a tab */
 .entries-title { margin: 0; font-size: var(--fs-md); color: var(--text-muted); display: flex; align-items: baseline; gap: var(--sp-2); flex-wrap: wrap; }
 .entries-upload-row { display: flex; align-items: center; gap: var(--sp-2); }
 .entries-empty { color: var(--text-dim); font-size: var(--fs-base); font-style: italic; }

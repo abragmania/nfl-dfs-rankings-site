@@ -20,6 +20,7 @@ import { rowIsOut } from "../rank/sidelined.js"; // pure: the public site runs t
 import { assignSlots } from "./dk-entries.js";
 import { warn } from "../lib/log.js";
 import { retiredObjectiveNote } from "./optimize.js"; // pure: the site copies the engine (D69); one copy of the note
+import { countsTowardStack } from "./stack-rules.js"; // pure leaf; one copy of the stack predicate
 import {
   parseEntries, qbStackPrepare, globalRule, ruleFromEntry, mustPlan, withReachable, stackTrials, setsTeammates, setsOpponents, cappedMustNotes
 } from "./qb-stacks.js"; // pure; per-QB stack settings
@@ -67,8 +68,6 @@ export const NO_CEILING_SENTENCE = "This board has no TwoGun ceilings (current m
 /** D73: the most teammates and opponents the QB stack can ask for, and the defaults (1 or more, 0 or more). */
 export const STACK_OWN_MAX = 4;
 export const STACK_OPP_MAX = 3;
-/** D55 as amended 2026-10-17: every running back, receiver and tight end counts toward his quarterback's stack. */
-export const countsTowardStack = (pos) => pos === "RB" || pos === "WR" || pos === "TE";
 const STACK_OWN_DEFAULT = 1;
 const STACK_OPP_DEFAULT = 0;
 

@@ -123,12 +123,14 @@ function loadSavedLineups(key) {
       }
       state.savedLoaded = true;
       commit();
+      redrawEntries();
     })
     .catch((e) => {
       state.savedLineups = [];
       state.savedError = `Could not reach the server: ${e.message}`;
       state.savedLoaded = true;
       commit();
+      redrawEntries();
     });
 }
 
@@ -266,6 +268,29 @@ export function renderLineupPanel(container, callbacks) {
   const newPool = container.querySelector(".lineup-rows-wrap");
   if (newPool) newPool.scrollTop = savedScrollTop;
   resizeLineupScrollPanels(container);
+}
+
+let entriesContainer = null; // the Entries tab's panel, once drawn (rules repo 2026-10-17)
+
+/** The Entries tab (rules repo 2026-10-17: its own tab, it was a section under the Optimizer). It reads the saved lineups
+ *  this module holds, so it does the same first steps as renderLineupPanel (storage read once, then the board check that
+ *  starts the saved-lineups load); nothing of the Optimizer's own DOM is needed. */
+export function renderEntriesPanel(container) {
+  entriesContainer = container;
+  const board = store.get().board;
+  hydrateFromStorage();
+  validateAgainstBoard(board);
+  container.innerHTML = renderEntriesSection(state.savedLineups, board?.slates ?? [], entriesWeekKey(board));
+  wireEntries(container, {
+    weekKey: entriesWeekKey(board),
+    getSaved: () => state.savedLineups,
+    getSlates: () => store.get().board?.slates ?? [],
+  });
+}
+
+// The saved-lineups list arrives after the first draw; the Entries tab, when it is the one on screen, is drawn again then.
+function redrawEntries() {
+  if (entriesContainer && !entriesContainer.hidden) renderEntriesPanel(entriesContainer);
 }
 
 // Whole-row snapping by geometry rather than by one row's height (👁 visual-qa fourth/fifth pass): finds
@@ -605,8 +630,7 @@ function panelHtml() {
         ${rightColumnHtml(activeSlateRows(board), rowById)}
       </div>
     </div>
-    ${optimizerResultsHtml(rowById)}
-    ${renderEntriesSection(state.savedLineups, board?.slates ?? [], entriesWeekKey(board))}`;
+    ${optimizerResultsHtml(rowById)}`;
 }
 
 /** The Save controls (PROJECT.md Part 4 Lineups): Save and Copy when a saved lineup is loaded, else Save lineup. */
@@ -1208,11 +1232,6 @@ function wire(container) {
   });
 
   wireOptimizer(container);
-  wireEntries(container, {
-    weekKey: entriesWeekKey(store.get().board),
-    getSaved: () => state.savedLineups,
-    getSlates: () => store.get().board?.slates ?? [],
-  });
 }
 
 // --------------------------------------------------------------------------------------------------------
@@ -1540,7 +1559,7 @@ export function minLockSkips(rowOf, settings) {
   const side = (id) => {
     const r = rowOf(id) ?? {};
     const pos = upperOf(r.pos);
-    return { pos, team: upperOf(r.team), opp: upperOf(r.opp), game: upperOf(r.gameId), key: dkKeyOfRow(r, id), never: never(id), stackOk: pos === "RB" || pos === "WR" || pos === "TE" }; // mirrors multi.js countsTowardStack
+    return { pos, team: upperOf(r.team), opp: upperOf(r.opp), game: upperOf(r.gameId), key: dkKeyOfRow(r, id), never: never(id), stackOk: pos === "RB" || pos === "WR" || pos === "TE" }; // mirrors countsTowardStack in server/lineup/stack-rules.js
   };
   const locks = [...new Map((settings.locks ?? []).filter((id) => rowOf(id)).map((id) => [keyOf(id), id])).values()].map((id) => ({ id, ...side(id) }));
   const qb = locks.find((c) => c.pos === "QB");

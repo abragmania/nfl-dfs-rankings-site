@@ -13,6 +13,7 @@
 // `message` empty, so the UI can show the infeasibility sentence and the remarks in different places.
 import { warn } from "../lib/log.js";
 import { rowIsOut } from "../rank/sidelined.js"; // pure: the public site runs this in a browser (D71)
+import { countsTowardStack } from "./stack-rules.js";
 
 // --------------------------------------------------------------------------------------------------------
 // Constants
@@ -34,7 +35,6 @@ export function retiredObjectiveNote(objective) {
   if (objective === "projMinusOwn") return "Projection minus ownership is no longer an objective, so these lineups maximise projection.";
   return null;
 }
-const PASS_CATCHER = Object.freeze(new Set(["WR", "TE"]));
 const BUILD_MODES = Object.freeze(["score", "perDollar", "cheap"]);
 
 // Search bounds. The pool is pruned to the best TOP_PER_POS players per position by the chosen objective, plus
@@ -141,7 +141,7 @@ function failure(message, cap) {
  * @param {Array}   [options.slots]          slot names in display order, default the classic nine (D1)
  * @param {Array}   [options.flexPositions]  positions the FLEX slot accepts, default RB/WR/TE (D1)
  * @param {number}  [options.maxFromTeam]    most players from one NFL team, null for no limit
- * @param {number}  [options.stackQbWith]    minimum WR/TE from each rostered QB's own team
+ * @param {number}  [options.stackQbWith]    minimum RB/WR/TE from each rostered QB's own team
  * @returns {{lineup:Array,salaryUsed:number,salaryLeft:number,totalProj:number,totalOwn:(number|null),feasible:boolean,message:string,notes:Array<string>}}
  */
 export function optimizeLineup(rows, options = {}) {
@@ -495,7 +495,7 @@ function build(ctx, slotToLock, lockCands, mode) {
   const qbSlots = ctx.slots.map((s, i) => (s === "QB" ? i : -1)).filter((i) => i >= 0);
   if (ctx.stackQbWith <= 0 || qbSlots.length === 0) return buildWith(ctx, slotToLock, lockCands, mode, null);
 
-  // A stack needs a quarterback first, because the required pass-catchers depend on his team. A locked QB
+  // A stack needs a quarterback first, because the required RB/WR/TE teammates depend on his team. A locked QB
   // settles it; otherwise the best few quarterbacks are each tried and the best resulting lineup kept.
   const lockedQb = qbSlots.map((i) => slotToLock[i]).find((l) => l !== undefined && l !== -1);
   const options =
@@ -537,18 +537,18 @@ function buildWith(ctx, slotToLock, lockCands, mode, forcedQb) {
     place(si, forcedQb);
   }
 
-  // Stack: every rostered QB needs stackQbWith pass-catchers from his own team.
+  // Stack: every rostered QB needs stackQbWith RB/WR/TE teammates from his own team.
   if (ctx.stackQbWith > 0) {
     for (let qi = 0; qi < ctx.slots.length; qi++) {
       if (ctx.slots[qi] !== "QB" || !chosen[qi]) continue;
       const team = chosen[qi].team;
-      let have = chosen.filter((c) => c && PASS_CATCHER.has(c.pos) && c.team === team).length;
+      let have = chosen.filter((c) => c && countsTowardStack(c.pos) && c.team === team).length;
       while (have < ctx.stackQbWith) {
         let pick = null;
         for (let si = 0; si < ctx.slots.length; si++) {
           if (chosen[si] !== null) continue;
           for (const cand of sortByMode(ctx.byScore[si], mode)) {
-            if (used.has(cand.dkKey) || cand.team !== team || !PASS_CATCHER.has(cand.pos)) continue;
+            if (used.has(cand.dkKey) || cand.team !== team || !countsTowardStack(cand.pos)) continue;
             if (cand.salary > left) continue;
             if (!teamOk(teams, cand.team, ctx.maxFromTeam)) continue;
             if (!completable(ctx, chosen, used, teams, left, si, cand)) continue;
@@ -676,9 +676,9 @@ function violation(lineup, ctx) {
     for (let i = 0; i < lineup.length; i++) {
       if (ctx.slots[i] !== "QB") continue;
       const team = lineup[i].team;
-      const mates = lineup.filter((c, j) => j !== i && PASS_CATCHER.has(c.pos) && c.team === team).length;
+      const mates = lineup.filter((c, j) => j !== i && countsTowardStack(c.pos) && c.team === team).length;
       if (mates < ctx.stackQbWith) {
-        return `${lineup[i].name} is stacked with only ${plural(mates, "pass-catcher")} from ${team}; ${word(ctx.stackQbWith)} required.`;
+        return `${lineup[i].name} is stacked with only ${plural(mates, "RB/WR/TE teammate")} from ${team}; ${word(ctx.stackQbWith)} required.`;
       }
     }
   }
@@ -691,7 +691,7 @@ function infeasibleMessage(ctx, lockCands) {
     .sort((a, b) => ctx.slotPool[a].length - ctx.slotPool[b].length || a - b);
   const test = completableFromEmpty(ctx, cheapest);
   if (ctx.stackQbWith > 0) {
-    return `No legal lineup fits these locks and exclusions with ${plural(ctx.stackQbWith, "pass-catcher")} stacked with the quarterback under the ${money(ctx.cap)} cap.`;
+    return `No legal lineup fits these locks and exclusions with ${plural(ctx.stackQbWith, "RB/WR/TE teammate")} stacked with the quarterback under the ${money(ctx.cap)} cap.`;
   }
   if (!test) {
     return `No combination of the available players fills every slot under the ${money(ctx.cap)} cap${lockCands.length ? " with these locks" : ""}.`;

@@ -55,8 +55,9 @@ export function contestHeadHtml(file, group, assigned, ctx = null, proposals = n
 
 // `keep`: a Set of entry ids the planner never opens (Adam's hand picks and "(leave as is)" rows); null = none (🔵 2026-10-17).
 // `prior`: the last proposal shown { entryId: lineupId }, planFill's first choice per row; null = none (👁 2026-10-17).
+// `priorLead`: the lead id that proposal was made with; planFill ignores the remembered GPP placements (`prior`) only, when the lead used now differs (rules repo 2026-10-17).
 // Frozen: callers spread it (🔵 2026-10-17).
-export const FILL_DEFAULT = Object.freeze({ lineupIds: null, contestIds: null, lead: null, overwrite: false, dismissed: false, lastLineup: null, keep: null, prior: null });
+export const FILL_DEFAULT = Object.freeze({ lineupIds: null, contestIds: null, lead: null, overwrite: false, dismissed: false, lastLineup: null, keep: null, prior: null, priorLead: null });
 
 /** A hand pick in a row's picker (🔵 2026-10-17): the row's pick is set, or cleared by "(leave as is)", and the row joins
  *  `keep`, so the planner never proposes over it until Re-propose or Clear (Confirm leaves `keep` alone, Adam 2026-10-17).
@@ -71,7 +72,7 @@ export function handPick(assign, keep, entryId, lineupId) {
 /** Re-propose: the proposal comes back in full, kept rows included and planned afresh (🔵 2026-10-17; Discard leaves
  *  `keep` as it is). */
 export function reproposeFill(s) {
-  return { ...FILL_DEFAULT, ...(s ?? {}), keep: null, dismissed: false, prior: null };
+  return { ...FILL_DEFAULT, ...(s ?? {}), keep: null, dismissed: false, prior: null, priorLead: null };
 }
 
 /** 🔵 2026-10-17 (F1): the localStorage key of one uploaded file's kept rows, beside its picks (a newer upload starts open). */
@@ -99,7 +100,7 @@ export function restoreKeep(raw, entries) {
 export function confirmFill(assign, fill, proposals) {
   return {
     assign: { ...(assign ?? {}), ...(proposals ?? {}) },
-    fill: { ...FILL_DEFAULT, ...(fill ?? {}), overwrite: false, dismissed: false, prior: null },
+    fill: { ...FILL_DEFAULT, ...(fill ?? {}), overwrite: false, dismissed: false, prior: null, priorLead: null },
   };
 }
 
@@ -136,7 +137,7 @@ export function fillClassPreset(fill, model, cls) {
   const mine = (model?.[cls] ?? []).map((l) => String(l.id));
   const lineupIds = s.lineupIds == null ? null : [...s.lineupIds.map(String).filter((id) => !mine.includes(id)), ...mine];
   const contestIds = (model?.groups ?? []).filter((g) => model.classes?.[g.contestId] === cls).map((g) => g.contestId);
-  return { ...s, lineupIds, contestIds, dismissed: false, prior: null };
+  return { ...s, lineupIds, contestIds, dismissed: false, prior: null, priorLead: null };
 }
 
 /** The slate's saved lineups for the Sort choice: their numbers, the sorted list, the ids in that order and the
@@ -157,7 +158,7 @@ export function fillModelOf(entries, slateKey, lineups, eff, slates, view) {
   const lists = fillListsOf(lineups, view?.sortBy);
   const groups = groupByContest(entries);
   const classes = effectiveClasses(groups, view?.classes);
-  const plan = planFill({ entries, lineups, assigned: eff, classes, lead: fill.lead, overwrite: fill.overwrite, keep: fill.keep, prior: fill.prior, lineupIds: fill.lineupIds, contestIds: fill.contestIds, order: lists.order, slateKey, slates });
+  const plan = planFill({ entries, lineups, assigned: eff, classes, lead: fill.lead, overwrite: fill.overwrite, keep: fill.keep, prior: fill.prior, priorLead: fill.priorLead, lineupIds: fill.lineupIds, contestIds: fill.contestIds, order: lists.order, slateKey, slates });
   // 🔵 2026-10-17: validProposals sees every pick, Replace and the kept rows, as planFill did and as Confirm will write.
   const valid = validProposals(plan.proposed, entries, lineups, eff, classes, slateKey, slates, { overwrite: fill.overwrite, keep: fill.keep });
   const kept = new Set(Array.from(fill.keep ?? [], String));

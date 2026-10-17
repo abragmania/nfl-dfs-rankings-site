@@ -1,4 +1,4 @@
-// Entries section of the Lineup Builder tab (PROJECT.md Part 4 "Optimizer", step 5; DECISIONS.md D56, D57, D43, D75).
+// The Entries tab (PROJECT.md Part 4 "Optimizer", step 5; DECISIONS.md D56, D57, D43, D75; its own tab since the rules repo's 2026-10-17 ruling).
 // Adam uploads his DraftKings entries export, picks a saved lineup for each entry he wants to change (every row
 // starts blank), or lets the fill strip propose lineups for the rows and confirms them in one click (D75, entries
 // fill plan 2026-10-17); rows are grouped by contest, and the picks are kept in localStorage per uploaded file name.
@@ -385,7 +385,10 @@ function rememberProposals() {
   for (const f of ent.files) {
     const now = fillNow(f.file);
     if (!now || now.model.fill.dismissed) continue;
-    (ent.fill[f.file] ??= { ...FILL_DEFAULT }).prior = now.model.proposals;
+    // Rules repo 2026-10-17: the lead the proposal was made with travels with it, so a lead changed from outside the strip drops the memory.
+    const s = (ent.fill[f.file] ??= { ...FILL_DEFAULT });
+    s.prior = now.model.proposals;
+    s.priorLead = now.model.plan.lead;
   }
 }
 
@@ -536,6 +539,7 @@ function fillOf(fileName) {
   const s = (ent.fill[fileName] ??= { ...FILL_DEFAULT });
   s.dismissed = false;
   s.prior = null;
+  s.priorLead = null;
   return s;
 }
 
@@ -723,7 +727,7 @@ function bindFillActions(on) {
   on("[data-action='entries-sort']", "click", (btn) => {
     ent.sortBy = btn.dataset.sort === "letter" ? "letter" : "number";
     storeSort();
-    for (const k of Object.keys(ent.fill)) Object.assign(ent.fill[k], { dismissed: false, prior: null }); // the order changed: plan afresh
+    for (const k of Object.keys(ent.fill)) Object.assign(ent.fill[k], { dismissed: false, prior: null, priorLead: null }); // the order changed: plan afresh
     refresh();
   });
   // Adam 2026-10-17: Fill cash / Fill GPP tick one class, propose it; Confirm then writes only that class.

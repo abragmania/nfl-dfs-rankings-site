@@ -32,7 +32,7 @@ import { applyGrades, rowsGradedForView } from "./js/grade.js";
 import { renderGameStrip, getGamestripCollapsed, setGamestripCollapsed } from "./js/gamestrip.js";
 import { renderFilterBar, updateFilterSummary } from "./js/filterbar.js";
 import { renderTableHead, renderTableBody, updateRow } from "./js/table.js";
-import { renderTabs, renderProjectionsPanel, renderOwnershipPanel, renderLineupPanel } from "./js/tabs.js";
+import { renderTabs, shownTab, renderProjectionsPanel, renderOwnershipPanel, renderLineupPanel, renderEntriesPanel } from "./js/tabs.js";
 import { renderFavoritesPanel, favoriteRows } from "./js/favorites.js";
 import { initExpand, syncExpandUi, phoneMinHeight, panelMinHeight } from "./js/expand.js";
 
@@ -64,6 +64,7 @@ const el = {
   ownBanner: document.getElementById("own-banner"),
   ownershipPanel: document.getElementById("ownership-panel"),
   lineupPanel: document.getElementById("lineup-panel"),
+  entriesPanel: document.getElementById("entries-panel"), // rules repo 2026-10-17: Entries is its own tab
   emptyState: document.getElementById("empty-state"),
   gamestrip: document.getElementById("gamestrip"),
   filterbar: document.getElementById("filterbar"),
@@ -492,7 +493,8 @@ window.addEventListener("resize", adjustScrollPanels);
 initExpand({ onLayout: adjustScrollPanels });
 
 function renderDynamic() {
-  const { board, filters, sort, activeTab, loading, boardError } = store.get();
+  const { board, filters, sort, loading, boardError } = store.get();
+  const activeTab = shownTab(store.get().activeTab); // a tab the page does not draw (Entries on the site) shows Rankings
 
   // Every list below reads the slate on screen's rows (D57): the whole board, or the active second slate's.
   const slateRows = activeSlateRows(board);
@@ -508,6 +510,7 @@ function renderDynamic() {
     el.projectionsPanel.hidden = true;
     el.ownershipPanel.hidden = true;
     el.lineupPanel.hidden = true;
+    el.entriesPanel.hidden = true;
     renderEmptyState({ loading, boardError });
     syncExpandUi();
     return;
@@ -518,6 +521,7 @@ function renderDynamic() {
   el.projectionsPanel.hidden = activeTab !== "projections";
   el.ownershipPanel.hidden = activeTab !== "ownership";
   el.lineupPanel.hidden = activeTab !== "lineup";
+  el.entriesPanel.hidden = activeTab !== "entries";
 
   if (activeTab === "rankings") {
     const collapsed = getGamestripCollapsed();
@@ -549,6 +553,8 @@ function renderDynamic() {
     renderOwnershipPanel(el.ownershipPanel, board, sourceCallbacks);
   } else if (activeTab === "lineup") {
     renderLineupPanel(el.lineupPanel, tableCallbacks);
+  } else if (activeTab === "entries") {
+    renderEntriesPanel(el.entriesPanel);
   }
 
   syncExpandUi();

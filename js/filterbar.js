@@ -140,7 +140,7 @@ export function renderFilterBar(container, teamAbbrs, filters, callbacks, hasOve
 
   container.querySelector("#reset-overrides-btn").addEventListener("click", () => {
     // D72: the reset clears typed numbers only; stars and notes stay. On the public site it puts back the published
-    // numbers (D71; site-src/site.js marks the page is-site).
+    // numbers (D71; tools/publish.mjs injectSite marks the html tag is-site at publish time, and site-src/site.js adds it too).
     const onSite = document.documentElement.classList.contains("is-site");
     const question = onSite
       ? "Put back the published numbers? This clears every projection and ownership number you typed. Stars and notes stay."

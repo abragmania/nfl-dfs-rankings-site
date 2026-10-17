@@ -1,5 +1,6 @@
 // Tabs above the table: Rankings (rendered by table.js/gamestrip.js/filterbar.js, default),
-// Favorites (starred players, favorites.js), Projections, Projected Ownership, Optimizer (the main-slate tab, second after Rankings; DECISIONS.md D70).
+// Favorites (starred players, favorites.js), Projections, Projected Ownership, Optimizer (the main-slate tab, second after Rankings; DECISIONS.md D70),
+// Entries (right after the Optimizer, app only).
 import { escapeHtml, dec1, localStamp } from "./format.js";
 import { store, passesProjFloor, CLASSIC_PROJ_FLOOR, activeSlateRows, sortRows } from "./state.js";
 import { favoritesTabLabel } from "./favorites.js";
@@ -33,14 +34,31 @@ function floorNoteHtml(allRows, shownRows) {
 const TABS = [
   { key: "rankings", label: "Rankings" },
   { key: "lineup", label: "Optimizer" }, // DECISIONS.md D70: "Optimizer" (was "Lineup Builder"), second tab
+  { key: "entries", label: "Entries" }, // rules repo 2026-10-17: Entries is its own tab (was a section under the Optimizer); app-only, see visibleTabs
   { key: "favorites", label: "Favorites" },
   { key: "projections", label: "Projections" },
   { key: "ownership", label: "Projected Ownership" },
 ];
 
+// Rules repo 2026-10-17: the public site marks the page `is-site` (tools/publish.mjs injectSite marks the html tag at publish time; site-src/site.js adds it too), the same signal filterbar.js reads;
+// Entries holds Adam's private entries files (site.css hides .entries-section there), so the site gets no Entries tab.
+function onSitePage() {
+  return typeof document !== "undefined" && document.documentElement.classList.contains("is-site");
+}
+
+/** The tabs to draw: all of them in the app, all but Entries on the public site. */
+export function visibleTabs(onSite = onSitePage()) {
+  return TABS.filter((t) => !(onSite && t.key === "entries"));
+}
+
+/** The tab to show: the stored one when it is drawn, else Rankings (an Entries tab left over on the site; rules repo 2026-10-17). */
+export function shownTab(activeTab, tabs = visibleTabs()) {
+  return tabs.some((t) => t.key === activeTab) ? activeTab : "rankings";
+}
+
 // `favoritesCount`: how many starred players are on the slate; the Favorites tab shows it as "Favorites (3)".
 export function renderTabs(container, activeTab, onTabClick, favoritesCount = 0) {
-  container.innerHTML = TABS.map((t) => {
+  container.innerHTML = visibleTabs().map((t) => {
     const label = t.key === "favorites" ? favoritesTabLabel(favoritesCount) : t.label;
     return `<button type="button" class="tab-btn${t.key === activeTab ? " active" : ""}" data-tab="${t.key}">${escapeHtml(label)}</button>`;
   }).join("");
@@ -373,5 +391,6 @@ export function renderOwnershipPanel(container, board, callbacks) {
 
 // The Optimizer tab's real implementation lives in lineup.js (its own state: locks, excludes, the
 // nine slots and the option controls); re-exported here so app.js's existing
-// `import { renderLineupPanel } from "./tabs.js"` keeps working unchanged.
-export { renderLineupPanel } from "./lineup.js";
+// `import { renderLineupPanel } from "./tabs.js"` keeps working unchanged. The Entries tab (rules repo 2026-10-17) is
+// drawn by lineup.js too, because it reads the same saved lineups.
+export { renderLineupPanel, renderEntriesPanel } from "./lineup.js";

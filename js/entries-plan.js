@@ -190,8 +190,9 @@ function plural(n, one, many) {
 /** D75 fill (PROJECT.md Part 4 Entries): cash to cash contests wrapping, the lead first in GPP singles and last in the other GPP contests.
  *  `keep`: entry ids never opened, even with Replace; a kept row with no pick holds its file lineup (🔵 2026-10-17).
  *  `prior`: the last proposal { entryId: lineupId }; a row takes its prior lineup first when still a candidate and not
- *  blocked, so one hand change never reshuffles the untouched rows (👁 2026-10-17). */
-export function planFill({ entries, lineups, assigned, classes, lead = null, overwrite = false, keep = null, prior = null, lineupIds = null, contestIds = null, order = null, slateKey = "main", slates = [] } = {}) {
+ *  blocked, so one hand change never reshuffles the untouched rows (👁 2026-10-17).
+ *  `priorLead`: the lead id `prior` was made with (null = unknown); set and different from the lead used (rules repo 2026-10-17), the remembered GPP placements are ignored. */
+export function planFill({ entries, lineups, assigned, classes, lead = null, overwrite = false, keep = null, prior: priorIn = null, priorLead = null, lineupIds = null, contestIds = null, order = null, slateKey = "main", slates = [] } = {}) {
   const list = Array.isArray(entries) ? entries : [];
   const all = (Array.isArray(lineups) ? lineups : []).filter((l) => l && l.id != null);
   const byId = new Map(all.map((l) => [String(l.id), l]));
@@ -216,8 +217,11 @@ export function planFill({ entries, lineups, assigned, classes, lead = null, ove
     }
     merged[e.entryId] = l.id;
   };
+  // Rules repo 2026-10-17: a changed lead drops the remembered GPP placements only; cash rows never hold the lead.
+  const leadL = (lead != null && pool.gpp.find((l) => String(l.id) === String(lead))) || pool.gpp[0];
+  const leadSame = !(priorLead != null && (!leadL || String(leadL.id) !== String(priorLead)));
   const place = (e, cls, candidates, start, usePrior = true) => {
-    const was = usePrior ? prior?.[e.entryId] : null;
+    const was = usePrior ? priorIn?.[e.entryId] : null;
     const p = was == null ? -1 : candidates.findIndex((l) => String(l.id) === String(was));
     if (p >= 0 && !fillBlocked(list, merged, e, candidates[p], byId, slateKey, slates)) {
       take(e, cls, candidates[p]);
@@ -241,7 +245,6 @@ export function planFill({ entries, lineups, assigned, classes, lead = null, ove
       if (i >= 0) cursor = (i + 1) % pool.cash.length;
     }
   }
-  const leadL = (lead != null && pool.gpp.find((l) => String(l.id) === String(lead))) || pool.gpp[0];
   const others = pool.gpp.filter((l) => l !== leadL);
   if (pool.gpp.length) {
     for (const g of groups) {
@@ -249,7 +252,7 @@ export function planFill({ entries, lineups, assigned, classes, lead = null, ove
       const single = g.entries.length === 1;
       // 🔵 2026-10-17, D75: prior is never honoured in a single-entry contest, so the lead (which can change without the dropdown) always goes there.
       // Adam 2026-10-17: the lead also fills the multi-entry contests, last, so 20 GPP lineups fill a 20-entry contest.
-      for (const e of g.entries) if (open(e)) place(e, "gpp", single ? [leadL, ...others] : [...others, leadL], 0, !single);
+      for (const e of g.entries) if (open(e)) place(e, "gpp", single ? [leadL, ...others] : [...others, leadL], 0, !single && leadSame);
     }
   }
   // D75: `lead` is the lineup actually used (null with no GPP lineup), so the screen can show it when Adam's pick did not hold.
