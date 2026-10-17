@@ -548,7 +548,7 @@ function renderDynamic() {
   } else if (activeTab === "ownership") {
     renderOwnershipPanel(el.ownershipPanel, board, sourceCallbacks);
   } else if (activeTab === "lineup") {
-    renderLineupPanel(el.lineupPanel);
+    renderLineupPanel(el.lineupPanel, tableCallbacks);
   }
 
   syncExpandUi();

@@ -7,7 +7,7 @@
 // board by the app's own remerge, and the board, the Optimizer and lineup saves all use the merged board. Every other
 // write rejects with one plain message. Nothing here touches the network or the page at import time.
 import {
-  pageStorage, readDeviceLineups, buildDeviceLineup, saveDeviceLineup, deleteDeviceLineup, sortedNewestFirst,
+  pageStorage, readDeviceLineups, buildDeviceLineup, saveDeviceLineup, deleteDeviceLineup, buildDevicePatch, updateDeviceLineup, weekKeys, sortedNewestFirst,
   STORAGE_UNAVAILABLE_MESSAGE,
 } from "./site-lineups.js";
 import { boardWithEdits, putEdits, resetPlayerEdits, resetAllEdits } from "./site-overrides.js";
@@ -298,8 +298,26 @@ export async function deleteLineup(id) {
   return { ok: true, generatedAt: new Date().toISOString(), stale: [], lineups: await lineupsWithDevice(app) };
 }
 
-export function putLineupName() {
-  return readOnly();
+// PUT /api/lineups/<id> for a device lineup (D69; PROJECT.md Part 4 Lineups); the app's own lineups are read-only.
+export async function putLineup(id, payload) {
+  const [board, wk, app] = await Promise.all([bakedVisitorBoard(), publishedWeek(), appLineups()]);
+  if (!board || board.ok === false || !wk) return board?.ok === false ? board : siteError("NO_SLATE", "No slate has been uploaded yet.");
+  const storage = pageStorage();
+  const unavailable = () => siteError("DEVICE_STORAGE_UNAVAILABLE", "This browser is not letting the site change its saved lineups (storage is switched off).");
+  if (!storage || !weekKeys(storage, wk.season, wk.week)) return unavailable(); // unlistable storage is not "no such lineup"
+  const device = readDeviceLineups(storage, wk.season, wk.week);
+  const existing = device.find((l) => l.id === id);
+  if (!existing) {
+    return app.some((l) => l.id === id)
+      ? siteError("READ_ONLY", "App lineups cannot be changed here; Save lineup keeps a version on this device.")
+      : siteError("NOT_FOUND", "No saved lineup with that id.");
+  }
+  const built = buildDevicePatch(payload, board, existing, [...app, ...device]);
+  if (built.error) return siteError("VALIDATION_ERROR", built.error);
+  const result = updateDeviceLineup(storage, wk.season, wk.week, id, built.patch);
+  if (result.status === "refused") return unavailable();
+  if (result.status === "missing") return siteError("NOT_FOUND", "No saved lineup with that id.");
+  return { ok: true, generatedAt: new Date().toISOString(), stale: [], lineup: result.entry, lineups: await lineupsWithDevice(app) };
 }
 
 // Entries are Adam's private DraftKings files: the site has none, and its Entries section is hidden by site.css.

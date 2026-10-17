@@ -1,4 +1,4 @@
-// Adam 2026-10-16: per-quarterback stack settings (Classic only); request shape settings.qbStacks (server/lineup/qb-stacks.js).
+// RULES.md D73 (amended 2026-10-17): per-QB stack settings, entry { min, max, oppMin, oppMax, players }; null = blank = follow the global (server/lineup/qb-stacks.js).
 import { escapeHtml, money, dec1, textColourFor } from "./format.js";
 import { TEAM_BY_ABBR } from "./teams-data.js";
 import { matchupText, lineupOutTagHtml, rowIsOut } from "./table.js";
@@ -23,41 +23,38 @@ export function oppTeamOf(row) {
   return t ? upper(t[1]) : "";
 }
 
-export function prefillFor(g) {
-  const own = Number.isFinite(g?.stackOwn) ? g.stackOwn : 1;
-  const opp = Number.isFinite(g?.stackOpp) ? g.stackOpp : 0;
-  let bringBack = null;
-  if (opp >= 1) bringBack = "yes";
-  else if (g?.stackOppOrMore === false) bringBack = "no";
-  return { min: own, max: g?.stackOwnOrMore === false ? own : null, bringBack };
+const NUMBER_FIELDS = Object.freeze(["min", "max", "oppMin", "oppMax"]);
+const isNum = (v) => v !== null && v !== undefined;
+const blankEntry = () => ({ min: null, max: null, oppMin: null, oppMax: null, players: {} });
+
+export function entryView(entries, qbId) {
+  return entries[qbId] ?? blankEntry();
 }
 
-// 2026-10-16 ruling: Yes = the global Opponents number and its "or more"/"exactly", never fewer than 1.
-export function bringBackYesText(g) {
-  const set = Number.isFinite(g?.stackOpp) ? g.stackOpp : 0;
-  const n = Math.max(1, set);
-  const words = g?.stackOppOrMore === false ? `exactly ${n} opponent${n === 1 ? "" : "s"}` : `${n} or more opponents`;
-  return `Yes = ${words}${set >= 1 ? " (your Opponents setting)" : ""}`;
-}
+const isDefault = (e) => NUMBER_FIELDS.every((k) => !isNum(e[k])) && Object.keys(e.players).length === 0;
 
-export function entryView(entries, qbId, g) {
-  return entries[qbId] ?? { ...prefillFor(g), players: {} };
-}
-
-const isDefault = (e, p) => (e.min ?? 0) === (p.min ?? 0) && e.max === p.max && e.bringBack === p.bringBack && Object.keys(e.players).length === 0;
-
-export function editEntry(entries, qbId, g, edit) {
-  const cur = entryView(entries, qbId, g);
-  const next = { min: cur.min, max: cur.max, bringBack: cur.bringBack, players: { ...cur.players } };
-  if ("min" in edit) next.min = edit.min;
-  if ("max" in edit) next.max = edit.max;
-  if ("bringBack" in edit) next.bringBack = edit.bringBack === "yes" || edit.bringBack === "no" ? edit.bringBack : null;
+export function editEntry(entries, qbId, edit) {
+  const cur = entryView(entries, qbId);
+  const next = { min: cur.min ?? null, max: cur.max ?? null, oppMin: cur.oppMin ?? null, oppMax: cur.oppMax ?? null, players: { ...cur.players } };
+  for (const k of NUMBER_FIELDS) if (k in edit) next[k] = edit[k];
   if ("player" in edit) {
     if (isChoice(edit.choice)) next.players[String(edit.player)] = edit.choice;
     else delete next.players[String(edit.player)];
   }
-  if (isDefault(next, prefillFor(g))) delete entries[qbId];
+  if (isDefault(next)) delete entries[qbId];
   else entries[qbId] = next;
+}
+
+const sideIsSet = (e, side) => (side === "own" ? isNum(e?.min) || isNum(e?.max) : isNum(e?.oppMin) || isNum(e?.oppMax));
+
+const sideWords =(n, orMore) => (orMore === false ? `exactly ${n}` : `${n} or more`);
+
+/** RULES.md D73 (amended 2026-10-17): blank-box placeholders and hint; side "own"/"opp", set = the QB has his own number there. */
+export function sideBlankView(g, side, set) {
+  const n = Number.isFinite(g?.[side === "own" ? "stackOwn" : "stackOpp"]) ? g[side === "own" ? "stackOwn" : "stackOpp"] : side === "own" ? 1 : 0;
+  const orMore = g?.[side === "own" ? "stackOwnOrMore" : "stackOppOrMore"] !== false;
+  if (set) return { minPh: "0", maxPh: "any", hint: "Blank = 0 for the minimum, no limit for the maximum" };
+  return { minPh: String(n), maxPh: orMore ? "any" : String(n), hint: `Blank = your ${side === "own" ? "Teammates" : "Opponents"} setting (${sideWords(n, orMore)})` };
 }
 
 export function parseBox(text, ownMax) {
@@ -96,15 +93,19 @@ export function pruneEntries(entries, rowById) {
   return changed;
 }
 
-export function cleanSavedEntries(raw, ownMax) {
+export function cleanSavedEntries(raw, ownMax, oppMax) {
   const out = {};
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return out;
-  const bound = (v) => (Number.isInteger(v) && v >= 0 && v <= ownMax ? v : null);
+  const bound = (v, top) => (Number.isInteger(v) && v >= 0 && v <= top ? v : null);
   for (const [id, e] of Object.entries(raw)) {
     if (!e || typeof e !== "object") continue;
     const players = {};
     for (const [pid, c] of Object.entries(e.players ?? {})) if (isChoice(c)) players[String(pid)] = c;
-    out[String(id)] = { min: bound(e.min), max: bound(e.max), bringBack: e.bringBack === "yes" || e.bringBack === "no" ? e.bringBack : null, players };
+    const clean = { min: bound(e.min, ownMax), max: bound(e.max, ownMax), oppMin: bound(e.oppMin, oppMax), oppMax: bound(e.oppMax, oppMax), players };
+    // RULES.md D73 (amended 2026-10-17): old bringBack read once: yes = oppMin 1, no = oppMax 0.
+    if (e.bringBack === "yes" && clean.oppMin === null) clean.oppMin = 1;
+    else if (e.bringBack === "no" && clean.oppMax === null) clean.oppMax = 0;
+    if (!isDefault(clean)) out[String(id)] = clean;
   }
   return out;
 }
@@ -123,18 +124,25 @@ export function qbStacksPayload(entries, rowById, listedIds, notes, lockedIdList
       if (!rowIsOut(r)) players[pid] = choice;
       else if (choice === "must") notes?.push(`${rowById.get(qbId)?.name ?? qbId}'s Must on ${r.name} was left out: ruled out.`);
     }
-    out[qbId] = { teammatesMin: e.min ?? 0, teammatesMax: e.max, bringBack: e.bringBack, players };
+    if (isDefault({ ...e, players })) continue; // PROJECT.md Part 4 Optimizer: blank once pruned, the server drops it (qb-stacks.js isBlankEntry), so it is not sent
+    out[qbId] = { teammatesMin: e.min ?? null, teammatesMax: e.max ?? null, opponentsMin: e.oppMin ?? null, opponentsMax: e.oppMax ?? null, players };
   }
   return out;
 }
 
+function rangeText(min, max) {
+  if (!isNum(min) && !isNum(max)) return null;
+  const lo = min ?? 0;
+  if (!isNum(max)) return `${lo}+`;
+  return max === lo ? `${lo}` : `${lo}–${max}`;
+}
+
 export function summaryText(e) {
   const parts = [];
-  const min = e.min ?? 0;
-  if (e.max === null) parts.push(`${min}+`);
-  else parts.push(e.max === min ? `${min}` : `${min}–${e.max}`);
-  if (e.bringBack === "yes") parts.push("bring-back");
-  if (e.bringBack === "no") parts.push("no bring-back");
+  const mates = rangeText(e.min, e.max);
+  if (mates) parts.push(`${mates} mates`);
+  const opps = rangeText(e.oppMin, e.oppMax);
+  if (opps) parts.push(`opp ${opps}`);
   const marks = Object.values(e.players);
   const must = marks.filter((c) => c === "must").length;
   const no = marks.filter((c) => c === "no").length;
@@ -202,13 +210,20 @@ function playerColumnHtml(title, team, list, e, qbId) {
   return `<div class="qbs-col"><div class="qbs-col-title">${teamChipHtml(team)}<span>${escapeHtml(title)}</span></div>${html || `<div class="opt-set-hint">${empty}</div>`}</div>`;
 }
 
-export function qbPanelsHtml(qbRows, qbs, g, rows, ownMax, lockedIdList) {
+const BOXES = Object.freeze({
+  min: { field: "min", top: "ownMax" },
+  max: { field: "max", top: "ownMax" },
+  omin: { field: "oppMin", top: "oppMax" },
+  omax: { field: "oppMax", top: "oppMax" }
+});
+
+export function qbPanelsHtml(qbRows, qbs, g, rows, ownMax, oppMax, lockedIdList) {
   return qbRows
     .filter((qb) => qbs.open.has(String(qb.id)) && !qbIsOut(qb, lockedIdList))
     .map((qb) => {
       const idRaw = String(qb.id);
       const id = escapeHtml(idRaw);
-      const e = entryView(qbs.entries, idRaw, g);
+      const e = entryView(qbs.entries, idRaw);
       const team = upper(qb.team);
       const opp = oppTeamOf(qb);
       const showAll = qbs.showAll.has(idRaw);
@@ -216,14 +231,20 @@ export function qbPanelsHtml(qbRows, qbs, g, rows, ownMax, lockedIdList) {
       const their = panelPlayers(rows, opp, e, showAll);
       const nHidden = own.hidden + their.hidden;
       const more = nHidden ? `<button type="button" class="qbs-link qbs-more" data-qbs="all" data-qb="${id}" aria-pressed="${showAll}">${showAll ? "Show fewer" : `Show all (${nHidden})`}</button>` : "";
-      const box =(which, value) => `<span class="opt-numbox"><input type="number" min="0" max="${ownMax}" class="opt-input opt-input-num qbs-num" data-qbs="${which}" data-qb="${id}" value="${value ?? ""}" placeholder="${which === "min" ? "0" : "any"}" aria-label="${which === "min" ? "Minimum" : "Maximum"} teammates for ${escapeHtml(qb.name)}" /></span>`;
+      const sideHtml = (side, title, minKey, maxKey, top) => {
+        const [minField, maxField] = [BOXES[minKey].field, BOXES[maxKey].field];
+        const view = sideBlankView(g, side, sideIsSet(e, side));
+        const noun = side === "own" ? "teammates" : "opponents";
+        const box = (which, value, placeholder, word) => `<span class="opt-numbox"><input type="number" min="0" max="${top}" class="opt-input opt-input-num qbs-num" data-qbs="${which}" data-qb="${id}" value="${value ?? ""}" placeholder="${placeholder}" aria-label="${word} ${noun} for ${escapeHtml(qb.name)}" /></span>`;
+        return `<span class="qbs-opt qbs-opt-side"><span class="qbs-opt"><span class="opt-set-label">${title}</span>${box(minKey, e[minField], view.minPh, "Minimum")}<span class="opt-unit">to</span>${box(maxKey, e[maxField], view.maxPh, "Maximum")}</span><span class="opt-set-hint qbs-side-hint" data-qb="${id}" data-side="${side}">${escapeHtml(view.hint)}</span></span>`;
+      };
       return `<section class="opt-group opt-group-wide qbs-panel" data-qb="${id}">
         <div class="qbs-head"><span class="qbs-head-name">${escapeHtml(qb.name)}</span>${teamChipHtml(team)}<span class="qbs-vs">${escapeHtml(matchupText(qb))}</span>${sumHtml(idRaw, qbs.entries[idRaw])}<span class="qbs-grow"></span>${more}<button type="button" class="qbs-link qbs-reset" data-qbs="reset" data-qb="${id}"${qbs.entries[idRaw] ? "" : " hidden"}>Reset</button><button type="button" class="qbs-link qbs-close" data-qbs="toggle" data-qb="${id}">Close ▾</button></div>
         <div class="qbs-opts">
-          <span class="qbs-opt"><span class="opt-set-label">Teammates</span>${box("min", e.min)}<span class="opt-unit">to</span>${box("max", e.max)}</span>
-          <span class="qbs-opt qbs-opt-bb"><span class="qbs-opt"><span class="opt-set-label">Bring-back</span>${segHtml(`data-qbs="bb" data-qb="${id}"`, [["yes", "Yes"], ["no", "No"], ["either", "Either"]], e.bringBack ?? "either")}</span><span class="opt-set-hint qbs-bb-hint">${escapeHtml(bringBackYesText(g))}</span></span>
+          ${sideHtml("own", "Teammates", "min", "max", ownMax)}
+          ${sideHtml("opp", "Opponents", "omin", "omax", oppMax)}
         </div>
-        <div class="qbs-cols">${playerColumnHtml(`${team} (his team)`, team, own, e, id)}${playerColumnHtml(`${opp} (bring-back)`, opp, their, e, id)}</div>
+        <div class="qbs-cols">${playerColumnHtml(`${team} (his team)`, team, own, e, id)}${playerColumnHtml(`${opp} (the team he faces)`, opp, their, e, id)}</div>
       </section>`;
     })
     .join("");
@@ -239,6 +260,19 @@ export function wireQbStacks(root, ctx) {
     root.querySelectorAll(`.qbs-reset[data-qb="${qbId}"]`).forEach((el) => {
       el.hidden = !e;
     });
+    for (const side of ["own", "opp"]) {
+      const view = sideBlankView(ctx.globals(), side, sideIsSet(e, side));
+      const [minKind, maxKind] = side === "own" ? ["min", "max"] : ["omin", "omax"];
+      root.querySelectorAll(`[data-qbs="${minKind}"][data-qb="${qbId}"]`).forEach((el) => {
+        el.placeholder = view.minPh;
+      });
+      root.querySelectorAll(`[data-qbs="${maxKind}"][data-qb="${qbId}"]`).forEach((el) => {
+        el.placeholder = view.maxPh;
+      });
+      root.querySelectorAll(`.qbs-side-hint[data-qb="${qbId}"][data-side="${side}"]`).forEach((el) => {
+        el.textContent = view.hint;
+      });
+    }
   };
   root.addEventListener("click", (ev) => {
     const el = ev.target.closest?.("[data-qbs]");
@@ -256,25 +290,22 @@ export function wireQbStacks(root, ctx) {
     } else if (kind === "reset") {
       delete ctx.qbs.entries[qbId];
       ctx.commit();
-    } else if (kind === "bb") {
-      editEntry(ctx.qbs.entries, qbId, ctx.globals(), { bringBack: el.dataset.value });
-      ctx.commit();
     } else if (kind === "pl") {
-      editEntry(ctx.qbs.entries, qbId, ctx.globals(), { player: el.dataset.pid, choice: el.dataset.value });
+      editEntry(ctx.qbs.entries, qbId, { player: el.dataset.pid, choice: el.dataset.value });
       ctx.commit();
     }
   });
   root.addEventListener("change", (ev) => {
     const el = ev.target;
-    const kind = el?.dataset?.qbs;
-    if (kind !== "min" && kind !== "max") return;
-    const n = el.validity?.badInput ? undefined : parseBox(el.value, ctx.ownMax);
+    const box = BOXES[el?.dataset?.qbs];
+    if (!box) return;
+    const n = el.validity?.badInput ? undefined : parseBox(el.value, ctx[box.top]);
     if (n === undefined) {
-      el.value = entryView(ctx.qbs.entries, el.dataset.qb, ctx.globals())[kind] ?? "";
+      el.value = entryView(ctx.qbs.entries, el.dataset.qb)[box.field] ?? "";
       return;
     }
     el.value = n ?? "";
-    editEntry(ctx.qbs.entries, el.dataset.qb, ctx.globals(), { [kind]: n });
+    editEntry(ctx.qbs.entries, el.dataset.qb, { [box.field]: n });
     ctx.save();
     refresh(el.dataset.qb);
   });

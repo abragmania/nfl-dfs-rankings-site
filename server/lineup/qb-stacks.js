@@ -1,9 +1,10 @@
-// Adam 2026-10-16: per-QB stack settings (qbStacks: {qbId: {teammatesMin, teammatesMax, bringBack, players}}); unmarked = available.
-// D73/D55: teammates count as in the global stack (a back only as a pass catcher); a QB with no entry keeps the global stack.
+// RULES.md D73 (amended 2026-10-17): per-QB stack settings qbStacks: {qbId: {teammatesMin, teammatesMax, opponentsMin, opponentsMax, players}}; unmarked = available.
+// RULES.md D55 (amended 2026-10-17): teammates count as in the global stack; a QB with no entry keeps the global stack.
 // D69: pure and browser-safe (no node modules, network or logging).
 import { rowIsOut } from "../rank/sidelined.js"; // pure
 
-const ENTRY_KEYS = Object.freeze(["teammatesMin", "teammatesMax", "bringBack", "players"]);
+const ENTRY_KEYS = Object.freeze(["teammatesMin", "teammatesMax", "opponentsMin", "opponentsMax", "players"]);
+const LEGACY_ENTRY_KEYS = Object.freeze(["bringBack"]); // translated by normaliseEntry, never kept
 const OFFENSE = Object.freeze(["RB", "WR", "TE"]);
 const STACK_AT = Object.freeze({ RB: 3, WR: 4, TE: 2 }); // the most of each a classic lineup holds (FLEX included)
 const MAX_FALLBACK_TRIALS = 8;
@@ -12,42 +13,63 @@ const isObj = (v) => typeof v === "object" && v !== null && !Array.isArray(v);
 const upper = (v) => (v === null || v === undefined ? "" : String(v).trim().toUpperCase());
 const isSet = (v) => v !== null && v !== undefined;
 
-export function normaliseEntry(value, who, ownMax) {
-  if (!isObj(value)) return { error: `The stack settings for ${who} must be an object.` };
-  for (const key of Object.keys(value)) {
-    if (!ENTRY_KEYS.includes(key)) return { error: `The stack settings for ${who} have an unknown field ${JSON.stringify(key)}; the fields are ${ENTRY_KEYS.join(", ")}.` };
-  }
+export const setsTeammates = (e) => isSet(e.teammatesMin) || isSet(e.teammatesMax);
+export const setsOpponents = (e) => isSet(e.opponentsMin) || isSet(e.opponentsMax);
+
+function sideBounds(value, who, minKey, maxKey, what, top) {
   const bound = (field, word) => {
     const n = value[field];
     if (!isSet(n)) return { n: null };
-    if (!Number.isInteger(n) || n < 0 || n > ownMax) return { error: `The ${word} number of teammates for ${who} must be a whole number from 0 to ${ownMax}.` };
+    if (!Number.isInteger(n) || n < 0 || n > top) return { error: `The ${word} number of ${what} for ${who} must be a whole number from 0 to ${top}.` };
     return { n };
   };
-  const min = bound("teammatesMin", "minimum");
+  const min = bound(minKey, "minimum");
   if (min.error) return { error: min.error };
-  const max = bound("teammatesMax", "maximum");
+  const max = bound(maxKey, "maximum");
   if (max.error) return { error: max.error };
   if (min.n !== null && max.n !== null && min.n > max.n) {
-    return { error: `The minimum number of teammates for ${who} (${min.n}) is more than his maximum (${max.n}).` };
+    return { error: `The minimum number of ${what} for ${who} (${min.n}) is more than his maximum (${max.n}).` };
   }
+  return { min: min.n, max: max.n };
+}
+
+export function normaliseEntry(value, who, ownMax, oppMax) {
+  if (!Number.isInteger(ownMax) || !Number.isInteger(oppMax)) throw new Error("normaliseEntry needs the most teammates and the most opponents a stack can ask for");
+  if (!isObj(value)) return { error: `The stack settings for ${who} must be an object.` };
+  for (const key of Object.keys(value)) {
+    if (!ENTRY_KEYS.includes(key) && !LEGACY_ENTRY_KEYS.includes(key)) return { error: `The stack settings for ${who} have an unknown field ${JSON.stringify(key)}; the fields are ${ENTRY_KEYS.join(", ")}.` };
+  }
+  const v = { ...value };
+  delete v.bringBack;
+  // RULES.md D73 (amended 2026-10-17): old bringBack read once: yes = opponentsMin 1, no = opponentsMax 0, a number already set wins.
   const bb = value.bringBack;
-  if (isSet(bb) && bb !== "yes" && bb !== "no") return { error: `The bring-back setting for ${who} must be "yes", "no" or left unset.` };
+  if (bb === "yes") {
+    if (!isSet(v.opponentsMin)) v.opponentsMin = 1;
+  } else if (bb === "no") {
+    if (!isSet(v.opponentsMax)) v.opponentsMax = 0;
+  } else if (isSet(bb)) {
+    return { error: `The bring-back setting for ${who} must be "yes", "no" or left unset.` };
+  }
+  const own = sideBounds(v, who, "teammatesMin", "teammatesMax", "teammates", ownMax);
+  if (own.error) return { error: own.error };
+  const opp = sideBounds(v, who, "opponentsMin", "opponentsMax", "opponents", oppMax);
+  if (opp.error) return { error: opp.error };
   const players = {};
-  if (isSet(value.players)) {
-    if (!isObj(value.players)) return { error: `The players setting for ${who} must be an object of player id to "must" or "no".` };
-    for (const [rawId, choice] of Object.entries(value.players)) {
+  if (isSet(v.players)) {
+    if (!isObj(v.players)) return { error: `The players setting for ${who} must be an object of player id to "must" or "no".` };
+    for (const [rawId, choice] of Object.entries(v.players)) {
       if (choice !== "must" && choice !== "no") return { error: `The choice for player ${rawId} under ${who} must be "must" or "no" (leave a player out of the list for available).` };
       players[String(rawId).trim()] = choice;
     }
   }
-  return { entry: { teammatesMin: min.n, teammatesMax: max.n, bringBack: isSet(bb) ? bb : null, players } };
+  return { entry: { teammatesMin: own.min, teammatesMax: own.max, opponentsMin: opp.min, opponentsMax: opp.max, players } };
 }
 
 export function isBlankEntry(e) {
-  return !isSet(e.teammatesMin) && !isSet(e.teammatesMax) && !isSet(e.bringBack) && Object.keys(e.players).length === 0;
+  return !setsTeammates(e) && !setsOpponents(e) && Object.keys(e.players).length === 0;
 }
 
-export function validateQbStacks(raw, ctx, ownMax, lists) {
+export function validateQbStacks(raw, ctx, ownMax, oppMax, lists) {
   if (raw === undefined || raw === null) return { qbStacks: {} };
   if (!isObj(raw)) return { error: "qbStacks must be an object keyed by quarterback id" };
   if (typeof ctx.rowOf !== "function" || !Array.isArray(ctx.slateRows)) return { error: "qbStacks cannot be checked: no player rows were supplied" };
@@ -63,7 +85,7 @@ export function validateQbStacks(raw, ctx, ownMax, lists) {
     const qb = ctx.rowOf(id);
     if (upper(qb.pos) !== "QB") return { error: `${who} is not a quarterback, so he cannot have stack settings.` };
     if (value === null || value === undefined) continue;
-    const parsed = normaliseEntry(value, who, ownMax);
+    const parsed = normaliseEntry(value, who, ownMax, oppMax);
     if (parsed.error) return { error: parsed.error };
     const e = parsed.entry;
     const team = upper(qb.team);
@@ -88,12 +110,15 @@ export function validateQbStacks(raw, ctx, ownMax, lists) {
         else if (side[pid] === "opp") mustOpp++;
       }
     }
-    if (e.bringBack === "no" && mustOpp > 0) {
+    if (e.opponentsMax === 0 && mustOpp > 0) {
       const pid = Object.keys(e.players).find((p) => e.players[p] === "must" && side[p] === "opp");
-      return { error: `${who} is set to no bring-back, but ${ctx.nameOf(pid)} from the team he faces is marked "must".` };
+      return { error: `${who}'s maximum number of opponents is 0, but ${ctx.nameOf(pid)} from the team he faces is marked "must".` };
     }
     if (e.teammatesMax !== null && mustOwn > e.teammatesMax) {
       return { error: `${mustOwn} of ${who}'s teammates are marked "must", but his maximum is ${e.teammatesMax}.` };
+    }
+    if (e.opponentsMax !== null && mustOpp > e.opponentsMax) {
+      return { error: `${mustOpp} players from the team ${who} faces are marked "must", but his maximum number of opponents is ${e.opponentsMax}.` };
     }
     const free = (r) => e.players[String(r.id)] !== "no" && !rowIsOut(r) && !excluded.has(String(r.id));
     const skill = (r) => OFFENSE.includes(upper(r.pos));
@@ -101,38 +126,43 @@ export function validateQbStacks(raw, ctx, ownMax, lists) {
       const n = ctx.slateRows.filter((r) => skill(r) && upper(r.team) === team && free(r)).length;
       if (n < e.teammatesMin) return { error: `${who} needs at least ${e.teammatesMin} teammates, but only ${n} of his running backs, receivers and tight ends can be picked (the rest are marked "no", ruled out or excluded).` };
     }
-    if (e.bringBack === "yes" && !ctx.slateRows.some((r) => skill(r) && opp !== "" && upper(r.team) === opp && free(r))) {
-      return { error: `${who} is set to bring-back yes, but every running back, receiver and tight end of the team he faces is marked "no", ruled out or excluded.` };
+    if (e.opponentsMin !== null && e.opponentsMin > 0) {
+      const n = opp === "" ? 0 : ctx.slateRows.filter((r) => skill(r) && upper(r.team) === opp && free(r)).length;
+      const need = `${who} needs at least ${e.opponentsMin} ${e.opponentsMin === 1 ? "opponent" : "opponents"}`;
+      if (n === 0) return { error: `${need}, but every running back, receiver and tight end of the team he faces is marked "no", ruled out or excluded.` };
+      if (n < e.opponentsMin) return { error: `${need}, but only ${n} of the running backs, receivers and tight ends of the team he faces can be picked (the rest are marked "no", ruled out or excluded).` };
     }
     if (!isBlankEntry(e)) out[id] = e;
   }
   return { qbStacks: out };
 }
 
-export function parseEntries(raw, ownMax, notes) {
+export function parseEntries(raw, ownMax, oppMax, notes) {
   const out = new Map();
   if (!isObj(raw)) return out;
   for (const [rawId, value] of Object.entries(raw)) {
     if (value === null || value === undefined) continue;
     const id = String(rawId).trim();
-    const parsed = normaliseEntry(value, `player ${id}`, ownMax);
+    const parsed = normaliseEntry(value, `player ${id}`, ownMax, oppMax);
     if (parsed.error) notes.push(`${parsed.error} They were ignored.`);
     else if (!isBlankEntry(parsed.entry)) out.set(id, parsed.entry); // blank: the global numbers apply, as in the request check
   }
   return out;
 }
 
-// Lead ruling 2026-10-16 (review R1): bring-back "yes" = the global opponent number with its "or more"/"exactly", never fewer than 1.
-export function ruleFromEntry(e, keyOfId, oppStack) {
-  if (!Number.isInteger(oppStack?.n) || typeof oppStack.orMore !== "boolean") throw new Error("ruleFromEntry needs the global opponent stack setting");
+// RULES.md D73 (amended 2026-10-17): a side with either number set is wholly his (min ?? 0, max ?? no cap); a blank side is `global` (globalRule).
+export function ruleFromEntry(e, keyOfId, global) {
+  const sides = ["needOwn", "capOwn", "needOpp", "capOpp"];
+  if (!isObj(global) || !sides.every((k) => typeof global[k] === "number" && !Number.isNaN(global[k]))) throw new Error("ruleFromEntry needs the resolved global stack rule");
   const key = (id) => keyOfId.get(id) ?? `id:${id}`;
   const marked = (choice) => Object.keys(e.players).filter((id) => e.players[id] === choice).map(key);
-  const yesN = Math.max(1, oppStack.n);
+  const own = setsTeammates(e);
+  const opp = setsOpponents(e);
   return {
-    needOwn: e.teammatesMin ?? 0,
-    capOwn: e.teammatesMax ?? Infinity,
-    needOpp: e.bringBack === "yes" ? yesN : 0,
-    capOpp: e.bringBack === "no" ? 0 : e.bringBack === "yes" && !oppStack.orMore ? yesN : Infinity,
+    needOwn: own ? e.teammatesMin ?? 0 : global.needOwn,
+    capOwn: own ? e.teammatesMax ?? Infinity : global.capOwn,
+    needOpp: opp ? e.opponentsMin ?? 0 : global.needOpp,
+    capOpp: opp ? e.opponentsMax ?? Infinity : global.capOpp,
     withKeys: Object.freeze(marked("must")),
     neverKeys: new Set(marked("no"))
   };
@@ -151,7 +181,7 @@ export function qbStackPrepare(entries, h) {
   const lockedQb = h.lockCands.find((c) => c.pos === "QB");
   for (const [qbId, e] of entries) {
     const who = h.byId.get(qbId)?.name ?? qbId;
-    const rule = ruleFromEntry(e, h.keyOfId, h.oppStack);
+    const rule = ruleFromEntry(e, h.keyOfId, h.global);
     for (const [pid, choice] of Object.entries(e.players)) {
       if (choice === "no" && lockKeys.has(h.keyOfId.get(pid))) return { fatal: `${h.byId.get(pid)?.name ?? pid} is locked, so he cannot also be marked "no" for ${who}.` };
     }
@@ -159,7 +189,7 @@ export function qbStackPrepare(entries, h) {
     const qbKey = h.keyOfId.get(qbId);
     if (qbKey === undefined) continue;
     const qbRow = h.byId.get(qbId);
-    rule.oppBinds = e.bringBack !== null || Object.keys(e.players).some((pid) => upper(h.byId.get(pid)?.team) !== "" && upper(h.byId.get(pid)?.team) === upper(qbRow?.opp));
+    rule.oppBinds = setsOpponents(e) || Object.keys(e.players).some((pid) => upper(h.byId.get(pid)?.team) !== "" && upper(h.byId.get(pid)?.team) === upper(qbRow?.opp));
     rules.set(qbKey, rule);
     const qb = h.candByKey.get(qbKey);
     if (!qb || (lockedQb && lockedQb.key !== qbKey)) continue;
@@ -182,10 +212,6 @@ function entryClash(qb, e, rule, h, who) {
   const musts = rule.withKeys.map((k) => h.candByKey.get(k));
   const locked = h.lockCands.filter((c) => OFFENSE.includes(c.pos));
   const label = (key) => `the rule "${h.ruleLabel(key)}" is on`;
-  if (h.rules.rbWithOwnQbOnlyIfCatcher) {
-    const rb = musts.find((c) => c.pos === "RB" && sideOf(c) === "own" && !c.catcher);
-    if (rb) return `${rb.name} is marked "must" for ${who} but is not a regular pass catcher, and ${label("rbWithOwnQbOnlyIfCatcher")}.`;
-  }
   const backs = [...new Map([...musts, ...locked].filter((c) => c.pos === "RB").map((c) => [c.key, c])).values()];
   const isMust = (c) => rule.withKeys.includes(c.key);
   for (let i = 0; i < backs.length; i++) {
@@ -199,29 +225,46 @@ function entryClash(qb, e, rule, h, who) {
       return `${pair}, but ${label(key)}.`;
     }
   }
-  if (e.bringBack === "no") {
-    const o = [...locked, ...musts].find((c) => sideOf(c) === "opp");
-    if (o) return `${who} is set to no bring-back, but ${o.name} from the team he faces is ${o.locked ? "locked" : 'marked "must"'}.`;
-  }
-  if (e.teammatesMax !== null) {
-    const counted = [...new Map([...locked, ...musts].filter((c) => sideOf(c) === "own" && c.stackOk).map((c) => [c.key, c])).values()];
-    if (counted.length > e.teammatesMax) {
-      const nLocked = counted.filter((c) => c.locked).length;
-      const how = nLocked === counted.length ? "locked" : nLocked === 0 ? 'marked "must"' : 'locked or marked "must"';
-      return `${counted.length} of ${who}'s teammates who count toward his stack are ${how}, but his maximum is ${e.teammatesMax}.`;
+  // RULES.md D73 (amended 2026-10-17): only a side the entry sets is checked here; a blank side acts as with no entry.
+  const ownSet = setsTeammates(e);
+  const oppSet = setsOpponents(e);
+  const howHeld = (list) => {
+    const nLocked = list.filter((c) => c.locked).length;
+    return nLocked === list.length ? "locked" : nLocked === 0 ? 'marked "must"' : 'locked or marked "must"';
+  };
+  const unique = (list) => [...new Map(list.map((c) => [c.key, c])).values()];
+  if (oppSet && rule.capOpp !== Infinity) {
+    const held = unique([...locked, ...musts].filter((c) => sideOf(c) === "opp"));
+    if (held.length > rule.capOpp) {
+      const max = `${who}'s maximum number of opponents is ${rule.capOpp}`;
+      if (held.length === 1) return `${held[0].name} from the team ${who} faces is ${howHeld(held)}, but ${max}.`;
+      return `${held.length} players from the team ${who} faces are ${howHeld(held)}, but ${max}.`;
     }
   }
-  if (e.teammatesMin !== null && e.teammatesMin > 0) {
+  if (ownSet && rule.capOwn !== Infinity) {
+    const counted = unique([...locked, ...musts].filter((c) => sideOf(c) === "own" && c.stackOk));
+    if (counted.length > rule.capOwn) {
+      return `${counted.length} of ${who}'s teammates who count toward his stack are ${howHeld(counted)}, but his maximum is ${rule.capOwn}.`;
+    }
+  }
+  const oneBack = h.rules.noSameTeamRbs || (h.rules.noSameGameRbs && !h.allowRbGame[qb.gameIx]);
+  // The most players of one side a lineup can hold: an upper bound, so it never refuses what could be built.
+  const room = (counts) => {
     const can = { RB: 0, WR: 0, TE: 0 };
-    for (const c of h.candByKey.values()) if (c.stackOk && sideOf(c) === "own" && !rule.neverKeys.has(c.key)) can[c.pos]++;
-    const oneBack = h.rules.noSameTeamRbs || (h.rules.noSameGameRbs && !h.allowRbGame[qb.gameIx]);
-    const n = Math.min(can.RB, oneBack ? 1 : STACK_AT.RB) + Math.min(can.WR, STACK_AT.WR) + Math.min(can.TE, STACK_AT.TE);
-    if (n < e.teammatesMin) {
-      return `${who} needs at least ${e.teammatesMin} teammates, but only ${n} of his receivers, tight ends and pass-catching running backs can count (the others are marked "no", unavailable, or held back by the rules on running backs).`;
+    for (const c of h.candByKey.values()) if (counts(c) && !rule.neverKeys.has(c.key)) can[c.pos]++;
+    return Math.min(can.RB, oneBack ? 1 : STACK_AT.RB) + Math.min(can.WR, STACK_AT.WR) + Math.min(can.TE, STACK_AT.TE);
+  };
+  if (ownSet && rule.needOwn > 0) {
+    const n = room((c) => c.stackOk && sideOf(c) === "own");
+    if (n < rule.needOwn) {
+      return `${who} needs at least ${rule.needOwn} teammates, but only ${n} of his running backs, receivers and tight ends can count (the others are marked "no", unavailable, or held back by the rules on running backs).`;
     }
   }
-  if (e.bringBack === "yes" && ![...h.candByKey.values()].some((c) => OFFENSE.includes(c.pos) && sideOf(c) === "opp" && !rule.neverKeys.has(c.key))) {
-    return `${who} is set to bring-back yes, but no running back, receiver or tight end of the team he faces can be picked (each is marked "no" or unavailable).`;
+  if (oppSet && rule.needOpp > 0) {
+    const n = room((c) => OFFENSE.includes(c.pos) && sideOf(c) === "opp");
+    const need = `${who} needs at least ${rule.needOpp} ${rule.needOpp === 1 ? "opponent" : "opponents"}`;
+    if (n === 0) return `${need}, but no running back, receiver or tight end of the team he faces can be picked (each is marked "no" or unavailable).`;
+    if (n < rule.needOpp) return `${need}, but only ${n} of the running backs, receivers and tight ends of the team he faces can count (the others are marked "no", unavailable, or held back by the rules on running backs).`;
   }
   return null;
 }
@@ -278,8 +321,8 @@ export function stackTrials(entries, nameOf) {
   for (const [id, e] of entries) {
     const who = nameOf(id);
     const has = (choice) => Object.values(e.players).includes(choice);
-    if ((isSet(e.teammatesMin) && e.teammatesMin > 0) || isSet(e.teammatesMax)) parts.push({ id, label: `the number of teammates set for ${who}`, change: { teammatesMin: null, teammatesMax: null } });
-    if (isSet(e.bringBack)) parts.push({ id, label: `the bring-back setting for ${who}`, change: { bringBack: null } });
+    if (setsTeammates(e)) parts.push({ id, label: `the number of teammates set for ${who}`, change: { teammatesMin: null, teammatesMax: null } });
+    if (setsOpponents(e)) parts.push({ id, label: `the number of opponents set for ${who}`, change: { opponentsMin: null, opponentsMax: null } });
     if (has("must")) parts.push({ id, label: `the players marked "must" for ${who}`, change: { players: without(e, "must") } });
     if (has("no")) parts.push({ id, label: `the players marked "no" for ${who}`, change: { players: without(e, "no") } });
   }

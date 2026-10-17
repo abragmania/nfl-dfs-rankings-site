@@ -5,16 +5,20 @@
 //
 // Pure and browser-safe: no node modules, no network, no storage, no logging. tools/publish.mjs copies it, unchanged,
 // to out/server/lineup/ beside the engine and privacy-scans it.
-import { RULE_KEYS, LEGACY_RULE_KEYS, OBJECTIVES, STACK_OWN_MAX, STACK_OPP_MAX, ceilingOf } from "./multi.js";
+import {
+  RULE_KEYS, LEGACY_RULE_KEYS, OBJECTIVES, STACK_OWN_MAX, STACK_OPP_MAX, ceilingOf, pctToLineups, minLineups, dkKeyOf, minOutReason, pairBreak,
+  lockedQbBlocksRow, qbEntryByKey
+} from "./multi.js";
 import { retiredObjectiveNote } from "./optimize.js";
 import { validateQbStacks } from "./qb-stacks.js";
+import { slotsFull, lockedSlotWords, minSlotProblem } from "./soft.js";
 
 // An older saved request may still carry the D55 rule keys D73 replaced; they are accepted (and must be booleans).
 const GENERATE_RULE_KEYS = [...RULE_KEYS, ...LEGACY_RULE_KEYS];
 const GENERATE_BODY_KEYS = new Set(["slate", "settings"]);
 const GENERATE_SETTING_KEYS = new Set([
   "count", "minUnique", "locks", "excludes", "catchers", "maxExposure", "rules", "maxPerTeam", "allowRbGames", "avoidGames",
-  "objective", "stackOwn", "stackOwnOrMore", "stackOpp", "stackOppOrMore", "playerMaxExposure", "qbStacks", "spreadDst"
+  "objective", "stackOwn", "stackOwnOrMore", "stackOpp", "stackOppOrMore", "playerMaxExposure", "playerMinExposure", "qbStacks", "spreadDst"
 ]);
 // D73: the QB stack's two numbers, in Adam's words for the refusal sentence.
 const GENERATE_STACK_NUMBERS = [
@@ -27,8 +31,7 @@ const GENERATE_MAX_UNIQUE = 8;
 
 export const isPlainObject = (v) => typeof v === "object" && v !== null && !Array.isArray(v);
 
-// locks/excludes may arrive as ids (string or number); anything else is a validation error rather than a
-// silent drop so a typo'd body never quietly rosters or excludes the wrong player.
+// Ids as strings or numbers; anything else is refused, so a typo'd body never quietly rosters or excludes a player.
 export function validateIdArray(value, name) {
   if (value === undefined || value === null) return { ids: [] };
   if (!Array.isArray(value)) return { error: `${name} must be an array of player ids` };
@@ -40,9 +43,8 @@ export function validateIdArray(value, name) {
   return { ids: value };
 }
 
-// One maximum-exposure value, always explicit: {pct: 0-100} (a share of the new lineups asked for, rounded up; saved
-// lineups never count, D74) or {count: whole number} (a lineup count). A bare number is refused, since 1 could mean
-// 100% or one lineup. Null or omitted means no cap. Returns an error string or null.
+// One maximum-exposure value: {pct: 0-100} (of the new lineups, rounded up, D74) or {count}; a bare number is refused
+// (1 could mean 100% or one lineup). Null or omitted means no cap. Returns an error string or null.
 export function exposureValueError(pos, value) {
   if (value === null || value === undefined) return null;
   if (isPlainObject(value)) {
@@ -54,6 +56,74 @@ export function exposureValueError(pos, value) {
     return null;
   }
   return `maxExposure.${pos} must be {pct: 0-100} or {count: whole number}`;
+}
+
+/** One per-player percent setting (`name`): {pcts} keyed by trimmed id, {} for none given, or {error}. */
+function playerPctsChecked(value, name, ctx) {
+  if (value === undefined || value === null) return {};
+  if (!isPlainObject(value)) return { error: `${name} must be an object keyed by player id` };
+  const pcts = {};
+  for (const [rawId, entry] of Object.entries(value)) {
+    const id = String(rawId).trim();
+    if (!ctx.boardIds.has(id)) return { error: `${name} names a player who is not on the board: ${rawId}` };
+    if (entry === null || entry === undefined) continue;
+    const keys = isPlainObject(entry) ? Object.keys(entry) : [];
+    if (keys.length !== 1 || keys[0] !== "pct") return { error: `${name} for ${ctx.nameOf(id)} must be {pct: 0-100}` };
+    const n = entry.pct;
+    if (typeof n !== "number" || !Number.isFinite(n) || n < 0 || n > 100) return { error: `${name} for ${ctx.nameOf(id)} must be a percent from 0 to 100` };
+    pcts[id] = { pct: n };
+  }
+  return { pcts };
+}
+
+/** A Min % that can never be met (PROJECT.md Part 4 Optimizer (Min % and soft rules, Adam 2026-10-17)), or null. */
+function minPctError(out, ctx) {
+  const count = out.count ?? 1;
+  const mins = Object.entries(out.playerMinExposure ?? {}).filter(([, { pct }]) => minLineups(pct, count) > 0); // under one lineup: a note, never a refusal
+  for (const [id, { pct }] of mins) {
+    const max = out.playerMaxExposure?.[id]?.pct;
+    if (max !== undefined && minLineups(pct, count) > pctToLineups(max, count)) return `${ctx.nameOf(id)}'s Min % (${pct}) is above his Max % (${max})`;
+    if (out.excludes.includes(id)) return `${ctx.nameOf(id)} is excluded and has a Min %`;
+  }
+  const outside = ctx.slateName ? mins.filter(([id]) => !ctx.slateIds.has(id)).map(([id]) => ctx.nameOf(id)) : [];
+  if (outside.length) {
+    const one = outside.length === 1;
+    return `${outside.join(", ")} ${one ? "has" : "have"} a Min % but ${one ? "is" : "are"} not in the ${ctx.slateName}'s games. Clear ${one ? "his" : "their"} Min % or build on the main slate.`;
+  }
+  if (!ctx.rowOf) return null;
+  const posOf = (id) => String(ctx.rowOf(id)?.pos ?? "").toUpperCase();
+  const locksAt = { QB: 0, RB: 0, WR: 0, TE: 0, DST: 0 };
+  for (const id of out.locks) if (posOf(id) in locksAt) locksAt[posOf(id)]++;
+  const lockedKeys = new Set(out.locks.map((id) => dkKeyOf(ctx.rowOf(id) ?? {}, id)));
+  // Rows the pool drops, or the locks keep out (a pair rule, the locked QB's stack, the per-team limit), take no slot:
+  // the engine builds without them and says so. Twin rows of one man are counted once.
+  const rules = Object.fromEntries(RULE_KEYS.map((k) => [k, out.rules?.[k] ?? true]));
+  const pool = { excludes: new Set(out.excludes), avoidGames: new Set(out.avoidGames ?? []), rules, objective: out.objective };
+  const keyOf = (id) => dkKeyOf(ctx.rowOf(id) ?? {}, id);
+  const never = (id) => new Set(Object.entries(qbEntryByKey(Object.entries(out.qbStacks ?? {}), keyOf, id)?.players ?? {}).filter(([, c]) => c === "no").map(([pid]) => keyOf(pid)));
+  const side = (id) => {
+    const r = ctx.rowOf(id);
+    return { pos: posOf(id), team: String(r.team ?? "").toUpperCase(), opp: String(r.opp ?? "").toUpperCase(), game: String(r.gameId ?? "").toUpperCase(), key: dkKeyOf(r, id), name: ctx.nameOf(id), never: never(id) };
+  };
+  const allowRb = new Set(out.allowRbGames ?? []);
+  const lockClash = (id) => out.locks.some((l) => ctx.rowOf(l) && pairBreak(side(id), side(l), rules, allowRb));
+  const byKey = new Map();
+  for (const [id, { pct }] of mins) {
+    const row = ctx.rowOf(id);
+    const pos = posOf(id);
+    const key = dkKeyOf(row ?? {}, id);
+    if (!row || lockedKeys.has(key) || !(pos in locksAt) || minOutReason(row, id, pool)) continue;
+    if (slotsFull(locksAt, pos)) return `${ctx.nameOf(id)} has a Min % but ${lockedSlotWords(pos)}`;
+    if (lockClash(id) || lockedQbBlocksRow(out, ctx.rowOf, id)) continue;
+    const n = minLineups(pct, count);
+    const cap = out.maxExposure?.[pos];
+    const capN = !cap ? null : cap.pct !== undefined ? pctToLineups(cap.pct, count) : cap.count;
+    if (capN !== null && n > capN) return `${ctx.nameOf(id)}'s Min % (${pct}) is above the ${pos} maximum exposure (${cap.pct !== undefined ? cap.pct : `${cap.count} lineups`})`;
+    byKey.set(key, { pos, n: Math.max(n, byKey.get(key)?.n ?? 0) });
+  }
+  const needs = {};
+  for (const { pos, n } of byKey.values()) (needs[pos] ??= []).push(n);
+  return minSlotProblem(needs, locksAt, count);
 }
 
 /**
@@ -80,7 +150,8 @@ export function validateGenerateSettings(raw, ctx) {
     }
     out.minUnique = raw.minUnique;
   }
-  for (const name of ["locks", "excludes", "catchers"]) {
+  // "catchers" is accepted from an older saved request and ignored: every back counts toward the stack (D55 as amended 2026-10-17).
+  for (const name of ["locks", "excludes"]) {
     const result = validateIdArray(raw[name], name);
     if (result.error) return { error: result.error };
     const ids = [...new Set(result.ids.map(String))];
@@ -104,21 +175,11 @@ export function validateGenerateSettings(raw, ctx) {
     }
     out.maxExposure = raw.maxExposure;
   }
-  // Per-player Max % (Adam 2026-10-11): {"<playerId>": {pct: 0-100}}; null means no cap and is dropped.
-  if (raw.playerMaxExposure !== undefined && raw.playerMaxExposure !== null) {
-    if (!isPlainObject(raw.playerMaxExposure)) return { error: "playerMaxExposure must be an object keyed by player id" };
-    const caps = {};
-    for (const [rawId, value] of Object.entries(raw.playerMaxExposure)) {
-      const id = String(rawId).trim();
-      if (!ctx.boardIds.has(id)) return { error: `playerMaxExposure names a player who is not on the board: ${rawId}` };
-      if (value === null || value === undefined) continue;
-      const keys = isPlainObject(value) ? Object.keys(value) : [];
-      if (keys.length !== 1 || keys[0] !== "pct") return { error: `playerMaxExposure for ${ctx.nameOf(id)} must be {pct: 0-100}` };
-      const n = value.pct;
-      if (typeof n !== "number" || !Number.isFinite(n) || n < 0 || n > 100) return { error: `playerMaxExposure for ${ctx.nameOf(id)} must be a percent from 0 to 100` };
-      caps[id] = { pct: n };
-    }
-    out.playerMaxExposure = caps;
+  // Per-player Max % (Adam 2026-10-11) and Min %: {"<playerId>": {pct: 0-100}}; null means none and is dropped.
+  for (const name of ["playerMaxExposure", "playerMinExposure"]) {
+    const checked = playerPctsChecked(raw[name], name, ctx);
+    if (checked.error) return { error: checked.error };
+    if (checked.pcts) out[name] = checked.pcts;
   }
   if (raw.rules !== undefined && raw.rules !== null) {
     if (!isPlainObject(raw.rules)) return { error: "rules must be an object of on/off switches" };
@@ -135,9 +196,8 @@ export function validateGenerateSettings(raw, ctx) {
     out.maxPerTeam = raw.maxPerTeam;
   }
   if (raw.objective !== undefined && raw.objective !== null) {
-    // Follows multi.js OBJECTIVES ("proj", "ceil": Adam picks projection or TwoGun's ceiling each time; the engine
-    // refuses a ceiling build on a board with no ceilings). A retired objective ("lev", "projMinusOwn": Adam
-    // 2026-10-15) passes through; multi.js builds it on projection with a note, so a saved setting never fails.
+    // Follows multi.js OBJECTIVES; a retired objective ("lev", "projMinusOwn") passes through and multi.js builds it
+    // on projection with a note, so a saved setting never fails.
     if (!OBJECTIVES.includes(raw.objective) && retiredObjectiveNote(raw.objective) === null) return { error: `objective must be one of ${OBJECTIVES.join(", ")}` };
     out.objective = raw.objective;
   }
@@ -163,7 +223,7 @@ export function validateGenerateSettings(raw, ctx) {
     }
     if (raw.spreadDst) out.spreadDst = true;
   }
-  const qbChecked = validateQbStacks(raw.qbStacks, ctx, STACK_OWN_MAX, { locks: out.locks, excludes: out.excludes });
+  const qbChecked = validateQbStacks(raw.qbStacks, ctx, STACK_OWN_MAX, STACK_OPP_MAX, { locks: out.locks, excludes: out.excludes });
   if (qbChecked.error) return { error: qbChecked.error };
   if (Object.keys(qbChecked.qbStacks).length) out.qbStacks = qbChecked.qbStacks;
   for (const name of ["allowRbGames", "avoidGames"]) {
@@ -175,6 +235,8 @@ export function validateGenerateSettings(raw, ctx) {
     if (unknown.length) return { error: `${name} names a game that is not on this slate: ${unknown.join(", ")}` };
     out[name] = games;
   }
+  const minError = minPctError(out, ctx);
+  if (minError) return { error: minError };
   return { settings: out };
 }
 
@@ -246,15 +308,8 @@ export function existingForSlate(saved, secondSlate, slateIds) {
       : !secondSlate || l.slots.every((s) => slateIds.has(String(s.playerId)))));
 }
 
-/** FantasyPros' own projected catches per player (board row fpRec), for the D55 pass-catcher test. */
-export function fpCatchesFor(rows) {
-  const fpCatches = {};
-  for (const r of rows) if (typeof r.fpRec === "number" && Number.isFinite(r.fpRec)) fpCatches[String(r.id)] = r.fpRec;
-  return fpCatches;
-}
-
 /**
- * The response body's {lineups, exposure, notes} from generateLineups' result. Lineup players and exposure rows
+ * The response body's {lineups, exposure, notes, bends} from generateLineups' result. Lineup players and exposure rows
  * carry the matchup (D43), salary and own% (D32) beside the engine's own fields. On a TwoGun-mode board a lineup
  * also carries `ceil` (TwoGun's ceilings summed, null when any player lacks one) and so does every one of its players
  * (null for a player TwoGun does not cover); a current-mode answer has neither field, so it is exactly what it was.
@@ -265,6 +320,7 @@ export function enrichGenerateResult(result, rowById) {
     salary: l.salary,
     proj: l.proj,
     ...(l.ceil !== undefined ? { ceil: l.ceil } : {}),
+    ...(l.bent !== undefined ? { bent: l.bent } : {}),
     players: l.ids.map((id) => {
       const r = rowById.get(String(id)) ?? {};
       const player = { id, name: r.name ?? id, pos: r.pos ?? null, team: r.team ?? null, opp: matchupString(r), salary: r.salary ?? null, proj: r.proj ?? null, own: r.own ?? null };
@@ -279,5 +335,5 @@ export function enrichGenerateResult(result, rowById) {
       return { ...e, team: r.team ?? null, opp: matchupString(r), salary: r.salary ?? null, own: r.own ?? null };
     });
   }
-  return { lineups, exposure, notes: result.notes };
+  return { lineups, exposure, notes: result.notes, bends: result.bends };
 }

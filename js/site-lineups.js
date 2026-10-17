@@ -45,9 +45,8 @@ export function readKey(storage, key) {
   }
 }
 
-/** Every device lineup of the week, all slates. Empty when storage is unavailable or unreadable. */
-export function readDeviceLineups(storage, season, week) {
-  if (!storage) return [];
+/** The week's storage keys, all slates; null when storage cannot be listed. */
+export function weekKeys(storage, season, week) {
   const prefix = `${STORAGE_PREFIX}${weekPart(season, week)}:`;
   const keys = [];
   try {
@@ -56,9 +55,16 @@ export function readDeviceLineups(storage, season, week) {
       if (typeof k === "string" && k.startsWith(prefix)) keys.push(k);
     }
   } catch {
-    return [];
+    return null;
   }
-  return keys.flatMap((k) => readKey(storage, k));
+  return keys;
+}
+
+/** Every device lineup of the week, all slates. Empty when storage is unavailable or unreadable. */
+export function readDeviceLineups(storage, season, week) {
+  if (!storage) return [];
+  const keys = weekKeys(storage, season, week);
+  return keys ? keys.flatMap((k) => readKey(storage, k)) : [];
 }
 
 /** Writes one slate's list. Returns true, or false when the browser refused. */
@@ -126,6 +132,74 @@ export function buildDeviceLineup(body, board, others = []) {
   return { entry, slateKey: typeof lineupSlate === "string" && lineupSlate !== "" ? lineupSlate : "main" };
 }
 
+/** The patch a PUT /api/lineups/<id> body asks of device lineup `existing`, refusing what handleLineupUpdate refuses
+ *  (PROJECT.md Part 4 Lineups). `others`: every lineup the visitor sees, for a blank name. {error} or {patch}. */
+export function buildDevicePatch(body, board, existing, others = []) {
+  body = body ?? {};
+  const hasSlots = body.slots !== undefined;
+  const hasSlate = body.slate !== undefined && body.slate !== null;
+  if (body.name === undefined && !hasSlots && !hasSlate) return { error: "nothing to change" };
+  const slotsResult = hasSlots ? validateLineupSlots(body.slots) : {};
+  if (slotsResult.error) return { error: slotsResult.error };
+  const nameResult = validateLineupName(body.name);
+  if (nameResult.error) return { error: nameResult.error };
+  const slates = Array.isArray(board?.slates) ? board.slates : [];
+  const slateFound = findLineupSlate(body.slate, slates);
+  if (slateFound.error) return { error: slateFound.error };
+  const rowById = new Map((board?.rows ?? []).map((r) => [String(r.id), r]));
+  const patch = {};
+  if (nameResult.name !== undefined) {
+    const trimmed = nameResult.name.trim();
+    patch.name = trimmed === "" ? nextLineupName(others.filter((l) => l.id !== existing.id)) : trimmed;
+  }
+  if (slotsResult.slots) {
+    const check = hasSlate ? slateFound : findLineupSlate(existing.slate, slates);
+    if (check.error) return { error: `This lineup was saved to the ${existing.slate} slate, which is not loaded this week; send a slate to move it.` };
+    const snapshot = buildLineupSnapshot(slotsResult.slots, rowById, check.lineupSecondSlate);
+    if (snapshot.error) return { error: snapshot.error };
+    Object.assign(patch, { slots: snapshot.slots, salaryUsed: snapshot.salaryUsed, totalProj: snapshot.totalProj });
+  } else if (slateFound.lineupSecondSlate) {
+    const stored = (Array.isArray(existing.slots) ? existing.slots : []).map((s) => ({ slot: s.slot, playerId: String(s.playerId) }));
+    const check = buildLineupSnapshot(stored, rowById, slateFound.lineupSecondSlate);
+    if (check.error) return { error: check.error };
+  }
+  if (typeof slateFound.lineupSlate === "string" && slateFound.lineupSlate !== "") patch.slate = slateFound.lineupSlate;
+  return { patch };
+}
+
+/** Edits device lineup `id` in place as store.js updateLineup does (PROJECT.md Part 4 Lineups); a slate naming another
+ *  list moves it. {status: "updated", entry} | "missing" (not a device lineup) | "refused" (no storage, write failed). */
+export function updateDeviceLineup(storage, season, week, id, patch) {
+  if (!storage) return { status: "refused" };
+  if (typeof id !== "string" || !id.startsWith(DEVICE_ID_PREFIX)) return { status: "missing" };
+  const keys = weekKeys(storage, season, week);
+  if (!keys) return { status: "refused" };
+  for (const key of keys) {
+    const list = readKey(storage, key);
+    const idx = list.findIndex((l) => l.id === id);
+    if (idx === -1) continue;
+    const { name, slots, salaryUsed, totalProj, slate } = patch ?? {};
+    const entry = { ...list[idx] };
+    if (name !== undefined) entry.name = name;
+    if (slots !== undefined) entry.slots = slots;
+    if (salaryUsed !== undefined) entry.salaryUsed = salaryUsed;
+    if (totalProj !== undefined) entry.totalProj = totalProj;
+    if (typeof slate === "string" && slate !== "") entry.slate = slate;
+    if ([name, slots, salaryUsed, totalProj, slate].some((v) => v !== undefined)) entry.updatedAt = new Date().toISOString();
+    const destKey = typeof entry.slate === "string" && entry.slate !== "" ? storageKey(season, week, entry.slate) : key;
+    if (destKey === key) {
+      const next = [...list];
+      next[idx] = entry;
+      return writeKey(storage, key, next) ? { status: "updated", entry } : { status: "refused" };
+    }
+    if (!writeKey(storage, destKey, [entry, ...readKey(storage, destKey)])) return { status: "refused" };
+    if (writeKey(storage, key, list.filter((l) => l.id !== id))) return { status: "updated", entry };
+    writeKey(storage, destKey, readKey(storage, destKey).filter((l) => l.id !== id)); // undo the copy
+    return { status: "refused" };
+  }
+  return { status: "missing" };
+}
+
 /** Adds `entry` to its slate's list. Returns true, or false when storage is unavailable or refused the write. */
 export function saveDeviceLineup(storage, season, week, slateKey, entry) {
   if (!storage) return false;
@@ -140,16 +214,8 @@ export function saveDeviceLineup(storage, season, week, slateKey, entry) {
 export function deleteDeviceLineup(storage, season, week, id) {
   if (!storage) return "refused";
   if (typeof id !== "string" || !id.startsWith(DEVICE_ID_PREFIX)) return "missing";
-  const prefix = `${STORAGE_PREFIX}${weekPart(season, week)}:`;
-  let keys = [];
-  try {
-    for (let i = 0; i < storage.length; i++) {
-      const k = storage.key(i);
-      if (typeof k === "string" && k.startsWith(prefix)) keys.push(k);
-    }
-  } catch {
-    return "refused";
-  }
+  const keys = weekKeys(storage, season, week);
+  if (!keys) return "refused";
   for (const key of keys) {
     const list = readKey(storage, key);
     if (list.some((l) => l.id === id)) return writeKey(storage, key, list.filter((l) => l.id !== id)) ? "deleted" : "refused";

@@ -1,7 +1,7 @@
 // Saving a lineup ("draw up a lineup, press Save, see it in a list"): the checks on a POST /api/lineups body and the
-// snapshot taken from the board, shared by the route (server/server.js handleLineupsPost, and handleLineupRename for
-// the name) and the public site's device lineups (site-src/site-lineups.js buildDeviceLineup; DECISIONS.md D69). One
-// copy, so both refuse with the same messages; the saved snapshot is always what the board showed at save time.
+// snapshot taken from the board, shared by the routes (server/server.js handleLineupsPost and handleLineupUpdate)
+// and the public site's device lineups (site-src/site-lineups.js buildDeviceLineup; DECISIONS.md D69). One copy,
+// so both refuse with the same messages; the saved snapshot is always what the board showed at save time.
 //
 // Pure and browser-safe: no imports at all. tools/publish.mjs copies it, unchanged, to out/server/lineups/ and
 // privacy-scans it.
@@ -35,7 +35,7 @@ export function validateLineupSlots(value) {
 
 // A saved-lineup name is optional (blank/omitted becomes "Lineup N" in store.js's buildLineupEntry), but
 // when present it must be a string of at most 80 characters after trimming. Shared by POST (create) and
-// PUT (rename) so neither route can pass a non-string straight through to store.js's name.trim(), which
+// PUT (update) so neither route can pass a non-string straight through to store.js's name.trim(), which
 // would otherwise throw and surface as a 500 instead of a 400.
 export function validateLineupName(value) {
   if (value === undefined) return { name: value };

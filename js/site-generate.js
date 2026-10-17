@@ -4,12 +4,12 @@
 // console logger in place of server/lib/log.js. Pure: no network, no storage, no page; it runs on the page or in
 // out/js/opt-worker.js.
 //
-// The validation, the slate's existing-lineup filter, fpCatches and the response enrichment are the route's own, from
+// The validation, the slate's existing-lineup filter and the response enrichment are the route's own, from
 // server/lineup/generate-request.js (copied beside the engine); tests/site-optimizer.test.mjs runs the same cases
 // through both as a wiring check.
 import { generateLineups } from "../server/lineup/multi.js";
 import {
-  generateBodyError, findGenerateSlate, prepareGenerate, existingForSlate, fpCatchesFor, enrichGenerateResult
+  generateBodyError, findGenerateSlate, prepareGenerate, existingForSlate, enrichGenerateResult
 } from "../server/lineup/generate-request.js";
 
 export { validateGenerateSettings, matchupString } from "../server/lineup/generate-request.js";
@@ -44,11 +44,10 @@ export function generateResponse({ board, slate, body: rawBody, saved }) {
   const { rows, rowById, slateIds } = checked;
 
   const existing = existingForSlate(saved, secondSlate, slateIds);
-  const fpCatches = fpCatchesFor(rows);
 
   const stale = Array.isArray(board.stale) ? board.stale : [];
   try {
-    const result = generateLineups({ rows, slate, settings: { ...checked.settings, fpCatches }, existing });
+    const result = generateLineups({ rows, slate, settings: checked.settings, existing });
     return envelope(enrichGenerateResult(result, rowById), { stale });
   } catch (e) {
     console.error("lineup generate: failed", e);

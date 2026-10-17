@@ -879,6 +879,7 @@ body.table-expanded { overflow: hidden; }
   font-size: var(--fs-md);
 }
 .star-btn.active { color: var(--amber); }
+.star-btn:disabled { cursor: default; opacity: 0.4; }
 
 .editable-cell { position: relative; display: flex; align-items: center; gap: 4px; cursor: text; }
 .cell-value { min-width: 2ch; }
@@ -1275,24 +1276,48 @@ body.table-expanded { overflow: hidden; }
 }
 .lineup-rows-table thead { position: sticky; top: 0; background: var(--bg-elevated-2); }
 /* Salary/Proj/Own%/Value right-align with tabular figures, same treatment as the Rankings table (👁 visual-qa
-   third pass). Columns: 1 Player, 2 Pos, 3 Salary, 4 Proj, 5 Own%, 6 Max % (Adam 2026-10-11), 7 Value,
-   8 Status (when present), then actions. */
-.lineup-rows-table th:nth-child(3), .lineup-rows-table td:nth-child(3),
-.lineup-rows-table th:nth-child(4), .lineup-rows-table td:nth-child(4),
-.lineup-rows-table th:nth-child(5), .lineup-rows-table td:nth-child(5),
-.lineup-rows-table th:nth-child(7), .lineup-rows-table td:nth-child(7) {
+   third pass). The Showdown pool's columns: 1 Player, 2 FLEX $, 3 CPT $, 4 Proj, 5 Own FLEX. The Optimizer pool
+   (.lineup-pool-table, Adam 2026-10-17): 1 star, 2 Player (team chip, status tag, name, position chip, matchup pill),
+   3 Sal, 4 Proj, 5 Own%, 6 Value, 7 Min %, 8 Max %, then actions; its own rules follow the Showdown ones. */
+.lineup-rows-table:where(:not(.lineup-pool-table)) th:nth-child(3), .lineup-rows-table:where(:not(.lineup-pool-table)) td:nth-child(3),
+.lineup-rows-table:where(:not(.lineup-pool-table)) th:nth-child(4), .lineup-rows-table:where(:not(.lineup-pool-table)) td:nth-child(4),
+.lineup-rows-table:where(:not(.lineup-pool-table)) th:nth-child(5), .lineup-rows-table:where(:not(.lineup-pool-table)) td:nth-child(5),
+.lineup-pool-table th:nth-child(3), .lineup-pool-table td:nth-child(3),
+.lineup-pool-table th:nth-child(4), .lineup-pool-table td:nth-child(4),
+.lineup-pool-table th:nth-child(5), .lineup-pool-table td:nth-child(5),
+.lineup-pool-table th:nth-child(6), .lineup-pool-table td:nth-child(6) {
   text-align: right;
   font-variant-numeric: tabular-nums;
 }
-/* Max %: a narrow box (three digits), centred under its header; the header is plain text, not a sort. */
+.lineup-pool-table .lineup-star-col { width: 1%; padding-left: 4px; padding-right: 2px; text-align: center; }
+.lineup-pool-table .star-btn { padding: 0 2px; line-height: 1; }
+.lineup-pool-table .team-chip-mini { min-width: 40px; box-sizing: border-box; text-align: center; } /* "WAS" is 27.2px plus 12px padding */
+.lineup-pool-table td.lineup-pool-empty { text-align: center; color: var(--text-muted); padding: var(--sp-3) var(--sp-2); }
+/* Min % and Max %: narrow boxes (three digits), centred under their headers; the headers are plain text, not a sort. */
+.lineup-rows-table th.lineup-min-head, .lineup-rows-table td.lineup-min-cell,
 .lineup-rows-table th.lineup-max-head, .lineup-rows-table td.lineup-max-cell { text-align: center; padding-left: 2px; padding-right: 2px; }
-.lineup-rows-table th.lineup-max-head { color: var(--text-muted); font-weight: 600; }
-.lineup-rows-table td.lineup-max-cell { padding-top: 1px; padding-bottom: 1px; }
-.opt-input.lineup-max-input { width: 3.6em; padding: 1px 4px; text-align: right; font-size: var(--fs-sm); }
-.opt-input.lineup-max-input.invalid { border-color: var(--danger); background: rgba(var(--danger-rgb), 0.12); }
-/* The pool keeps its 30px rows; Salary, Proj and Own% read bold, Pos is muted. */
-.lineup-rows-table td:nth-child(3), .lineup-rows-table td:nth-child(4), .lineup-rows-table td:nth-child(5) { font-size: 13px; font-weight: 700; }
-.lineup-rows-table td:nth-child(2) { font-weight: 400; color: var(--text-muted); }
+.lineup-rows-table th.lineup-min-head, .lineup-rows-table th.lineup-max-head { color: var(--text-muted); font-weight: 600; }
+.lineup-rows-table td.lineup-min-cell, .lineup-rows-table td.lineup-max-cell { padding-top: 1px; padding-bottom: 1px; }
+.opt-input.lineup-min-input, .opt-input.lineup-max-input { width: 3.6em; padding: 1px 4px; text-align: right; font-size: var(--fs-sm); }
+.opt-input.lineup-min-input.invalid, .opt-input.lineup-max-input.invalid { border-color: var(--danger); background: rgba(var(--danger-rgb), 0.12); }
+/* The pool keeps its 30px rows; Sal, Proj and Own% read bold. */
+.lineup-rows-table:where(:not(.lineup-pool-table)) td:nth-child(3), .lineup-rows-table:where(:not(.lineup-pool-table)) td:nth-child(4), .lineup-rows-table:where(:not(.lineup-pool-table)) td:nth-child(5),
+.lineup-pool-table td:nth-child(3), .lineup-pool-table td:nth-child(4), .lineup-pool-table td:nth-child(5) { font-size: 13px; font-weight: 700; }
+.lineup-rows-table:where(:not(.lineup-pool-table)) td:nth-child(2) { font-weight: 400; color: var(--text-muted); }
+/* Adam 2026-10-17: the pool packs its columns next to the names (Player takes what its longest row needs); the last column
+   takes the slack so the table still spans the panel and the Lock / Exclude / Add buttons land right after Max %. */
+.lineup-pool-table th:last-child, .lineup-pool-table td.lineup-row-actions { width: 100%; }
+.lineup-pool-table .player-cell { display: inline-flex; gap: var(--sp-2); min-width: 0; }
+/* The status tag is a square the height of the team chip (chip = 12px text + 2px padding = 17px). */
+.lineup-pool-table .player-cell .status-badge, .lineup-pool-table .player-cell .out-tag {
+  display: inline-flex; align-items: center; justify-content: center;
+  height: 17px; min-width: 17px; padding: 0 4px; line-height: 1; margin: 0;
+}
+.lineup-pool-table .player-cell .out-tag { font-size: 10px; }
+.lineup-pool-table .pos-mini { font-size: 11px; font-weight: 600; line-height: 16px; padding: 0 5px; border: 1px solid var(--border); border-radius: 4px; color: var(--text-muted); }
+.lineup-pool-table .meta-pill { font-size: var(--fs-sm); font-weight: 400; color: var(--text-muted); background: var(--bg-elevated-2); border: 1px solid var(--border); border-radius: 10px; padding: 0 8px; line-height: 17px; font-variant-numeric: tabular-nums; }
+.lineup-pool-table tr.row-dimmed .meta-pill, .lineup-pool-table tr.row-dimmed .pos-mini,
+.lineup-pool-table tr.lineup-row-excluded .meta-pill, .lineup-pool-table tr.lineup-row-excluded .pos-mini { color: var(--row-dim-text); }
 .lineup-rows-table tbody tr.row-dimmed td, .lineup-rows-table tbody tr.lineup-row-excluded td { color: inherit; }
 .lineup-row.lineup-row-locked { background: rgba(var(--accent-rgb), 0.1); }
 .lineup-row.lineup-row-excluded { color: var(--row-dim-text); opacity: 0.6; }
@@ -1368,6 +1393,7 @@ body.table-expanded { overflow: hidden; }
 }
 .saved-lineup-badge-warning { color: var(--amber); background: rgba(var(--amber-rgb), 0.15); }
 .saved-lineup-badge-danger { color: var(--danger); background: rgba(var(--danger-rgb), 0.15); }
+.saved-lineup-badge-loaded { color: var(--accent-text); background: rgba(var(--accent-rgb), 0.15); }
 .saved-lineup-rename { display: flex; align-items: center; gap: var(--sp-1); }
 .saved-lineup-rename-input {
   background: var(--bg-elevated-2);
@@ -1715,10 +1741,10 @@ select.opt-input { text-align: left; padding: 3px 4px; }
 .qbs-head .qbs-sum { margin: 0; }
 .qbs-link { border: 0; background: none; padding: 0; font: inherit; font-size: var(--fs-sm); color: var(--accent); cursor: pointer; text-decoration: underline; }
 .qbs-grow { flex: 1 1 auto; }
-.qbs-opts { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2) var(--sp-5); padding: 3px 0 var(--sp-2); }
+.qbs-opts { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 22rem), 1fr)); align-items: start; gap: var(--sp-2) var(--sp-5); padding: 3px 0 var(--sp-2); }
 .qbs-opt { display: inline-flex; align-items: center; gap: var(--sp-2); }
-.qbs-opt-bb { flex-direction: column; align-items: flex-start; gap: 1px; }
-.qbs-bb-hint { margin-top: 0; }
+.qbs-opt-side { flex-direction: column; align-items: flex-start; gap: 1px; }
+.qbs-side-hint { margin-top: 0; }
 .opt-settings .opt-input.qbs-num { width: 52px; }
 .qbs-cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 440px)); gap: var(--sp-5); padding-bottom: var(--sp-2); }
 .qbs-col-title { display: flex; align-items: center; gap: 6px; padding: 2px 0; margin-bottom: 2px; border-bottom: 1px solid var(--border); font-size: var(--fs-sm); font-weight: 700; color: var(--text-muted); }
@@ -1739,12 +1765,13 @@ select.opt-input { text-align: left; padding: 3px 4px; }
 .qbs-seg-btn { border: 0; border-left: 1px solid var(--border); background: var(--bg-elevated); color: var(--text-muted); padding: 1px 7px; font: inherit; font-size: 11px; font-weight: 600; line-height: 16px; cursor: pointer; }
 .qbs-seg-btn:first-child { border-left: 0; }
 .qbs-seg-btn.on { background: var(--bg-elevated-2); color: var(--text); }
-.qbs-seg-btn.on.qbs-must, .qbs-seg-btn.on.qbs-yes { background: rgba(var(--success-rgb), 0.22); color: var(--success); }
+.qbs-seg-btn.on.qbs-must { background: rgba(var(--success-rgb), 0.22); color: var(--success); }
 .qbs-seg-btn.on.qbs-no { background: rgba(var(--danger-rgb), 0.18); color: var(--danger); }
 
 .opt-results { width: 100%; margin-top: var(--sp-5); display: flex; flex-direction: column; gap: var(--sp-2); }
 .opt-results-head { display: flex; align-items: center; gap: var(--sp-3); flex-wrap: wrap; }
 .opt-note { font-size: var(--fs-sm); color: var(--text-dim); }
+.opt-bends { font-size: var(--fs-sm); color: var(--text-muted); }
 /* A card is at least 400px (row arithmetic under .opt-p): three across from a 1303px content width up. */
 .opt-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(400px, 100%), 1fr)); gap: var(--sp-3); }
 .opt-card {
@@ -1847,6 +1874,7 @@ select.opt-input { text-align: left; padding: 3px 4px; }
 .opt-exp-table td { padding: 1px 4px; }
 .opt-exp-table th:first-child, .opt-exp-table td:first-child { padding-left: 0; }
 .opt-exp-table th:last-child, .opt-exp-table td:last-child { padding-right: 0; }
+.opt-exp-table tr.exp-off td.opt-exp-pct { color: rgba(var(--amber-rgb), 0.7); }
 .opt-exp-name { font-weight: 600; }
 .opt-exp-opp { color: var(--text-muted); }
 .opt-exp-table .opt-exp-own { text-align: right; color: var(--text-muted); font-variant-numeric: tabular-nums; }
