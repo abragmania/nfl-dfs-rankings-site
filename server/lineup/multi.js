@@ -479,8 +479,10 @@ function run(rows, slate, settings, existing, notes) {
   const mustNoted = entryQbChecks(rows, settings, slate, existingList.length, prevKeys, opts, st, notes);
 
   if (opts.stats) opts.stats.exactSalaryUnits = st.exact;
-  // D74: a Min under one lineup forces nothing; one note per player on the board (twin rows are one man).
-  const underKeys = new Set();
+  // D74: a Min under one lineup forces nothing; one note per player on the board (twin rows are one man), and none when
+  // another row of his DraftKings key has a Min that reaches a lineup (it forces him).
+  const forcedKeys = new Set([...opts.playerMin.keys()].filter((id) => st.byId.has(id)).map((id) => st.keyOfId.get(id)));
+  const underKeys = new Set(forcedKeys);
   for (const [id, { pct }] of opts.minUnderOne) {
     if (!st.byId.has(id) || underKeys.has(st.keyOfId.get(id))) continue;
     underKeys.add(st.keyOfId.get(id));
@@ -723,7 +725,7 @@ function forcedRoom(st, opts, prevKeys) {
     const rule = qb.rule ?? st.global;
     const offense = held.filter((c) => c.pos !== "QB" && c.pos !== "DST");
     const dstOpp = held.find((c) => c.pos === "DST")?.oppIx ?? -1;
-    const reach = (counts, ban) => ["RB", "WR", "TE"].filter((pos) => st.byPos[pos].some((c) => countsFor(c, counts) && !held.includes(c) && !(ban && defenseBans(opts.rules, dstOpp, c))));
+    const reach = (counts, ban) => POSITIONS.filter(countsTowardStack).filter((pos) => st.byPos[pos].some((c) => countsFor(c, counts) && !held.includes(c) && !(ban && defenseBans(opts.rules, dstOpp, c))));
     const side = (counts) => {
       const at = reach(counts, true);
       const why = !at.length && reach(counts, false).length ? `the defense rule bans every player of the team the held defense faces, and the quarterback's stack needs ${counts === "own" ? "a teammate" : "an opponent"} from it` : undefined;

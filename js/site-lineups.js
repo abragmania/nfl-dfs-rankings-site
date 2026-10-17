@@ -7,10 +7,14 @@
 // localStorage, or a test double); null means unavailable.
 //
 // Saving follows POST /api/lineups (server/server.js handleLineupsPost, lineups/store.js buildLineupEntry): the
-// route's own slot, name and slate checks and snapshot builder (server/lineups/validate.js, copied beside the engine)
+// route's own slot, name, mode, tag and slate checks and snapshot builder (server/lineups/validate.js, copied beside the engine)
 // run on the published board, "Lineup N" for a blank name. A device lineup's id starts with "device-" and it carries
 // device: true; site.css marks it "saved on this device" and gives it a Delete button by that id.
-import { validateLineupSlots, validateLineupName, findLineupSlate, buildLineupSnapshot } from "../server/lineups/validate.js";
+// A letter tag is unique among this device's lineups of the slate (releaseLineupTag, PROJECT.md Part 4 Entries, Adam
+// 2026-10-17); the baked app lineups are read-only here (D69, D71), so their letters are never cleared.
+import {
+  validateLineupSlots, validateLineupName, validateLineupMode, validateLineupTag, releaseLineupTag, findLineupSlate, buildLineupSnapshot,
+} from "../server/lineups/validate.js";
 
 export const STORAGE_PREFIX = "nfldfs-site-lineups:";
 export const DEVICE_ID_PREFIX = "device-";
@@ -112,6 +116,10 @@ export function buildDeviceLineup(body, board, others = []) {
   if (slotsResult.error) return { error: slotsResult.error };
   const nameResult = validateLineupName(body.name);
   if (nameResult.error) return { error: nameResult.error };
+  const modeResult = validateLineupMode(body.mode);
+  if (modeResult.error) return { error: modeResult.error };
+  const tagResult = validateLineupTag(body.tag);
+  if (tagResult.error) return { error: tagResult.error };
   const slateFound = findLineupSlate(body.slate, Array.isArray(board?.slates) ? board.slates : []);
   if (slateFound.error) return { error: slateFound.error };
   const { lineupSlate, lineupSecondSlate } = slateFound;
@@ -129,6 +137,8 @@ export function buildDeviceLineup(body, board, others = []) {
     device: true,
   };
   if (typeof lineupSlate === "string" && lineupSlate !== "") entry.slate = lineupSlate;
+  if (modeResult.mode !== undefined) entry.mode = modeResult.mode;
+  if (typeof tagResult.tag === "string") entry.tag = tagResult.tag;
   return { entry, slateKey: typeof lineupSlate === "string" && lineupSlate !== "" ? lineupSlate : "main" };
 }
 
@@ -138,11 +148,15 @@ export function buildDevicePatch(body, board, existing, others = []) {
   body = body ?? {};
   const hasSlots = body.slots !== undefined;
   const hasSlate = body.slate !== undefined && body.slate !== null;
-  if (body.name === undefined && !hasSlots && !hasSlate) return { error: "nothing to change" };
+  if (body.name === undefined && !hasSlots && !hasSlate && body.mode === undefined && body.tag === undefined) return { error: "nothing to change" };
   const slotsResult = hasSlots ? validateLineupSlots(body.slots) : {};
   if (slotsResult.error) return { error: slotsResult.error };
   const nameResult = validateLineupName(body.name);
   if (nameResult.error) return { error: nameResult.error };
+  const modeResult = validateLineupMode(body.mode);
+  if (modeResult.error) return { error: modeResult.error };
+  const tagResult = validateLineupTag(body.tag);
+  if (tagResult.error) return { error: tagResult.error };
   const slates = Array.isArray(board?.slates) ? board.slates : [];
   const slateFound = findLineupSlate(body.slate, slates);
   if (slateFound.error) return { error: slateFound.error };
@@ -164,6 +178,8 @@ export function buildDevicePatch(body, board, existing, others = []) {
     if (check.error) return { error: check.error };
   }
   if (typeof slateFound.lineupSlate === "string" && slateFound.lineupSlate !== "") patch.slate = slateFound.lineupSlate;
+  if (modeResult.mode !== undefined) patch.mode = modeResult.mode;
+  if (tagResult.tag !== undefined) patch.tag = tagResult.tag; // null clears the letter
   return { patch };
 }
 
@@ -178,33 +194,38 @@ export function updateDeviceLineup(storage, season, week, id, patch) {
     const list = readKey(storage, key);
     const idx = list.findIndex((l) => l.id === id);
     if (idx === -1) continue;
-    const { name, slots, salaryUsed, totalProj, slate } = patch ?? {};
+    const { name, slots, salaryUsed, totalProj, slate, mode, tag } = patch ?? {};
     const entry = { ...list[idx] };
     if (name !== undefined) entry.name = name;
     if (slots !== undefined) entry.slots = slots;
     if (salaryUsed !== undefined) entry.salaryUsed = salaryUsed;
     if (totalProj !== undefined) entry.totalProj = totalProj;
     if (typeof slate === "string" && slate !== "") entry.slate = slate;
-    if ([name, slots, salaryUsed, totalProj, slate].some((v) => v !== undefined)) entry.updatedAt = new Date().toISOString();
+    if (typeof mode === "string" && mode !== "") entry.mode = mode;
+    if (tag === null) delete entry.tag;
+    else if (typeof tag === "string" && tag !== "") entry.tag = tag;
+    if ([name, slots, salaryUsed, totalProj, slate, mode, tag].some((v) => v !== undefined)) entry.updatedAt = new Date().toISOString();
     const destKey = typeof entry.slate === "string" && entry.slate !== "" ? storageKey(season, week, entry.slate) : key;
     if (destKey === key) {
       const next = [...list];
       next[idx] = entry;
-      return writeKey(storage, key, next) ? { status: "updated", entry } : { status: "refused" };
+      return writeKey(storage, key, releaseLineupTag(next, id)) ? { status: "updated", entry } : { status: "refused" };
     }
-    if (!writeKey(storage, destKey, [entry, ...readKey(storage, destKey)])) return { status: "refused" };
+    const destBefore = readKey(storage, destKey); // 🔵 2026-10-17: captured so the undo restores the holder's letter
+    if (!writeKey(storage, destKey, releaseLineupTag([entry, ...destBefore], id))) return { status: "refused" };
     if (writeKey(storage, key, list.filter((l) => l.id !== id))) return { status: "updated", entry };
-    writeKey(storage, destKey, readKey(storage, destKey).filter((l) => l.id !== id)); // undo the copy
+    writeKey(storage, destKey, destBefore); // undo the copy
     return { status: "refused" };
   }
   return { status: "missing" };
 }
 
-/** Adds `entry` to its slate's list. Returns true, or false when storage is unavailable or refused the write. */
+/** Adds `entry` to its slate's list (its letter, if any, leaves any other device lineup there in the same write).
+ *  Returns true, or false when storage is unavailable or refused the write. */
 export function saveDeviceLineup(storage, season, week, slateKey, entry) {
   if (!storage) return false;
   const key = storageKey(season, week, slateKey);
-  return writeKey(storage, key, [entry, ...readKey(storage, key)]);
+  return writeKey(storage, key, releaseLineupTag([entry, ...readKey(storage, key)], entry.id));
 }
 
 /**

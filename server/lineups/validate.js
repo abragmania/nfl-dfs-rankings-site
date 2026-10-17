@@ -44,6 +44,41 @@ export function validateLineupName(value) {
   return { name: value };
 }
 
+// Optional saved-lineup mode (PROJECT.md Part 4 Cash mode): omitted stays omitted, and a missing or unknown stored
+// mode reads as gpp, so no existing file is rewritten. A PUT may flip it (PROJECT.md Part 4 Entries, Adam 2026-10-17).
+export function validateLineupMode(value) {
+  if (value === undefined) return { mode: value };
+  if (value === "cash" || value === "gpp") return { mode: value };
+  return { error: "mode must be cash or gpp" };
+}
+
+export function lineupModeOf(lineup) {
+  return lineup?.mode === "cash" ? "cash" : "gpp";
+}
+
+// Optional saved-lineup letter `tag`, Adam's stable handle (PROJECT.md Part 4 Entries, Adam 2026-10-17; the plan file
+// data/findings/entries-fill-plan-2026-10-17.md item 7a): "A" to "Z", then "AA" to "ZZ". Omitted stays omitted; null
+// means no letter (a PUT clears it with null).
+export const LINEUP_TAG_MESSAGE = "tag must be one or two capital letters, A to Z or AA to ZZ";
+export function validateLineupTag(value) {
+  if (value === undefined || value === null) return { tag: value };
+  if (typeof value === "string" && /^[A-Z]{1,2}$/.test(value)) return { tag: value };
+  return { error: LINEUP_TAG_MESSAGE };
+}
+
+/** Pure: one letter per week and slate (same source): every OTHER lineup on lineup `id`'s slate (no slate = "main")
+ *  holding its tag loses it, so a write that gives `id` a letter moves it. A new array; the input is never mutated. */
+export function releaseLineupTag(lineups, id) {
+  const owner = lineups.find((l) => l?.id === id);
+  if (typeof owner?.tag !== "string" || owner.tag === "") return [...lineups];
+  const slate = owner.slate || "main";
+  return lineups.map((l) => {
+    if (l.id === id || l.tag !== owner.tag || (l.slate || "main") !== slate) return l;
+    const { tag, ...rest } = l;
+    return rest;
+  });
+}
+
 /**
  * Optional `slate` (the Optimizer counts saved lineups per slate): "main" or a loaded second slate's key (D57),
  * looked up in `secondSlates`. Omitted means none is recorded, as for every lineup saved before the field existed.

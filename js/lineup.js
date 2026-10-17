@@ -31,7 +31,8 @@ import { settingRowHtml, settingGroupHtml, switchButtonHtml, switchCheckboxHtml,
 import { newQbState, listedQbs, pruneEntries, cleanSavedEntries, qbStacksPayload, qbListHtml, qbPanelsHtml, wireQbStacks, SPREAD_HINT } from "./lineup-qb-stacks.js";
 import { TEAM_BY_ABBR } from "./teams-data.js";
 import { postLineupGenerate, getLineups, postLineup, putLineup, deleteLineup } from "./api.js";
-import { renderEntriesSection, wireEntries } from "./entries.js";
+import { renderEntriesSection, wireEntries, slateLineups } from "./entries.js";
+import { TAG_OPTIONS, numberLineups, lineupPrefix } from "./lineup-tags.js";
 import { phoneMinHeight, panelMinHeight } from "./expand.js";
 
 const LINEUP_SLOTS = ["QB", "RB", "RB", "WR", "WR", "WR", "TE", "FLEX", "DST"];
@@ -93,6 +94,7 @@ const state = {
   saveConfirm: null, // a short "Saved ..." message shown once after a successful save
   renamingId: null, // id of the saved lineup currently showing its inline rename box, or null
   deleteConfirmId: null, // id of the saved lineup currently showing its inline "Delete this lineup?" prompt, or null
+  lineupErrors: {}, // saved lineup id -> the server's message for a refused letter or mode change; cleared by its next good PUT
 };
 
 let savedFetchInFlightKey = null; // the season-week key a GET is currently in flight for, else null
@@ -485,18 +487,51 @@ export function afterSave({ data, name, editId, weekChanged, loadedAtStart, load
   return moved ? out : { ...out, loadedId: editId ?? data.lineup?.id ?? null, saveName: shown ?? name };
 }
 
+const lineupBusy = new Set(); // saved lineup ids with a card PUT in flight: their letter, mode and rename Save are disabled
+const lineupPutSeq = new Map(); // saved lineup id -> the number of its newest card PUT (busy and its refusal are per lineup)
+let lineupPutLast = 0; // 🔵/👁 2026-10-17: one counter across all lineups' card PUTs
+let lineupPutApplied = 0; // the newest card PUT whose answer set savedLineups; an older answer never replaces it
+
+/** The one PUT of a saved card (letter, mode, rename; 🔵 2026-10-17): busy until answered, only the newest answer per lineup
+ *  and week counts; a refusal stays on the card until its next good PUT. True when the change held and its list is shown. */
+async function putLineupGuarded(id, body) {
+  const mine = ++lineupPutLast;
+  lineupPutSeq.set(id, mine);
+  lineupBusy.add(id);
+  const keyAtStart = lastSavedKey;
+  commit();
+  let data = null;
+  let failure = null;
+  try {
+    data = await putLineup(id, body);
+  } catch (e) {
+    failure = `Could not reach the server: ${e.message}`;
+  } finally {
+    if (lineupPutSeq.get(id) === mine) lineupBusy.delete(id);
+  }
+  if (lineupPutSeq.get(id) !== mine || lastSavedKey !== keyAtStart) return false;
+  if (!failure && data && data.ok !== false && Array.isArray(data.lineups)) {
+    delete state.lineupErrors[id];
+    if (mine < lineupPutApplied) return false; // a newer card PUT's list (any lineup) is already shown
+    lineupPutApplied = mine;
+    state.savedLineups = data.lineups;
+    return true;
+  }
+  state.lineupErrors[id] = failure ?? data?.error?.message ?? "Could not save that change.";
+  return false;
+}
+
 async function doRenameLineup(id, name) {
   state.renamingId = null;
-  commit();
-  try {
-    const data = await putLineup(id, { name });
-    if (data && data.ok !== false && Array.isArray(data.lineups)) {
-      state.savedLineups = data.lineups;
-      if (id === state.loadedId) state.saveName = data.lineups.find((l) => l.id === id)?.name ?? state.saveName;
-    }
-  } catch (e) {
-    // Best-effort: nothing destructive happened, the list just won't reflect the rename until reloaded.
+  if ((await putLineupGuarded(id, { name })) && id === state.loadedId) {
+    state.saveName = state.savedLineups.find((l) => l.id === id)?.name ?? state.saveName;
   }
+  commit();
+}
+
+/** A saved card's letter or Cash/GPP mark (Adam 2026-10-17, entries fill plan 7a). */
+async function doLineupPut(id, payload) {
+  await putLineupGuarded(id, payload);
   commit();
 }
 
@@ -717,8 +752,14 @@ function savedLineupSlotHtml(slotName, entry, pick = null) {
     </div>`;
 }
 
-function savedLineupCardHtml(lineup, rowById, pick = null) {
+function savedLineupCardHtml(lineup, rowById, pick = null, numbers = null) {
   const totals = computeLiveTotals(lineup, rowById);
+  const isCash = lineup.mode === "cash";
+  const prefix = lineupPrefix(lineup, numbers);
+  const busy = lineupBusy.has(lineup.id) ? " disabled" : ""; // a card PUT is in flight (putLineupGuarded)
+  const tagOptions = `<option value=""${lineup.tag ? "" : " selected"}>no letter</option>${TAG_OPTIONS.map((t) => `<option value="${t}"${t === lineup.tag ? " selected" : ""}>${t}</option>`).join("")}`;
+  const tagHtml = `<select class="saved-lineup-tag" data-action="lineup-tag" data-id="${escapeHtml(lineup.id)}" aria-label="Letter for ${escapeHtml(lineup.name)}"${busy}>${tagOptions}</select>
+        <button type="button" class="saved-lineup-btn saved-lineup-mode${isCash ? " active" : ""}" data-action="lineup-mode" data-id="${escapeHtml(lineup.id)}" data-mode="${isCash ? "gpp" : "cash"}" title="Click to make this a ${isCash ? "GPP" : "Cash"} lineup"${busy}>${isCash ? "Cash lineup" : "GPP lineup"}</button>`;
   const overCap = totals.salaryUsed > SALARY_CAP;
   const incomplete = totals.filled < LINEUP_SLOTS.length;
   const isRenaming = state.renamingId === lineup.id;
@@ -726,6 +767,8 @@ function savedLineupCardHtml(lineup, rowById, pick = null) {
 
   const badges = [
     state.loadedId === lineup.id ? `<span class="saved-lineup-badge saved-lineup-badge-loaded">Loaded</span>` : "",
+    isCash ? `<span class="saved-lineup-badge saved-lineup-badge-cash">Cash</span>` : "",
+    state.lineupErrors[lineup.id] ? `<span class="saved-lineup-badge saved-lineup-badge-danger">${escapeHtml(state.lineupErrors[lineup.id])}</span>` : "",
     incomplete ? `<span class="saved-lineup-badge saved-lineup-badge-warning">Incomplete</span>` : "",
     overCap ? `<span class="saved-lineup-badge saved-lineup-badge-danger">Over cap</span>` : "",
   ].join("");
@@ -733,7 +776,7 @@ function savedLineupCardHtml(lineup, rowById, pick = null) {
   const nameHtml = isRenaming
     ? `<span class="saved-lineup-rename">
         <input type="text" class="saved-lineup-rename-input" data-rename-input value="${escapeHtml(lineup.name)}" />
-        <button type="button" class="saved-lineup-mini-btn" data-action="lineup-rename-save" data-id="${escapeHtml(lineup.id)}">Save</button>
+        <button type="button" class="saved-lineup-mini-btn" data-action="lineup-rename-save" data-id="${escapeHtml(lineup.id)}"${busy}>Save</button>
         <button type="button" class="saved-lineup-mini-btn" data-action="lineup-rename-cancel">Cancel</button>
       </span>`
     : `<button type="button" class="saved-lineup-name-btn" data-action="lineup-rename-start" data-id="${escapeHtml(lineup.id)}" title="Click to rename">${escapeHtml(lineup.name)}</button>`;
@@ -762,7 +805,8 @@ function savedLineupCardHtml(lineup, rowById, pick = null) {
   return `
     <div class="saved-lineup-card">
       <div class="saved-lineup-card-head">
-        ${nameHtml}
+        ${prefix ? `<span class="saved-lineup-prefix">${escapeHtml(prefix)} &middot;</span>` : ""}${nameHtml}
+        ${tagHtml}
         <span class="saved-lineup-time">${escapeHtml(formatSavedAt(lineup.savedAt))}</span>
         ${badges}
       </div>
@@ -800,13 +844,15 @@ function savedLineupsSectionHtml(rowById, savedHere) {
     // Adam 2026-10-11: only the saved lineups holding every chosen player show, and the exposure counts those only.
     const pick = pickOptions(rowById);
     const n = savedHere.length;
+    // Plan 7a: computed, never stored; over the same list the Entries screen numbers (slateLineups), so "3" is one lineup on both (🔵 2026-10-17).
+    const numbers = numberLineups(slateLineups(state.savedLineups, slateKeyOf(store.get().board)));
     const shown = filterLineups(savedHere, opt.mustHave, (l) => savedLineupPlayers(l, rowById));
     const k = shown.length;
     shownCount = k;
     if (k === 0) {
       body = `<div class="saved-lineups-empty">${NO_MATCH_TEXT}</div>`;
     } else {
-      body = `<div class="saved-lineups-list">${shown.map((e) => savedLineupCardHtml(e.item, rowById, pick)).join("")}</div>`;
+      body = `<div class="saved-lineups-list">${shown.map((e) => savedLineupCardHtml(e.item, rowById, pick, numbers)).join("")}</div>`;
       const subtitle = opt.mustHave.length ? `${k} of ${n} saved lineup${n === 1 ? "" : "s"}, filtered` : `${n} saved lineup${n === 1 ? "" : "s"}`;
       lastExposure = { exposure: exposureOfLineups(shown.map((e) => savedLineupPlayers(e.item, rowById))), subtitle };
       exposureHtml = optExposureHtml(lastExposure.exposure, lastExposure.subtitle, opt.expSortDir, pick);
@@ -1131,6 +1177,13 @@ function wire(container) {
       const input = container.querySelector("[data-rename-input]");
       doRenameLineup(btn.dataset.id, input ? input.value : "");
     });
+  });
+
+  container.querySelectorAll("[data-action='lineup-tag']").forEach((sel) => {
+    sel.addEventListener("change", () => doLineupPut(sel.dataset.id, { tag: sel.value || null }));
+  });
+  container.querySelectorAll("[data-action='lineup-mode']").forEach((btn) => {
+    btn.addEventListener("click", () => doLineupPut(btn.dataset.id, { mode: btn.dataset.mode }));
   });
 
   container.querySelectorAll("[data-action='lineup-delete-start']").forEach((btn) => {
@@ -1567,6 +1620,11 @@ export function requestCount(text) {
   return parseWhole(text, 1, OPT_MAX_COUNT, OPT_DEFAULT_COUNT);
 }
 
+/** The Min % problem Go shows for the count box's raw text: sized by requestCount, never by the text (PROJECT.md Part 4 Min % and soft rules, D74). */
+export function minProblemFor(countText, minMap, maxMap, excluded, nameOf) {
+  return playerMinProblem(minMap, maxMap, excluded, nameOf, requestCount(countText));
+}
+
 /** The `settings` object for POST /api/lineup/generate. maxExposure carries only {pct: N} for boxes that have a
  *  number (a blank box is left out, never sent as 0); every rule and both D73 stack numbers and ticks are sent
  *  explicitly; maxPerTeam only when a limit is picked. */
@@ -1912,7 +1970,7 @@ async function doGenerate() {
   const playerMin = pickSlate(playerMinFor(slateKey));
   const nameOf = (id) => nameById.get(id) ?? id;
   const rowOf = new Map((board?.rows ?? []).map((r) => [String(r.id), r]));
-  opt.formError = exposureProblem(opt.maxExp) ?? playerMaxProblem(playerMax, nameOf) ?? playerMinProblem(playerMin, playerMax, state.excludes, nameOf, requestCount(opt.count));
+  opt.formError = exposureProblem(opt.maxExp) ?? playerMaxProblem(playerMax, nameOf) ?? minProblemFor(opt.count, playerMin, playerMax, state.excludes, nameOf);
   if (opt.formError) {
     commit();
     return;

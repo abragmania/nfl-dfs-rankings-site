@@ -1393,7 +1393,7 @@ body.table-expanded { overflow: hidden; }
 }
 .saved-lineup-badge-warning { color: var(--amber); background: rgba(var(--amber-rgb), 0.15); }
 .saved-lineup-badge-danger { color: var(--danger); background: rgba(var(--danger-rgb), 0.15); }
-.saved-lineup-badge-loaded { color: var(--accent-text); background: rgba(var(--accent-rgb), 0.15); }
+.saved-lineup-badge-loaded, .saved-lineup-badge-cash { color: var(--accent-text); background: rgba(var(--accent-rgb), 0.15); }
 .saved-lineup-rename { display: flex; align-items: center; gap: var(--sp-1); }
 .saved-lineup-rename-input {
   background: var(--bg-elevated-2);
@@ -1933,29 +1933,50 @@ select.opt-input { text-align: left; padding: 3px 4px; }
 .entries-contest-name { font-weight: 700; color: var(--text); }
 .entries-contest-status { font-size: var(--fs-sm); color: var(--text-dim); }
 .entries-contest-status.some { color: var(--text); font-weight: 600; }
+/* Fold button (Adam 2026-10-17): leads the contest line; a folded contest keeps only its header. */
+.entries-fold { flex: 0 0 auto; align-self: center; width: 20px; padding: 0; border: 0; background: none; color: var(--text); font-size: 18px; line-height: 20px; cursor: pointer; }
+.entries-fold:hover { color: var(--text); }
+/* 👁 2026-10-17 (F7): a folded contest reads as folded by its muted name beside the bright ▸ button. */
+.entries-contest-group.folded .entries-contest-name { color: var(--text-muted); }
 .entries-clear { margin-left: auto; align-self: center; padding: 1px 10px; }
 .entries-section .saved-lineup-btn:disabled { opacity: 0.5; cursor: default; }
-/* Bulk assign panel (D75): ticked lineups | contests with that many entries, then the one Assign button. */
-.entries-bulk { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: var(--sp-2) var(--sp-5); padding: var(--sp-2) var(--sp-3); background: var(--bg-elevated-2); border: 1px solid var(--border); border-radius: 6px; }
-.entries-bulk-col { display: flex; flex-direction: column; gap: var(--sp-1); min-width: 0; }
-.entries-bulk-head { display: flex; align-items: center; gap: var(--sp-2); }
-.entries-bulk-head .saved-lineup-btn { padding: 1px 8px; background: var(--bg-elevated); }
-.entries-bulk-title { font-weight: 700; font-size: var(--fs-sm); color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.04em; margin-right: var(--sp-1); }
-.entries-bulk-list { display: flex; flex-direction: column; gap: 1px; }
-/* About 16 rows, then its own scroll; All / None / "N selected" sit above it and stay in view. The scroll is on a
-   wrapper: a height cap on the columned list itself would push extra columns out sideways. */
-.entries-bulk-scroll { max-height: 320px; overflow-y: auto; overflow-x: hidden; }
-.entries-bulk-lineups { display: block; columns: 240px; column-gap: var(--sp-4); }
-.entries-bulk-lineups .entries-check { break-inside: avoid; margin-bottom: 1px; user-select: none; }
+/* Fill strip (D75 as amended 2026-10-17, entries fill plan): Cash Lineups | GPP lineups, the contest buttons, the lead
+   dropdown, then Confirm / Discard and the proposal's notes. */
+.entries-fill { display: flex; flex-direction: column; gap: var(--sp-2); padding: var(--sp-2) var(--sp-3); background: var(--bg-elevated-2); border: 1px solid var(--border); border-radius: 6px; }
+.entries-fill-lists { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: var(--sp-2) var(--sp-5); }
+.entries-fill-col { display: flex; flex-direction: column; gap: var(--sp-1); min-width: 0; }
+.entries-fill-head, .entries-fill-bar, .entries-fill-go { display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; }
+.entries-fill-sort { display: inline-flex; align-items: center; gap: var(--sp-1); margin-left: auto; }
+.entries-fill-head .saved-lineup-btn, .entries-fill-bar .saved-lineup-btn { padding: 1px 8px; background: var(--bg-elevated); }
+.entries-fill-title { font-weight: 700; font-size: var(--fs-sm); color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.04em; margin-right: var(--sp-1); }
+.entries-fill-list { display: flex; flex-direction: column; gap: 1px; }
+/* About 8 rows, then its own scroll; All / None / "N of M" sit above it and stay in view. */
+.entries-fill-scroll { max-height: 180px; overflow-y: auto; overflow-x: hidden; }
+.entries-fill-list .entries-check { user-select: none; }
 .entries-check { display: flex; align-items: center; gap: 6px; font-size: var(--fs-sm); cursor: pointer; min-width: 0; padding: 1px 0; }
 .entries-check input { margin: 0; flex: 0 0 auto; }
 .entries-check > span:first-of-type { min-width: 0; }
-.entries-bulk-lineups .entries-check > span:first-of-type { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.entries-check > .entries-quiet { margin-left: auto; padding-left: var(--sp-2); white-space: nowrap; font-variant-numeric: tabular-nums; }
-.entries-check.off { color: var(--text-dim); cursor: default; }
-.entries-bulk-go { grid-column: 1 / -1; display: flex; align-items: center; gap: var(--sp-3); flex-wrap: wrap; padding-top: var(--sp-1); }
-.entries-bulk-notes { grid-column: 1 / -1; display: flex; flex-direction: column; gap: 2px; }
-.entries-bulk-skip { font-size: var(--fs-sm); color: var(--amber); }
+.entries-fill-list .entries-check > span:first-of-type { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.entries-fill-lead { display: inline-flex; align-items: center; gap: var(--sp-2); font-size: var(--fs-sm); min-width: 0; }
+.entries-fill-select { background: var(--bg-elevated); border: 1px solid var(--border); color: var(--text); border-radius: 4px; padding: 3px 6px; font-size: var(--fs-sm); max-width: 100%; min-width: 0; }
+.entries-fill-notes { display: flex; flex-direction: column; gap: 2px; }
+/* Contest header: the "takes part" tick, the GPP | Cash chips and the dot that marks a changed class. */
+.entries-take { margin: 0; align-self: center; flex: 0 0 auto; }
+.entries-class { display: inline-flex; align-items: center; gap: 2px; align-self: center; }
+.entries-class .chip { padding: 0 8px; font-size: var(--fs-sm); }
+.entries-class-dot { width: 7px; height: 7px; margin-left: 3px; border-radius: 50%; background: var(--amber); }
+/* Row tags: proposed (dashed), assigned (solid), left as is (quiet). 👁 2026-10-17: one fixed-width tag cell on every row
+   (empty when no tag) and the picker shrinks, never the tag, so every picker ends at the same x. */
+.entries-pick-wrap { display: flex; align-items: center; gap: var(--sp-2); min-width: 0; }
+.entries-pick-wrap .entries-pick { flex: 1 1 auto; min-width: 0; }
+.entries-tag { flex: 0 0 76px; box-sizing: border-box; text-align: center; padding: 0 6px; border-radius: 10px; font-size: var(--fs-sm); line-height: 18px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.entries-tag-proposed { border: 1px dashed var(--text-dim); color: var(--text-dim); }
+.entries-tag-assigned { border: 1px solid var(--accent); color: var(--accent-text); background: rgba(var(--accent-rgb), 0.12); }
+.entries-tag-kept { color: var(--text-dim); font-style: italic; }
+.entries-row.proposed .entries-pick { border-style: dashed; }
+.saved-lineup-prefix { font-weight: 700; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.saved-lineup-tag { background: var(--bg-elevated-2); border: 1px solid var(--border); color: var(--text); border-radius: 4px; padding: 1px 4px; font-size: var(--fs-sm); max-width: 90px; }
+.saved-lineup-mode.active { border-color: var(--accent); color: var(--accent-text); }
 .entries-now { color: var(--text-muted); }
 .entries-now.blank { color: var(--text-dim); font-style: italic; }
 .entries-row.assigned { background: rgba(var(--accent-rgb), 0.08); }
@@ -1971,11 +1992,13 @@ select.opt-input { text-align: left; padding: 3px 4px; }
   .lineup-layout { flex-direction: column; align-items: stretch; }
   .lineup-left { flex: 0 0 auto; max-width: 100%; width: 100%; }
   .lineup-right { width: 100%; }
-  /* Entries (D75): Contests stack under Lineups; the table drops "In the file now" so nothing scrolls sideways. */
-  .entries-bulk { grid-template-columns: minmax(0, 1fr); }
-  .entries-bulk-list:not(.entries-bulk-lineups) .entries-check > span:first-of-type { flex: 1; min-width: 0; }
-  .entries-bulk-list:not(.entries-bulk-lineups) .entries-check > .entries-quiet { flex-shrink: 0; }
-  .entries-bulk-head .entries-quiet { white-space: nowrap; }
+  /* Entries (D75): GPP lineups stack under Cash Lineups; the table drops "In the file now" so nothing scrolls sideways. */
+  .entries-fill-lists { grid-template-columns: minmax(0, 1fr); }
+  .entries-fill-head .entries-quiet { white-space: nowrap; }
+  .entries-fill-sort { margin-left: 0; }
+  .entries-pick-wrap { flex-wrap: wrap; }
+  .entries-tag { max-width: 100%; }
+  .entries-tag:empty { display: none; }
   .entries-table th:nth-child(2), .entries-table td.entries-now { display: none; }
   .entries-table th:first-child { width: auto; }
   .entries-pick { width: 100%; min-width: 0; }
