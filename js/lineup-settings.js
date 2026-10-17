@@ -1,8 +1,9 @@
 // The Optimizer's settings panel pieces (lineup.js optimizerControlsHtml): pure markup, titled groups of label-and-control rows.
 import { escapeHtml } from "./format.js";
 
-export function settingRowHtml(label, controlHtml, hint = "") {
-  return `<div class="opt-set"><div class="opt-set-main"><span class="opt-set-label">${escapeHtml(label)}</span><span class="opt-set-ctl">${controlHtml}</span></div>${hint ? `<div class="opt-set-hint">${escapeHtml(hint)}</div>` : ""}</div>`;
+// `hintCls`: an extra class on the hint line (ChatGPT wish k, Adam 2026-10-17: "opt-warn" colours the starred-QB count at 0).
+export function settingRowHtml(label, controlHtml, hint = "", hintCls = "") {
+  return `<div class="opt-set"><div class="opt-set-main"><span class="opt-set-label">${escapeHtml(label)}</span><span class="opt-set-ctl">${controlHtml}</span></div>${hint ? `<div class="opt-set-hint${hintCls ? ` ${hintCls}` : ""}">${escapeHtml(hint)}</div>` : ""}</div>`;
 }
 
 export function settingGroupHtml(title, rowsHtml, note = "", cls = "") {

@@ -24,7 +24,8 @@ const BASE_COLUMNS = [
   { key: "salary", label: "Salary" },
   { key: "proj", label: "Proj" },
   { key: "own", label: "Own%" },
-  { key: "value", label: "Value" },
+  // Adam 2026-10-17, DQ1 and Q2: Proj/$ is this column (projection per $1,000, value-core.js); the header reads "Proj/$", the key stays "value".
+  { key: "value", label: "Proj/$", title: "Proj/$: projection per $1,000 of salary" },
   // Adam 2026-10-15, Lev measure to be redesigned: the column stays, every cell empty, the header says why and does
   // not sort (there is nothing to sort on).
   { key: "lev", label: "Lev", title: "Lev: no measure yet", sortable: false },
@@ -34,11 +35,13 @@ const BASE_COLUMNS = [
 const NOTE_COLUMN = { key: "note", label: "Note" };
 export const COLUMNS = BASE_COLUMNS;
 
-// TwoGun mode only (D25 as amended 2026-10-15: his published figures used as he publishes them): five more Rankings
+// TwoGun mode only (D25 as amended 2026-10-15: his published figures used as he publishes them): six more Rankings
 // columns after Lev, each read from row.tg and sortable (state.js sortValue). Current mode never shows them.
 export const TG_COLUMNS = [
   { key: "tgMed", label: "Med", field: "median", title: "TwoGun's median, DraftKings points as he publishes them" },
   { key: "tgCeil", label: "Ceil", field: "ceil", title: "TwoGun's ceiling, DraftKings points as he publishes them" },
+  // Adam 2026-10-17, DQ1: Ceil/$, his published ceilingPer1k (two decimals as he publishes it), graded like Ceil (D33).
+  { key: "tgCeilPer1k", label: "Ceil/$", field: "ceilPer1k", title: "TwoGun's ceiling per $1,000 of salary, as he publishes it" },
   { key: "tgNuke", label: "Nuke", field: "nuke", title: "TwoGun's nuke (top-end) outcome, DraftKings points as he publishes them" },
   { key: "tgP3x", label: "3x%", field: "p3x", title: "TwoGun's chance (percent) of 3x salary value, as he publishes it" },
   { key: "tgP4x", label: "4x%", field: "p4x", title: "TwoGun's chance (percent) of 4x salary value, as he publishes it" },
@@ -76,6 +79,17 @@ export function lineupOutTagHtml(row) {
   return `<span class="out-tag" title="${escapeHtml(title)}">OUT</span>`;
 }
 
+/** ChatGPT wish r, Adam 2026-10-17: a player listed out but brought back by a typed projection (flag "revived") carries a
+ *  small "OUT, manually included" mark on lineup cards, in the OUT tag's red family; "" for anyone else. `short` (the Saved
+ *  cards and the builder slots, where the full text wrapped to a line of its own, 👁 2026-10-17) shows "OUT, incl." with the
+ *  full words as the hover. */
+export function lineupRevivedTagHtml(row, short = false) {
+  if (!(row?.flags ?? []).includes("revived")) return "";
+  const title = revivedStatusTitle(row, row.status ? (STATUS_INFO[String(row.status).trim().toLowerCase()]?.label ?? row.status) : "out");
+  if (short) return `<span class="out-tag out-tag-manual" title="${escapeHtml(`OUT, manually included: brought back by a typed projection. ${title}`)}">OUT, incl.</span>`;
+  return `<span class="out-tag out-tag-manual" title="${escapeHtml(title)}">OUT, manually included</span>`;
+}
+
 // TwoGun-mode markers: the same small amber dot as the A1 marker, its sentences on hover. Nothing shows in current mode
 // (rows there carry no tg or src). A figure TwoGun does not cover is the current sources' and says so (row.src).
 function markerHtml(texts) {
@@ -83,7 +97,7 @@ function markerHtml(texts) {
   return list.length ? `<sup class="row-flag-marker tg-marker" title="${escapeHtml(list.join(" "))}">&#8226;</sup>` : "";
 }
 
-/** The hover sentences for one Rankings cell ("proj", "own", "salary", "status") of a TwoGun-mode row. The game-line
+/** The hover sentences for one Rankings cell ("proj", "own", "salary", "ceilPer1k", "status") of a TwoGun-mode row. The game-line
  *  note sits with the status dot: the narrow Opp cell has no room for a dot beside "@ NYG". */
 export function twoGunMarkerTexts(row, field) {
   const src = row?.src;
@@ -100,7 +114,10 @@ export function twoGunMarkerTexts(row, field) {
   } else if (field === "own") {
     if (ownFallback && !projFallback) texts.push("TwoGun publishes no ownership for him; this is the current sources' Own%.");
   } else if (field === "salary") {
-    if (flags.includes("salaryDiffers")) texts.push(`TwoGun lists ${money(tg?.salary)}; DraftKings' ${money(row.salary)} is used everywhere (D13).`);
+    if (flags.includes("salaryDiffers")) texts.push(`TwoGun lists ${money(tg?.salary)}; DraftKings' ${money(row.salary)} is used for Proj/$ and the Optimizer (D13).`);
+  } else if (field === "ceilPer1k") {
+    // Ceil/$ is TwoGun's own figure, computed on his salary, so a row whose salary differs names both salaries.
+    if (flags.includes("salaryDiffers")) texts.push(`Ceil/$ is TwoGun's, on his salary ${money(tg?.salary)}; DraftKings lists ${money(row.salary)}.`);
   } else if (field === "status") {
     if (flags.includes("statusChangedAfterStamp")) {
       texts.push(`His status changed after TwoGun's board was made${tg?.official ? ` (TwoGun quoted ${tg.official})` : ""}${rowIsOut(row) ? "." : "; TwoGun's number is kept."}`);
@@ -110,12 +127,13 @@ export function twoGunMarkerTexts(row, field) {
   return texts;
 }
 
-// One decimal, as he publishes them; the 3x% and 4x% headers carry the percent sign so the narrow cells never clip.
+// One decimal, as he publishes them (Ceil/$ shows two); the 3x% and 4x% headers carry the percent sign so the narrow cells never clip.
 function tgCellHtml(row, col) {
   const v = row.tg?.[col.field];
   if (v == null || Number.isNaN(v)) return "—";
-  const text = dec1(col.field === "ceil" && rowIsOut(row) ? 0 : v); // out = ceiling 0 (Adam), as the optimizer scores it
-  const grade = row.tgGrade?.[col.field]; // Ceil, Nuke and 4x% are graded like Value (grade.js, D33)
+  const shown = (col.field === "ceil" || col.field === "ceilPer1k") && rowIsOut(row) ? 0 : v; // out = ceiling 0 (Adam), as the optimizer scores it; Ceil/$ follows its Ceil
+  const text = col.field === "ceilPer1k" ? dec2(shown) : dec1(shown);
+  const grade = row.tgGrade?.[col.field]; // Ceil, Ceil/$, Nuke and 4x% are graded like Value (grade.js, D33)
   return grade ? `<span class="grade-cell grade-${grade}">${text}</span>` : text;
 }
 
@@ -326,9 +344,12 @@ function noteCellHtml(row) {
   return `<span class="note-preview" title="${escapeHtml(row.note)}">${escapeHtml(preview)}</span>`;
 }
 
-// TwoGun mode: the five TwoGun cells after Lev, plain (a stale board is the header pill's to say, visual QA 2026-10-15).
+// TwoGun mode: the six TwoGun cells after Lev, plain (a stale board is the header pill's to say, visual QA 2026-10-15).
 function tgCellsHtml(row) {
-  return TG_COLUMNS.map((c) => `<td class="tg-col">${tgCellHtml(row, c)}</td>`).join("");
+  return TG_COLUMNS.map((c) => {
+    const tip = twoGunMarkerTexts(row, c.field).join(" ");
+    return `<td class="tg-col"${tip ? ` title="${escapeHtml(tip)}"` : ""}>${tgCellHtml(row, c)}</td>`;
+  }).join("");
 }
 
 function rowHtml(row, hasNoteColumn, twogun = false) {
@@ -397,7 +418,10 @@ function restoreCell(cellEl, id, field) {
   cellEl.innerHTML = cellInnerHtml(row, field);
 }
 
-function startEdit(cellEl, id, field, currentValue, onCommit) {
+// ChatGPT wish q, Adam 2026-10-17: shown under an open Proj or Own% editor (blur cancels too, as Esc does).
+export const EDIT_HINT = "Enter saves · Esc cancels";
+
+export function startEdit(cellEl, id, field, currentValue, onCommit) {
   const wrap = document.createElement("span");
   wrap.className = "cell-edit-wrap";
   const input = document.createElement("input");
@@ -409,7 +433,11 @@ function startEdit(cellEl, id, field, currentValue, onCommit) {
   const errorEl = document.createElement("div");
   errorEl.className = "cell-edit-error";
   errorEl.hidden = true;
+  const hintEl = document.createElement("div");
+  hintEl.className = "cell-edit-hint";
+  hintEl.textContent = EDIT_HINT;
   wrap.appendChild(input);
+  wrap.appendChild(hintEl);
   wrap.appendChild(errorEl);
   cellEl.innerHTML = "";
   cellEl.appendChild(wrap);
@@ -420,6 +448,7 @@ function startEdit(cellEl, id, field, currentValue, onCommit) {
   const showError = (msg) => {
     errorEl.textContent = msg;
     errorEl.hidden = false;
+    hintEl.hidden = true; // the message takes the hint's place under the box
   };
   const cancel = () => {
     if (done) return;

@@ -17,9 +17,11 @@
 // with no row anymore (a stale localStorage entry, or last week's slate) is dropped instead of rendering
 // stale data or throwing.
 import { escapeHtml, money, dec1, textColourFor } from "./format.js";
-import { store, matchesPosition, filterRows, sortRows, passesProjFloor, FLEX_POS, defaultDirFor, activeSlate, activeSlateRows, activeSlateGames, slateDisplayName, boardHasCeilings } from "./state.js";
+import { store, matchesPosition, filterRows, sortRows, passesProjFloor, FLEX_POS, defaultDirFor, activeSlate, activeSlateRows, activeSlateGames, slateDisplayName, boardHasCeilings, isTwoGunMode } from "./state.js";
 import { sortableHeadHtml } from "./tabs.js";
-import { matchupText, lineupOutTagHtml, statusTagsHtml, gradedCellHtml, rowIsOut, twoGunOutReason, STATUS_INFO } from "./table.js"; // D43: the one copy of "vs DAL" / "@ DET"; the red OUT tag (Adam 2026-10-15)
+import { matchupText, lineupOutTagHtml, lineupRevivedTagHtml, statusTagsHtml, gradedCellHtml, rowIsOut, twoGunOutReason, STATUS_INFO } from "./table.js"; // D43: the one copy of "vs DAL" / "@ DET"; the red OUT tag (Adam 2026-10-15)
+import { shownTotal, lineupCeilTotal } from "./totals.js";
+import { newBuildId, batchBuild, handBuild, buildTypeText, groupByBuild, groupHeaderText } from "./lineup-builds.js";
 import { rowsGradedForView } from "./grade.js";
 import { posChipsHtml, showAllToggleHtml, wireShowAllButtons } from "./filterbar.js";
 import { filterLineups, bulkUids, bulkLabel, toggleMustHave, pickButtonHtml, filterBarHtml } from "./lineup-filter.js";
@@ -359,7 +361,7 @@ function commit() {
 // the total unknown rather than silently smaller.
 function computeTotals(rowById) {
   let salaryUsed = 0;
-  let totalProj = 0;
+  const projs = [];
   let totalOwn = 0;
   let ownUnknown = false;
   for (const s of state.slots) {
@@ -367,11 +369,12 @@ function computeTotals(rowById) {
     const row = rowById.get(String(s.id));
     if (!row) continue; // not on this slate; validateAgainstBoard drops these on the next board load
     salaryUsed += row.salary ?? 0;
-    totalProj += row.proj ?? 0;
+    projs.push(row.proj);
     if (row.own == null) ownUnknown = true;
     else totalOwn += row.own;
   }
-  return { salaryUsed, salaryLeft: SALARY_CAP - salaryUsed, totalProj, totalOwn: ownUnknown ? null : totalOwn };
+  // ChatGPT wish d, Adam 2026-10-17: the total is the sum of the slot projections as shown (totals.js).
+  return { salaryUsed, salaryLeft: SALARY_CAP - salaryUsed, totalProj: shownTotal(projs) ?? 0, totalOwn: ownUnknown ? null : totalOwn };
 }
 
 /** First empty slot legal for `pos`: its own slot(s) first, then FLEX for RB/WR/TE. -1 if none is free. */
@@ -479,7 +482,7 @@ async function doSaveLineup(name, { asNew = false } = {}) {
   try {
     data = editId
       ? await putLineup(editId, { name, slots: slotsPayload, slate })
-      : await postLineup({ name: asNew ? uniqueSavedName(name, savedOfActiveSlate().map((l) => l.name)) : name, slots: slotsPayload, slate });
+      : await postLineup({ name: asNew ? uniqueSavedName(name, savedOfActiveSlate().map((l) => l.name)) : name, slots: slotsPayload, slate, build: handBuild(boardModeOf(store.get().board)) });
   } catch (e) {
     failure = `Could not reach the server: ${e.message}`;
   }
@@ -693,7 +696,7 @@ function slotPlayerHtml(row, tags = []) {
           <span class="lineup-slot-name">${escapeHtml(row.name)}</span>${lineupOutTagHtml(row)}
           <span class="lineup-slot-matchup">${escapeHtml(matchupText(row))}</span>
         </span>
-        <span class="lineup-slot-detail">${money(row.salary)} &middot; ${projText} proj${escapeHtml(ownParen(row.own))}${roleTagsHtml(tags)}</span>
+        <span class="lineup-slot-detail">${money(row.salary)} &middot; ${projText} proj${escapeHtml(ownParen(row.own))}${roleTagsHtml(tags)}${lineupRevivedTagHtml(row, true)}</span>
       </span>
     </span>`;
 }
@@ -729,7 +732,7 @@ function computeLiveTotals(lineup, rowById) {
   const placed = placeBySlotName((lineup.slots ?? []).map((s) => ({ slot: s.slot, id: s.playerId })));
   let filled = 0;
   let salaryUsed = 0;
-  let totalProj = 0;
+  const projs = [];
   let totalOwn = 0;
   let ownPublished = 0;
   const slotEntries = placed.map((entry) => {
@@ -739,7 +742,7 @@ function computeLiveTotals(lineup, rowById) {
     const row = rowById.get(entry.id) ?? null;
     if (row) {
       salaryUsed += row.salary ?? 0;
-      totalProj += row.proj ?? 0;
+      projs.push(row.proj);
       if (row.own != null) {
         totalOwn += row.own;
         ownPublished++;
@@ -752,7 +755,7 @@ function computeLiveTotals(lineup, rowById) {
     }
     return { row, snap };
   });
-  return { slotEntries, filled, salaryUsed, totalProj, totalOwn, ownPublished };
+  return { slotEntries, filled, salaryUsed, totalProj: shownTotal(projs) ?? 0, totalOwn, ownPublished }; // ChatGPT wish d: the shown sum (totals.js)
 }
 
 /** `pick` ({isChosen(id)}, see pickOptions) turns the player's name into the "only lineups with" button. */
@@ -769,11 +772,21 @@ function savedLineupSlotHtml(slotName, entry, pick = null) {
   return `
     <div class="saved-lineup-slot${missingCls}">
       <span class="saved-lineup-slot-pos">${escapeHtml(slotName)}</span>
-      <span class="saved-lineup-slot-name">${nameHtml}</span>${entry.row ? lineupOutTagHtml(entry.row) : ""}
+      <span class="saved-lineup-slot-name">${nameHtml}</span>${entry.row ? lineupOutTagHtml(entry.row) : ""}${entry.row ? lineupRevivedTagHtml(entry.row, true) : ""}
       <span class="saved-lineup-slot-team">${escapeHtml(src.team ?? "")}</span>
       <span class="saved-lineup-slot-salary">${money(src.salary)}</span>
       ${noteHtml}
     </div>`;
+}
+
+/** The ceiling total of a saved lineup's build record (ChatGPT wish g): "· 181.4 ceil" as it was when built; a dash when a
+ *  player had no TwoGun ceiling or the players were changed by hand since; "" for a hand build or a current-mode batch. */
+export function savedCeilHtml(build) {
+  if (!build || build.kind !== "batch") return "";
+  if (build.edited) return `<span title="The players were changed by hand after this build, so its ceiling total no longer applies">&middot; — ceil</span>`;
+  if (build.totalCeil === undefined) return "";
+  if (build.totalCeil === null) return `<span title="A player in this lineup had no TwoGun ceiling">&middot; — ceil</span>`;
+  return `<span title="TwoGun's ceilings summed, as built">&middot; ${dec1(build.totalCeil)} ceil</span>`;
 }
 
 function savedLineupCardHtml(lineup, rowById, pick = null, numbers = null) {
@@ -796,6 +809,11 @@ function savedLineupCardHtml(lineup, rowById, pick = null, numbers = null) {
     incomplete ? `<span class="saved-lineup-badge saved-lineup-badge-warning">Incomplete</span>` : "",
     overCap ? `<span class="saved-lineup-badge saved-lineup-badge-danger">Over cap</span>` : "",
   ].join("");
+
+  // ChatGPT wish g, Adam 2026-10-17: the board mode and build type the lineup was made with, and its ceiling total as built.
+  const buildText = buildTypeText(lineup.build);
+  const buildBadge = buildText ? `<span class="saved-lineup-badge saved-lineup-badge-build" title="How this lineup was made">${escapeHtml(buildText)}</span>` : "";
+  const ceilHtml = savedCeilHtml(lineup.build);
 
   const nameHtml = isRenaming
     ? `<span class="saved-lineup-rename">
@@ -832,12 +850,12 @@ function savedLineupCardHtml(lineup, rowById, pick = null, numbers = null) {
         ${prefix ? `<span class="saved-lineup-prefix">${escapeHtml(prefix)} &middot;</span>` : ""}${nameHtml}
         ${tagHtml}
         <span class="saved-lineup-time">${escapeHtml(formatSavedAt(lineup.savedAt))}</span>
-        ${badges}
+        ${buildBadge}${badges}
       </div>
       <div class="saved-lineup-slots">${rowsHtml}</div>
       <div class="saved-lineup-totals">
         <span class="${overCap ? "saved-lineup-totals-over" : ""}">${salaryText}</span>
-        <span>&middot; ${dec1(totals.totalProj)} proj</span>
+        <span>&middot; ${dec1(totals.totalProj)} proj</span>${ceilHtml}
         <span>&middot; ${escapeHtml(ownText)}</span>
       </div>
       <div class="saved-lineup-actions">
@@ -845,6 +863,18 @@ function savedLineupCardHtml(lineup, rowById, pick = null, numbers = null) {
         ${deleteHtml}
       </div>
     </div>`;
+}
+
+/** The Saved tab's cards under one small header per build, newest build first (ChatGPT wish g, Adam 2026-10-17). Lineups saved
+ *  before builds were recorded sit last as "earlier"; when they are all there is, no header is drawn and the list reads as before.
+ *  `cardHtml(lineup)` draws one card. */
+export function savedGroupsHtml(lineups, cardHtml) {
+  const groups = groupByBuild(lineups);
+  if (groups.length === 1 && groups[0].kind === "earlier") return `<div class="saved-lineups-list">${groups[0].lineups.map(cardHtml).join("")}</div>`;
+  return groups.map((g) => {
+    const when = g.kind === "batch" && g.newest > 0 ? formatSavedAt(new Date(g.newest).toISOString()) : "";
+    return `<section class="saved-build-group" data-build="${escapeHtml(g.key)}"><h4 class="saved-build-head">${escapeHtml(groupHeaderText(g, when))}</h4><div class="saved-lineups-list">${g.lineups.map(cardHtml).join("")}</div></section>`;
+  }).join("");
 }
 
 /** The Saved lineups tab (D74): this slate's saved cards (Load, rename, Delete as before; on the site the D69
@@ -876,7 +906,7 @@ function savedLineupsSectionHtml(rowById, savedHere) {
     if (k === 0) {
       body = `<div class="saved-lineups-empty">${NO_MATCH_TEXT}</div>`;
     } else {
-      body = `<div class="saved-lineups-list">${shown.map((e) => savedLineupCardHtml(e.item, rowById, pick, numbers)).join("")}</div>`;
+      body = savedGroupsHtml(shown.map((e) => e.item), (l) => savedLineupCardHtml(l, rowById, pick, numbers));
       const subtitle = opt.mustHave.length ? `${k} of ${n} saved lineup${n === 1 ? "" : "s"}, filtered` : `${n} saved lineup${n === 1 ? "" : "s"}`;
       lastExposure = { exposure: exposureOfLineups(shown.map((e) => savedLineupPlayers(e.item, rowById))), subtitle };
       exposureHtml = optExposureHtml(lastExposure.exposure, lastExposure.subtitle, opt.expSortDir, pick);
@@ -979,7 +1009,7 @@ export function rightColumnHtml(rows, rowById) {
     { key: "salary", label: "Sal" },
     { key: "proj", label: "Proj" },
     { key: "own", label: "Own%" },
-    { key: "value", label: "Value" },
+    { key: "value", label: "Proj/$", title: "Proj/$: projection per $1,000 of salary" },
   ];
   const inner = (cols) => sortableHeadHtml(cols, sort).replace(/^<tr>|<\/tr>$/g, "");
   const maxHead = `<th class="lineup-max-head" title="Most of the new lineups this player may be in; blank = no cap">Max %</th>`;
@@ -1423,6 +1453,11 @@ export function uniqueSavedName(wanted, taken) {
   return `Lineup ${n}`;
 }
 
+/** The board mode a lineup is built in, for its saved build record: "twogun" or "current", null where the board has no mode switch. */
+function boardModeOf(board) {
+  return board?.mode ? (isTwoGunMode(board) ? "twogun" : "current") : null;
+}
+
 /** The active slate's key: "main", or the second slate's key (D57). */
 function slateKeyOf(board) {
   return activeSlate(board)?.key ?? "main";
@@ -1515,6 +1550,8 @@ export function minRowOut(row, id, pool) {
   if (!pos || salary === null || salary < 0) return true;
   const flags = Array.isArray(row.flags) ? row.flags : [];
   if (flags.includes("outAfterStamp") && !flags.includes("revived")) return true;
+  // ChatGPT wish r: multi.js revivedOut (a revived player is out of a ceiling build only with no ceiling of his own or a TwoGun OUT call)
+  if (pool.objective === "ceil" && flags.includes("revived") && (numOrNull(row.tg?.ceil) === null || row.tg?.call === "OUT")) return true;
   if (rowIsOut(row)) return true;
   const overridden = numOrNull(row.override?.proj) !== null;
   if (numOrNull(row.proj) === null || (!overridden && flags.includes("no projection"))) return true;
@@ -1723,15 +1760,46 @@ export function slotsForSave(players) {
 export function lineupTotalsOf(lineup) {
   const players = lineup?.players ?? [];
   const salary = lineup?.salary ?? players.reduce((s, p) => s + (p.salary ?? 0), 0);
-  const proj = lineup?.proj ?? players.reduce((s, p) => s + (p.proj ?? 0), 0);
+  // ChatGPT wish d, Adam 2026-10-17: the projection total is the sum of the rows as shown (totals.js), not the engine's raw sum.
+  const proj = shownTotal(players.map((p) => p.proj)) ?? lineup?.proj ?? null;
   const allOwn = players.length > 0 && players.every((p) => p.own != null);
   return { salary, proj, own: allOwn ? players.reduce((s, p) => s + p.own, 0) : null };
 }
 
-export function ruleRowsHtml(rules, keys = OPT_RULES.map((r) => r.key)) {
+/** `notes` (optional): {ruleKey: {text, warn}}, a line under that rule's row (ChatGPT wish k: the starred-QB count). */
+export function ruleRowsHtml(rules, keys = OPT_RULES.map((r) => r.key), notes = {}) {
   return OPT_RULES.filter((r) => keys.includes(r.key))
-    .map((r) => settingRowHtml(r.label, switchButtonHtml(rules?.[r.key] !== false, r.label, `data-action="opt-rule" data-key="${escapeHtml(r.key)}"`)))
+    .map((r) => settingRowHtml(r.label, switchButtonHtml(rules?.[r.key] !== false, r.label, `data-action="opt-rule" data-key="${escapeHtml(r.key)}"`), notes?.[r.key]?.text ?? "", notes?.[r.key]?.warn ? "opt-warn" : ""))
     .join("");
+}
+
+/** How many quarterbacks "starred QBs only" leaves in the pool (ChatGPT wish k, Adam 2026-10-17): the slate's QBs that are
+ *  starred and not otherwise kept out (excluded, out, no projection, avoided game, no ceiling in a ceiling build), by the
+ *  same test as the Min % checks (minRowOut). `pool` = {excludes (Set), avoid (Set), objective}. */
+export function starredQbQualifiers(rows, pool) {
+  return (rows ?? []).filter((r) => upperOf(r?.pos) === "QB" && !minRowOut(r, r.id, { ...pool, starredQbOnly: true })).length;
+}
+
+/** The line under the "starred QBs only" rule: "3 starred QBs qualify". At 0 it warns (nothing can be built) unless a QB is
+ *  locked, which the build uses instead. */
+export function starredQbNote(count, lockedQb) {
+  const words = `${count} starred QB${count === 1 ? "" : "s"} ${count === 1 ? "qualifies" : "qualify"}`;
+  if (count > 0) return { text: words, warn: false };
+  return lockedQb ? { text: `${words}; the locked QB is used`, warn: false } : { text: `${words}: star one or lock one`, warn: true };
+}
+
+// The roster rules in plain words, for the "Nothing locked" warning (ChatGPT wish k); keys as OPT_RULES.
+const RULE_WORDS = {
+  starredQbOnly: "starred QBs only",
+  noSameTeamRbs: "no two RBs from one team",
+  noSameGameRbs: "no two RBs from one game",
+  noDstVsOwnPlayers: "no defense facing a player in the lineup",
+};
+
+/** The warning when nothing is locked, naming the roster rules that are on. */
+export function nothingLockedText(rules) {
+  const on = OPT_RULES.filter((r) => rules?.[r.key] !== false).map((r) => RULE_WORDS[r.key]);
+  return `Nothing locked: plain optimal lineups ${on.length ? `under ${on.join(", ")}` : "with no roster rules"}; rarely right for tournaments.`;
 }
 
 export function avoidChipsHtml(games, avoid) {
@@ -1757,7 +1825,8 @@ export function optLineupCardHtml(lineup, index, busy, { saved = false, fresh = 
   const ownText = totals.own == null ? "" : ` &middot; ${Math.round(totals.own)}% own`;
   // TwoGun mode: the lineup's total of TwoGun's ceilings, as the server summed it (absent in current mode; a dash
   // when a player has none, never a partial sum).
-  const ceilText = lineup.ceil === undefined ? "" : ` &middot; ${lineup.ceil == null ? `<span title="A player in this lineup has no TwoGun ceiling">—</span>` : dec1(lineup.ceil)} ceil`;
+  const ceil = lineupCeilTotal(lineup); // ChatGPT wish d: the shown sum, totals.js
+  const ceilText = ceil === undefined ? "" : ` &middot; ${ceil == null ? `<span title="A player in this lineup has no TwoGun ceiling">—</span>` : dec1(ceil)} ceil`;
   const uid = escapeHtml(lineup.uid ?? "");
   const saveBtn = saved
     ? `<button type="button" class="saved-lineup-btn opt-saved-btn" disabled>Saved ✓</button>`
@@ -1818,7 +1887,7 @@ function optimizerControlsHtml(rowById) {
   const games = activeSlateGames(board);
   const info = locked.length
     ? `<span class="opt-lockinfo">${locked.length} locked: ${escapeHtml(locked.map((r) => r.name).join(", "))}</span>`
-    : `<span class="opt-warn">Nothing locked: these will be plain optimal lineups, rarely right for tournaments.</span>`;
+    : `<span class="opt-warn">${escapeHtml(nothingLockedText(opt.rules))}</span>`;
   const expRows = OPT_POSITIONS.map((pos) =>
     settingRowHtml(pos, numberBoxHtml(`type="text" inputmode="decimal" class="opt-input opt-input-pct" data-opt-exp="${pos}" value="${escapeHtml(opt.maxExp[pos])}" placeholder="no cap" aria-label="${pos} maximum exposure percent"`, "%"))
   ).join("") + settingRowHtml("Spread defenses", switchButtonHtml(opt.spreadDst, "Spread defenses", `data-action="opt-spread-dst"`), SPREAD_HINT);
@@ -1841,8 +1910,14 @@ function optimizerControlsHtml(rowById) {
     settingRowHtml("Opponents", `${select("opt-stack-opp", "Opponents to stack with the quarterback", upTo(OPT_STACK_OPP_MAX), opt.stackOpp)}${switchCheckboxHtml("opt-stack-opp-more", opt.stackOppOrMore, "or more", "exactly")}`),
     qbListHtml(qbRows, opt.qb, lockedList),
   ].join("");
+  // ChatGPT wish k, Adam 2026-10-17: with "starred QBs only" on, the line under it counts the QBs that qualify.
+  const qbNotes = {};
+  if (opt.rules.starredQbOnly !== false) {
+    const pool = { excludes: state.excludes, avoid: new Set([...opt.avoid].map((g) => String(g).toUpperCase())), objective: effectiveObjective(opt.objective, boardHasCeilings(activeSlateRows(board))) };
+    qbNotes.starredQbOnly = starredQbNote(starredQbQualifiers(activeSlateRows(board), pool), locked.some((r) => upperOf(r.pos) === "QB"));
+  }
   const roster = [
-    ruleRowsHtml(opt.rules, RULES_ROSTER),
+    ruleRowsHtml(opt.rules, RULES_ROSTER, qbNotes),
     settingRowHtml("Max per team", `<select id="opt-max-team" class="opt-input opt-select" aria-label="Max per team">${options(MAX_TEAM_OPTIONS, opt.maxPerTeam, (v) => (v === "" ? "No limit" : v))}</select>`, "Not applied to the QB's team or his opponent"),
   ].join("");
   return `
@@ -2080,7 +2155,9 @@ async function doGenerate() {
       // The response's own exposure (saved plus new) is not shown: each tab computes its own (D74).
       const bends = Array.isArray(data.bends) ? data.bends : [];
       const marks = { asked: sent.settings.count, min: pctsOf(sent.settings.playerMinExposure), max: pctsOf(sent.settings.playerMaxExposure) };
-      opt.results = { slateKey, lineups, notes, builtIn, bends, made: lineups.length, marks };
+      // ChatGPT wish g, Adam 2026-10-17: what a save from this batch records on each lineup (lineup-builds.js batchBuild).
+      const build = { buildId: newBuildId(Date.now(), Math.random()), boardMode: boardModeOf(board), objective: form.objective };
+      opt.results = { slateKey, lineups, notes, builtIn, bends, made: lineups.length, marks, ...build };
     }
   } catch (e) {
     opt.error = `Could not reach the server: ${e.message}`;
@@ -2113,7 +2190,7 @@ async function saveGenerated(uids) {
       // lineups by name, so names stay unique per slate).
       const taken = savedOfActiveSlate().map((l) => l.name);
       const name = uniqueSavedName(`Lineup ${results.lineups.indexOf(lineup) + 1}`, taken);
-      const data = await postLineup({ name, slots: slotsForSave(lineup.players), slate: slateKey });
+      const data = await postLineup({ name, slots: slotsForSave(lineup.players), slate: slateKey, build: batchBuild(results, lineup) });
       if (!data || data.ok === false) {
         opt.saveError = data?.error?.message ?? "Could not save the lineup.";
         break;

@@ -1,16 +1,17 @@
 // The Entries fill strip's pure builders (D75 as amended 2026-10-17; entries fill plan items 5, 6 and 7a): the lineup
 // lists, the per-file fill model (planFill plus the proposals still valid), the strip's HTML and each contest's header.
 // Split out of entries.js for size (🔵 2026-10-17); entries.js imports and re-exports every name here. Imports only
-// format.js, entries-plan.js and lineup-tags.js, never entries.js.
+// format.js, entries-plan.js, lineup-tags.js and totals.js, never entries.js.
 import { escapeHtml, money, dec1 } from "./format.js";
 import { groupByContest, effectiveClasses, orderedFillLineups, planFill, validProposals, contestKey } from "./entries-plan.js";
 import { numberLineups, lineupLabel, sortLineupsBy } from "./lineup-tags.js";
+import { shownTotal } from "./totals.js";
 
 /** "Name - 152.3 proj - $49,800": how one saved lineup reads in a picker. With `numbers` (numberLineups) the name part
  *  is the "1 · A · name" label (Adam 2026-10-17, plan item 7a). */
 export function lineupOptionLabel(lineup, numbers = null) {
   const name = numbers ? lineupLabel(lineup, numbers) : String(lineup?.name ?? "").trim() || "Lineup";
-  const proj = dec1(lineup?.totalProj);
+  const proj = dec1(shownTotal((lineup?.slots ?? []).map((s) => s?.proj)) ?? lineup?.totalProj); // ChatGPT wish d, Adam 2026-10-17: the sum of the saved players' shown projections
   return `${name} · ${proj == null ? "no proj" : `${proj} proj`} · ${money(lineup?.salaryUsed)}`;
 }
 

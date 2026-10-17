@@ -13,7 +13,7 @@
 // A letter tag is unique among this device's lineups of the slate (releaseLineupTag, PROJECT.md Part 4 Entries, Adam
 // 2026-10-17); the baked app lineups are read-only here (D69, D71), so their letters are never cleared.
 import {
-  validateLineupSlots, validateLineupName, validateLineupMode, validateLineupTag, releaseLineupTag, findLineupSlate, buildLineupSnapshot,
+  validateLineupSlots, validateLineupName, validateLineupMode, validateLineupTag, validateLineupBuild, buildAfterSlotEdit, slotsPlayersDiffer, releaseLineupTag, findLineupSlate, buildLineupSnapshot,
 } from "../server/lineups/validate.js";
 
 export const STORAGE_PREFIX = "nfldfs-site-lineups:";
@@ -120,6 +120,8 @@ export function buildDeviceLineup(body, board, others = []) {
   if (modeResult.error) return { error: modeResult.error };
   const tagResult = validateLineupTag(body.tag);
   if (tagResult.error) return { error: tagResult.error };
+  const buildResult = validateLineupBuild(body.build); // ChatGPT wish g, Adam 2026-10-17
+  if (buildResult.error) return { error: buildResult.error };
   const slateFound = findLineupSlate(body.slate, Array.isArray(board?.slates) ? board.slates : []);
   if (slateFound.error) return { error: slateFound.error };
   const { lineupSlate, lineupSecondSlate } = slateFound;
@@ -139,6 +141,7 @@ export function buildDeviceLineup(body, board, others = []) {
   if (typeof lineupSlate === "string" && lineupSlate !== "") entry.slate = lineupSlate;
   if (modeResult.mode !== undefined) entry.mode = modeResult.mode;
   if (typeof tagResult.tag === "string") entry.tag = tagResult.tag;
+  if (buildResult.build) entry.build = buildResult.build;
   return { entry, slateKey: typeof lineupSlate === "string" && lineupSlate !== "" ? lineupSlate : "main" };
 }
 
@@ -197,7 +200,10 @@ export function updateDeviceLineup(storage, season, week, id, patch) {
     const { name, slots, salaryUsed, totalProj, slate, mode, tag } = patch ?? {};
     const entry = { ...list[idx] };
     if (name !== undefined) entry.name = name;
-    if (slots !== undefined) entry.slots = slots;
+    if (slots !== undefined) {
+      entry.slots = slots;
+      if (entry.build && slotsPlayersDiffer(list[idx].slots, slots)) entry.build = buildAfterSlotEdit(entry.build); // as store.js updateLineup (ChatGPT wish g)
+    }
     if (salaryUsed !== undefined) entry.salaryUsed = salaryUsed;
     if (totalProj !== undefined) entry.totalProj = totalProj;
     if (typeof slate === "string" && slate !== "") entry.slate = slate;

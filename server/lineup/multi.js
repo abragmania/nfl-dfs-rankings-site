@@ -348,9 +348,20 @@ function rowFlags(row, pos, opts) {
     avoided: game !== null && opts.avoidGames.has(game),
     unstarredQb: opts.rules.starredQbOnly && pos === "QB" && !row.starred,
     noCeiling: opts.objective === "ceil" && ceil === null,
+    // ChatGPT wish r, Adam 2026-10-17 (D25, D27): a listed-out player brought back by a typed projection stays in a ceiling
+    // build on his own published ceiling; he is left out (unless locked) only when he has none or TwoGun calls him OUT.
+    // revivedOut is the reason ("noCeiling" or "calledOut") or false.
+    revivedOut: opts.objective === "ceil" && flags.includes("revived") && (ceil === null || (row.tg && row.tg.call) === "OUT")
+      ? (ceil === null ? "noCeiling" : "calledOut") : false,
     lateOut: outAfterStamp(flags)
   };
 }
+
+/** Why a revived (listed-out, typed projection) player is out of a ceiling build, by rowFlags' revivedOut reason. */
+const REVIVED_OUT_WORDS = {
+  noCeiling: "he is listed out with no TwoGun ceiling to build on",
+  calledOut: "he is listed out and TwoGun calls him OUT"
+};
 
 /** A ceiling build's notes: how many were left out for want of a ceiling, and that typed projections do not move it. */
 function ceilingNotes(leftOut, typed, notes) {
@@ -636,6 +647,7 @@ export function minOutReason(row, id, opts) {
   if (f.noProjection) return "he has no projection";
   if (f.avoided) return "his game is set to avoid";
   if (f.unstarredQb) return "he is not starred";
+  if (f.revivedOut) return REVIVED_OUT_WORDS[f.revivedOut];
   if (f.noCeiling) return "he has no TwoGun ceiling for this ceiling build";
   return null;
 }
@@ -918,6 +930,7 @@ function prepare(rows, opts, notes) {
   const byKey = new Map();
   let noCeilingLeftOut = 0; // ceiling build: players kept out only for having no TwoGun ceiling
   let typedIgnored = 0; // ceiling build: pool players whose typed projection does not move it
+  const revivedLeftOut = new Map(); // name -> reason; ceiling build: listed-out players brought back by a typed projection, kept out unless locked
   for (const [id, row] of byId) {
     if (opts.excludes.has(id)) continue;
     const locked = lockSet.has(id);
@@ -938,10 +951,11 @@ function prepare(rows, opts, notes) {
       }
       continue;
     }
-    const { proj, overridden, noProjection, sidelined, game, avoided, unstarredQb, ceil, noCeiling, lateOut } = rowFlags(row, pos, opts);
+    const { proj, overridden, noProjection, sidelined, game, avoided, unstarredQb, ceil, noCeiling, revivedOut, lateOut } = rowFlags(row, pos, opts);
     const otherwiseOut = noProjection || sidelined || avoided || unstarredQb || lateOut;
-    if (!locked && (otherwiseOut || noCeiling)) {
-      if (noCeiling && !otherwiseOut) noCeilingLeftOut++;
+    if (!locked && (otherwiseOut || noCeiling || revivedOut)) {
+      if (revivedOut && !otherwiseOut) revivedLeftOut.set(name, revivedOut);
+      else if (noCeiling && !otherwiseOut) noCeilingLeftOut++;
       continue;
     }
     if (locked) {
@@ -990,6 +1004,7 @@ function prepare(rows, opts, notes) {
     byKey.set(cand.key, cand);
   }
   if (ceilBuild) ceilingNotes(noCeilingLeftOut, typedIgnored, notes);
+  for (const [name, reason] of revivedLeftOut) notes.push(`${name} ${REVIVED_OUT_WORDS[reason].replace(/^he /, "")}; include him by locking him.`);
 
   const all = [...byKey.values()];
   st.teamCount = teamIx.size;

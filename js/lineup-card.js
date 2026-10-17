@@ -1,7 +1,7 @@
 // Pieces of the Optimizer's lineup slots and new-lineup cards (lineup.js).
 import { escapeHtml, money, dec1, textColourFor } from "./format.js";
 import { TEAM_BY_ABBR } from "./teams-data.js";
-import { lineupOutTagHtml } from "./table.js";
+import { lineupOutTagHtml, lineupRevivedTagHtml } from "./table.js";
 import { pickButtonHtml } from "./lineup-filter.js";
 import { lineupRoles, roleTagsHtml, stackLabel } from "./lineup-marks.js";
 
@@ -50,7 +50,7 @@ export function cardDecor(lineup, rowById) {
   return {
     stack: stack ? `<span class="opt-card-stack" title="${escapeHtml(stack.title)}">${escapeHtml(stack.text)}</span>` : "",
     tagsFor: (p) => {
-      const out = rowOf(p) ? lineupOutTagHtml(rowOf(p)) : "";
+      const out = rowOf(p) ? lineupOutTagHtml(rowOf(p)) + lineupRevivedTagHtml(rowOf(p)) : ""; // ChatGPT wish r: "OUT, manually included"
       return out ? `<span class="opt-p-tags">${out}</span>` : "";
     },
     rolesFor: (p) => roleTagsHtml(roles.get(String(p.id))),

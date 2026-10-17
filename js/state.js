@@ -11,7 +11,7 @@ const FLEX_POS = new Set(["RB", "WR", "TE"]);
 // at load rather than from a click. The Lev column has no number at all (Adam 2026-10-15, Lev measure to be
 // redesigned), so it is not sortable (table.js); a leftover sort on "lev" reads null for every row and keeps the
 // board's order.
-const DESC_FIRST_COLUMNS = new Set(["star", "salary", "proj", "own", "value", "tgMed", "tgCeil", "tgNuke", "tgP3x", "tgP4x"]);
+const DESC_FIRST_COLUMNS = new Set(["star", "salary", "proj", "own", "value", "tgMed", "tgCeil", "tgCeilPer1k", "tgNuke", "tgP3x", "tgP4x"]);
 export function defaultDirFor(col) {
   return DESC_FIRST_COLUMNS.has(col) ? "desc" : "asc";
 }
@@ -63,7 +63,7 @@ export function isTwoGunMode(board) {
   return board?.mode?.active === "twogun";
 }
 
-const TG_SORT_COLUMNS = new Set(["tgMed", "tgCeil", "tgNuke", "tgP3x", "tgP4x"]);
+const TG_SORT_COLUMNS = new Set(["tgMed", "tgCeil", "tgCeilPer1k", "tgNuke", "tgP3x", "tgP4x"]);
 
 /** The sort to keep once `board` loads: a sort on a TwoGun column (table.js TG_COLUMNS) on a board not in TwoGun
  *  mode falls back to the table's default, Value high to low; any other sort is kept as it is. */
@@ -225,6 +225,8 @@ function sortValue(row, col) {
       return row.tg?.median ?? null;
     case "tgCeil":
       return row.tg?.ceil != null && rowIsOut(row) ? 0 : (row.tg?.ceil ?? null); // out = ceiling 0, as the cell shows
+    case "tgCeilPer1k":
+      return row.tg?.ceilPer1k != null && rowIsOut(row) ? 0 : (row.tg?.ceilPer1k ?? null); // out = 0, as its cell shows (Adam 2026-10-17, DQ1)
     case "tgNuke":
       return row.tg?.nuke ?? null;
     case "tgP3x":

@@ -237,7 +237,7 @@ html, body {
   font-size: var(--fs-sm);
   font-weight: 700;
   letter-spacing: 0.06em;
-  color: var(--danger);
+  color: color-mix(in srgb, var(--danger) 80%, var(--text)); /* toward the text colour: lighter on the dark theme, darker on the light one (👁 contrast finding 2026-10-17) */
   border: 1px solid var(--danger);
   border-radius: 4px;
   padding: 2px 8px;
@@ -698,7 +698,7 @@ body.table-expanded { overflow: hidden; }
   cursor: pointer;
   background: none;
   border: 1px solid var(--danger);
-  color: var(--danger);
+  color: color-mix(in srgb, var(--danger) 80%, var(--text)); /* toward the text colour: lighter on the dark theme, darker on the light one (👁 contrast finding 2026-10-17) */
   border-radius: 6px;
   padding: 4px 10px;
   font-size: var(--fs-sm);
@@ -908,12 +908,31 @@ body.table-expanded { overflow: hidden; }
   margin-top: 2px;
   background: var(--bg-elevated-2);
   border: 1px solid var(--danger);
-  color: var(--danger);
+  color: color-mix(in srgb, var(--danger) 80%, var(--text)); /* toward the text colour: lighter on the dark theme, darker on the light one (👁 contrast finding 2026-10-17) */
   border-radius: 4px;
   padding: 2px 6px;
   font-size: var(--fs-sm);
   white-space: nowrap;
 }
+/* ChatGPT wish q, Adam 2026-10-17: how to save or cancel an open Proj or Own% editor, in the quiet hint colour; positioned like
+   the message so it never grows the row, and gone while a message shows (table.js startEdit). */
+.cell-edit-hint {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  z-index: 3;
+  margin-top: 2px;
+  background: var(--bg-elevated-2);
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  border-radius: 4px;
+  padding: 1px 6px;
+  font-size: var(--fs-sm);
+  white-space: nowrap;
+  pointer-events: none;
+}
+/* The last row of a table has nothing under it to show the hint on (it was clipped), so the hint opens above the cell there. */
+tr:last-child .cell-edit-hint { top: auto; bottom: 100%; margin-top: 0; margin-bottom: 2px; }
 .row-flag-marker { font-size: var(--fs-sm); margin-left: 1px; color: var(--amber); cursor: default; }
 
 .grade-cell { padding: 1px 5px; border-radius: 3px; }
@@ -954,10 +973,24 @@ body.table-expanded { overflow: hidden; }
   cursor: default;
 }
 
-/* TwoGun mode's five Rankings columns (table.js TG_COLUMNS) sit after Lev; the <table> carries "tg-on". Widths are
-   re-shared so the table stays inside D54's 1250px box: Status (usually empty) and Tags give up the most, Salary, Own%,
-   Value and Lev a little, and the columns sum to 1230px, what the box holds beside its vertical scrollbar (1920x947
-   render, 2026-10-15). The generic nth-child widths above still apply in current mode, untouched. */
+/* ChatGPT wish r, Adam 2026-10-17: "OUT, manually included" on a lineup card, for a listed-out player brought back by a typed
+   projection (table.js lineupRevivedTagHtml): the OUT tag's red, as a quieter tint and smaller, so it never outshouts the name. */
+.out-tag.out-tag-manual {
+  background: rgba(var(--danger-rgb), 0.18);
+  color: color-mix(in srgb, var(--danger) 80%, var(--text)); /* toward the text colour: lighter on the dark theme, darker on the light one (👁 contrast finding 2026-10-17) */
+  border: 1px solid rgba(var(--danger-rgb), 0.5);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  line-height: 12px;
+  white-space: nowrap;
+}
+
+/* TwoGun mode's six Rankings columns (Med, Ceil, Ceil/$, Nuke, 3x%, 4x%; table.js TG_COLUMNS) sit after Lev; the <table>
+   carries "tg-on". Widths are re-shared so the table stays inside D54's 1250px box: Player, Tags and Status (usually
+   empty) give up the most, Team, Salary, Own% and Lev a little, Ceil/$ takes 60px (Nuke 56px, the other four 50px each),
+   and the columns sum to 1230px, what the box holds beside its vertical scrollbar (1920x947 render, 2026-10-15; Ceil/$
+   added 2026-10-17, DQ1). The generic nth-child widths above still apply in current mode, untouched. */
 .rankings-table th.tg-col, .rankings-table td.tg-col {
   text-align: right;
   font-variant-numeric: tabular-nums;
@@ -968,23 +1001,27 @@ body.table-expanded { overflow: hidden; }
 .rankings-table.tg-on th.tg-col, .rankings-table.tg-on td.tg-col { padding-left: 6px; padding-right: 6px; }
 .rankings-table.tg-on th.tg-col { width: 50px; vertical-align: middle; }
 .rankings-table.tg-on th[data-col="tgNuke"] { width: 56px; } /* "Nuke ▼" whole when sorted */
-.rankings-table.tg-on th:nth-child(2) { width: 268px; }
+.rankings-table.tg-on th[data-col="value"] { padding-left: 6px; padding-right: 6px; } /* "Proj/$ ▼" whole in its 64-66px when sorted, the default sort (🔵 2026-10-17) */
+.rankings-table.tg-on th[data-col="tgCeilPer1k"] { width: 60px; } /* "Ceil/$ ▼" whole when sorted (Adam 2026-10-17, DQ1) */
+.rankings-table.tg-on th:nth-child(2) { width: 248px; }
+.rankings-table.tg-on th:nth-child(4) { width: 58px; }
 .rankings-table.tg-on th:nth-child(5) { width: 68px; } /* "@ NYG" whole: the table has no spare width to share here */
-.rankings-table.tg-on th:nth-child(6), .rankings-table.tg-on th:nth-child(8) { width: 74px; }
+.rankings-table.tg-on th:nth-child(6), .rankings-table.tg-on th:nth-child(8) { width: 70px; }
 .rankings-table.tg-on th:nth-child(9) { width: 72px; }
-.rankings-table.tg-on th:nth-child(10) { width: 44px; }
-.rankings-table.tg-on th[data-col="tags"] { width: 80px; white-space: normal; }
-.rankings-table.tg-on th[data-col="status"] { width: 70px; }
-/* With the Note column on as well: Player takes 250px (the longest name plus logo and note icon); the columns total 1230px. */
-.rankings-table.tg-on:has(th[data-col="note"]) th:nth-child(2) { width: 250px; }
-.rankings-table.tg-on:has(th[data-col="note"]) th:nth-child(3) { width: 48px; }
+.rankings-table.tg-on th:nth-child(10) { width: 40px; }
+.rankings-table.tg-on th[data-col="tags"] { width: 64px; white-space: normal; }
+.rankings-table.tg-on th[data-col="status"] { width: 62px; }
+/* With the Note column on as well: Player takes 218px (the longest name plus logo and note icon, ellipsis past it) and
+   Status 60px (a badge never clips, 👁 finding 2026-10-17); the columns still total 1230px. */
+.rankings-table.tg-on:has(th[data-col="note"]) th:nth-child(2) { width: 218px; }
+.rankings-table.tg-on:has(th[data-col="note"]) th:nth-child(3) { width: 44px; }
 .rankings-table.tg-on:has(th[data-col="note"]) th:nth-child(6),
-.rankings-table.tg-on:has(th[data-col="note"]) th:nth-child(8) { width: 70px; }
-.rankings-table.tg-on:has(th[data-col="note"]) th:nth-child(9) { width: 68px; }
+.rankings-table.tg-on:has(th[data-col="note"]) th:nth-child(8) { width: 66px; }
+.rankings-table.tg-on:has(th[data-col="note"]) th:nth-child(9) { width: 64px; }
 .rankings-table.tg-on:has(th[data-col="note"]) th:nth-child(10) { width: 36px; }
-.rankings-table.tg-on:has(th[data-col="note"]) th[data-col="tags"] { width: 58px; }
-.rankings-table.tg-on:has(th[data-col="note"]) th[data-col="status"] { width: 46px; }
-.rankings-table.tg-on th[data-col="note"] { width: 90px; }
+.rankings-table.tg-on:has(th[data-col="note"]) th[data-col="tags"] { width: 50px; }
+.rankings-table.tg-on:has(th[data-col="note"]) th[data-col="status"] { width: 60px; }
+.rankings-table.tg-on th[data-col="note"] { width: 76px; }
 /* The Player cell never clips the red OUT tag or the team chip (visual QA V1): every item keeps its size and only the
    name shrinks, with an ellipsis (its full text on hover). TwoGun mode only, so current mode is exactly as before. */
 .rankings-table.tg-on .player-cell { gap: 4px; min-width: 0; }
@@ -1212,7 +1249,7 @@ body.table-expanded { overflow: hidden; }
   cursor: pointer;
   background: none;
   border: 1px solid var(--danger);
-  color: var(--danger);
+  color: color-mix(in srgb, var(--danger) 80%, var(--text)); /* toward the text colour: lighter on the dark theme, darker on the light one (👁 contrast finding 2026-10-17) */
   border-radius: 6px;
   padding: 6px 14px;
   font-weight: 600;
@@ -1394,6 +1431,10 @@ body.table-expanded { overflow: hidden; }
 .saved-lineup-badge-warning { color: var(--amber); background: rgba(var(--amber-rgb), 0.15); }
 .saved-lineup-badge-danger { color: var(--danger); background: rgba(var(--danger-rgb), 0.15); }
 .saved-lineup-badge-loaded, .saved-lineup-badge-cash { color: var(--accent-text); background: rgba(var(--accent-rgb), 0.15); }
+/* ChatGPT wish g, Adam 2026-10-17: the Saved tab's cards under one small header per build (lineup.js savedGroupsHtml). */
+.saved-lineup-badge-build { color: var(--text-muted); background: var(--bg-elevated-2); font-weight: 600; }
+.saved-build-group + .saved-build-group { margin-top: var(--sp-4); }
+.saved-build-head { margin: 0 0 var(--sp-2); font-size: var(--fs-sm); font-weight: 700; letter-spacing: 0.04em; color: var(--text-muted); }
 .saved-lineup-rename { display: flex; align-items: center; gap: var(--sp-1); }
 .saved-lineup-rename-input {
   background: var(--bg-elevated-2);
@@ -1705,6 +1746,7 @@ select.opt-input { text-align: left; padding: 3px 4px; }
 .opt-set-label::first-letter { text-transform: uppercase; }
 .opt-set-ctl { display: inline-flex; align-items: center; gap: var(--sp-2); }
 .opt-set-hint { margin-top: 1px; font-size: var(--fs-sm); color: var(--text-dim); }
+.opt-set-hint.opt-warn { color: var(--amber); }
 .opt-group-note { margin: -2px 0 var(--sp-1); }
 .opt-settings .opt-input { font-size: 13px; padding: 2px 6px; }
 .opt-settings .opt-input-num, .opt-settings .opt-input-pct { text-align: right; font-variant-numeric: tabular-nums; }

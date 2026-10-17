@@ -41,8 +41,8 @@ export function zGrades(items, valueOf, groupOf, min = GRADE_MIN_GROUP) {
   return out;
 }
 
-// D33: TwoGun's Ceil, Nuke and 4x% are graded too (row.tgGrade).
-const TG_GRADED = { ceil: (r) => r.tg?.ceil, nuke: (r) => r.tg?.nuke, p4x: (r) => r.tg?.p4x };
+// D33: TwoGun's Ceil, Ceil/$ (Adam 2026-10-17, DQ1), Nuke and 4x% are graded too (row.tgGrade).
+const TG_GRADED = { ceil: (r) => r.tg?.ceil, ceilPer1k: (r) => r.tg?.ceilPer1k, nuke: (r) => r.tg?.nuke, p4x: (r) => r.tg?.p4x };
 
 /** Returns a new rows array with valueGrade ("v1".."v5" or null) on every row (and tgGrade with TwoGun figures). */
 export function applyGrades(rows, posFilter = "All") {
