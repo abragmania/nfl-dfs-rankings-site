@@ -5,7 +5,11 @@ import { store, passesProjFloor, CLASSIC_PROJ_FLOOR, activeSlateRows, sortRows }
 import { favoritesTabLabel } from "./favorites.js";
 import { showAllToggleHtml, wireShowAllButtons } from "./filterbar.js";
 import { unmatchedPartsHtml, slateTeamSet } from "./unmatched.js";
-import { matchupText, sourceFailedMarkerHtml } from "./table.js";
+import { matchupText, sourceFailedMarkerHtml, outTagHtml } from "./table.js";
+
+// TwoGun's card (merge plan 2026-10-15) is read-only: his figures are used as he publishes them (D25 as amended) and
+// POST /api/sources does not know his id, so the card has no Enabled box and no weight box.
+const READ_ONLY_SOURCE_IDS = new Set(["twogun"]);
 
 // The classic projection floor (D52) as it applies to the two source tables: the same predicate and the same
 // "Show all players" toggle as the Rankings table, nothing else from the filter bar. These tabs have no search
@@ -64,17 +68,24 @@ function sourceCardHtml(source, slateTeams, slateRows) {
   const keptOnlyHtml = source.kind === "ownership" && Number(source.weight) === 0
     ? `<div class="source-card-row muted"><span>kept for comparison, not used in Own%</span></div>`
     : "";
+  const readOnly = source.readOnly === true || READ_ONLY_SOURCE_IDS.has(String(source.id));
+  const enabledHtml = readOnly
+    ? `<span class="source-readonly" title="TwoGun's published figures are used as he publishes them in TwoGun mode; switch modes in the header.">read-only</span>`
+    : `<label class="source-enabled">
+          <input type="checkbox" data-action="source-enabled" data-id="${idAttr}" ${source.enabled ? "checked" : ""} />
+          Enabled
+        </label>`;
+  const weightHtml = readOnly
+    ? `<span>Weight ${escapeHtml(String(source.weight ?? "—"))}</span>`
+    : `<label>Weight <input type="number" step="0.1" min="0" class="source-weight-input" data-action="source-weight" data-id="${idAttr}" value="${source.weight}" /></label>`;
   return `
     <div class="source-card" data-source-id="${idAttr}">
       <div class="source-card-head">
         <span class="source-label">${escapeHtml(source.label)}</span>
-        <label class="source-enabled">
-          <input type="checkbox" data-action="source-enabled" data-id="${idAttr}" ${source.enabled ? "checked" : ""} />
-          Enabled
-        </label>
+        ${enabledHtml}
       </div>
       <div class="source-card-row">
-        <label>Weight <input type="number" step="0.1" min="0" class="source-weight-input" data-action="source-weight" data-id="${idAttr}" value="${source.weight}" /></label>
+        ${weightHtml}
         <span class="source-status source-status-${escapeHtml(source.status ?? "")}">${escapeHtml(source.status ?? "unknown")}</span>
       </div>
       <div class="source-weight-error" data-id="${idAttr}" hidden></div>
@@ -279,7 +290,9 @@ function sortableBodyHtml(rows, cols, sort, valueOf, covMark = () => "") {
         .map((c) => {
           const v = valueOf(r, c.key);
           if (c.key === "opp") return `<td class="opp-col">${escapeHtml(v ?? "")}</td>`; // D43, left-aligned (style.css)
-          if (c.key === "player" || c.key === "team") return `<td>${escapeHtml(v ?? "")}</td>`;
+          // The red OUT tag (Adam 2026-10-15, TwoGun merge adjustment 1) beside the name, as on Rankings.
+          if (c.key === "player") return `<td>${escapeHtml(v ?? "")}${outTagHtml(r)}</td>`;
+          if (c.key === "team") return `<td>${escapeHtml(v ?? "")}</td>`;
           if (c.key === "cov") return `<td>${v == null ? "—" : `${Math.round(v * 100)}%`}${covMark(r)}</td>`;
           return `<td>${v == null ? "—" : dec1(v)}</td>`;
         })

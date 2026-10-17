@@ -5,15 +5,16 @@
 //
 // Pure and browser-safe: no node modules, no network, no storage, no logging. tools/publish.mjs copies it, unchanged,
 // to out/server/lineup/ beside the engine and privacy-scans it.
-import { RULE_KEYS, LEGACY_RULE_KEYS, OBJECTIVES, STACK_OWN_MAX, STACK_OPP_MAX } from "./multi.js";
+import { RULE_KEYS, LEGACY_RULE_KEYS, OBJECTIVES, STACK_OWN_MAX, STACK_OPP_MAX, ceilingOf } from "./multi.js";
 import { retiredObjectiveNote } from "./optimize.js";
+import { validateQbStacks } from "./qb-stacks.js";
 
 // An older saved request may still carry the D55 rule keys D73 replaced; they are accepted (and must be booleans).
 const GENERATE_RULE_KEYS = [...RULE_KEYS, ...LEGACY_RULE_KEYS];
 const GENERATE_BODY_KEYS = new Set(["slate", "settings"]);
 const GENERATE_SETTING_KEYS = new Set([
   "count", "minUnique", "locks", "excludes", "catchers", "maxExposure", "rules", "maxPerTeam", "allowRbGames", "avoidGames",
-  "objective", "stackOwn", "stackOwnOrMore", "stackOpp", "stackOppOrMore", "playerMaxExposure"
+  "objective", "stackOwn", "stackOwnOrMore", "stackOpp", "stackOppOrMore", "playerMaxExposure", "qbStacks", "spreadDst"
 ]);
 // D73: the QB stack's two numbers, in Adam's words for the refusal sentence.
 const GENERATE_STACK_NUMBERS = [
@@ -134,8 +135,9 @@ export function validateGenerateSettings(raw, ctx) {
     out.maxPerTeam = raw.maxPerTeam;
   }
   if (raw.objective !== undefined && raw.objective !== null) {
-    // A retired objective ("lev", "projMinusOwn": Adam 2026-10-15) passes through; multi.js builds it on projection
-    // with a note, so a saved setting from before the change never fails.
+    // Follows multi.js OBJECTIVES ("proj", "ceil": Adam picks projection or TwoGun's ceiling each time; the engine
+    // refuses a ceiling build on a board with no ceilings). A retired objective ("lev", "projMinusOwn": Adam
+    // 2026-10-15) passes through; multi.js builds it on projection with a note, so a saved setting never fails.
     if (!OBJECTIVES.includes(raw.objective) && retiredObjectiveNote(raw.objective) === null) return { error: `objective must be one of ${OBJECTIVES.join(", ")}` };
     out.objective = raw.objective;
   }
@@ -153,6 +155,17 @@ export function validateGenerateSettings(raw, ctx) {
     if (typeof value !== "boolean") return { error: `${key} must be true or false` };
     out[key] = value;
   }
+  // Spread defenses (Adam 2026-10-16): classic only; a locked defense can't be spread.
+  if (raw.spreadDst !== undefined && raw.spreadDst !== null) {
+    if (typeof raw.spreadDst !== "boolean") return { error: "spreadDst must be true or false" };
+    if (raw.spreadDst && ctx.rowOf && out.locks.some((id) => String(ctx.rowOf(id)?.pos ?? "").toUpperCase() === "DST")) {
+      return { error: "A locked defense can't be spread; unlock it or turn off Spread defenses." };
+    }
+    if (raw.spreadDst) out.spreadDst = true;
+  }
+  const qbChecked = validateQbStacks(raw.qbStacks, ctx, STACK_OWN_MAX, { locks: out.locks, excludes: out.excludes });
+  if (qbChecked.error) return { error: qbChecked.error };
+  if (Object.keys(qbChecked.qbStacks).length) out.qbStacks = qbChecked.qbStacks;
   for (const name of ["allowRbGames", "avoidGames"]) {
     const value = raw[name];
     if (value === undefined || value === null) continue;
@@ -213,7 +226,9 @@ export function prepareGenerate(boardRows, secondSlate, rawSettings) {
     slateIds,
     gameIds: new Set(rows.map((r) => String(r.gameId ?? "").toUpperCase()).filter(Boolean)),
     slateName,
-    nameOf: (id) => rowById.get(id)?.name ?? id
+    nameOf: (id) => rowById.get(id)?.name ?? id,
+    rowOf: (id) => rowById.get(id),
+    slateRows: rows
   });
   if (checked.error) return { error: checked.error };
   return { rows, rowById, slateIds, settings: checked.settings };
@@ -240,16 +255,21 @@ export function fpCatchesFor(rows) {
 
 /**
  * The response body's {lineups, exposure, notes} from generateLineups' result. Lineup players and exposure rows
- * carry the matchup (D43), salary and own% (D32) beside the engine's own fields.
+ * carry the matchup (D43), salary and own% (D32) beside the engine's own fields. On a TwoGun-mode board a lineup
+ * also carries `ceil` (TwoGun's ceilings summed, null when any player lacks one) and so does every one of its players
+ * (null for a player TwoGun does not cover); a current-mode answer has neither field, so it is exactly what it was.
  */
 export function enrichGenerateResult(result, rowById) {
   const lineups = result.lineups.map((l) => ({
     ids: l.ids,
     salary: l.salary,
     proj: l.proj,
+    ...(l.ceil !== undefined ? { ceil: l.ceil } : {}),
     players: l.ids.map((id) => {
       const r = rowById.get(String(id)) ?? {};
-      return { id, name: r.name ?? id, pos: r.pos ?? null, team: r.team ?? null, opp: matchupString(r), salary: r.salary ?? null, proj: r.proj ?? null, own: r.own ?? null };
+      const player = { id, name: r.name ?? id, pos: r.pos ?? null, team: r.team ?? null, opp: matchupString(r), salary: r.salary ?? null, proj: r.proj ?? null, own: r.own ?? null };
+      if (l.ceil !== undefined) player.ceil = ceilingOf(r); // the engine's figure: 0 for an out player
+      return player;
     })
   }));
   const exposure = {};

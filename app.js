@@ -11,6 +11,8 @@ import {
   activeSlateGames,
   slateDisplayName,
   slateKeyFromHashString,
+  isTwoGunMode,
+  sortForBoard,
 } from "./js/state.js";
 import {
   getBoard,
@@ -20,18 +22,19 @@ import {
   deleteAllOverrides,
   postSources,
   postProjectionsPaste,
+  postMode,
 } from "./js/api.js";
-import { renderPills, renderSlateLine, wireUpload, wireRefresh, renderModeRow, wireThemeToggle, secondSlateSavedText } from "./js/header.js";
+import { renderPills, renderSlateLine, wireUpload, wireRefresh, renderModeRow, wireThemeToggle, secondSlateSavedText, renderModeBox } from "./js/header.js";
 import { getShowdowns, postShowdownUpload } from "./js/showdown/api.js";
 import { renderShowdownView, showdownKeyFromHash, forceReloadShowdown, showUploadPills } from "./js/showdown/view.js";
 import { normalizeBoard } from "./js/normalize.js";
-import { applyGrades } from "./js/grade.js";
+import { applyGrades, rowsGradedForView } from "./js/grade.js";
 import { renderGameStrip, getGamestripCollapsed, setGamestripCollapsed } from "./js/gamestrip.js";
 import { renderFilterBar, updateFilterSummary } from "./js/filterbar.js";
 import { renderTableHead, renderTableBody, updateRow } from "./js/table.js";
 import { renderTabs, renderProjectionsPanel, renderOwnershipPanel, renderLineupPanel } from "./js/tabs.js";
 import { renderFavoritesPanel, favoriteRows } from "./js/favorites.js";
-import { initExpand, syncExpandUi, phoneMinHeight } from "./js/expand.js";
+import { initExpand, syncExpandUi, phoneMinHeight, panelMinHeight } from "./js/expand.js";
 
 const el = {
   modeRow: document.getElementById("mode-row"),
@@ -142,7 +145,8 @@ async function handleBoardLoaded(raw) {
     data.warnings = [];
   }
   setStatusMessage("", false);
-  store.set({ board: data, boardError: null, loading: false });
+  // A sort on a TwoGun column falls back to Value high to low once the board is not in TwoGun mode (state.js).
+  store.set({ board: data, boardError: null, loading: false, sort: sortForBoard(store.get().sort, data) });
   renderStatic(data);
 }
 
@@ -265,6 +269,8 @@ function renderStatic(board) {
     warnings: board.warnings,
     injuryReport: board.injuryReport,
   });
+  // TwoGun mode switch and board-stamp pill (merge plan 2026-10-15): a flip answers the recomputed board.
+  renderModeBox(el.classicHeader, board.mode, { onSwitch: (mode) => runWrite(() => postMode(mode), { label: "the mode" }) });
   renderFilterBarNow(board);
   renderSlateChrome(); // the header label and the one-line note follow the slate on screen
   renderModeRowNow(); // the "Main slate" tile's game count depends on this board
@@ -442,7 +448,7 @@ function snapPanelMaxHeight(panelEl, top, reserve) {
   // On a phone (max-width 700px) the table gets at least 70% of the window's height, however much of the page
   // sits above it (Adam, 2026-10-10: the list showed about three rows); the page scrolls to reach it. Wider
   // windows size exactly as before. window.innerHeight is the dynamic viewport height (what dvh measures).
-  const phoneMin = phoneMinHeight();
+  const phoneMin = Math.max(phoneMinHeight(), panelMinHeight(panelEl, top)); // the Optimizer pool's floor too (expand.js)
   const available = Math.max(window.innerHeight - top - reserve, phoneMin);
   const rows = panelEl.querySelectorAll("tbody tr");
   const borderAllowance = panelEl.offsetHeight - panelEl.clientHeight;
@@ -519,13 +525,14 @@ function renderDynamic() {
       collapsed,
       onToggleCollapse: onToggleGamestripCollapse,
     });
-    const allRows = slateRows;
+    const allRows = rowsGradedForView(slateRows, filters.pos, board.rows); // D33: the FLEX view pools RB, WR and TE
     el.ownBanner.textContent = [ownBannerText(allRows), board.injuryNote].filter(Boolean).join(" ");
     const filtered = filterRows(allRows, filters);
     const sorted = sortRows(filtered, sort.col, sort.dir);
     const hasNoteColumn = allRows.some((r) => r.note);
-    renderTableHead(el.thead, sort, onSortClick, hasNoteColumn);
-    renderTableBody(el.tbody, sorted, tableCallbacks, hasNoteColumn);
+    const tg = { twogun: isTwoGunMode(board) }; // TwoGun mode adds Med, Ceil, Nuke, 3x%, 4x% (table.js TG_COLUMNS)
+    renderTableHead(el.thead, sort, onSortClick, hasNoteColumn, tg);
+    renderTableBody(el.tbody, sorted, tableCallbacks, hasNoteColumn, tg);
     const activeGame = filters.gameId ? (board.slate?.games ?? []).find((g) => g.id === filters.gameId) : null;
     updateFilterSummary(el.filterbar, {
       filteredCount: filtered.length,

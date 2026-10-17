@@ -135,22 +135,14 @@ function normalizeSource(s, unmatched) {
   };
 }
 
-// Out/IR players get no value tint at all (👁 visual-qa: they stay in the list, dimmed, with their status
-// pill, but a punt-priced bench player who is also ruled out must never read as a good or bad play).
-// Doubtful/Questionable keep their tint — only Out and IR are excluded here, a narrower set than the row
-// -dimming tokens (public/js/table.js's DIM_STATUS_TOKENS also dims Doubtful).
-const NO_TINT_STATUS = new Set(["o", "out", "ir"]);
-
 function normalizeBoard(raw) {
   if (!raw || !raw.ok) return raw;
-  // Val is graded by applyGrades' quintile-within-position. Lev has no measure and is never graded (Adam 2026-10-15,
-  // Lev measure to be redesigned).
+  // Val is graded by applyGrades' z-bands within position (D33); applyGrades leaves out rows (rowIsOut) ungraded, the same
+  // rows the table dims. Lev has no measure and is never graded (Adam 2026-10-15, Lev measure to be redesigned).
   const normalized = (raw.rows ?? []).map(normalizeRow);
   const rows = applyGrades(normalized.map((r) => ({ ...r, lev: null }))).map((g) => {
     const { lev, ...r } = g;
-    const graded = { ...r, levGrade: null, levCptGrade: null };
-    const statusKey = (graded.status ?? "").trim().toLowerCase();
-    return NO_TINT_STATUS.has(statusKey) && !(graded.flags ?? []).includes("revived") ? { ...graded, valueGrade: null } : graded;
+    return { ...r, levGrade: null, levCptGrade: null };
   });
   const sources = (raw.sources ?? []).map((s) => normalizeSource(s, raw.unmatched));
   return { ...raw, rows, sources };

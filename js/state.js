@@ -1,6 +1,7 @@
 // Central, framework-free store: one mutable state object, a tiny pub/sub so every renderer can
 // react to a change without the callers having to know who else cares, and the pure filter/sort
 // helpers the table and game strip both need.
+import { rowIsOut } from "./out.js";
 
 const POSITION_CHIPS = ["All", "QB", "RB", "WR", "TE", "DST", "FLEX"];
 const FLEX_POS = new Set(["RB", "WR", "TE"]);
@@ -10,7 +11,7 @@ const FLEX_POS = new Set(["RB", "WR", "TE"]);
 // at load rather than from a click. The Lev column has no number at all (Adam 2026-10-15, Lev measure to be
 // redesigned), so it is not sortable (table.js); a leftover sort on "lev" reads null for every row and keeps the
 // board's order.
-const DESC_FIRST_COLUMNS = new Set(["star", "salary", "proj", "own", "value"]);
+const DESC_FIRST_COLUMNS = new Set(["star", "salary", "proj", "own", "value", "tgMed", "tgCeil", "tgNuke", "tgP3x", "tgP4x"]);
 export function defaultDirFor(col) {
   return DESC_FIRST_COLUMNS.has(col) ? "desc" : "asc";
 }
@@ -54,6 +55,26 @@ export function passesProjFloor(row, filters) {
   if (filters?.showAllPlayers) return true;
   if (filters?.search && filters.search.trim()) return true;
   return hasRealProjection(row) && row.proj > CLASSIC_PROJ_FLOOR;
+}
+
+// TwoGun mode (merge plan 2026-10-15; board.mode is added by the server's response wrapper and applies to the classic
+// slates). An older board with no mode field is current mode.
+export function isTwoGunMode(board) {
+  return board?.mode?.active === "twogun";
+}
+
+const TG_SORT_COLUMNS = new Set(["tgMed", "tgCeil", "tgNuke", "tgP3x", "tgP4x"]);
+
+/** The sort to keep once `board` loads: a sort on a TwoGun column (table.js TG_COLUMNS) on a board not in TwoGun
+ *  mode falls back to the table's default, Value high to low; any other sort is kept as it is. */
+export function sortForBoard(sort, board) {
+  return TG_SORT_COLUMNS.has(sort?.col) && !isTwoGunMode(board) ? { col: "value", dir: "desc" } : sort;
+}
+
+// A ceiling build (Optimizer "Ceiling", D25 as amended 2026-10-15) needs at least one row with TwoGun's published
+// ceiling; server/lineup/multi.js refuses one otherwise, and the Optimizer greys the choice.
+export function boardHasCeilings(rows) {
+  return (rows ?? []).some((r) => typeof r?.tg?.ceil === "number" && Number.isFinite(r.tg.ceil));
 }
 
 class Store {
@@ -199,6 +220,17 @@ function sortValue(row, col) {
       return row.tags && row.tags.length ? row.tags.map((t) => t.tag).join(",") : null;
     case "status":
       return row.status && row.status.trim() ? row.status : null;
+    // TwoGun mode's Rankings columns (table.js TG_COLUMNS); a row he does not cover has none and sorts last.
+    case "tgMed":
+      return row.tg?.median ?? null;
+    case "tgCeil":
+      return row.tg?.ceil != null && rowIsOut(row) ? 0 : (row.tg?.ceil ?? null); // out = ceiling 0, as the cell shows
+    case "tgNuke":
+      return row.tg?.nuke ?? null;
+    case "tgP3x":
+      return row.tg?.p3x ?? null;
+    case "tgP4x":
+      return row.tg?.p4x ?? null;
     default:
       return null;
   }

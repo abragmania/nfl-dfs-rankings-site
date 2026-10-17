@@ -6,7 +6,7 @@
 // column list for Showdown Rankings has no star or edit affordance, only display plus sort and filter.
 import { escapeHtml, money, dec1, dec2, textColourFor, logoFor } from "../format.js";
 import { TEAM_BY_ABBR } from "../teams-data.js";
-import { STATUS_INFO, rowIsOut } from "../table.js";
+import { statusTagsHtml, rowIsOut } from "../table.js";
 import { store } from "../state.js";
 
 export function shownRows(rows) {
@@ -37,15 +37,6 @@ export function posPillHtml(pos) {
   return `<span class="sd-pos${cls ? ` ${cls}` : ""}">${escapeHtml(label)}</span>`;
 }
 
-function statusBadgeHtml(row) {
-  const raw = (row.status ?? "").trim();
-  const key = raw.toLowerCase();
-  const info = STATUS_INFO[key];
-  if (info) return `<span class="status-badge ${info.cls}">${escapeHtml(info.label)}</span>`;
-  if (raw) return `<span class="status-badge status-other">${escapeHtml(raw)}</span>`;
-  return "";
-}
-
 function playerCellHtml(row) {
   const t = TEAM_BY_ABBR[row.team];
   const logo = logoFor(t);
@@ -58,7 +49,7 @@ function playerCellHtml(row) {
       <span class="player-name">${escapeHtml(row.name)}</span>
       <span class="team-chip-mini" style="background:${primary};color:${textColour}">${escapeHtml(row.team ?? "")}</span>
       ${posPillHtml(row.pos)}
-      ${statusBadgeHtml(row)}
+      ${statusTagsHtml(row)}
     </div>`;
 }
 

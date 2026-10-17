@@ -50,10 +50,10 @@ export function toggleMustHave(ids, id) {
 
 /** A player's name as a real button that adds him to (or takes him out of) the filter. `id` is the board id the click
  *  handler resolves to an identity; `chosen` flips the title. `cls` is the class the plain name cell carried. */
-export function pickButtonHtml({ id, name, chosen = false, cls = "" }) {
+export function pickButtonHtml({ id, name, chosen = false, cls = "", innerHtml = null }) {
   const label = String(name ?? "");
   const title = chosen ? `Stop filtering by ${label}` : `Show only lineups with ${label}`;
-  return `<button type="button" class="opt-pick${cls ? ` ${escapeHtml(cls)}` : ""}${chosen ? " opt-pick-on" : ""}" data-action="opt-pick" data-pick-id="${escapeHtml(id)}" data-pick-name="${escapeHtml(label)}" aria-pressed="${chosen ? "true" : "false"}" title="${escapeHtml(title)}">${escapeHtml(label)}</button>`;
+  return `<button type="button" class="opt-pick${cls ? ` ${escapeHtml(cls)}` : ""}${chosen ? " opt-pick-on" : ""}" data-action="opt-pick" data-pick-id="${escapeHtml(id)}" data-pick-name="${escapeHtml(label)}" aria-pressed="${chosen ? "true" : "false"}" title="${escapeHtml(title)}">${innerHtml ?? escapeHtml(label)}</button>`;
 }
 
 /** The filter bar: "Only lineups with:", a chip per chosen player (× takes him out), Clear, and "showing K of N".

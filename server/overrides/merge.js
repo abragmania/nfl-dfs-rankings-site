@@ -35,14 +35,16 @@ export function validateOverrides(obj) {
     seen.add(id);
   }
 
-  // revive: ids whose projection was typed while the board listed them out.
-  const revive = obj.revive ?? [];
-  if (!Array.isArray(revive)) invalid("revive", "must be an array");
-  const seenRevive = new Set();
-  for (const id of revive) {
-    if (typeof id !== "string" || id.length === 0) invalid("revive", "ids must be non-empty strings");
-    if (seenRevive.has(id)) invalid("revive", `duplicate id "${id}"`);
-    seenRevive.add(id);
+  // revive / reviveTwoGun: ids typed while the current board / only TwoGun's board listed them out.
+  for (const key of ["revive", "reviveTwoGun"]) {
+    const list = obj[key] ?? [];
+    if (!Array.isArray(list)) invalid(key, "must be an array");
+    const seenRevive = new Set();
+    for (const id of list) {
+      if (typeof id !== "string" || id.length === 0) invalid(key, "ids must be non-empty strings");
+      if (seenRevive.has(id)) invalid(key, `duplicate id "${id}"`);
+      seenRevive.add(id);
+    }
   }
 
   const notes = obj.notes ?? {};
@@ -101,22 +103,26 @@ export function assertIdsOnSlate(changes, slateIds, extraIds = []) {
  * `current`, returning a new overrides object without mutating the input. A null value for proj/own/
  * notes removes that id's override; stars takes true (add) or false (remove).
  */
-export function applyOverrideChanges(current, changes = {}, sidelinedIds = null) {
+export function applyOverrideChanges(current, changes = {}, sidelinedIds = null, sidelinedTwoGunIds = null) {
   const next = {
     proj: { ...current.proj },
     own: { ...current.own },
     stars: [...current.stars],
     notes: { ...current.notes },
     revive: [...(current.revive ?? [])],
+    reviveTwoGun: [...(current.reviveTwoGun ?? [])],
     updatedAt: current.updatedAt
   };
 
   for (const [id, v] of Object.entries(changes.proj ?? {})) {
     next.revive = next.revive.filter((r) => r !== id);
+    next.reviveTwoGun = next.reviveTwoGun.filter((r) => r !== id);
     if (v === null) delete next.proj[id];
     else {
       next.proj[id] = v;
+      // Out on the current board: revive (both modes); out only on TwoGun's board: reviveTwoGun (TwoGun mode only).
       if (v > 0 && sidelinedIds && sidelinedIds.has(id)) next.revive.push(id);
+      else if (v > 0 && sidelinedTwoGunIds && sidelinedTwoGunIds.has(id)) next.reviveTwoGun.push(id);
     }
   }
   for (const [id, v] of Object.entries(changes.own ?? {})) {
@@ -147,6 +153,7 @@ export function resetPlayer(current, id) {
     stars: [...(current.stars ?? [])],
     notes: { ...(current.notes ?? {}) },
     revive: (current.revive ?? []).filter((r) => r !== id),
+    reviveTwoGun: (current.reviveTwoGun ?? []).filter((r) => r !== id),
     updatedAt: current.updatedAt
   };
   delete next.proj[id];
@@ -159,7 +166,7 @@ export function resetPlayer(current, id) {
  * Stars and notes stay (DECISIONS.md D72): Adam's stars outlive a reset of the numbers.
  */
 export function resetAll(current) {
-  return { proj: {}, own: {}, stars: [...(current.stars ?? [])], notes: { ...(current.notes ?? {}) }, revive: [], updatedAt: current.updatedAt };
+  return { proj: {}, own: {}, stars: [...(current.stars ?? [])], notes: { ...(current.notes ?? {}) }, revive: [], reviveTwoGun: [], updatedAt: current.updatedAt };
 }
 
 /**

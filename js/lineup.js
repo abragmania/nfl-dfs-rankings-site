@@ -16,41 +16,65 @@
 // re-validated against the live board on every board load rather than trusted as-is (🔵 finding 1): an id
 // with no row anymore (a stale localStorage entry, or last week's slate) is dropped instead of rendering
 // stale data or throwing.
-import { escapeHtml, money, dec1, dec2, textColourFor } from "./format.js";
-import { store, filterRows, sortRows, passesProjFloor, FLEX_POS, defaultDirFor, activeSlate, activeSlateRows, activeSlateGames, slateDisplayName } from "./state.js";
+import { escapeHtml, money, dec1, textColourFor } from "./format.js";
+import { store, filterRows, sortRows, passesProjFloor, FLEX_POS, defaultDirFor, activeSlate, activeSlateRows, activeSlateGames, slateDisplayName, boardHasCeilings } from "./state.js";
 import { sortableHeadHtml } from "./tabs.js";
-import { matchupText, rowIsOut } from "./table.js"; // D43: the one copy of "vs DAL" / "@ DET"
+import { matchupText, lineupOutTagHtml, statusTagsHtml, rowHasStatus, gradedCellHtml, rowIsOut, twoGunOutReason, STATUS_INFO } from "./table.js"; // D43: the one copy of "vs DAL" / "@ DET"; the red OUT tag (Adam 2026-10-15)
+import { rowsGradedForView } from "./grade.js";
 import { posChipsHtml, showAllToggleHtml, wireShowAllButtons } from "./filterbar.js";
 import { filterLineups, bulkUids, bulkLabel, toggleMustHave, pickButtonHtml, filterBarHtml } from "./lineup-filter.js";
+import { OPT_POSITIONS, optExposureHtml, sortExposure } from "./lineup-exposure.js";
+import { cardPlayerRowHtml, cardDecor, badgeHtml, ownParen } from "./lineup-card.js";
+import { lineupRoles, roleTagsHtml } from "./lineup-marks.js";
+import { poolSearchChipHtml, wirePoolSearchChip } from "./lineup-search.js";
+import { settingRowHtml, settingGroupHtml, switchButtonHtml, switchCheckboxHtml, numberBoxHtml } from "./lineup-settings.js";
+import { newQbState, listedQbs, pruneEntries, cleanSavedEntries, qbStacksPayload, qbListHtml, qbPanelsHtml, wireQbStacks, SPREAD_HINT } from "./lineup-qb-stacks.js";
 import { TEAM_BY_ABBR } from "./teams-data.js";
 import { postLineupGenerate, getLineups, postLineup, deleteLineup, putLineupName } from "./api.js";
 import { renderEntriesSection, wireEntries } from "./entries.js";
-import { phoneMinHeight } from "./expand.js";
+import { phoneMinHeight, panelMinHeight } from "./expand.js";
 
 const LINEUP_SLOTS = ["QB", "RB", "RB", "WR", "WR", "WR", "TE", "FLEX", "DST"];
 const SALARY_CAP = 50000;
-// The lineups maximise projection; the Leverage and Projection-minus-ownership objectives are gone (Adam 2026-10-15,
-// Lev measure to be redesigned; projection minus ownership removed), and with one objective left the band has no
-// Objective menu. The server builds any older request naming a retired one on projection, with a note.
+// The lineups maximise projection or TwoGun's ceiling, Adam's pick each time (TwoGun merge 2026-10-15; server/lineup/
+// multi.js OBJECTIVES). Ceiling needs a board carrying TwoGun's ceilings (TwoGun mode): otherwise it is greyed with the
+// reason on hover and the build is by projection. The Leverage and Projection-minus-ownership objectives are gone
+// (Adam 2026-10-15); the server builds any older request naming a retired one on projection, with a note.
 const OBJECTIVES = [
   { value: "proj", label: "Projection" },
+  { value: "ceil", label: "Ceiling" },
 ];
+export const NO_CEILING_REASON = "Ceiling needs TwoGun's ceilings, and this board has none (current mode, or no TwoGun board could be read).";
+
+/** The objective a build uses: Adam's pick, except Ceiling on a board with no ceilings, which builds by projection
+ *  (the Ceiling choice is greyed then; his pick comes back when the board has ceilings again). */
+export function effectiveObjective(picked, hasCeilings) {
+  if (picked === "ceil") return hasCeilings ? "ceil" : "proj";
+  return OBJECTIVES.some((o) => o.value === picked) ? picked : "proj";
+}
+
+/** The Projection / Ceiling choice in the Optimizer band. A greyed choice keeps its hover reason (aria-disabled, not
+ *  disabled, so the browser still shows the title) and a short dim "(TwoGun mode only)" after it (visual QA V4). */
+export function objectiveChipsHtml(picked, hasCeilings) {
+  const active = effectiveObjective(picked, hasCeilings);
+  return OBJECTIVES.map((o) => {
+    const off = o.value === "ceil" && !hasCeilings;
+    const on = o.value === active;
+    const title = off ? NO_CEILING_REASON : o.value === "ceil" ? "Build the lineups with the highest total of TwoGun's published ceilings" : "Build the lineups with the highest total projection";
+    const chip = `<button type="button" class="chip toggle-chip opt-chip${on ? " active" : ""}${off ? " is-disabled" : ""}" data-action="opt-objective" data-value="${o.value}" aria-pressed="${on}"${off ? ` aria-disabled="true"` : ""} title="${escapeHtml(title)}">${escapeHtml(o.label)}</button>`;
+    return off ? `${chip}<span class="opt-sub" title="${escapeHtml(NO_CEILING_REASON)}">(TwoGun mode only)</span>` : chip;
+  }).join("");
+}
+
+/** The words a set of new lineups is labelled with: the mode and objective it was built in, so a set made before a
+ *  mode flip says so ("TwoGun mode, by ceiling"). */
+export function builtInText(mode, objective) {
+  return `${mode === "twogun" ? "TwoGun" : "current"} mode, by ${objective === "ceil" ? "ceiling" : "projection"}`;
+}
+
+export { optExposureHtml, sortExposure }; // lineup-exposure.js
 const MAX_TEAM_OPTIONS = ["", "1", "2", "3", "4"];
 const STORAGE_KEY = "nfldfs.lineupBuilder.v1";
-
-// Mirrors table.js's status-badge/dimming rules exactly (🔵 finding 8: "as in the Rankings table") so the
-// right column reads the same way the main table does. table.js doesn't export these (out of scope for
-// this pass), so they're kept here as a small, deliberate duplicate rather than reached into.
-const STATUS_INFO = {
-  o: { label: "Out", cls: "status-out" },
-  out: { label: "Out", cls: "status-out" },
-  d: { label: "Doubtful", cls: "status-doubtful" },
-  doubtful: { label: "Doubtful", cls: "status-doubtful" },
-  q: { label: "Questionable", cls: "status-questionable" },
-  questionable: { label: "Questionable", cls: "status-questionable" },
-  ir: { label: "IR", cls: "status-ir" },
-  suspended: { label: "Suspended", cls: "status-ir" },
-};
 
 const state = {
   slots: new Array(LINEUP_SLOTS.length).fill(null), // each: {id, slot} or null; row fields are read live
@@ -99,12 +123,6 @@ function loadSavedLineups(key) {
     });
 }
 
-// D32: any list of players carries ownership as "(NN% own)", but only when the player has a real number
-// (published, or typed in by Adam); a player without one prints nothing.
-function ownParen(own) {
-  return own == null ? "" : ` (${Math.round(own)}% own)`;
-}
-
 /** The identity Add and "already placed" checks compare on (🔵 finding 6): a board row's DraftKings id
  *  when it has one, else its own board id. Two board rows can be the same DraftKings player. */
 function dkIdentity(row) {
@@ -132,6 +150,8 @@ function savePersisted() {
         locks: [...state.locks],
         excludes: [...state.excludes],
         playerMax: opt.playerMax, // per slate key: {id: "typed text"} (the pool's Max % boxes)
+        qbStacks: opt.qb.entries,
+        spreadDst: opt.spreadDst,
       })
     );
   } catch (e) {
@@ -154,6 +174,8 @@ function hydrateFromStorage() {
   if (Array.isArray(persisted.locks)) state.locks = new Set(persisted.locks.map(String));
   if (Array.isArray(persisted.excludes)) state.excludes = new Set(persisted.excludes.map(String));
   opt.playerMax = cleanPlayerMax(persisted.playerMax);
+  opt.qb.entries = cleanSavedEntries(persisted.qbStacks, OPT_STACK_OWN_MAX);
+  opt.spreadDst = persisted.spreadDst === true;
   // Older saved state may still carry the removed Build's objective / maxFromTeam / stackQbWith; they are ignored
   // and dropped on the next save.
   // 🔵 finding 5: an id in both locks and excludes is dropped from both.
@@ -215,6 +237,7 @@ export function renderLineupPanel(container) {
   lastContainer = container;
   hydrateFromStorage();
   validateAgainstBoard(store.get().board);
+  pruneQbStacks(store.get().board);
   syncOptimizerSlate();
   // 🔵 finding 9: the pool's scroll position must survive the innerHTML rebuild below.
   const prevPool = container.querySelector(".lineup-rows-wrap");
@@ -239,7 +262,7 @@ export function renderLineupPanel(container) {
 // would make that a circular module dependency. Keep both copies in sync.
 function snapPanelMaxHeight(panelEl, top, reserve) {
   // Same phone minimum as app.js's copy (70% of the window's height at max-width 700px, via expand.js).
-  const phoneMin = phoneMinHeight();
+  const phoneMin = Math.max(phoneMinHeight(), panelMinHeight(panelEl, top)); // the Optimizer pool's floor too (expand.js)
   const available = Math.max(window.innerHeight - top - reserve, phoneMin);
   const rows = panelEl.querySelectorAll("tbody tr");
   const borderAllowance = panelEl.offsetHeight - panelEl.clientHeight;
@@ -327,7 +350,9 @@ function addWarning(row) {
   const statusKey = (row.status ?? "").trim().toLowerCase();
   if (rowIsOut(row)) {
     const label = STATUS_INFO[statusKey]?.label ?? row.status;
-    reasons.push(`is listed ${label} and may not play`);
+    const tgReason = row.tg?.call === "OUT" ? twoGunOutReason(row) : null;
+    if (tgReason) reasons.push(`is ruled out (${tgReason.replace(/\.$/, "")})`);
+    else reasons.push(label ? `is listed ${label} and may not play` : "is ruled out");
   }
   if (row.proj == null) reasons.push("has no projection");
   if (!reasons.length) return null;
@@ -463,6 +488,7 @@ function panelHtml() {
   const rows = board?.rows ?? [];
   const rowById = new Map(rows.map((r) => [String(r.id), r]));
   const totals = computeTotals(rowById);
+  const roles = lineupRoles(state.slots.map((s) => rowById.get(String(s?.id))));
   const overCap = totals.salaryUsed > SALARY_CAP;
   const fillPct = Math.max(0, Math.min(100, (totals.salaryUsed / SALARY_CAP) * 100));
   const salaryText =
@@ -479,7 +505,7 @@ function panelHtml() {
     <div class="lineup-layout">
       <div class="lineup-left">
         ${controlsHtml()}
-        <div class="lineup-slots">${slotsHtml(rowById)}</div>
+        <div class="lineup-slots">${slotsHtml(rowById, roles)}</div>
         <div class="salary-bar">
           <div class="salary-bar-track"><div class="salary-bar-fill${overCap ? " over" : ""}" style="width:${fillPct}%"></div></div>
           <span class="salary-bar-label${overCap ? " over" : ""}">${escapeHtml(salaryText)}</span>
@@ -489,7 +515,7 @@ function panelHtml() {
       </div>
       <div class="lineup-right">
         <h3 class="lineup-right-title">Rankings (current filters)</h3>
-        ${poolPosChipsHtml()}
+        ${poolPosChipsHtml()}${poolSearchChipHtml(store.get().filters.search)}
         ${rightColumnHtml(activeSlateRows(board), rowById)}
       </div>
     </div>
@@ -509,7 +535,7 @@ function controlsHtml() {
     </div>`;
 }
 
-function slotsHtml(rowById) {
+function slotsHtml(rowById, roles) {
   return LINEUP_SLOTS.map((slotName, i) => {
     const s = state.slots[i];
     const row = s ? rowById.get(String(s.id)) : null;
@@ -519,10 +545,11 @@ function slotsHtml(rowById) {
     const bodyHtml = !s
       ? `<span class="lineup-slot-player lineup-slot-empty">Empty</span>`
       : row
-        ? slotPlayerHtml(row)
+        ? slotPlayerHtml(row, roles.get(String(row.id)))
         : `<span class="lineup-slot-player lineup-slot-missing">Not on this slate</span>`;
+    const tint = row ? ` lineup-slot-filled" style="--tc:${TEAM_BY_ABBR[row.team]?.colourPrimary ?? "#333333"}` : "";
     return `
-      <div class="lineup-slot" data-slot-index="${i}">
+      <div class="lineup-slot lineup-slot-tall${tint}" data-slot-index="${i}">
         <span class="lineup-slot-label">${escapeHtml(slotName)}</span>
         ${bodyHtml}
         <button type="button" class="lineup-slot-clear" data-action="slot-clear" data-slot="${i}"${s ? "" : " disabled"}>Clear</button>
@@ -532,7 +559,7 @@ function slotsHtml(rowById) {
 
 // `row` is the live board row for this slot's id (🔵 finding 2), never a cached copy: an override on
 // Proj or Own shows up here automatically because this reads the same fields the Rankings table does.
-function slotPlayerHtml(row) {
+function slotPlayerHtml(row, tags = []) {
   const t = TEAM_BY_ABBR[row.team];
   const primary = t?.colourPrimary ?? "#333333";
   const secondary = t?.colourSecondary ?? "#ffffff";
@@ -540,12 +567,15 @@ function slotPlayerHtml(row) {
   const projText = row.proj == null ? "no proj" : dec1(row.proj);
   return `
     <span class="lineup-slot-player lineup-slot-player-2">
-      <span class="lineup-slot-top">
-        <span class="team-chip-mini" style="background:${primary};color:${textColour}">${escapeHtml(row.team ?? "")}</span>
-        <span class="lineup-slot-name">${escapeHtml(row.name)}</span>
-        <span class="lineup-slot-matchup">${escapeHtml(matchupText(row))}</span>
+      ${badgeHtml(row.name, row.pos, row.team)}
+      <span class="lineup-slot-body">
+        <span class="lineup-slot-top">
+          <span class="team-chip-mini" style="background:${primary};color:${textColour}">${escapeHtml(row.team ?? "")}</span>
+          <span class="lineup-slot-name">${escapeHtml(row.name)}</span>${lineupOutTagHtml(row)}
+          <span class="lineup-slot-matchup">${escapeHtml(matchupText(row))}</span>
+        </span>
+        <span class="lineup-slot-detail">${money(row.salary)} &middot; ${projText} proj${escapeHtml(ownParen(row.own))}${roleTagsHtml(tags)}</span>
       </span>
-      <span class="lineup-slot-detail">${money(row.salary)} &middot; ${projText} proj${escapeHtml(ownParen(row.own))}</span>
     </span>`;
 }
 
@@ -620,7 +650,7 @@ function savedLineupSlotHtml(slotName, entry, pick = null) {
   return `
     <div class="saved-lineup-slot${missingCls}">
       <span class="saved-lineup-slot-pos">${escapeHtml(slotName)}</span>
-      <span class="saved-lineup-slot-name">${nameHtml}</span>
+      <span class="saved-lineup-slot-name">${nameHtml}</span>${entry.row ? lineupOutTagHtml(entry.row) : ""}
       <span class="saved-lineup-slot-team">${escapeHtml(src.team ?? "")}</span>
       <span class="saved-lineup-slot-salary">${money(src.salary)}</span>
       ${noteHtml}
@@ -777,7 +807,9 @@ export function rightColumnHtml(rows, rowById) {
   const { filters, sort } = store.get();
   // The classic projection floor (D52) applies to this pool like every other classic list, with one exception:
   // a player already locked or excluded stays listed so his lock or exclude can still be undone here.
-  const filtered = filterRows(rows, { ...filters, showAllPlayers: true }).filter(
+  // D33: Value colours as on Rankings, FLEX included.
+  const graded = rowsGradedForView(rows, filters.pos, store.get().board?.rows ?? rows);
+  const filtered = filterRows(graded, { ...filters, showAllPlayers: true }).filter(
     (row) => passesProjFloor(row, filters) || state.locks.has(String(row.id)) || state.excludes.has(String(row.id))
   );
   const sorted = sortRows(filtered, sort.col, sort.dir);
@@ -785,7 +817,7 @@ export function rightColumnHtml(rows, rowById) {
   // The Status column is usually empty; when nothing in the current pool carries a status it's dropped
   // entirely so the auto-layout table hands that width to Player instead of holding a blank labelled
   // column open (👁 visual-qa fourth pass).
-  const hasStatus = sorted.some((row) => (row.status ?? "").trim());
+  const hasStatus = sorted.some(rowHasStatus);
   // Headers sort through the same store sort the Rankings table uses (sort.col / sort.dir; keys player, pos,
   // salary, proj, own, status are the ones state.js sortRows reads); the shared sortableHeadHtml draws them.
   // Max % (Adam 2026-10-11: "a max % field per player ... between own % and value") is a plain header, not sortable.
@@ -812,16 +844,6 @@ export function rightColumnHtml(rows, rowById) {
     <div class="table-legend">&mdash; = nobody has published one</div>`;
 }
 
-// Mirrors table.js's statusCellHtml badge (🔵 finding 8).
-function statusBadgeHtml(row) {
-  const raw = (row.status ?? "").trim();
-  const key = raw.toLowerCase();
-  const info = STATUS_INFO[key];
-  if (info) return `<span class="status-badge ${info.cls}">${escapeHtml(info.label)}</span>`;
-  if (raw) return `<span class="status-badge status-other">${escapeHtml(raw)}</span>`;
-  return "";
-}
-
 function rightRowHtml(row, placedSet, hasStatus, maxMap = {}) {
   const id = String(row.id);
   const maxText = maxMap[id] ?? "";
@@ -842,7 +864,7 @@ function rightRowHtml(row, placedSet, hasStatus, maxMap = {}) {
       <td>
         <span class="player-cell">
           <span class="team-chip-mini" style="background:${primary};color:${textColour}">${escapeHtml(row.team ?? "")}</span>
-          <span class="player-name">${escapeHtml(row.name)}</span>
+          <span class="player-name">${escapeHtml(row.name)}</span>${lineupOutTagHtml(row)}
         </span>
       </td>
       <td>${escapeHtml(row.pos ?? "")}</td>
@@ -850,8 +872,8 @@ function rightRowHtml(row, placedSet, hasStatus, maxMap = {}) {
       <td>${row.proj == null ? "no proj" : dec1(row.proj)}</td>
       <td>${row.own == null ? "—" : `${dec1(row.own)}%`}</td>
       <td class="lineup-max-cell"><input type="text" inputmode="decimal" maxlength="5" class="opt-input lineup-max-input${maxBad ? " invalid" : ""}" data-player-max="${escapeHtml(id)}" value="${escapeHtml(maxText)}" aria-label="Max % for ${escapeHtml(row.name ?? "")}" /></td>
-      <td>${row.value == null || Number.isNaN(row.value) ? "—" : dec2(row.value)}</td>
-      ${hasStatus ? `<td class="status-cell">${statusBadgeHtml(row)}</td>` : ""}
+      <td>${gradedCellHtml(row.value, row.valueGrade)}</td>
+      ${hasStatus ? `<td class="status-cell">${lineupOutTagHtml(row) ? "" : statusTagsHtml(row)}</td>` : ""}
       <td class="lineup-row-actions">
         <button type="button" class="lineup-row-btn${locked ? " active" : ""}" data-action="row-lock" data-id="${escapeHtml(id)}"${excluded ? " disabled" : ""}>${locked ? "Locked" : "Lock"}</button>
         <button type="button" class="lineup-row-btn${excluded ? " active danger" : ""}" data-action="row-exclude" data-id="${escapeHtml(id)}">${excluded ? "Excluded" : "Exclude"}</button>
@@ -927,6 +949,7 @@ function wire(container) {
     });
   });
   wireShowAllButtons(container);
+  wirePoolSearchChip(container);
   container.querySelectorAll(".lineup-rows-table th[data-col]").forEach((th) => {
     th.addEventListener("click", () => {
       const col = th.dataset.col;
@@ -1029,7 +1052,6 @@ function wire(container) {
 // locks). The results are two tabs, New and Saved, each with its own exposure (D74).
 // --------------------------------------------------------------------------------------------------------
 
-const OPT_POSITIONS = ["QB", "RB", "WR", "TE", "DST"];
 const OPT_MAX_COUNT = 150;
 const OPT_MAX_UNIQUE = 8;
 const OPT_DEFAULT_COUNT = 5;
@@ -1044,24 +1066,29 @@ const OPT_BUSY_TEXT = "Another set of lineups is still being made. Try again in 
  *  stack is the band's "Stack QB with" controls instead (D73). */
 export const OPT_RULES = [
   { key: "starredQbOnly", label: "starred QBs only" },
-  { key: "rbWithOwnQbOnlyIfCatcher", label: "RB with own QB only if pass catcher" },
+  { key: "rbWithOwnQbOnlyIfCatcher", label: "RB with QB: catchers only" },
   { key: "noSameTeamRbs", label: "no same-team RBs" },
   { key: "noSameGameRbs", label: "no same-game RBs" },
   { key: "noDstVsOwnPlayers", label: "no DST vs own players" },
 ];
+
+export const RULES_STACKING = ["rbWithOwnQbOnlyIfCatcher"];
+export const RULES_ROSTER = ["starredQbOnly", "noSameTeamRbs", "noSameGameRbs", "noDstVsOwnPlayers"];
 
 const opt = {
   count: String(OPT_DEFAULT_COUNT),
   minUnique: String(OPT_DEFAULT_UNIQUE),
   maxExp: { QB: "", RB: "", WR: "", TE: "", DST: "" }, // percent text as typed; blank = no cap
   rules: Object.fromEntries(OPT_RULES.map((r) => [r.key, true])),
-  objective: "proj", // one of OBJECTIVES' values
+  objective: "proj", // one of OBJECTIVES' values, Adam's pick (effectiveObjective decides what a build uses)
   maxPerTeam: "", // "" (no limit) or "1".."4", the <select> value
   ...OPT_DEFAULT_STACK, // D73: stackOwn / stackOpp numbers and their "or more" ticks
   avoid: new Set(), // game ids such as "DET@ARI"
   // Per-player Max % from the pool's boxes, per slate key ("main" or a second slate's key): {id: text as typed}.
   // Mirrored to localStorage with the locks (savePersisted); Clear all leaves it, as it leaves every Optimizer setting.
   playerMax: {},
+  qb: newQbState(), // per-QB stack settings (lineup-qb-stacks.js), keyed by player id, persisted with the locks
+  spreadDst: false, // "Spread defenses", persisted
   resultsTab: null, // D74: "new" or "saved" once Go or a tab click picks one this page load; null = the default
   // Adam 2026-10-11: "only lineups with" these players (identity keys, in the order chosen), shared by the New and
   // Saved tabs, page-only, kept across Go, cleared when the slate or week changes. mustHaveNames: key -> name for the chips.
@@ -1073,7 +1100,7 @@ const opt = {
   error: null, // the server's sentence for a refused or failed request
   saveError: null,
   formError: null, // a sentence naming a maximum-exposure box (position or player) that is not a percent; blocks Go
-  results: null, // {slateKey, lineups: [{uid, ids, salary, proj, players, saved?}], notes} or null
+  results: null, // {slateKey, lineups: [{uid, ids, salary, proj, ceil?, players, saved?}], notes, builtIn} or null
 };
 let optSeq = 0;
 
@@ -1086,6 +1113,18 @@ function resetOptimizerResults() {
 function clearMustHave() {
   opt.mustHave = [];
   opt.mustHaveNames = {};
+}
+
+const boardRowMap = (board) => new Map((board?.rows ?? []).map((r) => [String(r.id), r]));
+const qbGlobals = () => ({ stackOwn: opt.stackOwn, stackOwnOrMore: opt.stackOwnOrMore, stackOpp: opt.stackOpp, stackOppOrMore: opt.stackOppOrMore });
+const listedQbIds = (rows) => new Set(listedQbs(rows, lockedIds(state.slots, state.locks)).map((r) => String(r.id)));
+
+function pruneQbStacks(board) {
+  if (board && pruneEntries(opt.qb.entries, boardRowMap(board))) savePersisted();
+}
+
+function qbStacksForRequest(board, notes) {
+  return qbStacksPayload(opt.qb.entries, boardRowMap(board), listedQbIds(activeSlateRows(board)), notes, lockedIds(state.slots, state.locks));
 }
 
 // ---- Pure helpers (exported for tests/optimizer-ui.test.mjs) ----
@@ -1292,6 +1331,8 @@ export function buildGenerateSettings(form) {
     if (pct !== null && !Number.isNaN(pct)) playerMaxExposure[String(id)] = { pct };
   }
   if (Object.keys(playerMaxExposure).length) settings.playerMaxExposure = playerMaxExposure;
+  if (form.qbStacks && Object.keys(form.qbStacks).length) settings.qbStacks = form.qbStacks;
+  if (form.spreadDst === true) settings.spreadDst = true;
   return settings;
 }
 
@@ -1328,11 +1369,10 @@ export function lineupTotalsOf(lineup) {
   return { salary, proj, own: allOwn ? players.reduce((s, p) => s + p.own, 0) : null };
 }
 
-export function ruleChipsHtml(rules) {
-  return OPT_RULES.map(
-    (r) =>
-      `<button type="button" class="chip toggle-chip opt-chip${rules?.[r.key] !== false ? " active" : ""}" data-action="opt-rule" data-key="${escapeHtml(r.key)}" aria-pressed="${rules?.[r.key] !== false}">${escapeHtml(r.label)}</button>`
-  ).join("");
+export function ruleRowsHtml(rules, keys = OPT_RULES.map((r) => r.key)) {
+  return OPT_RULES.filter((r) => keys.includes(r.key))
+    .map((r) => settingRowHtml(r.label, switchButtonHtml(rules?.[r.key] !== false, r.label, `data-action="opt-rule" data-key="${escapeHtml(r.key)}"`)))
+    .join("");
 }
 
 export function avoidChipsHtml(games, avoid) {
@@ -1345,37 +1385,20 @@ export function avoidChipsHtml(games, avoid) {
     .join("");
 }
 
-function optPlayerRowHtml(p, slotName, isNew = false, pick = null) {
-  const t = TEAM_BY_ABBR[p.team];
-  const primary = t?.colourPrimary ?? "#333333";
-  const secondary = t?.colourSecondary ?? "#ffffff";
-  const textColour = textColourFor(primary, secondary);
-  const projText = p.proj == null ? "—" : dec1(p.proj);
-  // A player new since the card before gets a tinted row, an accent bar and a dot (every row keeps the dot's room).
-  const dot = isNew ? `<span class="opt-p-dot" role="img" aria-label="new" title="Not in the lineup before"></span>` : `<span class="opt-p-dot"></span>`;
-  return `
-      <div class="opt-p${isNew ? " opt-p-new" : ""}">
-        ${dot}
-        <span class="opt-p-slot">${escapeHtml(slotName)}</span>
-        <span class="team-chip-mini" style="background:${primary};color:${textColour}">${escapeHtml(p.team ?? "")}</span>
-        <span class="opt-p-name">${pick && p.id != null ? pickButtonHtml({ id: p.id, name: p.name ?? "", chosen: pick.isChosen(p.id) }) : escapeHtml(p.name ?? "")}</span>
-        <span class="opt-p-opp">${escapeHtml(p.opp ?? "")}</span>
-        <span class="opt-p-sal">${money(p.salary)}</span>
-        <span class="opt-p-proj">${projText}</span>
-        <span class="opt-p-own">${escapeHtml(ownParen(p.own))}</span>
-      </div>`;
-}
-
 /** One "new lineup" card: the nine players in DK slot order (name, matchup D43, salary, projection, own% D32),
  *  the totals, and Save / Discard. `busy` disables both while a save is in flight. `saved`: the card is saved, or
  *  its nine players equal a saved lineup's, so Save shows a disabled "Saved ✓" (Adam 2026-10-11). `fresh`: the
  *  ids of players not in the card before, highlighted. `pick` ({isChosen(id)}): each name is the "only lineups
  *  with" button (Adam 2026-10-11). */
-export function optLineupCardHtml(lineup, index, busy, { saved = false, fresh = null, pick = null } = {}) {
+export function optLineupCardHtml(lineup, index, busy, { saved = false, fresh = null, pick = null, rowById = null } = {}) {
   const totals = lineupTotalsOf(lineup);
   const overCap = totals.salary > SALARY_CAP;
-  const rows = (lineup.players ?? []).map((p, i) => optPlayerRowHtml(p, LINEUP_SLOTS[i] ?? p.pos ?? "", Boolean(fresh?.has(String(p.id))), pick)).join("");
+  const decor = cardDecor(lineup, rowById);
+  const rows = (lineup.players ?? []).map((p, i) => cardPlayerRowHtml(p, LINEUP_SLOTS[i] ?? p.pos ?? "", Boolean(fresh?.has(String(p.id))), pick, decor)).join("");
   const ownText = totals.own == null ? "" : ` &middot; ${Math.round(totals.own)}% own`;
+  // TwoGun mode: the lineup's total of TwoGun's ceilings, as the server summed it (absent in current mode; a dash
+  // when a player has none, never a partial sum).
+  const ceilText = lineup.ceil === undefined ? "" : ` &middot; ${lineup.ceil == null ? `<span title="A player in this lineup has no TwoGun ceiling">—</span>` : dec1(lineup.ceil)} ceil`;
   const uid = escapeHtml(lineup.uid ?? "");
   const saveBtn = saved
     ? `<button type="button" class="saved-lineup-btn opt-saved-btn" disabled>Saved ✓</button>`
@@ -1383,66 +1406,14 @@ export function optLineupCardHtml(lineup, index, busy, { saved = false, fresh = 
   return `
     <div class="opt-card${saved ? " opt-card-saved" : ""}" data-uid="${uid}">
       <div class="opt-card-head">
-        <span class="opt-card-title">Lineup ${index + 1}</span>
+        <span class="opt-card-title">Lineup ${index + 1}</span>${decor.stack}
         <span class="opt-card-actions">
           ${saveBtn}
           <button type="button" class="saved-lineup-btn danger" data-action="opt-discard" data-uid="${uid}"${busy ? " disabled" : ""}>Discard</button>
         </span>
       </div>
       <div class="opt-card-players">${rows}</div>
-      <div class="opt-card-totals"><span class="${overCap ? "saved-lineup-totals-over" : ""}">${money(totals.salary)}</span> &middot; ${dec1(totals.proj) ?? "—"} proj${ownText}</div>
-    </div>`;
-}
-
-function teamBadgeHtml(team) {
-  const t = TEAM_BY_ABBR[team];
-  const primary = t?.colourPrimary ?? "#333333";
-  const secondary = t?.colourSecondary ?? "#ffffff";
-  return `<span class="team-chip-mini" style="background:${primary};color:${textColourFor(primary, secondary)}">${escapeHtml(team ?? "")}</span>`;
-}
-
-/** One position's exposure rows in the chosen order: by exposure (lineup count, which orders the percent the same
- *  way), `dir` "desc" (highest first, the default) or "asc", ties by name. */
-export function sortExposure(list, dir) {
-  const sign = dir === "asc" ? 1 : -1;
-  return [...(list ?? [])].sort(
-    (a, b) => sign * ((a.count ?? 0) - (b.count ?? 0) || (a.pct ?? 0) - (b.pct ?? 0)) || String(a.name ?? "").localeCompare(String(b.name ?? ""))
-  );
-}
-
-/** Exposure by position, one table per position (D55; Adam 2026-10-11: exposure first, then Player, Team, Matchup,
- *  %Own). Exposure is "42% (2)": the share of the tab's lineups (D74: the new batch, or the saved ones) that hold
- *  him and how many; only its header sorts, one direction `sortDir` for every box. Matchup is D43's; own% is D32's
- *  (blank when nobody published one). `exposure` is {QB: [{name, team, opp, own, count, pct}], ...}; `subtitle`
- *  names the set ("5 new lineups"). `pick` ({isChosen(id)}) makes each name the "only lineups with" button
- *  (Adam 2026-10-11). */
-export function optExposureHtml(exposure, subtitle = "", sortDir = "desc", pick = null) {
-  const dir = sortDir === "asc" ? "asc" : "desc";
-  const arrow = dir === "asc" ? " ▲" : " ▼";
-  const head = `<tr><th class="sortable sorted opt-exp-pct" data-action="opt-exp-sort" aria-sort="${dir === "asc" ? "ascending" : "descending"}">Exposure${arrow}</th><th>Player</th><th>Team</th><th>Matchup</th><th class="opt-exp-own">Own%</th></tr>`;
-  const boxes = OPT_POSITIONS.map((pos) => {
-    const list = Array.isArray(exposure?.[pos]) ? exposure[pos] : [];
-    const body = list.length
-      ? `<table class="opt-exp-table"><thead>${head}</thead><tbody>${sortExposure(list, dir)
-          .map(
-            (e) => `
-          <tr class="opt-exp-row">
-            <td class="opt-exp-pct">${escapeHtml(String(Math.round(e.pct ?? 0)))}% <span class="opt-exp-count">(${escapeHtml(String(e.count ?? 0))})</span></td>
-            <td class="opt-exp-name">${pick && e.id != null ? pickButtonHtml({ id: e.id, name: e.name ?? "", chosen: pick.isChosen(e.id) }) : escapeHtml(e.name ?? "")}</td>
-            <td class="opt-exp-team">${teamBadgeHtml(e.team)}</td>
-            <td class="opt-exp-opp">${escapeHtml(e.opp ?? "")}</td>
-            <td class="opt-exp-own">${e.own == null ? "" : `${escapeHtml(String(Math.round(e.own)))}%`}</td>
-          </tr>`
-          )
-          .join("")}</tbody></table>`
-      : `<div class="opt-exp-empty">None</div>`;
-    return `<div class="opt-exp-box"><div class="opt-exp-title">${escapeHtml(pos)}</div><div class="opt-exp-list">${body}</div></div>`;
-  }).join("");
-  const sub = subtitle ? ` <span class="opt-sub">${escapeHtml(String(subtitle))}</span>` : "";
-  return `
-    <div class="opt-exposure">
-      <h3 class="opt-title">Exposure by position${sub}</h3>
-      <div class="opt-exp-grid">${boxes}</div>
+      <div class="opt-card-totals"><span class="${overCap ? "saved-lineup-totals-over" : ""}">${money(totals.salary)}</span> &middot; ${dec1(totals.proj) ?? "—"} proj${ceilText}${ownText}</div>
     </div>`;
 }
 
@@ -1465,51 +1436,49 @@ function optimizerControlsHtml(rowById) {
   const info = locked.length
     ? `<span class="opt-lockinfo">${locked.length} locked: ${escapeHtml(locked.map((r) => r.name).join(", "))}</span>`
     : `<span class="opt-warn">Nothing locked: these will be plain optimal lineups, rarely right for tournaments.</span>`;
-  const expInputs = OPT_POSITIONS.map(
-    (pos) => `
-        <label class="opt-exp-input">${pos}
-          <input type="text" inputmode="decimal" class="opt-input opt-input-pct" data-opt-exp="${pos}" value="${escapeHtml(opt.maxExp[pos])}" placeholder="%" aria-label="${pos} maximum exposure percent" />
-        </label>`
-  ).join("");
-  const avoidBlock = games.length
-    ? `<div class="opt-block"><span class="opt-block-label">Avoid game</span><div class="opt-chips">${avoidChipsHtml(games, opt.avoid)}</div></div>`
-    : "";
+  const expRows = OPT_POSITIONS.map((pos) =>
+    settingRowHtml(pos, numberBoxHtml(`type="text" inputmode="decimal" class="opt-input opt-input-pct" data-opt-exp="${pos}" value="${escapeHtml(opt.maxExp[pos])}" placeholder="no cap" aria-label="${pos} maximum exposure percent"`, "%"))
+  ).join("") + settingRowHtml("Spread defenses", switchButtonHtml(opt.spreadDst, "Spread defenses", `data-action="opt-spread-dst"`), SPREAD_HINT);
+  const lockedList = lockedIds(state.slots, state.locks);
+  const qbRows = listedQbs(activeSlateRows(board), lockedList);
+  const avoidGroup = games.length ? settingGroupHtml("Avoid game", `<div class="opt-chips">${avoidChipsHtml(games, opt.avoid)}</div>`, "", "opt-group-wide") : "";
   const formError = opt.formError ? `<div class="lineup-status lineup-status-error opt-form-error">${escapeHtml(opt.formError)}</div>` : "";
   const busy = opt.generating || opt.saving;
   const options = (values, current, label = (v) => String(v)) =>
     values.map((v) => `<option value="${escapeHtml(String(v))}"${String(current) === String(v) ? " selected" : ""}>${escapeHtml(label(v))}</option>`).join("");
   const upTo = (max) => Array.from({ length: max + 1 }, (_, i) => i);
+  const select = (id, label, values, current, text) => `<select id="${id}" class="opt-input opt-select-n" aria-label="${label}">${options(values, current, text)}</select>`;
+  const build = [
+    settingRowHtml("Lineups to make", numberBoxHtml(`type="number" min="1" max="${OPT_MAX_COUNT}" class="opt-input opt-input-num" id="opt-count" value="${escapeHtml(opt.count)}" aria-label="How many lineups"`), "From the slots you have locked"),
+    settingRowHtml("Min unique players", numberBoxHtml(`type="number" min="1" max="${OPT_MAX_UNIQUE}" class="opt-input opt-input-num" id="opt-min-unique" value="${escapeHtml(opt.minUnique)}" aria-label="Minimum unique players between lineups"`), "Between any two lineups"),
+    settingRowHtml("Build by", `<span class="opt-chips">${objectiveChipsHtml(opt.objective, boardHasCeilings(activeSlateRows(board)))}</span>`),
+  ].join("");
+  const stacking = [
+    settingRowHtml("Teammates", `${select("opt-stack-own", "Teammates to stack with the quarterback", upTo(OPT_STACK_OWN_MAX), opt.stackOwn)}${switchCheckboxHtml("opt-stack-own-more", opt.stackOwnOrMore, "or more", "exactly")}`),
+    settingRowHtml("Opponents", `${select("opt-stack-opp", "Opponents to stack with the quarterback", upTo(OPT_STACK_OPP_MAX), opt.stackOpp)}${switchCheckboxHtml("opt-stack-opp-more", opt.stackOppOrMore, "or more", "exactly")}`),
+    ruleRowsHtml(opt.rules, RULES_STACKING),
+    qbListHtml(qbRows, opt.qb, lockedList),
+  ].join("");
+  const roster = [
+    ruleRowsHtml(opt.rules, RULES_ROSTER),
+    settingRowHtml("Max per team", `<select id="opt-max-team" class="opt-input opt-select" aria-label="Max per team">${options(MAX_TEAM_OPTIONS, opt.maxPerTeam, (v) => (v === "" ? "No limit" : v))}</select>`, "Not applied to the QB's team or his opponent"),
+  ].join("");
   return `
-    <div class="opt-panel" id="opt-panel">
-      <h3 class="opt-title">Optimizer</h3>
-      <div class="opt-row">
-        <span class="opt-inline">Make
-          <input type="number" min="1" max="${OPT_MAX_COUNT}" class="opt-input opt-input-num" id="opt-count" value="${escapeHtml(opt.count)}" aria-label="How many lineups" />
-          more lineups from these locks</span>
-        <span class="opt-inline">Min unique players
-          <input type="number" min="1" max="${OPT_MAX_UNIQUE}" class="opt-input opt-input-num" id="opt-min-unique" value="${escapeHtml(opt.minUnique)}" aria-label="Minimum unique players between lineups" />
-        </span>
-        <span class="opt-inline opt-inline-exp"><span class="opt-block-label">Max exposure <span class="opt-sub">blank = no cap</span></span>${expInputs}</span>
-        <button type="button" id="opt-go-btn" class="lineup-build-btn opt-go"${busy ? " disabled" : ""}>${opt.generating ? "Making…" : "Go"}</button>
+    <div class="opt-panel opt-settings" id="opt-panel">
+      <div class="opt-settings-head">
+        <h3 class="opt-title">Optimizer</h3>
         ${info}
+        ${opt.error ? `<span class="lineup-status-error opt-go-error">${escapeHtml(opt.error)}</span>` : ""}
+        <button type="button" id="opt-go-btn" class="lineup-build-btn opt-go"${busy ? " disabled" : ""}>${opt.generating ? "Making…" : "Go"}</button>
       </div>
       ${formError}
-      <div class="opt-row">
-        <label class="opt-inline" title="Not applied to the quarterback's team or the team he faces (D76)">Max per team <span class="opt-sub">outside QB game</span>
-          <select id="opt-max-team" class="opt-input opt-select">${options(MAX_TEAM_OPTIONS, opt.maxPerTeam, (v) => (v === "" ? "No limit" : v))}</select>
-        </label>
-        <span class="opt-inline">Stack QB with
-          <select id="opt-stack-own" class="opt-input opt-select-n" aria-label="Teammates to stack with the quarterback">${options(upTo(OPT_STACK_OWN_MAX), opt.stackOwn)}</select>
-          <label class="opt-check"><input type="checkbox" id="opt-stack-own-more"${opt.stackOwnOrMore ? " checked" : ""} /> or more</label>
-          from his team,</span>
-        <span class="opt-inline">
-          <select id="opt-stack-opp" class="opt-input opt-select-n" aria-label="Opponents to stack with the quarterback">${options(upTo(OPT_STACK_OPP_MAX), opt.stackOpp)}</select>
-          <label class="opt-check"><input type="checkbox" id="opt-stack-opp-more"${opt.stackOppOrMore ? " checked" : ""} /> or more</label>
-          from the opponent</span>
-      </div>
-      <div class="opt-row opt-row-chips">
-        <div class="opt-block"><span class="opt-block-label">Rules</span><div class="opt-chips">${ruleChipsHtml(opt.rules)}</div></div>
-        ${avoidBlock}
+      <div class="opt-groups">
+        ${settingGroupHtml("Build", build)}
+        ${settingGroupHtml("Stacking with the QB", stacking)}
+        ${settingGroupHtml("Exposure", expRows, "Max share of lineups; blank = no cap")}
+        ${settingGroupHtml("Roster rules", roster)}
+        ${qbPanelsHtml(qbRows, opt.qb, qbGlobals(), activeSlateRows(board), OPT_STACK_OWN_MAX, lockedList)}
+        ${avoidGroup}
       </div>
     </div>`;
 }
@@ -1582,7 +1551,7 @@ function newLineupsTabHtml(rowById, savedHere) {
   parts.push(
     n
       ? `<div class="opt-results-head">
-           <span class="opt-sub">${n} lineup${n === 1 ? "" : "s"} from the last Go${nSaved ? `, ${nSaved} saved` : ", not saved yet"}</span>
+           <span class="opt-sub">${n} lineup${n === 1 ? "" : "s"} from the last Go${r.builtIn ? ` (${escapeHtml(r.builtIn)})` : ""}${nSaved ? `, ${nSaved} saved` : ", not saved yet"}</span>
            <span class="opt-card-actions">
              <button type="button" class="saved-lineup-btn" data-action="opt-save-all"${busy || allSaved || noneShown ? " disabled" : ""}>${bulkLabel("Save", nShownUnsaved, filtered)}</button>
              <button type="button" class="saved-lineup-btn danger" data-action="opt-discard-all"${busy || noneShown ? " disabled" : ""}>${bulkLabel("Discard", nShown, filtered)}</button>
@@ -1598,7 +1567,7 @@ function newLineupsTabHtml(rowById, savedHere) {
   } else if (n) {
     // The new-player highlight compares a card with the previous card SHOWN.
     const fresh = newPlayerIds(shown.map((e) => e.item), rowById);
-    parts.push(`<div class="opt-cards">${shown.map((e, k) => optLineupCardHtml(e.item, e.index, busy, { saved: savedFlags[e.index], fresh: fresh[k], pick })).join("")}</div>`);
+    parts.push(`<div class="opt-cards">${shown.map((e, k) => optLineupCardHtml(e.item, e.index, busy, { saved: savedFlags[e.index], fresh: fresh[k], pick, rowById })).join("")}</div>`);
     const players = shown.map((e) => (e.item.players ?? []).map((p) => ({ ...p, identity: identityOf(p.id, rowById) })));
     const k = shown.length;
     const subtitle = opt.mustHave.length ? `${k} of ${n} new lineup${n === 1 ? "" : "s"}, filtered` : `${n} new lineup${n === 1 ? "" : "s"}`;
@@ -1654,13 +1623,15 @@ async function doGenerate() {
     avoid,
     locks,
     excludes: [...state.excludes],
-    objective: opt.objective,
+    objective: effectiveObjective(opt.objective, boardHasCeilings(activeSlateRows(board))),
     maxPerTeam: opt.maxPerTeam,
     stackOwn: opt.stackOwn,
     stackOwnOrMore: opt.stackOwnOrMore,
     stackOpp: opt.stackOpp,
     stackOppOrMore: opt.stackOppOrMore,
     playerMax,
+    qbStacks: qbStacksForRequest(board, slateNotes),
+    spreadDst: opt.spreadDst,
   };
   opt.generating = true;
   opt.error = null;
@@ -1680,8 +1651,12 @@ async function doGenerate() {
       const lineups = (Array.isArray(data.lineups) ? data.lineups : []).map((l) => ({ ...l, uid: `n${++optSeq}` }));
       const notes = [...slateNotes, ...(Array.isArray(data.notes) ? data.notes : [])];
       if (!lineups.length && !notes.length) notes.push("No lineups could be made from these locks and settings.");
+      // Each set is labelled with the mode and objective it was built in, so a set made before a mode flip says so
+      // (package C review item 9: labelled, not cleared, so a flip never throws away lineups).
+      // Only where the mode switch exists (board.mode): a board with no mode reads exactly as before, no label.
+      const builtIn = board?.mode ? builtInText(board.mode.active, form.objective) : "";
       // The response's own exposure (saved plus new) is not shown: each tab computes its own (D74).
-      opt.results = { slateKey, lineups, notes };
+      opt.results = { slateKey, lineups, notes, builtIn };
     }
   } catch (e) {
     opt.error = `Could not reach the server: ${e.message}`;
@@ -1741,18 +1716,21 @@ function discardGenerated(uid) {
 /** The exposure header flips the one sort and redraws only the exposure section on screen (never the whole panel),
  *  then re-wires its headers. */
 function wireExposureSort(container) {
+  const redraw = () => {
+    const section = container.querySelector(".opt-exposure");
+    if (!section) return;
+    const holder = document.createElement("div");
+    holder.innerHTML = optExposureHtml(lastExposure.exposure, lastExposure.subtitle, opt.expSortDir, pickOptions(currentRowById()));
+    const fresh = holder.querySelector(".opt-exposure");
+    if (!fresh) return;
+    section.replaceWith(fresh);
+    wireExposureSort(container);
+    wirePickButtons(fresh); // only the new section; the rest keep their handlers
+  };
   container.querySelectorAll(".opt-exposure [data-action='opt-exp-sort']").forEach((th) => {
     th.addEventListener("click", () => {
       opt.expSortDir = opt.expSortDir === "asc" ? "desc" : "asc";
-      const section = container.querySelector(".opt-exposure");
-      if (!section) return;
-      const holder = document.createElement("div");
-      holder.innerHTML = optExposureHtml(lastExposure.exposure, lastExposure.subtitle, opt.expSortDir, pickOptions(currentRowById()));
-      const fresh = holder.querySelector(".opt-exposure");
-      if (!fresh) return;
-      section.replaceWith(fresh);
-      wireExposureSort(container);
-      wirePickButtons(fresh); // only the new section; the rest keep their handlers
+      redraw();
     });
   });
 }
@@ -1815,15 +1793,32 @@ function wireOptimizer(container) {
   bindValue("#opt-stack-opp", "stackOpp", (el) => Number(el.value));
   bindValue("#opt-stack-own-more", "stackOwnOrMore", (el) => el.checked);
   bindValue("#opt-stack-opp-more", "stackOppOrMore", (el) => el.checked);
+  for (const id of ["own", "opp", "own-more", "opp-more"]) {
+    container.querySelector(`#opt-stack-${id}`)?.addEventListener("change", () => opt.qb.open.size && commit());
+  }
   wireExposureSort(container);
   wirePickButtons(container);
   container.querySelector("#opt-go-btn")?.addEventListener("click", () => doGenerate());
+  // Projection or Ceiling, Adam's pick each time; a greyed Ceiling (no ceilings on this board) does nothing.
+  container.querySelectorAll("[data-action='opt-objective']").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      if (btn.getAttribute("aria-disabled") === "true" || opt.objective === btn.dataset.value) return;
+      opt.objective = btn.dataset.value;
+      commit();
+    });
+  });
   container.querySelectorAll("[data-action='opt-rule']").forEach((btn) => {
     btn.addEventListener("click", () => {
       opt.rules[btn.dataset.key] = !(opt.rules[btn.dataset.key] !== false);
       commit();
     });
   });
+  container.querySelector("[data-action='opt-spread-dst']")?.addEventListener("click", () => {
+    opt.spreadDst = !opt.spreadDst;
+    commit();
+  });
+  const settingsEl = container.querySelector("#opt-panel");
+  if (settingsEl) wireQbStacks(settingsEl, { qbs: opt.qb, globals: qbGlobals, ownMax: OPT_STACK_OWN_MAX, commit, save: savePersisted });
   container.querySelectorAll("[data-action='opt-avoid']").forEach((btn) => {
     btn.addEventListener("click", () => {
       const g = btn.dataset.game;

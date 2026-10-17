@@ -7,7 +7,7 @@
 // a fresh optimize with empty locks/excludes and replaces whatever is currently placed with the result).
 import { escapeHtml, money, dec1, textColourFor } from "../format.js";
 import { TEAM_BY_ABBR } from "../teams-data.js";
-import { STATUS_INFO } from "../table.js";
+import { statusTagsHtml } from "../table.js";
 import { postShowdownLineupOptimize, getShowdownLineups, postShowdownLineup, deleteShowdownLineup, putShowdownLineupName } from "./api.js";
 import { posPillHtml, shownRows } from "./table.js";
 import { showAllToggleHtml, wireShowAllButtons } from "../filterbar.js";
@@ -300,11 +300,15 @@ function slotPlayerHtml(row, isCpt) {
   const own = isCpt ? row.ownCpt : row.ownFlex;
   const projText = proj == null ? "no proj" : dec1(proj);
   return `
-    <span class="lineup-slot-player">
-      <span class="team-chip-mini" style="background:${primary};color:${textColour}">${escapeHtml(row.team ?? "")}</span>
-      ${posPillHtml(row.pos)}
-      <span class="lineup-slot-name">${escapeHtml(row.name)}</span>
-      <span class="lineup-slot-detail">${money(salary)} &middot; ${projText} proj${escapeHtml(ownParen(own))}</span>
+    <span class="lineup-slot-player lineup-slot-player-2">
+      <span class="lineup-slot-body">
+        <span class="lineup-slot-top">
+          <span class="team-chip-mini" style="background:${primary};color:${textColour}">${escapeHtml(row.team ?? "")}</span>
+          ${posPillHtml(row.pos)}
+          <span class="lineup-slot-name">${escapeHtml(row.name)}</span>
+        </span>
+        <span class="lineup-slot-detail">${money(salary)} &middot; ${projText} proj${escapeHtml(ownParen(own))}</span>
+      </span>
     </span>`;
 }
 
@@ -316,7 +320,7 @@ function slotsHtml(board) {
       ? slotPlayerHtml(cptRow, true)
       : `<span class="lineup-slot-player lineup-slot-missing">Not on this board</span>`;
   const cptHtml = `
-    <div class="lineup-slot sd-cpt-slot">
+    <div class="lineup-slot lineup-slot-tall sd-cpt-slot">
       <span class="lineup-slot-label">CPT</span>
       ${cptBody}
       <button type="button" class="lineup-slot-clear" data-action="clear-cpt"${state.cpt ? "" : " disabled"}>Clear</button>
@@ -330,7 +334,7 @@ function slotsHtml(board) {
           ? slotPlayerHtml(row, false)
           : `<span class="lineup-slot-player lineup-slot-missing">Not on this board</span>`;
       return `
-        <div class="lineup-slot" data-flex-index="${i}">
+        <div class="lineup-slot lineup-slot-tall" data-flex-index="${i}">
           <span class="lineup-slot-label">FLEX</span>
           ${body}
           <button type="button" class="lineup-slot-clear" data-action="clear-flex" data-flex="${i}"${s ? "" : " disabled"}>Clear</button>
@@ -379,16 +383,6 @@ function placedIdSet() {
   return set;
 }
 
-// Status pill for Out/IR (and Doubtful/Questionable) players, same badge as the Rankings table (👁
-// visual-qa item I); ownParen (D32) prints published or typed ownership, blank when there is none.
-function statusPillHtml(row) {
-  const raw = (row.status ?? "").trim();
-  const info = STATUS_INFO[raw.toLowerCase()];
-  if (info) return `<span class="status-badge ${info.cls}">${escapeHtml(info.label)}</span>`;
-  if (raw) return `<span class="status-badge status-other">${escapeHtml(raw)}</span>`;
-  return "";
-}
-
 function rightRowHtml(row, placed) {
   const t = TEAM_BY_ABBR[row.team];
   const primary = t?.colourPrimary ?? "#333333";
@@ -403,7 +397,7 @@ function rightRowHtml(row, placed) {
           <span class="team-chip-mini" style="background:${primary};color:${textColour}">${escapeHtml(row.team ?? "")}</span>
           <span class="player-name">${escapeHtml(row.name)}</span>
           ${posPillHtml(row.pos)}
-          ${statusPillHtml(row)}
+          ${statusTagsHtml(row)}
         </span>
       </td>
       <td>${money(row.salary)}</td>

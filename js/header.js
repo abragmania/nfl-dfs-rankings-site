@@ -55,28 +55,38 @@ export function renderPills(container, { staleIds = [], sources = null, warnings
   const collapsed = collapseWarnings(warnings);
   const warningPills = collapsed.map(warningPillHtml).join("");
   const all = sourcePills + warningPills;
-  // Phone only (CSS, max-width 700px): two or more chips fold into one summary chip that opens the list on tap.
-  // On a wider screen the summary is hidden and every chip shows as before.
-  const many = ids.length + collapsed.length > 1;
-  // A re-render (board reload, refresh) keeps the list open if Adam had opened it.
-  const wasOpen = Boolean(container.querySelector(".pills-list")?.classList.contains("open"));
-  const open = many && wasOpen;
-  const summary = many
+  // Chips fold into one summary; open state is remembered in this browser.
+  const open = Boolean(all) && (Boolean(container.querySelector(".pills-list")?.classList.contains("open")) || storedPillsOpen());
+  const summary = all
     ? `<li class="pill pill-warning pills-summary"><button type="button" class="pills-toggle" aria-expanded="${open}">${escapeHtml(pillsSummaryText(ids, sources, collapsed.length, undefined, injuryReport))}</button></li>`
     : "";
-  container.innerHTML = all ? `<ul class="pills-list${many ? " collapsible" : ""}${open ? " open" : ""}">${summary}${all}</ul>` : "";
+  container.innerHTML = all ? `<ul class="pills-list collapsible${open ? " open" : ""}">${summary}${all}</ul>` : "";
   container.hidden = !all;
   container.querySelector(".pills-toggle")?.addEventListener("click", (ev) => {
     const open = container.querySelector(".pills-list").classList.toggle("open");
     ev.currentTarget.setAttribute("aria-expanded", String(open));
+    storePillsOpen(open);
   });
 }
 
-/** The phone summary chip's text: "9 sources · cached 04:43" (the oldest cached time, in local time; "cached
- *  Oct 10 23:10" when that is not today, local), plus "2 failed" and "3 warnings" when there are any. A cached source with no time known
- *  (no fetchedAt, or not in `sources`) makes it plain "cached", never a newer-looking time; an unparseable
- *  fetchedAt is ignored. `ids`: the stale or failed source ids; `warningCount`: collapsed warnings. */
-export function pillsSummaryText(ids, sources, warningCount = 0, now = Date.now(), injuryReport = null) {
+const PILLS_OPEN_KEY = "nfldfs.pillsOpen";
+function storedPillsOpen() {
+  try {
+    return globalThis.localStorage?.getItem(PILLS_OPEN_KEY) === "1";
+  } catch (e) {
+    return false; // storage blocked: the summary starts closed
+  }
+}
+function storePillsOpen(open) {
+  try {
+    globalThis.localStorage?.setItem(PILLS_OPEN_KEY, open ? "1" : "0");
+  } catch (e) {
+    // storage blocked: not remembered
+  }
+}
+
+/** The summary chip's text: "2 cached · 1 failed · 3 warnings" (empty states left out). */
+export function pillsSummaryText(ids, sources, warningCount = 0, _now = Date.now(), injuryReport = null) {
   const list = ids ?? [];
   const of = (id) => (sources ?? []).find((s) => s.id === id);
   // A1: a source missing whole positions counts as failed here too, as its own pill says.
@@ -85,24 +95,9 @@ export function pillsSummaryText(ids, sources, warningCount = 0, now = Date.now(
     (id === INJURY_SOURCE_ID && injuryPillSuffix(injuryReport) !== null);
   const cachedIds = list.filter((id) => !isFailed(id));
   const failed = list.length - cachedIds.length;
-  const unknownTime = cachedIds.some((id) => !of(id)?.fetchedAt);
-  const times = cachedIds
-    .map((id) => of(id)?.fetchedAt)
-    .filter((t) => localStamp(t) !== null)
-    .sort((a, b) => Date.parse(a) - Date.parse(b));
   const parts = [];
-  if (list.length) {
-    parts.push(`${list.length} source${list.length === 1 ? "" : "s"}`);
-    if (cachedIds.length) {
-      const oldest = localStamp(times[0]);
-      if (unknownTime || !oldest) parts.push("cached");
-      else {
-        const today = localStamp(new Date(now).toISOString())?.day;
-        parts.push(`cached ${oldest.day === today ? "" : `${oldest.monthDay} `}${oldest.clock}`);
-      }
-    }
-    if (failed) parts.push(`${failed} failed`);
-  }
+  if (cachedIds.length) parts.push(`${cachedIds.length} cached`);
+  if (failed) parts.push(`${failed} failed`);
   if (warningCount) parts.push(`${warningCount} warning${warningCount === 1 ? "" : "s"}`);
   return parts.join(" · ");
 }
@@ -133,6 +128,87 @@ export function secondSlateSavedText(secondSlate) {
   if (unmatched) extras.push(`${unmatched} player${unmatched === 1 ? "" : "s"} could not be matched to the main slate`);
   if (diffs) extras.push(`${diffs} salar${diffs === 1 ? "y differs" : "ies differ"} from the main slate`);
   return `Saved as a second slate: ${name}. The main slate is unchanged.${extras.length ? ` ${extras.join("; ")}.` : ""}`;
+}
+
+// TwoGun mode (merge plan 2026-10-15): a two-way switch, Current or TwoGun, and the board-stamp pill, placed after the
+// slate line. `mode` is board.mode {active, appliesTo, twogun: {status, boardUpdated, ageAtLockH, stale, covered,
+// fallback, note}}; a board without it (an older server) shows nothing. The mode applies to the classic slates (main
+// and second slates, D57); showdown keeps the current sources (D39). One pill only: the board stamp when TwoGun's board
+// is fresh; one amber stale pill instead when it is stale for any reason (D30 as amended: stamped after lock, over 36
+// hours old at lock, its time unreadable, or an older file in use), its sentence in the hover; a missing or failed
+// board says the current numbers are showing.
+const SHOWDOWN_STAYS = "Showdown stays on the current sources.";
+const MODE_SWITCH_TITLE = `Whose numbers the classic slates show. ${SHOWDOWN_STAYS}`;
+
+function modePillHtml(cls, text, title) {
+  return `<span class="pill ${cls}" title="${escapeHtml(title || text)}">${escapeHtml(text)}</span>`;
+}
+
+/** Why a TwoGun board is stale, as {text, sentence}, or null when it is fresh. Age is hours from his stamp to the
+ *  first kickoff (server/lib/et.js, worked out on the server); nothing here reads a clock. */
+export function staleTwoGun(tg) {
+  const age = typeof tg?.ageAtLockH === "number" && Number.isFinite(tg.ageAtLockH) ? Math.round(tg.ageAtLockH * 10) / 10 : null;
+  if (age !== null && age < 0) return { text: "TwoGun board stamped after lock", sentence: "TwoGun's board is stamped after the slate's first kickoff." };
+  if (tg?.status !== "stale" && !tg?.stale) return null;
+  if (age !== null && age > 36) return { text: `TwoGun board ${age} h old at lock`, sentence: `TwoGun's board was made ${age} hours before the first kickoff (over 36), so every TwoGun figure may be out of date.` };
+  if (age === null) return { text: "TwoGun board time unknown", sentence: "TwoGun's board time could not be read, so it is treated as stale." };
+  return { text: "Older TwoGun file in use", sentence: "An older TwoGun file is in use: the newest one could not be read." };
+}
+
+export function modeBoxHtml(mode) {
+  const active = mode?.active;
+  if (active !== "current" && active !== "twogun") return "";
+  const tg = mode.twogun ?? {};
+  const scope = typeof mode.appliesTo === "string" && mode.appliesTo ? mode.appliesTo : "classic slates";
+  const btn = (value, label) =>
+    `<button type="button" class="tg-mode-btn${active === value ? " active" : ""}" data-mode-set="${value}" aria-pressed="${active === value}">${label}</button>`;
+  const switchHtml = `<span class="tg-mode-switch" role="group" aria-label="Classic-slate numbers" title="${escapeHtml(MODE_SWITCH_TITLE)}">${btn("current", "Current")}${btn("twogun", "TwoGun")}</span>`;
+  let pill;
+  const stale = active === "twogun" && (tg.status === "ok" || tg.status === "stale") ? staleTwoGun(tg) : null;
+  if (active === "current") {
+    pill = modePillHtml("pill-mode", `Current sources · ${scope}`, `The ${scope} show the current sources' blended numbers. ${SHOWDOWN_STAYS}`);
+  } else if (stale) {
+    const stamp = tg.boardUpdated ? ` Board stamped ${tg.boardUpdated}.` : "";
+    pill = modePillHtml("pill-warning", `${stale.text} · ${scope}`, `${stale.sentence}${stamp}${tg.note ? ` ${tg.note}` : ""} ${SHOWDOWN_STAYS}`);
+  } else if (tg.status === "ok") {
+    const counts = Number.isFinite(tg.covered) ? ` TwoGun covers ${tg.covered} players${Number.isFinite(tg.fallback) ? `; ${tg.fallback} show the current sources' figures, marked` : ""}.` : "";
+    pill = modePillHtml("pill-mode", `TwoGun board ${tg.boardUpdated ?? "(time not given)"} · ${scope}`, `TwoGun's figures as he published them.${counts}${tg.note ? ` ${tg.note}` : ""} ${SHOWDOWN_STAYS}`);
+  } else {
+    pill = modePillHtml("pill-warning", "No TwoGun board · current numbers shown", `${tg.note || "TwoGun mode is on but no TwoGun board could be read, so the current sources show."} ${SHOWDOWN_STAYS}`);
+  }
+  return `${switchHtml}${pill}`;
+}
+
+/** Draws the mode box into `headerEl` (the classic header), creating it after #slate-line the first time.
+ *  `onSwitch(mode)` runs on a click of the mode not showing; both buttons stay off until it settles. */
+export function renderModeBox(headerEl, mode, { onSwitch } = {}) {
+  if (!headerEl) return;
+  const html = modeBoxHtml(mode);
+  let box = headerEl.querySelector("#tg-mode");
+  if (!box) {
+    if (!html) return;
+    box = document.createElement("div");
+    box.id = "tg-mode";
+    box.className = "tg-mode";
+    const line = headerEl.querySelector("#slate-line");
+    if (line) line.after(box);
+    else headerEl.append(box);
+  }
+  box.innerHTML = html;
+  box.hidden = !html;
+  box.dataset.mode = mode?.active ?? "";
+  box.querySelectorAll("[data-mode-set]").forEach((b) => {
+    b.addEventListener("click", async () => {
+      if (b.classList.contains("active") || b.disabled) return;
+      const buttons = [...box.querySelectorAll("[data-mode-set]")];
+      buttons.forEach((x) => (x.disabled = true));
+      try {
+        await onSwitch?.(b.dataset.modeSet);
+      } finally {
+        buttons.forEach((x) => (x.disabled = false));
+      }
+    });
+  });
 }
 
 // Wires the existing upload flow (unchanged network behaviour: raw CSV text to POST /api/slate/upload).

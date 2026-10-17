@@ -143,6 +143,17 @@ export function postRefresh() {
   return readOnly();
 }
 
+// TwoGun mode: the site shows the mode the board was published in (board.mode, baked with the board); until P7 it
+// carries one board, so the switch is hidden (site.js) and a change is read-only.
+export async function getMode() {
+  const board = await baked("baked/board.json");
+  return { ok: true, mode: board?.mode?.active ?? "current" };
+}
+
+export function postMode() {
+  return readOnly();
+}
+
 export function putOverrides(patch) {
   return overrideWrite((storage, season, week, board, slate) => putEdits(storage, season, week, board, slate, patch));
 }

@@ -9,6 +9,21 @@
 import { toNumber } from "./value-core.js"; // pure: the public site runs the board maths in a browser (D71)
 
 /**
+ * The spread from one team's point of view: negative when that team is favoured, positive when it is the
+ * underdog, 0 on a pick'em. The context record carries the favourite's (negative) spread plus which team that
+ * is, so the sign has to be chosen per row rather than copied. (Moved here from board.js so the TwoGun overlay,
+ * server/twogun/overlay.js, uses the same one; board.js imports it back.)
+ */
+export function spreadForTeam(game, team) {
+  const spread = toNumber(game?.spread);
+  if (spread === null) return null;
+  const favorite = game?.favorite ?? null;
+  if (!favorite) return spread; // pick'em: the odds helper reports 0 with no favourite
+  if (favorite === team) return -Math.abs(spread);
+  return Math.abs(spread);
+}
+
+/**
  * slate     - the parsed slate (its `games` array is the list of games, D13).
  * rows      - board rows carrying { gameId, own }.
  * gamesById - Map gameId -> context game record (server/sources/context/index.js loadContext()).

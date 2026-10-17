@@ -46,10 +46,7 @@
   --row-hover: #eef0f3;
   --row-dim-text: #9aa2ad;
 
-  /* Value percentile grading (Adam's addition; Lev is never graded, Adam 2026-10-15): v1 = top 20% within position, v5 = bottom 20%.
-     Each grade also carries a background tint (v1/v5 strongest) so the reading is a coloured cell, not
-     just a coloured digit — the light-theme v2/v4 text colours below are too pale to read on their own
-     (👁 visual-qa), so v2/v4 keep the neutral --text colour and rely on the tint to signal direction. */
+  /* D33 grading (Lev never graded, Adam 2026-10-15): v1 = 1.5+ SD above the position's mean, v5 = 1.5+ below (grade.js); v2/v4 rely on the tint. */
   --grade-v1: #1f8a3b;
   --grade-v2: #6fb98a;
   --grade-v5: #c8323b;
@@ -319,9 +316,33 @@ html, body {
   color: var(--amber);
   border: 1px solid rgba(var(--amber-rgb), 0.4);
 }
-/* The phone summary chip (header.js renderPills); shown only inside the max-width 700px block. */
-.pills-summary { display: none; padding: 0; }
+/* The source pills fold into one summary chip (header.js renderPills). */
+.pills-summary { padding: 0; background: var(--bg-elevated-2); color: var(--text-muted); border-color: var(--border); }
 .pills-toggle { background: none; border: 0; color: inherit; font: inherit; padding: 3px 10px; cursor: pointer; }
+.pills-toggle::after { content: " \25B8"; }
+.pills-toggle[aria-expanded="true"]::after { content: " \25BE"; }
+.pills-list:not(.open) > .pill:not(.pills-summary) { display: none; }
+
+/* TwoGun mode box (header.js renderModeBox, merge plan 2026-10-15): the Current / TwoGun switch and the board-stamp
+   pill, after the slate line. Same pill shape as the source pills; the stamp pill is neutral, a stale or missing
+   TwoGun board uses the amber .pill-warning. */
+.tg-mode { display: flex; align-items: center; gap: var(--sp-2); white-space: nowrap; }
+.tg-mode[hidden] { display: none; }
+.tg-mode-switch { display: inline-flex; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+.tg-mode-btn {
+  cursor: pointer;
+  background: var(--bg-elevated-2);
+  color: var(--text-muted);
+  border: 0;
+  padding: 4px 10px;
+  font-size: var(--fs-sm);
+  font-weight: 600;
+}
+.tg-mode-btn + .tg-mode-btn { border-left: 1px solid var(--border); }
+.tg-mode-btn.active { background: var(--accent); color: #ffffff; cursor: default; }
+.tg-mode-btn:disabled:not(.active) { cursor: progress; opacity: 0.7; }
+.pill-mode { background: var(--bg-elevated-2); color: var(--text-muted); border: 1px solid var(--border); }
+.site-published-mode { font-size: var(--fs-sm); color: var(--text-dim); }
 
 /* ---------- Main layout ---------- */
 /* The page does not have to fill a wide screen (Adam): past 1560px the game strip, filters and table stop
@@ -449,6 +470,7 @@ body.table-expanded { overflow: hidden; }
   .header { padding-left: var(--sp-3); padding-right: var(--sp-3); }
   .header-top { flex-wrap: wrap; gap: var(--sp-2) var(--sp-3); }
   .slate-line { flex: 1 1 100%; order: 3; white-space: normal; }
+  .tg-mode { flex: 1 1 100%; order: 3; flex-wrap: wrap; white-space: normal; }
   .header-actions { order: 4; flex: 1 1 100%; flex-wrap: wrap; gap: var(--sp-2); }
   .upload-info { white-space: normal; }
   .main { padding-left: var(--sp-3); padding-right: var(--sp-3); }
@@ -911,7 +933,78 @@ body.table-expanded { overflow: hidden; }
 .status-out { background: rgba(var(--danger-rgb), 0.18); color: var(--status-out); }
 .status-doubtful, .status-questionable { background: rgba(var(--amber-rgb), 0.18); color: var(--status-amber); }
 .status-ir, .status-other { background: rgba(var(--status-grey-rgb), 0.18); color: var(--status-grey); }
-.status-injury-note { font-size: var(--fs-sm); color: var(--text-dim); }
+/* A listed-out player brought back by a typed projection (flag "revived"): muted, not the out colour; the reason is its hover. */
+.status-revived { background: none; border: 1px dashed var(--status-grey); padding: 0 5px; color: var(--text-dim); cursor: default; }
+
+/* Adam 2026-10-15 (TwoGun merge, adjustment 1): "put a red 'OUT' tag or something obvious" beside the name of a
+   player ruled out after TwoGun's board, or one TwoGun calls OUT, on every main-slate list (table.js outTagHtml). */
+.out-tag {
+  display: inline-block;
+  margin-left: 4px;
+  padding: 0 5px;
+  border-radius: 4px;
+  background: var(--status-out);
+  color: #ffffff;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  line-height: 16px;
+  vertical-align: middle;
+  cursor: default;
+}
+
+/* TwoGun mode's five Rankings columns (table.js TG_COLUMNS) sit after Lev; the <table> carries "tg-on". Widths are
+   re-shared so the table stays inside D54's 1250px box: Status (usually empty) and Tags give up the most, Salary, Own%,
+   Value and Lev a little, and the columns sum to 1230px, what the box holds beside its vertical scrollbar (1920x947
+   render, 2026-10-15). The generic nth-child widths above still apply in current mode, untouched. */
+.rankings-table th.tg-col, .rankings-table td.tg-col {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.rankings-table.tg-on th.tg-col, .rankings-table.tg-on td.tg-col { padding-left: 6px; padding-right: 6px; }
+.rankings-table.tg-on th.tg-col { width: 50px; vertical-align: middle; }
+.rankings-table.tg-on th[data-col="tgNuke"] { width: 56px; } /* "Nuke ▼" whole when sorted */
+.rankings-table.tg-on th:nth-child(2) { width: 268px; }
+.rankings-table.tg-on th:nth-child(5) { width: 68px; } /* "@ NYG" whole: the table has no spare width to share here */
+.rankings-table.tg-on th:nth-child(6), .rankings-table.tg-on th:nth-child(8) { width: 74px; }
+.rankings-table.tg-on th:nth-child(9) { width: 72px; }
+.rankings-table.tg-on th:nth-child(10) { width: 44px; }
+.rankings-table.tg-on th[data-col="tags"] { width: 80px; white-space: normal; }
+.rankings-table.tg-on th[data-col="status"] { width: 70px; }
+/* With the Note column on as well: Player takes 250px (the longest name plus logo and note icon); the columns total 1230px. */
+.rankings-table.tg-on:has(th[data-col="note"]) th:nth-child(2) { width: 250px; }
+.rankings-table.tg-on:has(th[data-col="note"]) th:nth-child(3) { width: 48px; }
+.rankings-table.tg-on:has(th[data-col="note"]) th:nth-child(6),
+.rankings-table.tg-on:has(th[data-col="note"]) th:nth-child(8) { width: 70px; }
+.rankings-table.tg-on:has(th[data-col="note"]) th:nth-child(9) { width: 68px; }
+.rankings-table.tg-on:has(th[data-col="note"]) th:nth-child(10) { width: 36px; }
+.rankings-table.tg-on:has(th[data-col="note"]) th[data-col="tags"] { width: 58px; }
+.rankings-table.tg-on:has(th[data-col="note"]) th[data-col="status"] { width: 46px; }
+.rankings-table.tg-on th[data-col="note"] { width: 90px; }
+/* The Player cell never clips the red OUT tag or the team chip (visual QA V1): every item keeps its size and only the
+   name shrinks, with an ellipsis (its full text on hover). TwoGun mode only, so current mode is exactly as before. */
+.rankings-table.tg-on .player-cell { gap: 4px; min-width: 0; }
+.rankings-table.tg-on .player-cell > * { flex-shrink: 0; }
+/* Favorites (no tg-on) shows the OUT tag too: any Player cell holding one shrinks only its name (🔵 finding 3). */
+.player-cell:has(.out-tag) { gap: 4px; min-width: 0; }
+.player-cell:has(.out-tag) > * { flex-shrink: 0; }
+.rankings-table.tg-on .player-cell > .player-name,
+.player-cell:has(.out-tag) > .player-name {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* TwoGun's source card is read-only (tabs.js): a quiet label where the Enabled box would be. */
+.source-readonly { font-size: var(--fs-sm); color: var(--text-dim); cursor: default; }
+
+/* The Optimizer's Projection / Ceiling choice: a greyed Ceiling (no ceilings on this board) keeps its hover reason. */
+.opt-chip.is-disabled { opacity: 0.45; cursor: not-allowed; }
 
 /* An edited Proj/Own% number: coloured, no word beside it; the small x puts the original back. */
 .cell-value.is-override { color: var(--amber); font-weight: 600; }
@@ -1087,6 +1180,8 @@ body.table-expanded { overflow: hidden; }
 .lineup-right { flex: 1; min-width: 0; }
 .lineup-right-title { margin: 0 0 var(--sp-2); font-size: var(--fs-md); color: var(--text-muted); }
 .lineup-pos-chips { margin-bottom: var(--sp-2); }
+.lineup-pool-search { margin-bottom: var(--sp-2); }
+.pool-search-chip { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .lineup-rows-table th.sortable { cursor: pointer; user-select: none; color: var(--text-muted); }
 .lineup-rows-table th.sorted { color: var(--text); }
 
@@ -1195,6 +1290,10 @@ body.table-expanded { overflow: hidden; }
 .lineup-rows-table td.lineup-max-cell { padding-top: 1px; padding-bottom: 1px; }
 .opt-input.lineup-max-input { width: 3.6em; padding: 1px 4px; text-align: right; font-size: var(--fs-sm); }
 .opt-input.lineup-max-input.invalid { border-color: var(--danger); background: rgba(var(--danger-rgb), 0.12); }
+/* The pool keeps its 30px rows; Salary, Proj and Own% read bold, Pos is muted. */
+.lineup-rows-table td:nth-child(3), .lineup-rows-table td:nth-child(4), .lineup-rows-table td:nth-child(5) { font-size: 13px; font-weight: 700; }
+.lineup-rows-table td:nth-child(2) { font-weight: 400; color: var(--text-muted); }
+.lineup-rows-table tbody tr.row-dimmed td, .lineup-rows-table tbody tr.lineup-row-excluded td { color: inherit; }
 .lineup-row.lineup-row-locked { background: rgba(var(--accent-rgb), 0.1); }
 .lineup-row.lineup-row-excluded { color: var(--row-dim-text); opacity: 0.6; }
 /* Same out/doubtful/IR dimming as the Rankings table (public/js/table.js's row-dimmed), reused here since
@@ -1212,6 +1311,9 @@ body.table-expanded { overflow: hidden; }
   font-size: var(--fs-sm);
   white-space: nowrap;
 }
+/* Lock/Locked and Exclude/Excluded keep one width each, so a locked row's Add never moves toward the panel edge. */
+.lineup-row-btn[data-action="row-lock"] { min-width: 58px; text-align: center; }
+.lineup-row-btn[data-action="row-exclude"] { min-width: 66px; text-align: center; }
 .lineup-row-btn.active { background: var(--accent); border-color: var(--accent); color: #ffffff; }
 .lineup-row-btn.active.danger { background: var(--danger); border-color: var(--danger); }
 .lineup-row-btn:disabled { opacity: 0.4; cursor: default; color: var(--text-dim); }
@@ -1290,6 +1392,7 @@ body.table-expanded { overflow: hidden; }
 .saved-lineup-slot { display: flex; align-items: baseline; gap: var(--sp-2); font-size: var(--fs-sm); }
 .saved-lineup-slot-pos { width: 34px; flex: 0 0 34px; font-weight: 700; color: var(--text-muted); }
 .saved-lineup-slot-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.saved-lineup-slot > .out-tag { flex: 0 0 auto; margin-left: 0; } /* a sibling of the name, so the name's ellipsis never clips it */
 .saved-lineup-slot-team { color: var(--text-muted); }
 .saved-lineup-slot-salary { color: var(--text-muted); margin-left: auto; font-variant-numeric: tabular-nums; }
 .saved-lineup-slot-empty-text { color: var(--text-dim); font-style: italic; }
@@ -1396,7 +1499,7 @@ body.table-expanded { overflow: hidden; }
 .rankings-table.sd-table th:nth-child(3), .rankings-table.sd-table td:nth-child(3) { width: 90px; }
 .rankings-table.sd-table th:nth-child(4), .rankings-table.sd-table td:nth-child(4) { width: 65px; }
 .rankings-table.sd-table th:nth-child(5), .rankings-table.sd-table td:nth-child(5) { width: 85px; }
-.rankings-table.sd-table th:nth-child(6), .rankings-table.sd-table td:nth-child(6) { width: 65px; }
+.rankings-table.sd-table th:nth-child(6), .rankings-table.sd-table td:nth-child(6) { width: 82px; } /* Val: a two-digit value with two decimals ("37.00") fits */
 .rankings-table.sd-table th:nth-child(7), .rankings-table.sd-table td:nth-child(7) { width: 80px; }
 .rankings-table.sd-table th:nth-child(8), .rankings-table.sd-table td:nth-child(8) { width: 80px; }
 /* 👁 visual-qa: the classic rule ".rankings-table th:nth-child(9)" (its Value column, 88px) also matches
@@ -1543,8 +1646,6 @@ th.sd-cpt-col.sorted { color: var(--amber); }
 }
 .opt-title { margin: 0; font-size: var(--fs-md); color: var(--text-muted); display: flex; align-items: baseline; gap: var(--sp-2); flex-wrap: wrap; }
 .opt-sub { font-size: var(--fs-sm); font-weight: 400; color: var(--text-dim); }
-.opt-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2) var(--sp-3); }
-.opt-inline { display: inline-flex; align-items: center; gap: 6px; font-size: var(--fs-base); color: var(--text); white-space: nowrap; }
 .opt-input {
   background: var(--bg-elevated);
   border: 1px solid var(--border);
@@ -1558,28 +1659,96 @@ th.sd-cpt-col.sorted { color: var(--amber); }
 .opt-input-pct { width: 52px; }
 select.opt-input { text-align: left; padding: 3px 4px; }
 .opt-select-n { width: 46px; }
-.opt-check { display: inline-flex; align-items: center; gap: 4px; cursor: pointer; }
-.opt-check input { margin: 0; accent-color: var(--accent); }
 .opt-go { padding: 4px 18px; }
 .opt-warn { color: var(--amber); font-size: var(--fs-sm); }
 .opt-lockinfo { color: var(--text-muted); font-size: var(--fs-sm); }
-.opt-inline-exp { gap: var(--sp-2); }
-.opt-row-chips { align-items: flex-start; gap: var(--sp-2) var(--sp-5); }
 .opt-form-error { margin-top: 0; }
-.opt-block { display: flex; flex-direction: column; gap: 4px; }
-.opt-block-label { font-size: var(--fs-sm); font-weight: 600; color: var(--text-muted); }
-.opt-exp-inputs { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
-.opt-exp-input { display: inline-flex; align-items: center; gap: 4px; font-size: var(--fs-sm); font-weight: 600; color: var(--text-muted); }
+.opt-go-error { flex: 0 1 auto; min-width: 0; font-size: var(--fs-sm); text-align: right; }
+/* The settings panel (lineup-settings.js): four titled groups side by side. */
+.opt-settings-head { display: flex; align-items: center; gap: var(--sp-3); flex-wrap: wrap; }
+.opt-settings-head .opt-title { margin-right: auto; }
+.opt-groups { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--sp-3); align-items: stretch; }
+@media (max-width: 1100px) { .opt-groups { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 600px) { .opt-groups { grid-template-columns: minmax(0, 1fr); } }
+.opt-group { background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 8px; padding: var(--sp-2) var(--sp-3) var(--sp-1); }
+.opt-group-title { margin: 0 0 var(--sp-1); font-size: var(--fs-sm); font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--text-muted); }
+.opt-set { padding: 3px 0; }
+.opt-set + .opt-set { border-top: 1px solid var(--border); }
+.opt-set-main { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3); min-height: 26px; }
+.opt-set-label { font-size: 13px; color: var(--text); display: inline-block; }
+.opt-set-label::first-letter { text-transform: uppercase; }
+.opt-set-ctl { display: inline-flex; align-items: center; gap: var(--sp-2); }
+.opt-set-hint { margin-top: 1px; font-size: var(--fs-sm); color: var(--text-dim); }
+.opt-group-note { margin: -2px 0 var(--sp-1); }
+.opt-settings .opt-input { font-size: 13px; padding: 2px 6px; }
+.opt-settings .opt-input-num, .opt-settings .opt-input-pct { text-align: right; font-variant-numeric: tabular-nums; }
+.opt-numbox { display: inline-flex; align-items: center; gap: 4px; }
+.opt-unit { min-width: 1.2em; font-size: var(--fs-sm); color: var(--text-dim); }
+.opt-toggle { display: inline-flex; align-items: center; gap: 6px; padding: 0; margin: 0; border: 0; background: none; cursor: pointer; color: var(--text-muted); font: inherit; font-size: var(--fs-sm); }
+.opt-toggle input { position: absolute; opacity: 0; width: 0; height: 0; }
+.opt-switch { position: relative; flex: 0 0 auto; width: 28px; height: 16px; border-radius: 999px; background: var(--bg-elevated-2); border: 1px solid var(--border); transition: background 0.12s, border-color 0.12s; }
+.opt-switch::after { content: ""; position: absolute; top: 2px; left: 2px; width: 10px; height: 10px; border-radius: 50%; background: var(--text-dim); transition: transform 0.12s, background 0.12s; }
+.opt-switch.on, .opt-toggle input:checked + .opt-switch { background: rgba(var(--accent-rgb), 0.3); border-color: var(--accent); }
+.opt-switch.on::after, .opt-toggle input:checked + .opt-switch::after { transform: translateX(12px); background: var(--accent-text); }
+.opt-toggle:focus-visible .opt-switch, .opt-toggle input:focus-visible + .opt-switch { outline: 2px solid var(--accent); outline-offset: 2px; }
+.opt-toggle-words { display: inline-grid; }
+.opt-toggle-words > .opt-toggle-text { grid-area: 1 / 1; }
+.opt-toggle input:checked ~ .opt-toggle-words .opt-text-off, .opt-toggle input:not(:checked) ~ .opt-toggle-words .opt-text-on { visibility: hidden; }
+.opt-group-wide { grid-column: 1 / -1; }
+.opt-group-wide .opt-chips { padding-bottom: var(--sp-1); }
 .opt-chips { display: flex; flex-wrap: wrap; gap: 4px; }
 .opt-chip { padding: 2px 10px; }
 .opt-chip.toggle-chip.active::before { content: "\2713\00a0"; }
 .opt-avoid-chip.active { background: rgba(var(--danger-rgb), 0.15); border-color: var(--danger); color: var(--danger); }
+.opt-toggle { white-space: nowrap; }
+/* Per-QB stack settings (lineup-qb-stacks.js): a list in the Stacking card, a full-width panel under the cards for each open QB. */
+.qbs-item { padding: 2px 0; }
+.qbs-toggle { display: flex; align-items: center; gap: 6px; width: 100%; min-height: 24px; padding: 0; border: 0; background: none; color: var(--text); font: inherit; font-size: 13px; cursor: pointer; text-align: left; }
+.qbs-name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+.qbs-vs, .qbs-set { flex: 0 0 auto; font-size: var(--fs-sm); color: var(--text-dim); white-space: nowrap; }
+.qbs-set { color: var(--accent); }
+.qbs-toggle:focus-visible, .qbs-seg-btn:focus-visible, .qbs-link:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.qbs-sum { display: inline-block; margin: 0 0 2px; padding: 0 7px; border-radius: 999px; background: rgba(var(--accent-rgb), 0.16); border: 1px solid var(--accent); font-size: 11px; line-height: 16px; color: var(--text); white-space: nowrap; }
+.qbs-sum[hidden], .qbs-reset[hidden] { display: none; }
+.qbs-head { display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; margin-bottom: var(--sp-1); max-width: calc(2 * 440px + var(--sp-5)); }
+.qbs-head-name { font-weight: 700; font-size: 14px; }
+.qbs-head .qbs-sum { margin: 0; }
+.qbs-link { border: 0; background: none; padding: 0; font: inherit; font-size: var(--fs-sm); color: var(--accent); cursor: pointer; text-decoration: underline; }
+.qbs-grow { flex: 1 1 auto; }
+.qbs-opts { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2) var(--sp-5); padding: 3px 0 var(--sp-2); }
+.qbs-opt { display: inline-flex; align-items: center; gap: var(--sp-2); }
+.qbs-opt-bb { flex-direction: column; align-items: flex-start; gap: 1px; }
+.qbs-bb-hint { margin-top: 0; }
+.opt-settings .opt-input.qbs-num { width: 52px; }
+.qbs-cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 440px)); gap: var(--sp-5); padding-bottom: var(--sp-2); }
+.qbs-col-title { display: flex; align-items: center; gap: 6px; padding: 2px 0; margin-bottom: 2px; border-bottom: 1px solid var(--border); font-size: var(--fs-sm); font-weight: 700; color: var(--text-muted); }
+.qbs-pl { display: flex; align-items: center; gap: 6px; min-height: 24px; font-size: 13px; }
+.qbs-pl + .qbs-pl { border-top: 1px solid var(--border); }
+.qbs-pos { flex: 0 0 22px; font-size: 11px; font-weight: 700; color: var(--text-dim); }
+.qbs-pname { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.qbs-sal, .qbs-proj { flex: 0 0 auto; font-size: var(--fs-sm); color: var(--text-muted); font-variant-numeric: tabular-nums; text-align: right; }
+.qbs-sal { min-width: 44px; }
+.qbs-proj { min-width: 30px; }
+.qbs-out { opacity: 0.55; }
+.qbs-toggle.qbs-dead { cursor: default; }
+.qbs-out .qbs-pname { flex: 0 1 auto; }
+.qbs-out .qbs-sal { margin-left: auto; }
+.qbs-ph { visibility: hidden; }
+.qbs-ro .qbs-seg-btn { cursor: default; }
+.qbs-seg { display: inline-flex; flex: 0 0 auto; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+.qbs-seg-btn { border: 0; border-left: 1px solid var(--border); background: var(--bg-elevated); color: var(--text-muted); padding: 1px 7px; font: inherit; font-size: 11px; font-weight: 600; line-height: 16px; cursor: pointer; }
+.qbs-seg-btn:first-child { border-left: 0; }
+.qbs-seg-btn.on { background: var(--bg-elevated-2); color: var(--text); }
+.qbs-seg-btn.on.qbs-must, .qbs-seg-btn.on.qbs-yes { background: rgba(var(--success-rgb), 0.22); color: var(--success); }
+.qbs-seg-btn.on.qbs-no { background: rgba(var(--danger-rgb), 0.18); color: var(--danger); }
 
 .opt-results { width: 100%; margin-top: var(--sp-5); display: flex; flex-direction: column; gap: var(--sp-2); }
 .opt-results-head { display: flex; align-items: center; gap: var(--sp-3); flex-wrap: wrap; }
 .opt-note { font-size: var(--fs-sm); color: var(--text-dim); }
+/* A card is at least 400px (row arithmetic under .opt-p): three across from a 1303px content width up. */
 .opt-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(400px, 100%), 1fr)); gap: var(--sp-3); }
 .opt-card {
+  container-type: inline-size; /* the short-name rule below reads the card's own width */
   min-width: 0; /* a grid item may shrink below its unwrapped rows, so the player name truncates instead of the card overflowing */
   background: var(--bg-elevated);
   border: 1px solid var(--border);
@@ -1593,17 +1762,37 @@ select.opt-input { text-align: left; padding: 3px 4px; }
 .opt-card-title { font-weight: 700; font-size: var(--fs-base); }
 .opt-card-actions { display: inline-flex; gap: var(--sp-2); align-items: center; }
 .opt-card-players { display: flex; flex-direction: column; gap: 2px; }
-.opt-p { display: flex; align-items: center; gap: 6px; font-size: var(--fs-sm); white-space: nowrap; }
-.opt-p-slot { width: 32px; flex: 0 0 32px; font-weight: 700; color: var(--text-muted); }
-.opt-p-name { flex: 1 1 auto; min-width: 0; font-weight: 600; overflow: hidden; text-overflow: ellipsis; }
-.opt-p-opp { flex: 0 0 52px; color: var(--text-muted); }
-.opt-p-sal { flex: 0 0 52px; text-align: right; font-variant-numeric: tabular-nums; }
-.opt-p-proj { flex: 0 0 34px; text-align: right; font-variant-numeric: tabular-nums; }
-.opt-p-own { flex: 0 0 68px; text-align: right; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+/* D54 (Adam 2026-10-16): a card row is 50px; its fixed parts take 195px, so a name has 205px at the narrowest card (400px). */
+.opt-p { display: flex; align-items: center; gap: 8px; min-height: 50px; font-size: var(--fs-sm); white-space: nowrap; }
+.opt-p-slot { width: 30px; flex: 0 0 30px; font-weight: 700; color: var(--text-muted); }
+.opt-p-body { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.opt-p-line1 { display: flex; align-items: center; gap: 4px; min-width: 0; }
+.opt-p-name { flex: 0 1 auto; min-width: 0; font-size: 14px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; }
+.opt-p-line2 { display: flex; align-items: center; gap: 6px; min-width: 0; color: var(--text-muted); }
+.opt-p-line2 .team-chip-mini { padding: 0 5px; font-size: 11px; line-height: 16px; }
+.opt-p-nums { flex: 0 0 58px; display: flex; flex-direction: column; align-items: flex-end; gap: 2px; font-variant-numeric: tabular-nums; }
+.opt-p-sal { font-size: 14px; font-weight: 700; }
+.opt-p-proj { color: var(--text-muted); }
+.player-badge { flex: 0 0 38px; width: 38px; height: 38px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 800; letter-spacing: 0.02em; text-shadow: 0 1px 1px rgba(0, 0, 0, 0.45); border: 1px solid rgba(255, 255, 255, 0.4); } /* the ring keeps a navy or black badge a disc on the dark card */
+.player-badge.player-badge-3 { font-size: 11px; letter-spacing: 0; }
+/* The short name ("M. Stafford") replaces the full one on a tagged row under 400px and on every row under 340px. */
+.nm-short { display: none; }
+@container (max-width: 399px) { .opt-p:has(.opt-p-tags) .nm-full { display: none; } .opt-p:has(.opt-p-tags) .nm-short { display: inline; } }
+@container (max-width: 339px) { .opt-p .nm-full { display: none; } .opt-p .nm-short { display: inline; } }
+.opt-p-tags { flex: 0 0 auto; display: inline-flex; align-items: center; gap: 3px; }
+.opt-p-tags .out-tag { margin-left: 0; }
+.opt-card-stack { margin: 0 auto 0 var(--sp-2); padding: 0 6px; border-radius: 4px; border: 1px solid var(--border); background: var(--bg-elevated-2); color: var(--text-muted); font-size: var(--fs-sm); font-weight: 700; line-height: 16px; cursor: default; }
+.role-tag { --c: var(--text-muted); display: inline-block; flex: 0 0 auto; margin-left: 5px; padding: 0 4px; border-radius: 3px; border: 1px solid color-mix(in srgb, var(--c) 40%, transparent); background: color-mix(in srgb, var(--c) 16%, transparent); color: var(--c); font-size: 9px; font-weight: 800; letter-spacing: 0.04em; line-height: 12px; vertical-align: middle; cursor: default; }
+.role-stack { --c: var(--accent-text); }
+.role-runback { --c: var(--pos-rb); }
+.role-mini-0 { --c: var(--pos-qb); }
+.role-mini-1 { --c: var(--info); }
+.role-mini-2 { --c: var(--pos-dst); }
+.opt-p-line2 .role-tag { margin-left: 0; }
 .opt-card-totals { font-size: var(--fs-sm); color: var(--text-muted); border-top: 1px solid var(--border); padding-top: var(--sp-1); }
 /* New since the card before (Adam 2026-10-11): a green tint, a green bar on the left and a green dot. Green, not the
    blue accent locked players use; every row keeps the dot's room so the columns stay lined up. */
-.opt-p { padding: 1px 0 1px 5px; border-radius: 3px; }
+.opt-p { padding: 2px 0 2px 5px; border-radius: 3px; }
 .opt-p-dot { flex: 0 0 6px; width: 6px; height: 6px; border-radius: 50%; }
 .opt-p-new { background: rgba(var(--success-rgb), 0.13); box-shadow: inset 3px 0 0 var(--success); }
 .opt-p-new .opt-p-dot { background: var(--success); }
@@ -1639,21 +1828,14 @@ select.opt-input { text-align: left; padding: 3px 4px; }
   .opt-p { gap: 4px; padding-left: 3px; }
   .opt-p-dot { display: none; }
   .opt-p-slot { width: 28px; flex-basis: 28px; }
-  .opt-p-opp { flex-basis: 42px; }
-  .opt-p-sal { flex-basis: 46px; }
-  .opt-p-own { flex-basis: 60px; }
 }
 
 .opt-exposure { margin-top: var(--sp-3); display: flex; flex-direction: column; gap: var(--sp-2); container-type: inline-size; }
-/* One compact table per position (Adam 2026-10-11: Exposure, Player, Team, Matchup, Own%), full names. The boxes are
-   equal fixed-width grid columns (330px: the widest box with full names on the week 5 board, 323px, plus headroom),
-   never stretched: five on one row when the section is wide enough (5 x 330 + gaps), otherwise three then two, never
-   four and a lone one; narrower, one column (full width on a phone). A box narrower than its table scrolls sideways
-   inside itself. */
+/* One compact table per position (Adam 2026-10-11): boxes at least 330px, five across when wide enough, else three, then one column. */
 .opt-exp-grid { display: grid; grid-template-columns: max-content; gap: var(--sp-2); align-items: start; }
 .opt-exp-grid > .opt-exp-box { min-width: 0; }
-@container (min-width: 1006px) { .opt-exp-grid { grid-template-columns: repeat(3, 330px); } }
-@container (min-width: 1682px) { .opt-exp-grid { grid-template-columns: repeat(5, 330px); } }
+@container (min-width: 1006px) { .opt-exp-grid { grid-template-columns: repeat(3, minmax(330px, 1fr)); } }
+@container (min-width: 1682px) { .opt-exp-grid { grid-template-columns: repeat(5, minmax(330px, 1fr)); } }
 @media (max-width: 600px) { .opt-exp-grid { grid-template-columns: minmax(0, 1fr); } } /* phone: stacked boxes line up full width */
 .opt-exp-box { background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 8px; padding: var(--sp-2) 6px; }
 .opt-exp-title { font-weight: 700; color: var(--text-muted); font-size: var(--fs-sm); margin-bottom: 2px; }
@@ -1689,8 +1871,12 @@ select.opt-input { text-align: left; padding: 3px 4px; }
 .opt-must-count { margin-left: auto; }
 
 /* Placed-player rows in the nine slots: the name, matchup (D43) and ownership (D32) are never cut off; the second
-   line carries salary, projection and own%. Only the Classic builder uses the -2 modifier, Showdown keeps its row. */
-.lineup-slot-player.lineup-slot-player-2 { flex-direction: column; align-items: flex-start; gap: 2px; }
+   line carries salary, projection and own%. The Classic and Showdown builders both use the -2 modifier. */
+.lineup-slot-player.lineup-slot-player-2 { flex-direction: row; align-items: center; gap: var(--sp-2); }
+.lineup-slot-body { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; }
+/* D54: the nine slots are 50px at least. */
+.lineup-slot-tall { min-height: 50px; padding-top: 4px; padding-bottom: 4px; }
+.lineup-slot-filled { border-left: 4px solid var(--tc); background: linear-gradient(90deg, color-mix(in srgb, var(--tc) 22%, var(--bg-elevated)), var(--bg-elevated) 75%); }
 .lineup-slot-top { display: flex; align-items: center; gap: var(--sp-2); min-width: 0; max-width: 100%; }
 .lineup-slot-player-2 .lineup-slot-name { white-space: normal; overflow: visible; text-overflow: clip; }
 .lineup-slot-matchup { color: var(--text-muted); font-size: var(--fs-sm); white-space: nowrap; }
@@ -1757,7 +1943,6 @@ select.opt-input { text-align: left; padding: 3px 4px; }
   .lineup-layout { flex-direction: column; align-items: stretch; }
   .lineup-left { flex: 0 0 auto; max-width: 100%; width: 100%; }
   .lineup-right { width: 100%; }
-  .opt-inline { white-space: normal; flex-wrap: wrap; }
   /* Entries (D75): Contests stack under Lineups; the table drops "In the file now" so nothing scrolls sideways. */
   .entries-bulk { grid-template-columns: minmax(0, 1fr); }
   .entries-bulk-list:not(.entries-bulk-lineups) .entries-check > span:first-of-type { flex: 1; min-width: 0; }
@@ -1767,7 +1952,4 @@ select.opt-input { text-align: left; padding: 3px 4px; }
   .entries-table th:first-child { width: auto; }
   .entries-pick { width: 100%; min-width: 0; }
   .entries-contest-line { flex-wrap: wrap; }
-  /* Header source chips: one summary chip ("9 sources · cached 04:43") that opens the full list on tap. */
-  .pills-list.collapsible:not(.open) > .pill:not(.pills-summary) { display: none; }
-  .pills-list.collapsible > .pills-summary { display: inline-block; }
 }

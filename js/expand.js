@@ -42,6 +42,14 @@ export function phoneMinHeight(win = window) {
   return win.matchMedia("(max-width: 700px)").matches ? Math.round(win.innerHeight * 0.7) : 0;
 }
 
+/** The Optimizer pool's least height (px): the slot column's height or 60% of the window; 0 for any other panel. */
+export function panelMinHeight(panelEl, top, win = window) {
+  if (!panelEl?.classList?.contains("lineup-rows-wrap")) return 0;
+  const left = panelEl.closest(".lineup-layout")?.querySelector(".lineup-left");
+  const slotColumn = left ? left.getBoundingClientRect().bottom - top : 0;
+  return Math.round(Math.max(win.innerHeight * 0.6, slotColumn));
+}
+
 // ---------- DOM part ----------
 
 let expandedKey = null;

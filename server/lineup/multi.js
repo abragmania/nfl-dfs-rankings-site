@@ -1,5 +1,6 @@
 // The Optimizer's engine (PROJECT.md Part 4 "Optimizer"; DECISIONS.md D55 as amended 2026-10-10, D73, D74): N DraftKings
-// classic lineups, one at a time, each the best lineup by projection (the only objective since Adam 2026-10-15) that keeps every rule Adam has switched on,
+// classic lineups, one at a time, each the best lineup by projection or, when Adam picks it, by TwoGun's published ceiling
+// (D25 as amended 2026-10-15; scoring only, see objectiveScore) that keeps every rule Adam has switched on,
 // every lock, the uniqueness he set against his saved lineups and every earlier lineup of the batch, and the
 // per-position exposure caps as they stand at that moment (counted over this batch only, D74). It is a pure function over board rows: no network, no
 // clock, no file writes. The single-lineup builder (optimize.js) is separate and unchanged.
@@ -19,6 +20,7 @@ import { rowIsOut } from "../rank/sidelined.js"; // pure: the public site runs t
 import { assignSlots } from "./dk-entries.js";
 import { warn } from "../lib/log.js";
 import { retiredObjectiveNote } from "./optimize.js"; // pure: the site copies the engine (D69); one copy of the note
+import { parseEntries, qbStackPrepare, globalRule, mustPlan, withReachable, stackTrials } from "./qb-stacks.js"; // pure; per-QB stack settings
 
 // --------------------------------------------------------------------------------------------------------
 // Constants
@@ -60,10 +62,16 @@ export const RULE_KEYS = Object.freeze([
  *  "1 or more teammates" (true) or "0 or more" (false, no stack needed), as it always did, unless stackOwn is given. */
 export const LEGACY_RULE_KEYS = Object.freeze(["qbStack", "oneOffensivePerOtherTeam"]);
 
-/** What the lineups maximise, as optimize.js scores them: projection. "lev" and "projMinusOwn" are retired (Adam
- *  2026-10-15, Lev measure to be redesigned; projection minus ownership removed): a request naming one is built on
- *  projection with optimize.js retiredObjectiveNote's note. */
-export const OBJECTIVES = Object.freeze(["proj"]);
+/** What the lineups maximise: "proj" (projection, as optimize.js scores it) or "ceil" (TwoGun's published ceiling,
+ *  row.tg.ceil, used as he publishes it, D25 as amended 2026-10-15; Adam picks one each time). A ceiling build needs
+ *  a board that carries his ceilings (TwoGun mode) and is refused in plain words otherwise. "lev" and "projMinusOwn"
+ *  are retired (Adam 2026-10-15, Lev measure to be redesigned; projection minus ownership removed): a request naming
+ *  one is built on projection with optimize.js retiredObjectiveNote's note. */
+export const OBJECTIVES = Object.freeze(["proj", "ceil"]);
+
+/** The refusal when a ceiling build is asked of a board with no TwoGun ceiling on any row (current mode, TwoGun mode
+ *  with no TwoGun board readable, or the public site's current-mode board). */
+export const NO_CEILING_SENTENCE = "This board has no TwoGun ceilings (current mode, or no TwoGun board could be read), so lineups cannot be built by ceiling; build by projection.";
 
 /** D73: the most teammates and opponents the QB stack can ask for, and the default counts (each "or more" is
  *  ticked by default: 1 or more teammates, 0 or more opponents). */
@@ -193,15 +201,15 @@ function normaliseSettings(settings, slate, existingCount, notes) {
   const stackOwnOrMore = legacyStack ? true : orMore(s.stackOwnOrMore);
   const stackOppOrMore = orMore(s.stackOppOrMore);
 
-  // The objective, scored as optimize.js scores it: projection. A retired one (a request or saved setting from
-  // before 2026-10-15) is built on projection with a note, never refused.
+  // The objective: projection (scored as optimize.js scores it) or TwoGun's ceiling. A retired one (a request or
+  // saved setting from before 2026-10-15) is built on projection with a note, never refused.
   let fatal = null;
   const asked = s.objective === undefined || s.objective === null ? "proj" : String(s.objective);
   const retiredNote = retiredObjectiveNote(asked);
   if (retiredNote) notes.push(retiredNote);
   const objective = retiredNote ? "proj" : asked;
   if (!OBJECTIVES.includes(objective)) {
-    fatal = `The objective "${objective}" is not one the Optimizer knows; use Projection.`;
+    fatal = `The objective "${objective}" is not one the Optimizer knows; use Projection or Ceiling.`;
   }
 
   // Exposure: {pct: 50} is a percentage of this batch as asked for, rounded UP to whole lineups (50% of 5 allows
@@ -267,6 +275,8 @@ function normaliseSettings(settings, slate, existingCount, notes) {
     stackOwnOrMore,
     stackOpp,
     stackOppOrMore,
+    qbStacks: parseEntries(s.qbStacks, STACK_OWN_MAX, notes),
+    spreadDst: spreadFlag(s.spreadDst, notes),
     objective,
     fatal,
     locks: idList(s.locks),
@@ -290,6 +300,13 @@ export function pctToLineups(pct, count) {
   return Math.ceil((pct / 100) * count - 1e-9);
 }
 
+function spreadFlag(value, notes) {
+  if (value === undefined || value === null || value === false) return false;
+  if (value === true) return true;
+  notes.push(`Spread defenses must be true or false; ${JSON.stringify(value)} was ignored.`);
+  return false;
+}
+
 /** A stack count from the settings: a whole number from 0 to `max`; absent means `fallback`; anything else is
  *  clamped with a note (the request checks refuse it before it gets here). */
 function stackNumber(value, fallback, max, what, notes) {
@@ -304,9 +321,35 @@ function stackNumber(value, fallback, max, what, notes) {
   return clamped;
 }
 
-/** The score one candidate adds under the objective (optimize.js scoreOf): his projection. */
-function objectiveScore(row, proj) {
-  return proj;
+/** The score one candidate adds under the objective: his projection (optimize.js scoreOf), or for "ceil" TwoGun's
+ *  published ceiling (D25 as amended 2026-10-15). Every search step reads this score, so only the scoring changes. A
+ *  player with no ceiling is kept out of a ceiling build unless locked (prepare); a locked one counts 0, never an
+ *  estimate. A typed projection override never moves a ceiling. */
+function objectiveScore(row, proj, objective) {
+  return objective === "ceil" ? ceilingOf(row) ?? 0 : proj;
+}
+
+/** TwoGun's published ceiling for a board row (row.tg.ceil, TwoGun mode only), or null; 0 for an out row that has one
+ *  (out = projection 0 and ceiling 0, Adam). Nothing else is read. */
+export function ceilingOf(row) {
+  const ceil = num(row && row.tg && row.tg.ceil);
+  return ceil !== null && rowIsOut(row) ? 0 : ceil;
+}
+
+/** Ruled out after TwoGun's board stamp: out of every build unless locked. */
+function outAfterStamp(flags) {
+  return flags.includes("outAfterStamp") && !flags.includes("revived");
+}
+
+/** The notes a ceiling build adds once the pool is made: who was left out for want of a ceiling, and that typed
+ *  projections do not move it. Counts only; nothing estimated. */
+function ceilingNotes(leftOut, typed, notes) {
+  if (leftOut > 0) {
+    notes.push(`${leftOut} player${leftOut === 1 ? "" : "s"} with no TwoGun ceiling ${leftOut === 1 ? "was" : "were"} left out of this ceiling build.`);
+  }
+  if (typed > 0) {
+    notes.push(`${typed} typed projection${typed === 1 ? "" : "s"} ${typed === 1 ? "does" : "do"} not change a ceiling build; it ranks by TwoGun's ceilings as he publishes them.`);
+  }
 }
 
 /** D73: the stack constraints that bind at all ("0 or more" binds nothing). */
@@ -334,7 +377,11 @@ const oppStackActive = (opts) => !(opts.stackOpp === 0 && opts.stackOppOrMore);
  *   stackOwn (0-4, default 1), stackOwnOrMore (default true), stackOpp (0-3, default 0), stackOppOrMore (default
  *     true): D73, the lineup's quarterback with exactly (or, ticked, at least) that many offensive teammates (a
  *     running back only as a regular pass catcher) and offensive players of the team he faces; never the defense.
- *   objective: "proj" (default); the retired "lev" and "projMinusOwn" are built on projection with a note.
+ *   spreadDst (default false, Adam 2026-10-16): no defense in more than max(20% of count, count / usable DSTs) lineups.
+ *   qbStacks (Adam 2026-10-16): per-QB entries replacing the stack numbers above for that QB (qb-stacks.js).
+ *   objective: "proj" (default) or "ceil" (TwoGun's ceiling, row.tg.ceil; refused with NO_CEILING_SENTENCE when no
+ *     row carries one); the retired "lev" and "projMinusOwn" are built on projection with a note. Rows flagged
+ *     "outAfterStamp" are left out of every build unless locked.
  *   allowRbGames, avoidGames: game keys as on the board (row.gameId, e.g. "DET@ARI").
  *   maxPerTeam: most players (defense included) from one team, as optimize.js maxFromTeam; default none. D76: it
  *     never limits the lineup quarterback's team or the team he faces, only every other team.
@@ -343,10 +390,11 @@ const oppStackActive = (opts) => !(opts.stackOpp === 0 && opts.stackOppOrMore);
  *     catchers: ids Adam names as pass catchers whatever the number.
  * @param {Array}    [args.existing] Adam's saved lineups (arrays of ids, or objects with ids/lineup/players/slots);
  *   they count for minimum unique players only, never for the exposure caps (D74)
- * @returns {{lineups: Array<{ids: string[], salary: number, proj: number}>, exposure: object, notes: string[]}}
+ * @returns {{lineups: Array<{ids: string[], salary: number, proj: number, ceil?: number|null}>, exposure: object, notes: string[]}}
  *   exposure is still reported over saved plus new lineups (the Optimizer tab computes its own per tab, D74).
  *   ids are in DraftKings slot order QB, RB, RB, WR, WR, WR, TE, FLEX, DST; proj is always the lineup's projection,
- *   whatever the objective. Never throws.
+ *   whatever the objective. ceil (TwoGun's ceilings summed) is present only when some row carries one, and null when
+ *   any player in the lineup lacks one; a board without ceilings gives exactly the output it always did. Never throws.
  */
 export function generateLineups(args) {
   const notes = [];
@@ -416,6 +464,8 @@ function run(rows, slate, settings, existing, notes) {
     }
   }
 
+  entryQbChecks(rows, settings, slate, existingList.length, prevKeys, opts, st, notes);
+
   if (opts.stats) opts.stats.exactSalaryUnits = st.exact;
   const lineups = [];
   let aborted = false;
@@ -464,6 +514,25 @@ function run(rows, slate, settings, existing, notes) {
   return { lineups, exposure: exposureOf(st, prevKeys, opts), notes };
 }
 
+/** Per-QB entries: each unlocked entry QB is tried alone first; one who fits no lineup gets a note (skipped when a QB is locked). */
+function entryQbChecks(rows, settings, slate, existingCount, prevKeys, opts, st, notes) {
+  if (!st.perQb || st.lockCands.some((c) => c.pos === "QB") || opts.capCount.QB === 0) return;
+  const base = settings && typeof settings === "object" ? settings : {};
+  for (const qb of st.byPos.QB) {
+    if (!qb.rule || st.qbNoted.has(qb.key) || st.playerCapN.get(qb.key) === 0) continue;
+    const scratch = [];
+    const o2 = normaliseSettings({ ...base, locks: [...opts.locks, qb.id], count: opts.count }, slate, existingCount, scratch);
+    o2.capCount = opts.capCount;
+    const st2 = prepare(rows, o2, scratch);
+    if (st2.fatal) continue; // he and the locks do not fit together (salary or slots): not his stack settings, as for any quarterback
+    const prev2 = makePrevIndex(st2, prevKeys, 1);
+    const r = searchOne(st2, availableLists(st2, o2, new Map(), prev2), prev2, o2, opts.diagNodeLimit);
+    if (opts.stats) opts.stats.checkNodes = (opts.stats.checkNodes ?? 0) + r.nodes;
+    if (r.best || r.aborted) continue;
+    notes.push(`${qb.name} cannot be in any lineup with his stack settings: ${diagnose(rows, settings, slate, existingCount, prevKeys, opts, 0, qb.id)}.`);
+  }
+}
+
 // --------------------------------------------------------------------------------------------------------
 // Pool
 // --------------------------------------------------------------------------------------------------------
@@ -481,7 +550,14 @@ function prepare(rows, opts, notes) {
   }
   const keyOfId = new Map();
   for (const [id, row] of byId) keyOfId.set(id, dkKeyOf(row, id));
-  const st = { keyOfId, byId, fatal: null, cap: opts.cap, rules: opts.rules, maxPerTeam: opts.maxPerTeam, minUnique: opts.minUnique };
+  // hasCeil: the board carries TwoGun ceilings (TwoGun mode); only then does a lineup report a ceiling total.
+  const hasCeil = [...byId.values()].some((row) => ceilingOf(row) !== null);
+  const st = { keyOfId, byId, fatal: null, cap: opts.cap, rules: opts.rules, maxPerTeam: opts.maxPerTeam, minUnique: opts.minUnique, hasCeil };
+  const ceilBuild = opts.objective === "ceil";
+  if (ceilBuild && !hasCeil) {
+    st.fatal = NO_CEILING_SENTENCE;
+    return st;
+  }
 
   const lockSet = new Set(opts.locks);
   const clash = opts.locks.filter((id) => opts.excludes.has(id));
@@ -514,6 +590,8 @@ function prepare(rows, opts, notes) {
   }
 
   const byKey = new Map();
+  let noCeilingLeftOut = 0; // ceiling build: players kept out only for having no TwoGun ceiling
+  let typedIgnored = 0; // ceiling build: pool players whose typed projection does not move it
   for (const [id, row] of byId) {
     if (opts.excludes.has(id)) continue;
     const locked = lockSet.has(id);
@@ -542,13 +620,24 @@ function prepare(rows, opts, notes) {
     const game = upper(row.gameId) || null;
     const avoided = game !== null && opts.avoidGames.has(game);
     const unstarredQb = opts.rules.starredQbOnly && pos === "QB" && !row.starred;
-    if (!locked && (noProjection || sidelined || avoided || unstarredQb)) continue;
+    const ceil = ceilingOf(row);
+    const noCeiling = ceilBuild && ceil === null;
+    const lateOut = outAfterStamp(flags);
+    const otherwiseOut = noProjection || sidelined || avoided || unstarredQb || lateOut;
+    if (!locked && (otherwiseOut || noCeiling)) {
+      if (noCeiling && !otherwiseOut) noCeilingLeftOut++;
+      continue;
+    }
     if (locked) {
-      if (sidelined) notes.push(`Locked ${name} is listed ${row.status ?? "injured"}; he is kept because he is locked.`);
+      // Adjustment 1: a late-out row also carries "injured" (B's overlay), so the late-out note is checked first.
+      if (lateOut) notes.push(`Locked ${name} was ruled out after TwoGun's board was made; he is kept because he is locked.`);
+      else if (sidelined) notes.push(`Locked ${name} is listed ${row.status ?? "injured"}; he is kept because he is locked.`);
       if (noProjection) notes.push(`Locked ${name} has no projection from any source and counts as ${proj === null ? "0" : `his stand-in ${round2(proj)}`}.`);
+      if (noCeiling) notes.push(`Locked ${name} has no TwoGun ceiling and counts as 0 in this ceiling build.`);
       if (avoided) notes.push(`Locked ${name} plays in ${game}, a game set to avoid; he is kept because he is locked.`);
       if (unstarredQb) notes.push(`Locked ${name} is not starred; he is used because he is locked.`);
     }
+    if (ceilBuild && overridden) typedIgnored++;
 
     let catcher = false;
     if (pos === "RB") {
@@ -574,8 +663,9 @@ function prepare(rows, opts, notes) {
       gameIx: ix(gameIx, game ?? `?${id}`),
       salary,
       proj: proj ?? 0,
+      ceil,
       own: num(row.own),
-      score: Math.round(objectiveScore(row, proj ?? 0) * SCORE_SCALE),
+      score: Math.round(objectiveScore(row, proj ?? 0, opts.objective) * SCORE_SCALE),
       catcher,
       stackOk: pos === "WR" || pos === "TE" || (pos === "RB" && catcher),
       locked,
@@ -595,6 +685,7 @@ function prepare(rows, opts, notes) {
     }
     byKey.set(cand.key, cand);
   }
+  if (ceilBuild) ceilingNotes(noCeilingLeftOut, typedIgnored, notes);
 
   const all = [...byKey.values()];
   st.teamCount = teamIx.size;
@@ -630,16 +721,50 @@ function prepare(rows, opts, notes) {
   }
   st.lockSalary = lockSalary;
 
+  const qs = qbStackPrepare(opts.qbStacks, {
+    byId, keyOfId, candByKey: byKey, lockCands, rules: opts.rules, ruleLabel: (key) => RULE_LABELS[key], allowRbGame: st.allowRbGame, ceilBuild,
+    oppStack: { n: opts.stackOpp, orMore: opts.stackOppOrMore }
+  });
+  if (qs.fatal) {
+    st.fatal = qs.fatal;
+    return st;
+  }
+  notes.push(...qs.notes);
+  for (const c of all) if (c.pos === "QB") c.rule = qs.rules.get(c.key) ?? null;
+  st.perQb = qs.rules.size > 0;
+  st.protectedKeys = qs.protectedKeys;
+  st.qbNoted = qs.noted;
+
   st.pool = all.filter((c) => !c.locked);
   const byPos = {};
   for (const pos of POSITIONS) byPos[pos] = st.pool.filter((c) => c.pos === pos).sort(cmpCand);
   st.byPos = byPos;
+  st.playerCapN = playerCapsByKey(keyOfId, opts.playerCap);
+
+  // Spread defenses: cap = max(ceil(20% of count), ceil(count / usable DSTs)), folded into the DST exposure cap.
+  st.spreadCap = null;
+  if (opts.spreadDst) {
+    if (locksAt.DST > 0) {
+      st.fatal = "A locked defense can't be spread; unlock it or turn off Spread defenses.";
+      return st;
+    }
+    const facesLock = (d) => opts.rules.noDstVsOwnPlayers && d.oppIx >= 0 && lockCands.some((c) => c.teamIx === d.oppIx);
+    const room = byPos.DST.filter((d) => !facesLock(d)).map((d) => st.playerCapN.get(d.key) ?? Infinity).filter((n) => n > 0);
+    let share = 1;
+    while (share < opts.count && room.reduce((t, n) => t + Math.min(n, share), 0) < opts.count) share++;
+    const spread = Math.max(pctToLineups(20, opts.count), room.length ? share : 0);
+    st.spreadCap = Math.min(spread, opts.capCount.DST ?? Infinity);
+    notes.push(`Spread defenses: no defense in more than ${st.spreadCap} of ${opts.count} lineups.`);
+  }
 
   // Teams that could be the quarterback's, and the teams he could face: the locked QB's, or every QB's in the pool.
   const lockedQb = lockCands.find((c) => c.pos === "QB");
   const qbs = lockedQb ? [lockedQb] : byPos.QB;
   st.qbTeams = new Set(qbs.map((c) => c.teamIx));
   st.qbOppTeams = new Set(qbs.map((c) => c.oppIx).filter((i) => i >= 0));
+  const entryQbs = qbs.filter((c) => c.rule);
+  st.entryOwnTeams = new Set(entryQbs.map((c) => c.teamIx));
+  st.entryOppTeams = new Set(entryQbs.filter((c) => c.rule.oppBinds && c.oppIx >= 0).map((c) => c.oppIx));
 
   // Salary units for the knapsack bound: the common divisor of every salary and the cap when that is fine enough,
   // otherwise a coarse unit with costs rounded down and budgets rounded up (still an upper bound).
@@ -757,16 +882,22 @@ function addPrev(prev, keys) {
 // Per-lineup lists: exposure caps, then dominance trimming
 // --------------------------------------------------------------------------------------------------------
 
+/** Per-player Max % (D74, this batch only) as lineup counts by DK key; two rows of one man take the smaller cap. */
+function playerCapsByKey(keyOfId, playerCap) {
+  const out = new Map();
+  for (const [id, { n }] of playerCap) {
+    const key = keyOfId.get(id);
+    if (key !== undefined) out.set(key, Math.min(n, out.get(key) ?? Infinity));
+  }
+  return out;
+}
+
 function availableLists(st, opts, counts, prev) {
   const out = { trimmed: 0 };
-  // Per-player Max % (D74, this batch only), by DK key; two rows of one man take the smaller cap.
-  const playerCapN = new Map();
-  for (const [id, { n }] of opts.playerCap) {
-    const key = st.keyOfId.get(id);
-    if (key !== undefined) playerCapN.set(key, Math.min(n, playerCapN.get(key) ?? Infinity));
-  }
+  const playerCapN = st.playerCapN;
   for (const pos of POSITIONS) {
-    const capN = opts.capCount[pos];
+    let capN = opts.capCount[pos];
+    if (pos === "DST" && st.spreadCap !== null) capN = Math.min(capN ?? Infinity, st.spreadCap);
     let list = st.byPos[pos];
     if (capN !== undefined) list = list.filter((c) => (counts.get(c.key) ?? 0) < capN);
     if (playerCapN.size) list = list.filter((c) => !playerCapN.has(c.key) || (counts.get(c.key) ?? 0) < playerCapN.get(c.key));
@@ -804,14 +935,17 @@ function availableLists(st, opts, counts, prev) {
  *   may count toward the stack (taking him out would change the count). A dominator in an
  *   earlier lineup could make M - p + q a repeat, so only unused players count. The test file checks that
  *   trimming never changes the answer.
+ *   Per-QB entries (qb-stacks.js): marked players and entry QBs are never dropped or used as replacements; their teams are guarded as stack teams.
  */
 function trimPosition(list, pos, st, opts, prev) {
   if (list.length <= 1) return list;
   const rules = opts.rules;
   const need = Math.max(1, MAX_AT[pos] - st.locksAt[pos]);
   const perTeamCap = opts.maxPerTeam ? Math.floor(8 / opts.maxPerTeam) : 0;
-  const ownActive = ownStackActive(opts);
-  const oppActive = oppStackActive(opts);
+  const globalOwn = ownStackActive(opts);
+  const globalOpp = oppStackActive(opts);
+  const ownActive = globalOwn || st.entryOwnTeams.size > 0;
+  const oppActive = globalOpp || st.entryOppTeams.size > 0;
   let b;
   if (pos === "QB") b = Infinity;
   else if (pos === "DST") b = (rules.noDstVsOwnPlayers ? 8 : 0) + 2 + perTeamCap;
@@ -824,10 +958,17 @@ function trimPosition(list, pos, st, opts, prev) {
   }
   // An exact teammate count (D73) is changed by a same-team swap of a non-catcher back for a catcher, so a back's
   // dominator must then match his catcher status exactly; otherwise a catcher only needs a catcher.
-  const exactOwn = ownActive && !opts.stackOwnOrMore;
-  const usable = list.filter((q) => !prev.usedKeys.has(q.key));
+  const exactGlobal = globalOwn && !opts.stackOwnOrMore;
+  const fixed = (c) => st.protectedKeys.has(c.key) || (pos === "QB" && c.rule);
+  const usable = list.filter((q) => !prev.usedKeys.has(q.key) && !fixed(q));
   const kept = [];
   for (const p of list) {
+    if (fixed(p)) {
+      kept.push(p);
+      continue;
+    }
+    const entryOwn = st.entryOwnTeams.has(p.teamIx);
+    const exactOwn = exactGlobal || entryOwn;
     let sameTeam = 0;
     let total = 0;
     const byTeam = new Map();
@@ -846,7 +987,8 @@ function trimPosition(list, pos, st, opts, prev) {
     if (sameTeam >= need) continue; // same-team replacement: always safe
     // A player who may count toward the stack (a pass catcher of a possible quarterback's team, or any offensive
     // player of a team a possible quarterback faces) is only ever replaced from his own team.
-    const stackCounted = (ownActive && p.stackOk && st.qbTeams.has(p.teamIx)) || (oppActive && st.qbOppTeams.has(p.teamIx));
+    const stackCounted = (p.stackOk && ((globalOwn && st.qbTeams.has(p.teamIx)) || entryOwn))
+      || (globalOpp && st.qbOppTeams.has(p.teamIx)) || st.entryOppTeams.has(p.teamIx);
     if (b !== Infinity && !stackCounted && total >= need) {
       const counts = [...byTeam.values()].sort((x, y) => y - x);
       let blocked = 0;
@@ -890,6 +1032,9 @@ function searchOne(st, avail, prev, opts, nodeLimit) {
   const needOpp = oppStackActive(opts) ? opts.stackOpp : 0;
   const capOwn = ownStackActive(opts) && !opts.stackOwnOrMore ? opts.stackOwn : Infinity;
   const capOpp = oppStackActive(opts) && !opts.stackOppOrMore ? opts.stackOpp : Infinity;
+  const global = globalRule(needOwn, capOwn, needOpp, capOpp);
+  let rule = global;
+  let must = null; // mustPlan of the placed quarterback's "must" players, set with his rule in setMates
 
   let bestScore = -Infinity;
   let bestSalary = Infinity;
@@ -900,6 +1045,7 @@ function searchOne(st, avail, prev, opts, nodeLimit) {
     // group is searched first) a team is not refused, since it may turn out to be his game; his own placement
     // below then checks every placed team outside his game, so the limit holds whatever the order.
     if (maxPerTeam !== null && c.pos !== "QB" && qbTeam !== -1 && c.teamIx !== qbTeam && c.teamIx !== qbOpp && teamN[c.teamIx] >= maxPerTeam) return false;
+    if (c.pos !== "QB" && qbTeam !== -1 && rule.neverKeys.has(c.key)) return false;
     if (c.pos === "DST") {
       if (dstOpp !== -1) return false;
       if (rules.noDstVsOwnPlayers && c.oppIx >= 0 && offN[c.oppIx] > 0) return false;
@@ -907,8 +1053,10 @@ function searchOne(st, avail, prev, opts, nodeLimit) {
       if (qbTeam !== -1) return false;
       let m = 0;
       let o = 0;
+      const r = c.rule ?? global;
       for (const p of placed) {
         if (maxPerTeam !== null && p.teamIx !== c.teamIx && p.teamIx !== c.oppIx && teamN[p.teamIx] > maxPerTeam) return false;
+        if (r.neverKeys.has(p.key)) return false;
         if (p.pos === "DST") {
           if (rules.noDstVsOwnPlayers && p.oppIx === c.teamIx) return false;
           continue;
@@ -917,11 +1065,11 @@ function searchOne(st, avail, prev, opts, nodeLimit) {
         if (p.stackOk && p.teamIx === c.teamIx) m++;
         if (c.oppIx >= 0 && p.teamIx === c.oppIx) o++;
       }
-      if (m > capOwn || o > capOpp) return false;
+      if (m > r.capOwn || o > r.capOpp) return false;
     } else {
       if (qbTeam !== -1) {
-        if (c.stackOk && c.teamIx === qbTeam && mates >= capOwn) return false;
-        if (c.teamIx === qbOpp && opps >= capOpp) return false;
+        if (c.stackOk && c.teamIx === qbTeam && mates >= rule.capOwn) return false;
+        if (c.teamIx === qbOpp && opps >= rule.capOpp) return false;
       }
       if (rules.noDstVsOwnPlayers && c.teamIx === dstOpp) return false;
       if (c.pos === "RB") {
@@ -945,6 +1093,7 @@ function searchOne(st, avail, prev, opts, nodeLimit) {
       if (c.pos === "QB") {
         qbTeam = c.teamIx;
         qbOpp = c.oppIx;
+        rule = c.rule ?? global;
         mates = 0;
         opps = 0;
         for (const p of placed) {
@@ -975,6 +1124,7 @@ function searchOne(st, avail, prev, opts, nodeLimit) {
       if (c.pos === "QB") {
         qbTeam = -1;
         qbOpp = -1;
+        rule = global;
         mates = 0;
         opps = 0;
       } else {
@@ -1015,7 +1165,9 @@ function searchOne(st, avail, prev, opts, nodeLimit) {
     // index j on who would count as a teammate / an opponent, so a branch that cannot reach N and O is cut.
     const mateSuf = lists.map((list) => new Int32Array(list.length + 1));
     const oppSuf = lists.map((list) => new Int32Array(list.length + 1));
-    const stackBinds = needOwn > 0 || needOpp > 0;
+    const stackBinds = st.perQb || needOwn > 0 || needOpp > 0;
+    const idxOf = st.perQb ? lists.map((list) => new Map(list.map((c, i) => [c.key, i]))) : null;
+    const mustCnt = new Int32Array(groups.length);
     const setMates = () => {
       if (!stackBinds) return;
       for (let h = 0; h < groups.length; h++) {
@@ -1031,13 +1183,15 @@ function searchOne(st, avail, prev, opts, nodeLimit) {
           os[j] = os[j + 1] + (off && qbOpp >= 0 && c.teamIx === qbOpp ? 1 : 0);
         }
       }
+      if (rule.withKeys.length) must = mustPlan(rule.withKeys, placed, groups, idxOf, st.candByKey);
     };
     if (qbTeam !== -1) setMates();
     /** False when the slots left (kRem in group gi from `start`, then every later group) cannot hold the
      *  teammates and opponents still needed. */
     const stackReachable = (gi, kRem, start) => {
-      const wantOwn = needOwn - mates;
-      const wantOpp = needOpp - opps;
+      if (rule.withKeys.length && !withReachable(must, placed, groups, gi, kRem, start, mustCnt)) return false;
+      const wantOwn = rule.needOwn - mates;
+      const wantOpp = rule.needOpp - opps;
       if (wantOwn <= 0 && wantOpp <= 0) return true;
       let canOwn = 0;
       let canOpp = 0;
@@ -1056,7 +1210,8 @@ function searchOne(st, avail, prev, opts, nodeLimit) {
 
     const leaf = (score, rem) => {
       if (games < 2) return;
-      if (mates < needOwn || mates > capOwn || opps < needOpp || opps > capOpp) return;
+      if (mates < rule.needOwn || mates > rule.capOwn || opps < rule.needOpp || opps > rule.capOpp) return;
+      if (rule.withKeys.length && !rule.withKeys.every((k) => placed.some((p) => p.key === k))) return;
       const salary = st.cap - rem;
       if (score > bestScore || (score === bestScore && (salary < bestSalary || (salary === bestSalary && keyLess(placed, best))))) {
         bestScore = score;
@@ -1123,22 +1278,39 @@ function keyLess(a, b) {
 // Why a lineup could not be made
 // --------------------------------------------------------------------------------------------------------
 
+/** The plain cause when no starred quarterback is in the pool (Adam 2026-10-16): { text, plainly }, plainly = all out or excluded; else null. */
+function starredQbCause(rows, opts) {
+  const pool = prepare(rows, opts, []).candByKey;
+  const seen = new Set();
+  const starred = rows.filter((r) => r && typeof r === "object" && r.id !== null && r.id !== undefined && r.starred && rowPos(r) === "QB" && !seen.has(dkKeyOf(r, String(r.id))) && seen.add(dkKeyOf(r, String(r.id))));
+  if (!pool || !starred.length || starred.some((r) => pool.has(dkKeyOf(r, String(r.id))))) return null;
+  const plainly = starred.every((r) => opts.excludes.has(String(r.id)) || rowIsOut(r));
+  return { plainly, text: `every starred quarterback is ${plainly ? "ruled out or excluded" : "ruled out, excluded or not in the pool"} (${listNames(starred.map((r) => r.name ?? r.id))}); star another or turn off "Starred QBs only"` };
+}
+
 /** Re-runs the failed lineup with one setting relaxed at a time and names those whose relaxation alone would let
  *  it through. Bounded by a step counter, so it always finishes. */
-function diagnose(rows, settings, slate, existingCount, prevKeys, opts, n) {
-  const base = settings && typeof settings === "object" ? settings : {};
+function diagnose(rows, settings, slate, existingCount, prevKeys, opts, n, pin = null) {
+  const given = settings && typeof settings === "object" ? settings : {};
+  const base = pin ? { ...given, locks: [...opts.locks, pin] } : given;
+  const rowOf = new Map(rows.filter((r) => r && typeof r === "object").map((r) => [String(r.id), r]));
+  const focusId = pin ?? opts.locks.find((id) => rowOf.has(id) && rowPos(rowOf.get(id)) === "QB") ?? null;
+  const focusKey = focusId === null ? null : dkKeyOf(rowOf.get(focusId), focusId);
+  const entries = focusKey === null ? opts.qbStacks
+    : new Map([...opts.qbStacks].filter(([id]) => rowOf.has(id) && dkKeyOf(rowOf.get(id), id) === focusKey));
+  const focusEntry = focusKey !== null && entries.size > 0;
   const trials = [];
   for (const key of RULE_KEYS) {
     if (opts.rules[key]) trials.push({ label: `the rule "${RULE_LABELS[key]}"`, patch: { rules: { ...(base.rules || {}), [key]: false } } });
   }
   // D73: each side of the QB stack, relaxed to "0 or more", named in Adam's words.
-  if (ownStackActive(opts)) {
+  if (ownStackActive(opts) && !focusEntry) {
     trials.push({
       label: `stacking the quarterback with ${stackWords(opts.stackOwn, opts.stackOwnOrMore, "teammate", "teammates")}`,
       patch: { stackOwn: 0, stackOwnOrMore: true }
     });
   }
-  if (oppStackActive(opts)) {
+  if (oppStackActive(opts) && !focusEntry) {
     trials.push({
       label: `stacking the quarterback with ${stackWords(opts.stackOpp, opts.stackOppOrMore, "player", "players")} from the team he faces`,
       patch: { stackOpp: 0, stackOppOrMore: true }
@@ -1146,12 +1318,12 @@ function diagnose(rows, settings, slate, existingCount, prevKeys, opts, n) {
   }
   if (opts.minUnique > 1) trials.push({ label: `minimum unique players (${opts.minUnique})`, patch: { minUnique: 1 } });
   if (Object.keys(opts.capCount).length) trials.push({ label: "the maximum exposure settings", patch: { maxExposure: {} } });
+  if (opts.spreadDst) trials.push({ label: "Spread defenses", patch: { spreadDst: false } });
   // D74: caps count only this batch's lineups (prevKeys holds the saved ones first, then the batch so far).
   const batchCounts = new Map();
   for (const keys of prevKeys.slice(existingCount)) for (const k of keys) batchCounts.set(k, (batchCounts.get(k) ?? 0) + 1);
   // Per-player Max %: only a player already at his cap can be what blocks; each is tried alone (named), or all
   // together when there are many.
-  const rowOf = new Map(rows.filter((r) => r && typeof r === "object").map((r) => [String(r.id), r]));
   const blocking = [...opts.playerCap].filter(([id, { n }]) => {
     const row = rowOf.get(id);
     return row && (batchCounts.get(dkKeyOf(row, id)) ?? 0) >= n;
@@ -1165,9 +1337,13 @@ function diagnose(rows, settings, slate, existingCount, prevKeys, opts, n) {
       trials.push({ label: `the Max % of ${pct}% on ${rowOf.get(id).name ?? id}`, patch: { playerMaxExposure: rest } });
     }
   }
+  for (const t of stackTrials(entries, (id) => rowOf.get(id)?.name ?? id)) {
+    const others = Object.fromEntries([...opts.qbStacks].filter(([id]) => !entries.has(id)));
+    trials.push({ label: t.label, patch: { qbStacks: { ...others, ...t.patch.qbStacks } } });
+  }
   if (opts.maxPerTeam !== null) trials.push({ label: `the limit of ${opts.maxPerTeam} per team (outside the quarterback's game)`, patch: { maxPerTeam: null } });
   if (opts.avoidGames.size) trials.push({ label: "the games to avoid", patch: { avoidGames: [] } });
-  if (opts.locks.length) trials.push({ label: "the locks", patch: { locks: [] } });
+  if (opts.locks.length) trials.push({ label: "the locks", patch: { locks: pin ? [pin] : [] } });
 
   const found = [];
   const unchecked = [];
@@ -1187,13 +1363,17 @@ function diagnose(rows, settings, slate, existingCount, prevKeys, opts, n) {
     else if (r.aborted) unchecked.push(t.label);
   }
   const uncheckedText = unchecked.length ? `; these could not be checked in time: ${unchecked.join("; ")}` : "";
+  if (!pin && !opts.locks.some((id) => rowPos(rowOf.get(id) ?? {}) === "QB") && found.includes(`the rule "${RULE_LABELS.starredQbOnly}"`)) {
+    const cause = starredQbCause(rows, opts);
+    if (cause && (cause.plainly || found.length === 1)) return cause.text; // another fix beside the rule keeps the usual sentence
+  }
   if (found.length) {
     return `no lineup keeps every setting; relaxing ${found.length === 1 ? "this one alone" : "any one of these alone"} would allow one: ${found.join("; ")}${uncheckedText}`;
   }
   if (unchecked.length) {
     return `no lineup keeps every setting; no single setting was found to be the cause${uncheckedText}`;
   }
-  return `no lineup keeps every setting, and no single setting is the cause (the rules together, the locks${n > 0 || existingCount > 0 ? ", the earlier lineups" : ""} and the ${money(opts.cap)} cap leave nothing legal)`;
+  return `no lineup keeps every setting, and no single setting is the cause (the rules together, ${opts.qbStacks.size ? "the per-quarterback stack settings, " : ""}the locks${n > 0 || existingCount > 0 ? ", the earlier lineups" : ""} and the ${money(opts.cap)} cap leave nothing legal)`;
 }
 
 // --------------------------------------------------------------------------------------------------------
@@ -1220,7 +1400,11 @@ function presentLineup(st, players) {
   }
   const salary = players.reduce((s, c) => s + c.salary, 0);
   const proj = players.reduce((s, c) => s + c.proj, 0);
-  return { ids, salary, proj: round2(proj) };
+  const out = { ids, salary, proj: round2(proj) };
+  // TwoGun's ceilings summed, only on a board that carries them (so a current-mode answer is unchanged); null, never
+  // a partial sum, when any player lacks one.
+  if (st.hasCeil) out.ceil = players.every((c) => c.ceil !== null) ? round2(players.reduce((s, c) => s + c.ceil, 0)) : null;
+  return out;
 }
 
 /** Per position, every player in the saved plus new lineups: {id, name, count, pct}, most-used first. */

@@ -10,9 +10,10 @@
 // re-attached to every cell on every render: that lets a single row (updateRow) or a single cell
 // (restoreCell) be patched in place — on a blur/Escape cancel, or after a failed save — without
 // rebuilding the whole tbody and losing whatever the next click was about to land on.
-import { escapeHtml, money, dec1, dec2, textColourFor, logoFor } from "./format.js";
+import { escapeHtml, money, dec1, dec2, logoFor } from "./format.js";
 import { TEAM_BY_ABBR } from "./teams-data.js";
 import { store } from "./state.js";
+import { twoGunOutReason, rowIsOut, untagged, revivedStatusTitle } from "./out.js";
 
 const BASE_COLUMNS = [
   { key: "star", label: "★" },
@@ -33,26 +34,122 @@ const BASE_COLUMNS = [
 const NOTE_COLUMN = { key: "note", label: "Note" };
 export const COLUMNS = BASE_COLUMNS;
 
-// Injury-report status words (R82): O/OUT/IR/D/DOUBTFUL dim the row; Q/QUESTIONABLE and SUSPENDED get
-// a badge but stay at full opacity.
+// TwoGun mode only (D25 as amended 2026-10-15: his published figures used as he publishes them): five more Rankings
+// columns after Lev, each read from row.tg and sortable (state.js sortValue). Current mode never shows them.
+export const TG_COLUMNS = [
+  { key: "tgMed", label: "Med", field: "median", title: "TwoGun's median, DraftKings points as he publishes them" },
+  { key: "tgCeil", label: "Ceil", field: "ceil", title: "TwoGun's ceiling, DraftKings points as he publishes them" },
+  { key: "tgNuke", label: "Nuke", field: "nuke", title: "TwoGun's nuke (top-end) outcome, DraftKings points as he publishes them" },
+  { key: "tgP3x", label: "3x%", field: "p3x", title: "TwoGun's chance (percent) of 3x salary value, as he publishes it" },
+  { key: "tgP4x", label: "4x%", field: "p4x", title: "TwoGun's chance (percent) of 4x salary value, as he publishes it" },
+];
+
+// The columns of the Rankings head and body, in order: Lev, then the TwoGun columns when `twogun`, then Tags onward.
+function columnsFor(hasNoteColumn, twogun) {
+  const lev = BASE_COLUMNS.findIndex((c) => c.key === "lev");
+  const cols = twogun ? [...BASE_COLUMNS.slice(0, lev + 1), ...TG_COLUMNS, ...BASE_COLUMNS.slice(lev + 1)] : BASE_COLUMNS;
+  return hasNoteColumn ? [...cols, NOTE_COLUMN] : cols;
+}
+
+// Adam 2026-10-15 (TwoGun merge, adjustment 1): "put a red 'OUT' tag or something obvious so
+// I can see it". A row ruled out after TwoGun's board stamp (flag "outAfterStamp") or one TwoGun calls OUT carries a
+// red OUT tag beside the name on every main-slate list (Rankings, Favorites, Projections, Projected Ownership and the
+// Optimizer); on Rankings and Favorites it sits after the logo, before the name, so it never clips (visual QA
+// 2026-10-15). Such a row gets no Value grade either. The one copy of the test and the tag: tabs.js and lineup.js import these.
+export { twoGunOutReason, rowIsOut };
+
+export function outTagHtml(row) {
+  const reason = twoGunOutReason(row);
+  return reason ? `<span class="out-tag" title="${escapeHtml(reason)}">OUT</span>` : "";
+}
+
+/** R82: the red OUT tag on the Optimizer, keyed on rowIsOut (Out, Doubtful and IR all count). */
+export function lineupOutTagHtml(row) {
+  if (!rowIsOut(row)) return "";
+  let title = twoGunOutReason(row);
+  if (!title) {
+    const raw = (row.status || row.injury?.status || "").trim();
+    const word = raw ? (STATUS_INFO[raw.toLowerCase()]?.label ?? raw) : "out";
+    const comment = (row.injury?.comment ?? "").trim();
+    title = `Listed ${word} on the injury report${comment ? `. ${comment}` : "."}`;
+  }
+  return `<span class="out-tag" title="${escapeHtml(title)}">OUT</span>`;
+}
+
+// TwoGun-mode markers: the same small amber dot as the A1 marker, its sentences on hover. Nothing shows in current mode
+// (rows there carry no tg or src). A figure TwoGun does not cover is the current sources' and says so (row.src).
+function markerHtml(texts) {
+  const list = texts.filter(Boolean);
+  return list.length ? `<sup class="row-flag-marker tg-marker" title="${escapeHtml(list.join(" "))}">&#8226;</sup>` : "";
+}
+
+/** The hover sentences for one Rankings cell ("proj", "own", "salary", "status") of a TwoGun-mode row. The game-line
+ *  note sits with the status dot: the narrow Opp cell has no room for a dot beside "@ NYG". */
+export function twoGunMarkerTexts(row, field) {
+  const src = row?.src;
+  if (!src && !row?.tg) return [];
+  const flags = Array.isArray(row?.flags) ? row.flags : [];
+  const tg = row?.tg ?? null;
+  const texts = [];
+  // Visual QA 2026-10-15: dots only for per-row facts (not projected by TwoGun, salary differs, status changed); the
+  // board's staleness is the header's one pill, never a dot or a colour on each figure.
+  const projFallback = Boolean(src?.proj && src.proj !== "twogun");
+  const ownFallback = Boolean(src?.own && src.own !== "twogun");
+  if (field === "proj") {
+    if (projFallback) texts.push(`TwoGun does not project him; this is the current sources' blend${ownFallback ? ", and so is his Own%" : ""}.`);
+  } else if (field === "own") {
+    if (ownFallback && !projFallback) texts.push("TwoGun publishes no ownership for him; this is the current sources' Own%.");
+  } else if (field === "salary") {
+    if (flags.includes("salaryDiffers")) texts.push(`TwoGun lists ${money(tg?.salary)}; DraftKings' ${money(row.salary)} is used everywhere (D13).`);
+  } else if (field === "status") {
+    if (flags.includes("statusChangedAfterStamp")) {
+      texts.push(`His status changed after TwoGun's board was made${tg?.official ? ` (TwoGun quoted ${tg.official})` : ""}${rowIsOut(row) ? "." : "; TwoGun's number is kept."}`);
+      if (tg?.call) texts.push(`TwoGun's call: ${tg.call}${tg.tag ? ` [${tg.tag}]` : ""}${untagged(tg.callText) ? `: ${untagged(tg.callText)}` : "."}`);
+    }
+  }
+  return texts;
+}
+
+// One decimal, as he publishes them; the 3x% and 4x% headers carry the percent sign so the narrow cells never clip.
+function tgCellHtml(row, col) {
+  const v = row.tg?.[col.field];
+  if (v == null || Number.isNaN(v)) return "—";
+  const text = dec1(col.field === "ceil" && rowIsOut(row) ? 0 : v); // out = ceiling 0 (Adam), as the optimizer scores it
+  const grade = row.tgGrade?.[col.field]; // Ceil, Nuke and 4x% are graded like Value (grade.js, D33)
+  return grade ? `<span class="grade-cell grade-${grade}">${text}</span>` : text;
+}
+
+// Injury-report status words (R82): each gets a badge; which rows dim is rowIsOut's (below).
 // Exported so public/js/showdown/table.js and lineup.js can reuse these instead of keeping their own
 // copies (🔵 review cleanup).
 export const STATUS_INFO = {
-  o: { label: "Out", cls: "status-out" },
-  out: { label: "Out", cls: "status-out" },
-  d: { label: "Doubtful", cls: "status-doubtful" },
-  doubtful: { label: "Doubtful", cls: "status-doubtful" },
-  q: { label: "Questionable", cls: "status-questionable" },
-  questionable: { label: "Questionable", cls: "status-questionable" },
-  ir: { label: "IR", cls: "status-ir" },
-  suspended: { label: "Suspended", cls: "status-ir" },
+  o: { label: "Out", short: "O", cls: "status-out" },
+  out: { label: "Out", short: "O", cls: "status-out" },
+  d: { label: "Doubtful", short: "D", cls: "status-doubtful" },
+  doubtful: { label: "Doubtful", short: "D", cls: "status-doubtful" },
+  q: { label: "Questionable", short: "Q", cls: "status-questionable" },
+  questionable: { label: "Questionable", short: "Q", cls: "status-questionable" },
+  ir: { label: "IR", short: "IR", cls: "status-ir" },
+  suspended: { label: "Suspended", short: "SUSP", cls: "status-ir" },
+  susp: { label: "Suspended", short: "SUSP", cls: "status-ir" },
+  pup: { label: "PUP", short: "PUP", cls: "status-ir" },
+  "injured reserve": { label: "IR", short: "IR", cls: "status-ir" },
+  suspension: { label: "Suspended", short: "SUSP", cls: "status-ir" },
+  "physically unable to perform": { label: "PUP", short: "PUP", cls: "status-ir" },
 };
-export const DIM_STATUS_TOKENS = new Set(["o", "out", "ir", "d", "doubtful"]);
 
-export function rowIsOut(row) {
-  const flags = row?.flags ?? [];
-  if (flags.includes("revived")) return false;
-  return DIM_STATUS_TOKENS.has(String(row?.status ?? "").trim().toLowerCase()) || flags.includes("injured");
+/** The status tag for player lists (never on a lineup): the short word, the full word and notes on hover. */
+export function statusBadgeHtml(row, word = row?.status) {
+  const raw = (word ?? "").trim();
+  if (!raw) return "";
+  const info = STATUS_INFO[raw.toLowerCase()];
+  const why = untagged(row?.tg?.callText);
+  const notes = [(row?.injury?.comment ?? "").trim(), why ? `TwoGun${row.tg.tag ? ` [${row.tg.tag}]` : ""}: ${why}` : ""].filter(Boolean).join(" ");
+  const title = (head) => escapeHtml(notes ? `${head}. ${notes}` : head);
+  const revived = revivedStatusTitle(row, info?.label ?? raw);
+  if (revived) return `<span class="status-badge status-revived" title="${title(revived)}">${escapeHtml(info?.short ?? raw)}</span>`;
+  if (info) return `<span class="status-badge ${info.cls}" title="${title(info.label)}">${escapeHtml(info.short)}</span>`;
+  return `<span class="status-badge status-other" title="${title(raw)}">${escapeHtml(raw)}</span>`;
 }
 
 const PROJ_FLAG_LABELS = {
@@ -93,16 +190,12 @@ function noteIconHtml(row) {
 }
 
 function playerCellHtml(row) {
-  const t = TEAM_BY_ABBR[row.team];
-  const logo = logoFor(t);
-  const primary = t?.colourPrimary ?? "#333333";
-  const secondary = t?.colourSecondary ?? "#ffffff";
-  const textColour = textColourFor(primary, secondary);
+  const logo = logoFor(TEAM_BY_ABBR[row.team]);
   return `
     <div class="player-cell">
       <img class="player-logo" src="${logo}" alt="${escapeHtml(row.team)}" width="20" height="20" />
-      <span class="player-name">${escapeHtml(row.name)}</span>
-      <span class="team-chip-mini" style="background:${primary};color:${textColour}">${escapeHtml(row.team)}</span>
+      ${outTagHtml(row)}
+      <span class="player-name"${row.src ? ` title="${escapeHtml(row.name)}"` : ""}>${escapeHtml(row.name)}</span>
       <span class="note-slot" data-id="${idAttr(row)}">${noteIconHtml(row)}</span>
     </div>`;
 }
@@ -154,15 +247,16 @@ function editableInnerHtml(row, field, displayHtml, extraHtml = "") {
 
 function projCellInner(row) {
   const display = row.proj == null ? "no proj" : dec1(row.proj);
-  return editableInnerHtml(row, "proj", display, projFlagMarkerHtml(row));
+  return editableInnerHtml(row, "proj", display, projFlagMarkerHtml(row) + markerHtml(twoGunMarkerTexts(row, "proj")));
 }
 
 // Own% shows the plain number, whether a named source published it or Adam typed it (D29). A typed number
 // is drawn in the amber emphasis colour with a small x to put the original back (D28); a player with no number shows an em dash, which stays click-to-edit so an
-// override can still be typed onto it.
+// override can still be typed onto it. In TwoGun mode a figure he does not publish carries the hover dot (no letter, D54).
 function ownCellInner(row) {
-  if (row.own == null) return editableInnerHtml(row, "own", "—");
-  return editableInnerHtml(row, "own", `${dec1(row.own)}%`);
+  const mark = markerHtml(twoGunMarkerTexts(row, "own"));
+  if (row.own == null) return editableInnerHtml(row, "own", "—", mark);
+  return editableInnerHtml(row, "own", `${dec1(row.own)}%`, mark);
 }
 
 function cellInnerHtml(row, field) {
@@ -173,7 +267,7 @@ function editableCellHtml(row, field) {
   return `<div class="editable-cell" data-field="${field}" data-id="${idAttr(row)}">${cellInnerHtml(row, field)}</div>`;
 }
 
-function gradedCellHtml(value, grade) {
+export function gradedCellHtml(value, grade) {
   if (value == null || Number.isNaN(value)) return "—";
   const cls = grade ? ` grade-${grade}` : "";
   return `<span class="grade-cell${cls}">${dec2(value)}</span>`;
@@ -207,21 +301,23 @@ function tagsCellTitle(row) {
     .join(" · ");
 }
 
-function statusCellHtml(row) {
-  const raw = (row.status ?? "").trim();
-  const key = raw.toLowerCase();
-  const info = STATUS_INFO[key];
-  const badge = info
-    ? `<span class="status-badge ${info.cls}">${escapeHtml(info.label)}</span>`
-    : raw
-      ? `<span class="status-badge status-other">${escapeHtml(raw)}</span>`
-      : "";
+/** The status tag(s) of one player-list row: the board status, then the injury report's word when it adds one. */
+export function statusTagsHtml(row) {
+  const key = (row.status ?? "").trim().toLowerCase();
   const injuryStatus = row.injury?.status;
-  const injuryHtml =
-    injuryStatus && injuryStatus.toLowerCase() !== key
-      ? `<span class="status-injury-note" title="${escapeHtml(injuryStatus)}">${escapeHtml(injuryStatus)}</span>`
-      : "";
-  return `${badge}${injuryHtml}`;
+  const same = injuryStatus && (injuryStatus.toLowerCase() === key || (STATUS_INFO[key] && STATUS_INFO[key].label === STATUS_INFO[injuryStatus.toLowerCase()]?.label));
+  const injuryHtml = injuryStatus && !same ? statusBadgeHtml({ ...row, tg: key ? null : row.tg, injury: key ? { ...row.injury, comment: "" } : row.injury, flags: [] }, injuryStatus) : "";
+  return `${statusBadgeHtml(row)}${injuryHtml}`;
+}
+
+/** Whether a row shows any status tag. */
+export function rowHasStatus(row) {
+  return Boolean((row?.status ?? "").trim() || (row?.injury?.status ?? "").trim());
+}
+
+// R82: one OUT mark per row; the red OUT tag replaces the status tags.
+function statusCellHtml(row) {
+  return `${outTagHtml(row) ? "" : statusTagsHtml(row)}${markerHtml(twoGunMarkerTexts(row, "status"))}`;
 }
 
 function noteCellHtml(row) {
@@ -230,7 +326,12 @@ function noteCellHtml(row) {
   return `<span class="note-preview" title="${escapeHtml(row.note)}">${escapeHtml(preview)}</span>`;
 }
 
-function rowHtml(row, hasNoteColumn) {
+// TwoGun mode: the five TwoGun cells after Lev, plain (a stale board is the header pill's to say, visual QA 2026-10-15).
+function tgCellsHtml(row) {
+  return TG_COLUMNS.map((c) => `<td class="tg-col">${tgCellHtml(row, c)}</td>`).join("");
+}
+
+function rowHtml(row, hasNoteColumn, twogun = false) {
   const dimmed = rowIsOut(row);
   return `
     <tr class="rank-row${dimmed ? " row-dimmed" : ""}" data-id="${idAttr(row)}">
@@ -239,28 +340,34 @@ function rowHtml(row, hasNoteColumn) {
       <td>${escapeHtml(row.pos)}</td>
       <td>${escapeHtml(row.team)}</td>
       <td>${escapeHtml(matchupText(row))}</td>
-      <td>${money(row.salary)}</td>
+      <td>${money(row.salary)}${markerHtml(twoGunMarkerTexts(row, "salary"))}</td>
       <td>${editableCellHtml(row, "proj")}</td>
       <td>${editableCellHtml(row, "own")}</td>
       <td>${gradedCellHtml(row.value, row.valueGrade)}</td>
       <td></td>
+      ${twogun ? tgCellsHtml(row) : ""}
       <td class="tags-cell" title="${escapeHtml(tagsCellTitle(row))}">${tagsCellHtml(row)}</td>
       <td class="status-cell">${statusCellHtml(row)}</td>
-      ${hasNoteColumn ? `<td>${noteCellHtml(row)}</td>` : ""}
+      ${hasNoteColumn ? `<td${row.note ? ` title="${escapeHtml(row.note)}"` : ""}>${noteCellHtml(row)}</td>` : ""}
     </tr>`;
 }
 
-export function renderTableHead(theadEl, sort, onSortClick, hasNoteColumn = false) {
-  const cols = hasNoteColumn ? [...BASE_COLUMNS, NOTE_COLUMN] : BASE_COLUMNS;
+// `opts.twogun`: the Rankings table in TwoGun mode adds the TG_COLUMNS and marks the <table> "tg-on" (style.css sizes
+// its columns to stay inside D54's 1250px). Favorites passes nothing, so it never shows them.
+export function renderTableHead(theadEl, sort, onSortClick, hasNoteColumn = false, opts = {}) {
+  const twogun = Boolean(opts.twogun);
+  const cols = columnsFor(hasNoteColumn, twogun);
   const cells = cols
     .map((c) => {
       const title = c.title ? ` title="${escapeHtml(c.title)}"` : "";
       // A column with nothing to sort on (Lev) has no data-col, so no click handler, and no sortable class.
       if (c.sortable === false) return `<th class="not-sortable"${title}>${escapeHtml(c.label)}</th>`;
       const arrow = sort.col === c.key ? (sort.dir === "asc" ? " ▲" : " ▼") : "";
-      return `<th data-col="${c.key}" class="sortable${sort.col === c.key ? " sorted" : ""}"${title}>${escapeHtml(c.label)}${arrow}</th>`;
+      const tgCls = c.field ? " tg-col" : "";
+      return `<th data-col="${c.key}" class="sortable${sort.col === c.key ? " sorted" : ""}${tgCls}"${title}>${escapeHtml(c.label)}${arrow}</th>`;
     })
     .join("");
+  theadEl.closest?.("table")?.classList.toggle("tg-on", twogun);
   theadEl.innerHTML = `<tr>${cells}</tr>`;
   theadEl.querySelectorAll("th[data-col]").forEach((th) => {
     th.addEventListener("click", () => onSortClick(th.dataset.col));
@@ -271,6 +378,7 @@ export function renderTableHead(theadEl, sort, onSortClick, hasNoteColumn = fals
 // wireDelegation) always reads the current rows/callbacks without needing to be re-attached.
 let currentRows = [];
 let currentCallbacks = null;
+let currentTwoGun = false; // whether the body on screen carries the TwoGun columns (updateRow redraws a row the same way)
 
 function cssEscapeId(id) {
   const s = String(id);
@@ -424,10 +532,11 @@ function wireDelegation(tbodyEl) {
   });
 }
 
-export function renderTableBody(tbodyEl, rows, callbacks, hasNoteColumn = false) {
+export function renderTableBody(tbodyEl, rows, callbacks, hasNoteColumn = false, opts = {}) {
   currentRows = rows;
   currentCallbacks = callbacks;
-  tbodyEl.innerHTML = rows.map((r) => rowHtml(r, hasNoteColumn)).join("");
+  currentTwoGun = Boolean(opts.twogun);
+  tbodyEl.innerHTML = rows.map((r) => rowHtml(r, hasNoteColumn, currentTwoGun)).join("");
   wireDelegation(tbodyEl);
 }
 
@@ -436,5 +545,5 @@ export function renderTableBody(tbodyEl, rows, callbacks, hasNoteColumn = false)
 export function updateRow(tbodyEl, row, hasNoteColumn = false) {
   currentRows = currentRows.map((r) => (String(r.id) === String(row.id) ? row : r));
   const tr = tbodyEl.querySelector(`tr[data-id="${cssEscapeId(row.id)}"]`);
-  if (tr) tr.outerHTML = rowHtml(row, hasNoteColumn);
+  if (tr) tr.outerHTML = rowHtml(row, hasNoteColumn, currentTwoGun);
 }
