@@ -16,7 +16,7 @@
 // re-validated against the live board on every board load rather than trusted as-is (🔵 finding 1): an id
 // with no row anymore (a stale localStorage entry, or last week's slate) is dropped instead of rendering
 // stale data or throwing.
-import { escapeHtml, money, dec1, textColourFor } from "./format.js";
+import { escapeHtml, money, dec1, textColourFor, logoFor } from "./format.js";
 import { store, matchesPosition, filterRows, sortRows, passesProjFloor, FLEX_POS, defaultDirFor, activeSlate, activeSlateRows, activeSlateGames, slateDisplayName, boardHasCeilings, isTwoGunMode } from "./state.js";
 import { sortableHeadHtml } from "./tabs.js";
 import { matchupText, lineupOutTagHtml, statusTagsHtml, gradedCellHtml, rowIsOut, twoGunOutReason, STATUS_INFO } from "./table.js"; // D43: the one copy of "vs DAL" / "@ DET"; the red OUT tag (Adam 2026-10-15)
@@ -763,8 +763,8 @@ function slotPlayerHtml(row, tags = []) {
       ${badgeHtml(row.name, row.pos, row.team)}
       <span class="lineup-slot-body">
         <span class="lineup-slot-top">
-          <span class="team-chip-mini" style="background:${primary};color:${textColour}">${escapeHtml(row.team ?? "")}</span>
-          <span class="lineup-slot-name">${escapeHtml(row.name)}</span>${lineupOutTagHtml(row)}
+          <span class="lineup-slot-name">${escapeHtml(row.name)}</span>
+          <span class="team-chip-mini" style="background:${primary};color:${textColour}">${escapeHtml(row.team ?? "")}</span>${lineupOutTagHtml(row)}
           <span class="lineup-slot-matchup">${escapeHtml(matchupText(row))}</span>
         </span>
         <span class="lineup-slot-detail">${money(row.salary)} &middot; ${projText} proj${escapeHtml(ownParen(row.own))}${roleTagsHtml(tags)}</span>
@@ -1177,8 +1177,10 @@ function rightRowHtml(row, placedSet, showPos, maxMap = {}, minMap = {}, cashWan
   // 🔵 finding 8: same dimming rule as the Rankings table.
   const dimmed = rowIsOut(row);
   const rowClass = `${excluded ? " lineup-row-excluded" : locked ? " lineup-row-locked" : ""}${dimmed ? " row-dimmed" : ""}`;
-  // Adam 2026-10-17: the status tag sits between the team chip and the name (the red OUT tag alone when the row has one),
+  // D80, Adam 2026-10-18: logo, name, team abbr, then the status tag (the red OUT tag alone when the row has one),
   // the position chip only on the All and FLEX tabs, and the matchup pill (opponent, totals, the team's spread) ends the cell.
+  const logo = logoFor(t);
+  const logoImg = logo ? `<img class="player-logo" src="${logo}" alt="${escapeHtml(row.team ?? "")}" width="20" height="20" />` : "";
   const statusTag = lineupOutTagHtml(row) || statusTagsHtml(row);
   const pillText = matchupPillText(row);
   const posChip = showPos && row.pos ? `<span class="pos-mini">${escapeHtml(row.pos)}</span>` : "";
@@ -1188,7 +1190,7 @@ function rightRowHtml(row, placedSet, showPos, maxMap = {}, minMap = {}, cashWan
       <td class="lineup-star-col"><button type="button" class="star-btn${row.starred ? " active" : ""}" data-action="toggle-star" data-id="${escapeHtml(id)}"${poolCallbacks?.onToggleStar ? "" : " disabled"}>${row.starred ? "★" : "☆"}</button></td>
       <td>
         <span class="player-cell">
-          <span class="team-chip-mini" style="background:${primary};color:${textColour}">${escapeHtml(row.team ?? "")}</span>${statusTag}<span class="player-name">${escapeHtml(row.name)}</span>${posChip}${pill}
+          ${logoImg}<span class="player-name">${escapeHtml(row.name)}</span><span class="team-chip-mini" style="background:${primary};color:${textColour}">${escapeHtml(row.team ?? "")}</span>${statusTag}${posChip}${pill}
         </span>
       </td>
       <td>${money(row.salary)}</td>

@@ -5,7 +5,7 @@
 // public/js/lineup.js, which this module mirrors in structure but keeps leaner: no per-row lock/exclude
 // UI, since the brief's Lineup Builder description for Showdown does not ask for one — Build always runs
 // a fresh optimize with empty locks/excludes and replaces whatever is currently placed with the result).
-import { escapeHtml, money, dec1, textColourFor } from "../format.js";
+import { escapeHtml, money, dec1, textColourFor, logoFor } from "../format.js";
 import { TEAM_BY_ABBR } from "../teams-data.js";
 import { statusTagsHtml } from "../table.js";
 import { postShowdownLineupOptimize, getShowdownLineups, postShowdownLineup, deleteShowdownLineup, putShowdownLineupName } from "./api.js";
@@ -303,9 +303,9 @@ function slotPlayerHtml(row, isCpt) {
     <span class="lineup-slot-player lineup-slot-player-2">
       <span class="lineup-slot-body">
         <span class="lineup-slot-top">
+          <span class="lineup-slot-name">${escapeHtml(row.name)}</span>
           <span class="team-chip-mini" style="background:${primary};color:${textColour}">${escapeHtml(row.team ?? "")}</span>
           ${posPillHtml(row.pos)}
-          <span class="lineup-slot-name">${escapeHtml(row.name)}</span>
         </span>
         <span class="lineup-slot-detail">${money(salary)} &middot; ${projText} proj${escapeHtml(ownParen(own))}</span>
       </span>
@@ -390,12 +390,15 @@ function rightRowHtml(row, placed) {
   const textColour = textColourFor(primary, secondary);
   const isPlaced = placed.has(String(row.id));
   const isCpt = state.cpt && String(state.cpt.id) === String(row.id);
+  const logo = logoFor(t); // D80, Adam 2026-10-18: logo, name, team abbr, position pill, status tags
+  const logoImg = logo ? `<img class="player-logo" src="${logo}" alt="${escapeHtml(row.team ?? "")}" width="20" height="20" />` : "";
   return `
     <tr class="lineup-row${isPlaced ? " lineup-row-locked" : ""}" data-id="${escapeHtml(String(row.id))}">
       <td>
         <span class="player-cell">
-          <span class="team-chip-mini" style="background:${primary};color:${textColour}">${escapeHtml(row.team ?? "")}</span>
+          ${logoImg}
           <span class="player-name">${escapeHtml(row.name)}</span>
+          <span class="team-chip-mini" style="background:${primary};color:${textColour}">${escapeHtml(row.team ?? "")}</span>
           ${posPillHtml(row.pos)}
           ${statusTagsHtml(row)}
         </span>

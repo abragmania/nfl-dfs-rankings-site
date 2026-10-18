@@ -10,7 +10,7 @@
 // re-attached to every cell on every render: that lets a single row (updateRow) or a single cell
 // (restoreCell) be patched in place — on a blur/Escape cancel, or after a failed save — without
 // rebuilding the whole tbody and losing whatever the next click was about to land on.
-import { escapeHtml, money, dec1, dec2, logoFor } from "./format.js";
+import { escapeHtml, money, dec1, dec2, logoFor, textColourFor } from "./format.js";
 import { TEAM_BY_ABBR } from "./teams-data.js";
 import { store } from "./state.js";
 import { twoGunOutReason, rowIsOut, untagged, revivedStatusTitle } from "./out.js";
@@ -197,12 +197,17 @@ function noteIconHtml(row) {
 }
 
 function playerCellHtml(row) {
-  const logo = logoFor(TEAM_BY_ABBR[row.team]);
+  const t = TEAM_BY_ABBR[row.team];
+  const logo = logoFor(t);
+  const primary = t?.colourPrimary ?? "#333333";
+  const textColour = textColourFor(primary, t?.colourSecondary ?? "#ffffff");
+  // D80, Adam 2026-10-18: logo, then name, then team abbr, then the OUT tag and the note.
   return `
     <div class="player-cell">
-      <img class="player-logo" src="${logo}" alt="${escapeHtml(row.team)}" width="20" height="20" />
-      ${outTagHtml(row)}
+      ${logo ? `<img class="player-logo" src="${logo}" alt="${escapeHtml(row.team ?? "")}" width="20" height="20" />` : ""}
       <span class="player-name"${row.src ? ` title="${escapeHtml(row.name)}"` : ""}>${escapeHtml(row.name)}</span>
+      <span class="team-chip-mini" style="background:${primary};color:${textColour}">${escapeHtml(row.team ?? "")}</span>
+      ${outTagHtml(row)}
       <span class="note-slot" data-id="${idAttr(row)}">${noteIconHtml(row)}</span>
     </div>`;
 }
