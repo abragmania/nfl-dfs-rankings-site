@@ -7,7 +7,7 @@
 //   GET  /api/entries            { files: [{ file, slate, entries }] }  newest upload of each slate this week
 //   POST /api/entries/upload     { csv }  ->  { file, slate, entries }
 //   POST /api/entries/export     { file, assignments: [{ entryId, lineupId }] }  -> the CSV as a download
-// The pure builders and helpers are exported for tests/entries-ui.test.mjs; the module state and the wiring are in
+// The pure builders and helpers are exported for tests/entries-ui, entries-fill-ui and entries-tabs-ui.test.mjs; the module state and the wiring are in
 // entries-wire.js (🔵 2026-10-18 split), which imports this file. The section re-renders itself on its own (never the whole
 // Lineup Builder panel), so picking a lineup does not move the page.
 import { escapeHtml } from "./format.js";
