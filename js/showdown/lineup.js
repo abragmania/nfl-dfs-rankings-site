@@ -453,7 +453,7 @@ function savedLineupSlotHtml(entry) {
     </div>`;
 }
 
-function savedLineupCardHtml(lineup, board) {
+export function savedLineupCardHtml(lineup, board) {
   const entries = (lineup.slots ?? []).map((s) => ({ slot: s.slot, row: findRow(board, s.playerId), snap: s }));
   let salaryUsed = 0;
   let totalProj = 0;

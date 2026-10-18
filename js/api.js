@@ -11,6 +11,7 @@ import {
   STORAGE_UNAVAILABLE_MESSAGE,
 } from "./site-lineups.js";
 import { boardWithEdits, putEdits, resetPlayerEdits, resetAllEdits } from "./site-overrides.js";
+import { boardWithWeights, readWeights, putWeights } from "./site-weights.js";
 
 export const READ_ONLY_MESSAGE = "Read-only on the live site. Do this in the app on your computer.";
 
@@ -39,10 +40,32 @@ export function sampleRefusal() {
   return readOnly();
 }
 
+// The header's Current | TwoGun switch: both boards are baked. The visitor's last choice is kept in this browser, else
+// the mode the app was in when published (meta.defaultMode), else Current.
+const MODE_KEY = "nfldfs-site-mode";
+const BOARD_FILE = { current: "baked/board.json", twogun: "baked/board-twogun.json" };
+let chosenMode = null;
+async function activeMode() {
+  if (chosenMode) return chosenMode;
+  let mode = null;
+  try {
+    mode = pageStorage()?.getItem(MODE_KEY) ?? null;
+  } catch { /* storage switched off: the published default shows */ }
+  if (!Object.hasOwn(BOARD_FILE, mode)) {
+    try {
+      mode = (await baked("baked/meta.json"))?.defaultMode;
+    } catch (e) {
+      console.warn("site mode: baked/meta.json could not be read, so the Current board is shown", e);
+    }
+  }
+  chosenMode = Object.hasOwn(BOARD_FILE, mode) ? mode : "current";
+  return chosenMode;
+}
+
 // A fresh copy of the baked board (the app may adjust what it is handed) with this browser's override changes merged
 // in, so a reload keeps them.
 export async function getBoard() {
-  return visitorBoard(await getJson("baked/board.json"));
+  return visitorBoard(await getJson(BOARD_FILE[await activeMode()]));
 }
 
 export async function getSlate() {
@@ -77,7 +100,7 @@ async function publishedWeek() {
 
 /** The baked board with this browser's override changes, for the Optimizer and device saves (D55: a star made here counts). */
 async function bakedVisitorBoard() {
-  return visitorBoard(await baked("baked/board.json"));
+  return visitorBoard(await baked(BOARD_FILE[await activeMode()]));
 }
 
 /** The published week and the baked slate (its games, for the remerge), or null when the slate cannot say. */
@@ -107,19 +130,29 @@ async function visitorBoard(board) {
   }
   if (!pub) return board;
   if (!sameSlate(board, pub.slate)) return SITE_UPDATED();
-  return boardWithEdits(board, pub.slate, pageStorage(), pub.season, pub.week);
+  return boardWithEdits(weightedBoard(board, pub), pub.slate, pageStorage(), pub.season, pub.week);
+}
+
+/** `board` re-ranked under this browser's source weights (site-weights.js); as it was when there are none or they cannot be applied. */
+function weightedBoard(board, pub) {
+  try {
+    return boardWithWeights(board, pub.slate, readWeights(pageStorage(), pub.season, pub.week, board));
+  } catch (e) {
+    console.warn("site weights: saved weights not applied", e);
+    return board;
+  }
 }
 
 // The override writes (PUT /api/overrides, DELETE /api/overrides/:id, DELETE /api/overrides) on a fresh copy of the
 // baked board. Answers as the routes do: the whole merged board, or {ok:false, error} (storage switched off, or a
 // value the app would refuse), leaving the board and the saved changes as they were.
 async function overrideWrite(change) {
-  const [board, pub] = await Promise.all([getJson("baked/board.json"), publishedSlate()]);
+  const [board, pub] = await Promise.all([getJson(BOARD_FILE[await activeMode()]), publishedSlate()]);
   if (!board || board.ok === false || !Array.isArray(board.rows) || !pub) {
     return board?.ok === false ? board : siteError("NO_SLATE", "No slate has been uploaded yet.");
   }
   if (!sameSlate(board, pub.slate)) return SITE_UPDATED();
-  const result = change(pageStorage(), pub.season, pub.week, board, pub.slate);
+  const result = change(pageStorage(), pub.season, pub.week, weightedBoard(board, pub), pub.slate);
   return result.error ? siteError(result.error.code, result.error.message) : result.board;
 }
 
@@ -145,15 +178,21 @@ export function postRefresh() {
   return readOnly();
 }
 
-// TwoGun mode: the site shows the mode the board was published in (board.mode, baked with the board); until P7 it
-// carries one board, so the switch is hidden (site.js) and a change is read-only.
 export async function getMode() {
-  const board = await baked("baked/board.json");
-  return { ok: true, mode: board?.mode?.active ?? "current" };
+  return { ok: true, mode: await activeMode() };
 }
 
-export function postMode() {
-  return readOnly();
+// POST /api/mode: answers the board in the new mode, as the route does; nothing leaves the browser. A board that cannot
+// be read or merged leaves the mode as it was.
+export async function postMode(mode) {
+  if (!Object.hasOwn(BOARD_FILE, mode)) return siteError("VALIDATION_ERROR", "mode must be one of current, twogun");
+  const board = await visitorBoard(await getJson(BOARD_FILE[mode]));
+  if (!board || board.ok === false || !Array.isArray(board.rows)) return board?.ok === false ? board : siteError("NO_SLATE", "No slate has been uploaded yet.");
+  chosenMode = mode;
+  try {
+    pageStorage()?.setItem(MODE_KEY, mode);
+  } catch { /* storage switched off: the choice lasts until the page is closed */ }
+  return board;
 }
 
 export function putOverrides(patch) {
@@ -168,8 +207,14 @@ export function deleteOverride(playerId) {
   return overrideWrite((storage, season, week, board, slate) => resetPlayerEdits(storage, season, week, board, slate, String(playerId)));
 }
 
-export function postSources() {
-  return readOnly();
+export async function postSources(patch) {
+  const pub = await publishedSlate();
+  const board = await getJson(BOARD_FILE[await activeMode()]);
+  if (!pub || !board || board.ok === false || !Array.isArray(board.rows)) return board?.ok === false ? board : siteError("NO_SLATE", "No slate has been uploaded yet.");
+  if (!sameSlate(board, pub.slate)) return SITE_UPDATED();
+  const result = putWeights(pageStorage(), pub.season, pub.week, board, Array.isArray(patch) ? patch : [patch]);
+  if (result.error) return siteError(result.error.code, result.error.message);
+  return visitorBoard(board);
 }
 
 export function postProjectionsPaste() {

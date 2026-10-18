@@ -32,6 +32,36 @@ export function ownershipRecipe(sources = []) {
   return lines.join(" ");
 }
 
+// A published ownership number is a percentage; anything outside 0-100 is not one.
+const MAX_OWN = 100;
+
+/**
+ * One player's Own% anchor: the weighted mean of the sources' published numbers. `quotesBySource`: { sourceId: { own,
+ * parts: [{own, source, url}] } } for the sources that quote him; `weightOf(id)`: that source's weight. A weight of
+ * exactly 0 means "kept for comparison, not blended" (D35): its number stays in its own column and never reaches Own%.
+ * A negative mean is no quote at all, and the top is held at 100. Returns { own, source, url, parts } or null.
+ */
+export function blendOwnership(quotesBySource, weightOf) {
+  let acc = 0;
+  let wsum = 0;
+  const parts = [];
+  for (const [sourceId, quote] of Object.entries(quotesBySource ?? {})) {
+    const w = Number(weightOf(sourceId));
+    if (w === 0) continue;
+    const weight = Number.isFinite(w) && w > 0 ? w : 1;
+    acc += weight * quote.own;
+    wsum += weight;
+    parts.push(...quote.parts);
+  }
+  if (!(wsum > 0 && acc / wsum >= 0)) return null;
+  return {
+    own: Math.min(acc / wsum, MAX_OWN),
+    source: [...new Set(parts.map((p) => p.source).filter(Boolean))].join(", "),
+    url: parts.find((p) => p.url)?.url ?? null,
+    parts
+  };
+}
+
 /**
  * The board's ownership summary from the FINAL rows: quoted is how many players a named source published a
  * number for, overridden is how many carry a number Adam typed (D28; a player can be both), and blank is how

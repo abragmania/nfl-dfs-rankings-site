@@ -99,6 +99,22 @@ export function saveShowdownLineup(storage, key, board, payload, bakedLineups = 
   return envelope({ lineup: entry, lineups: sortedNewestFirst([...bakedLineups, entry, ...device]) });
 }
 
+/** PUT .../lineups/<id> with a name, on this device's lineups only: {lineups} after the change, or {error: {code, message}}. */
+export function renameShowdownDeviceLineup(storage, key, id, name, bakedLineups = []) {
+  const nameResult = validateLineupName(name);
+  if (nameResult.error) return { error: { code: "VALIDATION_ERROR", message: nameResult.error } };
+  const list = storage ? readShowdownDeviceLineups(storage, key) : [];
+  if (!list.some((l) => l.id === id)) {
+    return { error: bakedLineups.some((l) => l.id === id) ? { code: "READ_ONLY", message: "App lineups cannot be changed here." } : { code: "NOT_FOUND", message: "No saved lineup with that id." } };
+  }
+  const trimmed = (nameResult.name ?? "").trim();
+  const next = trimmed === "" ? nextLineupName([...bakedLineups, ...list.filter((l) => l.id !== id)]) : trimmed;
+  if (!writeKey(storage, showdownStorageKey(key), list.map((l) => (l.id === id ? { ...l, name: next } : l)))) {
+    return { error: { code: "DEVICE_STORAGE_UNAVAILABLE", message: STORAGE_UNAVAILABLE_MESSAGE } };
+  }
+  return { lineups: sortedNewestFirst([...bakedLineups, ...readShowdownDeviceLineups(storage, key)]) };
+}
+
 /**
  * Removes the device lineup `id` of the showdown `key`. Returns "deleted", "missing" (no device lineup with that id,
  * which includes every baked app lineup) or "refused" (storage unavailable or the write failed).

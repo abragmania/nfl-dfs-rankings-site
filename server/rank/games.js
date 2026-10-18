@@ -11,8 +11,7 @@ import { toNumber } from "./value-core.js"; // pure: the public site runs the bo
 /**
  * The spread from one team's point of view: negative when that team is favoured, positive when it is the
  * underdog, 0 on a pick'em. The context record carries the favourite's (negative) spread plus which team that
- * is, so the sign has to be chosen per row rather than copied. (Moved here from board.js so the TwoGun overlay,
- * server/twogun/overlay.js, uses the same one; board.js imports it back.)
+ * is, so the sign has to be chosen per row rather than copied. The board and the TwoGun overlay share this one.
  */
 export function spreadForTeam(game, team) {
   const spread = toNumber(game?.spread);
@@ -45,8 +44,8 @@ export function buildGames(slate, rows, { gamesById = new Map() } = {}) {
   const games = (slate?.games ?? []).map((g) => {
     const ctx = gamesById?.get?.(g.id) ?? null;
     const implied = ctx?.implied ?? {};
-    const impliedAway = Number.isFinite(Number(implied[g.away])) ? Number(implied[g.away]) : null;
-    const impliedHome = Number.isFinite(Number(implied[g.home])) ? Number(implied[g.home]) : null;
+    const impliedAway = toNumber(implied[g.away]);
+    const impliedHome = toNumber(implied[g.home]);
     // loadContext() seeds a row for every slate game and carries its own flags (e.g. "noLine"); those are kept
     // and "lineUnknown" is added whenever the line could not be read or produced no implied totals.
     const flags = [...(ctx?.flags ?? [])];
@@ -65,8 +64,8 @@ export function buildGames(slate, rows, { gamesById = new Map() } = {}) {
       home: g.home,
       kickoffEt: g.kickoffEt ?? null,
       kickoffUtc: g.kickoffUtc ?? null,
-      total: Number.isFinite(Number(ctx?.total)) ? Number(ctx.total) : null,
-      spread: Number.isFinite(Number(ctx?.spread)) ? Number(ctx.spread) : null,
+      total: toNumber(ctx?.total),
+      spread: toNumber(ctx?.spread),
       favorite: ctx?.favorite ?? null,
       implied: { [g.away]: impliedAway, [g.home]: impliedHome },
       impliedAway,

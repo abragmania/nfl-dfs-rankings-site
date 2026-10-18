@@ -364,7 +364,6 @@ html, body {
 .tg-mode-btn.active { background: var(--accent); color: #ffffff; cursor: default; }
 .tg-mode-btn:disabled:not(.active) { cursor: progress; opacity: 0.7; }
 .pill-mode { background: var(--bg-elevated-2); color: var(--text-muted); border: 1px solid var(--border); }
-.site-published-mode { font-size: var(--fs-sm); color: var(--text-dim); }
 
 /* ---------- Main layout ---------- */
 /* The page does not have to fill a wide screen (Adam): past 1560px the game strip, filters and table stop

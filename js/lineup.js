@@ -866,7 +866,7 @@ export function savedCeilHtml(build) {
   return `<span title="TwoGun's ceilings summed, as built">${dec1(build.totalCeil)} ceil</span>`;
 }
 
-function savedLineupCardHtml(lineup, rowById, pick = null, numbers = null) {
+export function savedLineupCardHtml(lineup, rowById, pick = null, numbers = null) {
   const totals = computeLiveTotals(lineup, rowById);
   const isCash = lineup.mode === "cash";
   const prefix = lineupPrefix(lineup, numbers);

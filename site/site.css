@@ -1,6 +1,6 @@
 /* Published copy of the app (D71: it does what the app does, with the visitor's edits kept in their own browser).
    Everything here only HIDES controls that cannot work without the server or stay app-only (upload, Refresh, the
-   FantasyPros paste boxes, source settings, Entries, renaming and deleting the app's lineups), plus the Matchups link
+   FantasyPros paste boxes, source on/off boxes, Entries, renaming and deleting the app's lineups), plus the Matchups link
    and the tab-row wrap it needs, and the "saved on this device" note on lineups saved on the site; no other layout,
    colour or spacing is touched. Stars, notes, typed numbers, the per-cell reset and Reset all are shown and work
    (site-src/site-overrides.js). Selectors were taken from the view code in public/js (header.js, table.js,
@@ -44,11 +44,10 @@
   display: none !important;
 }
 
-/* Projections and Ownership tabs: FantasyPros paste boxes (classic and showdown kicker), source weight
-   inputs and the Enabled tick boxes. */
+/* Projections and Ownership tabs: FantasyPros paste boxes (classic and showdown kicker) and the Enabled tick boxes.
+   The weight boxes are shown and work in the browser (site-src/site-weights.js). */
 .is-site .paste-box,
-.is-site .source-enabled,
-.is-site label:has(> .source-weight-input) {
+.is-site .source-enabled {
   display: none !important;
 }
 
@@ -57,12 +56,12 @@
    a saved lineup is kept in the visitor's own browser. */
 
 /* Saved lineups stay viewable: Delete goes, the name stops being a rename button. A lineup saved on this site keeps
-   its Delete (it lives only in this browser, D69/D71; its id starts with "device-", site-src/site-lineups.js). */
+   its Delete and its rename (it lives only in this browser, D69/D71; its id starts with "device-", site-lineups.js). */
 .is-site [data-action="lineup-delete-start"]:not([data-id^="device-"]),
 .is-site [data-action="sd-delete-start"]:not([data-id^="device-"]) {
   display: none !important;
 }
-.is-site .saved-lineup-name-btn {
+.is-site .saved-lineup-name-btn:not([data-id^="device-"]) {
   pointer-events: none;
   cursor: default;
 }

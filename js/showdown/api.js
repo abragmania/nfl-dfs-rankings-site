@@ -8,7 +8,7 @@
 // The import below is written beside this file so it resolves here; tools/publish.mjs (showdownShimText) rewrites it to
 // climb one folder up in the published copy, which sits one folder deeper (out/js/showdown/).
 import {
-  pageStorage, showdownLineupsResponse, showdownOptimizeResponse, saveShowdownLineup, deleteShowdownDeviceLineup, envelope, errorBody,
+  pageStorage, showdownLineupsResponse, showdownOptimizeResponse, saveShowdownLineup, deleteShowdownDeviceLineup, renameShowdownDeviceLineup, envelope, errorBody,
 } from "../site-showdown.js";
 
 export const READ_ONLY_MESSAGE = "Read-only on the live site. Do this in the app on your computer.";
@@ -103,6 +103,8 @@ export async function deleteShowdownLineup(key, id) {
   return envelope({ lineups: showdownLineupsResponse(app, storage, key).lineups }, { stale: app.stale ?? [] });
 }
 
-export function putShowdownLineupName() {
-  return readOnly();
+export async function putShowdownLineupName(key, id, name) {
+  const app = await bakedLineups(key);
+  const result = renameShowdownDeviceLineup(pageStorage(), key, id, name, app.lineups);
+  return result.error ? errorBody(result.error.code, result.error.message) : envelope({ lineups: result.lineups }, { stale: app.stale ?? [] });
 }

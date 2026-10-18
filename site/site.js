@@ -1,6 +1,6 @@
 // Published copy of the app: marks the page, shows when it was published, and swallows the clicks that would
-// start an edit the site cannot keep (renaming a lineup), and swaps the TwoGun mode switch for the mode it was
-// published in. Stars, notes and typed numbers work on the site (D71,
+// start an edit the site cannot keep (renaming the app's lineups). The header's Current | TwoGun switch is the app's own
+// (site-src/api.js). Stars, notes and typed numbers work on the site (D71,
 // site-src/site-overrides.js). Injected into index.html by tools/publish.mjs. Hiding of the controls that stay
 // app-only is done in site.css.
 document.documentElement.classList.add("is-site");
@@ -75,36 +75,8 @@ async function showPublished() {
   }
 }
 
-// TwoGun mode before P7 (spec review 2026-10-15, must-fix 11): the site carries the one board it was published with, so
-// the header's Current / TwoGun switch (header.js renderModeBox) is taken out and the box says which mode was published.
-export function publishedModeText(active) {
-  return active === "twogun" ? "Published in TwoGun mode" : "Published in current mode";
-}
-
-// The app redraws the mode box on every board load, so the header is watched (as addMatchupsTab watches the tab rows)
-// and the switch taken out each time.
-function showPublishedMode() {
-  document.querySelectorAll("#classic-header").forEach((header) => {
-    const apply = () => {
-      const box = header.querySelector("#tg-mode");
-      if (!box) return;
-      box.querySelector(".tg-mode-switch")?.remove();
-      const text = publishedModeText(box.dataset.mode);
-      const label = box.querySelector(".site-published-mode");
-      if (label && label.textContent === text) return;
-      label?.remove();
-      const el = document.createElement("span");
-      el.className = "site-published-mode";
-      el.textContent = text;
-      box.prepend(el);
-    };
-    apply();
-    new MutationObserver(apply).observe(header, { childList: true, subtree: true });
-  });
-}
-
 // Capture phase on the document so these run before the table's own delegated handlers.
-const BLOCKED = "[data-action='lineup-rename-start'], [data-action='sd-rename-start']";
+const BLOCKED = "[data-action='lineup-rename-start']:not([data-id^='device-']), [data-action='sd-rename-start']:not([data-id^='device-'])";
 document.addEventListener(
   "click",
   (e) => {
@@ -117,4 +89,3 @@ document.addEventListener(
 );
 
 showPublished();
-showPublishedMode();
