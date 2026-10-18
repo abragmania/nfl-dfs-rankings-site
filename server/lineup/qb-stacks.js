@@ -299,6 +299,20 @@ export function cappedMustNotes(qbs, candByKey, capOf, noted, lineupNo) {
   return out;
 }
 
+// Adam 2026-10-18: a "must" teammate is exempt from his position's Max % cap (the cap holds for every other player of the
+// position). One note per such player who ended above it. items: [{name, pos, count, capN, capLabel, withText}], count his
+// lineups of the `total` made, capLabel "40%" or "3 lineups", withText the quarterback name(s) he is Must for.
+export function mustAboveCapNotes(items, total) {
+  const out = [];
+  for (const it of items) {
+    if (!(it.count > it.capN)) continue;
+    const share = String(it.capLabel).endsWith("%") ? `the ${it.capLabel} ${it.pos} share` : `the ${it.pos} cap of ${it.capLabel}`;
+    const where = it.count >= total ? "in every lineup" : `in ${it.count} of ${total} lineups`;
+    out.push(`${it.name} is ${where} (Must with ${it.withText}), above ${share}; the cap holds for the other ${it.pos}s.`);
+  }
+  return out;
+}
+
 export function withReachable(spots, placed, groups, gi, kRem, start, cnt, canAdd = null) {
   if (spots === null) return false;
   cnt.fill(0);

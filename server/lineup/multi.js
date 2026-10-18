@@ -23,7 +23,7 @@ import { warn } from "../lib/log.js";
 import { retiredObjectiveNote } from "./optimize.js"; // pure: the site copies the engine (D69); one copy of the note
 import { countsTowardStack } from "./stack-rules.js"; // pure leaf; one copy of the stack predicate
 import {
-  parseEntries, qbStackPrepare, globalRule, ruleFromEntry, mustPlan, withReachable, stackTrials, setsTeammates, setsOpponents, cappedMustNotes
+  parseEntries, qbStackPrepare, globalRule, ruleFromEntry, mustPlan, withReachable, stackTrials, setsTeammates, setsOpponents, cappedMustNotes, mustAboveCapNotes
 } from "./qb-stacks.js"; // pure; per-QB stack settings
 import {
   MAX_AT, CONFIGS, listNames, slotsFull, lockedSlotWords, minPlan, forcedSet, lowestScoreFirst, trialOrder, chooseBend, bendLabel, settleBend,
@@ -519,10 +519,32 @@ function run(rows, slate, settings, existing, notes) {
     notes.push(`The search hit its step limit on at least one lineup, so that lineup may not be the very best available.`);
   }
   notes.push(...unmetMinNotes(plan, counts, { complete: b.lineups.length === opts.count, bentKeys: b.bentKeys, waits: b.waits }));
+  notes.push(...mustAboveCapNotes(mustAboveCapItems(st, opts, counts, prevKeys.slice(existingList.length)), b.lineups.length));
   const named = (map) => [...map].map(([id, { pct }]) => ({ name: st.byId.get(id)?.name ?? id, pct }));
   const short = percentNote(opts.capPct, named(opts.playerCap), named(opts.playerMin), opts.count, b.lineups.length);
   if (short) notes.push(short);
   return { lineups: b.lineups, exposure: exposureOf(st, prevKeys, opts), notes, bends: b.bends };
+}
+
+/** mustAboveCapNotes' items: each must teammate (not locked, not a defense) with a position cap, his lineups of this batch
+ *  (`counts`, the same count the reported exposure uses) and the quarterback(s) he was Must for in lineups that held him. */
+function mustAboveCapItems(st, opts, counts, batchKeys) {
+  const out = [];
+  for (const key of st.mustKeys) {
+    const cand = st.candByKey.get(key);
+    const capN = cand ? opts.capCount[cand.pos] : undefined;
+    const count = counts.get(key) ?? 0;
+    if (!cand || cand.locked || cand.pos === "DST" || capN === undefined || count <= capN) continue;
+    const qbs = new Set();
+    for (const keys of batchKeys) {
+      if (!keys.includes(key)) continue;
+      const qb = keys.map((k) => st.candByKey.get(k)).find((c) => c && c.pos === "QB");
+      if (qb && qb.rule && qb.rule.withKeys.includes(key)) qbs.add(qb.name);
+    }
+    if (!qbs.size) continue; // above the cap by a bend, not by a Must
+    out.push({ name: cand.name, pos: cand.pos, count, capN, capLabel: opts.capLabel[cand.pos], withText: listNames([...qbs]) });
+  }
+  return out;
 }
 
 /** The lineups one at a time: soft.js forcedSet's Min % players locked into each, a lineup no setting allows bent. */
@@ -872,7 +894,8 @@ function checkSentence(trials, opts, existingCount) {
   return `${diagnosisSentence(rest, ctx)}${tail}`;
 }
 
-/** The cap a "must" player has reached for this lineup (his own Max % first, then his position's), or null. */
+/** The cap a "must" player has reached for this lineup, or null: his own Max % only. His position's Max % no longer
+ *  counts (Adam 2026-10-18: a must teammate is exempt from it; mustAboveCapNotes says so). A DST keeps the old check. */
 function mustCapCause(c, counts, st, opts) {
   const used = counts.get(c.key) ?? 0;
   const own = st.playerCapN.get(c.key);
@@ -881,7 +904,7 @@ function mustCapCause(c, counts, st, opts) {
     return `his Max %${pct === undefined ? "" : ` of ${pct}%`} (${own} of ${opts.count} lineups)`;
   }
   const capN = opts.capCount[c.pos];
-  return capN !== undefined && used >= capN ? `the ${c.pos} maximum exposure (${opts.capLabel[c.pos]})` : null;
+  return c.pos === "DST" && capN !== undefined && used >= capN ? `the ${c.pos} maximum exposure (${opts.capLabel[c.pos]})` : null;
 }
 
 // --------------------------------------------------------------------------------------------------------
@@ -1076,6 +1099,14 @@ function prepare(rows, opts, notes) {
   st.perQb = qs.rules.size > 0;
   st.protectedKeys = qs.protectedKeys;
   st.qbNoted = qs.noted;
+  // Adam 2026-10-18: a player he forces is exempt from his position's Max % cap. A lock already is (not in the pool); so is
+  // a "must" teammate of the quarterback in that lineup: every quarterback's musts, or just the locked one's. canAdd lets
+  // an over-cap must player in only behind a quarterback whose rule names him (availableLists marks those in overCap).
+  st.mustKeys = new Set();
+  const lockedQbCand = lockCands.find((c) => c.pos === "QB");
+  for (const c of all) {
+    if (c.pos === "QB" && c.rule && (!lockedQbCand || lockedQbCand.key === c.key)) for (const k of c.rule.withKeys) st.mustKeys.add(k);
+  }
 
   st.pool = all.filter((c) => !c.locked);
   const byPos = {};
@@ -1247,13 +1278,22 @@ function playerCapsByKey(keyOfId, playerCap) {
 }
 
 function availableLists(st, opts, counts, prev) {
-  const out = { trimmed: 0 };
+  const out = { trimmed: 0, overCap: new Set() };
   const playerCapN = st.playerCapN;
   for (const pos of POSITIONS) {
     let capN = opts.capCount[pos];
     if (pos === "DST" && st.spreadCap !== null) capN = Math.min(capN ?? Infinity, st.spreadCap);
     let list = st.byPos[pos];
-    if (capN !== undefined) list = list.filter((c) => (counts.get(c.key) ?? 0) < capN);
+    // Adam 2026-10-18: a must teammate is exempt from his position's cap; at or over it he is listed in overCap, which
+    // searchOne's canAdd opens only behind a quarterback whose rule names him. His own Max % below still holds.
+    if (capN !== undefined) {
+      list = list.filter((c) => {
+        if ((counts.get(c.key) ?? 0) < capN) return true;
+        if (pos === "DST" || !st.mustKeys.has(c.key)) return false; // Spread defenses' cap is not a Max % and stays
+        out.overCap.add(c.key);
+        return true;
+      });
+    }
     if (playerCapN.size) list = list.filter((c) => !playerCapN.has(c.key) || (counts.get(c.key) ?? 0) < playerCapN.get(c.key));
     if (!opts.noTrim) {
       const kept = trimPosition(list, pos, st, opts, prev);
@@ -1396,6 +1436,8 @@ function searchOne(st, avail, prev, opts, nodeLimit) {
     // Cash mode job 1, 2026-10-17: with capAllTeams every team is capped, the quarterback's and his opponent's included.
     if (maxPerTeam !== null && (capAllTeams || (c.pos !== "QB" && qbTeam !== -1 && c.teamIx !== qbTeam && c.teamIx !== qbOpp)) && teamN[c.teamIx] >= maxPerTeam) return false;
     if (c.pos !== "QB" && qbTeam !== -1 && rule.neverKeys.has(c.key)) return false;
+    // A must player past his position's cap (availableLists) is in only the lineups of a quarterback whose rule names him.
+    if (avail.overCap.has(c.key) && !(qbTeam !== -1 && rule.withKeys.includes(c.key))) return false;
     if (c.pos === "DST") {
       if (dstOpp !== -1) return false;
       if (rules.noDstVsOwnPlayers && c.oppIx >= 0 && offN[c.oppIx] > 0) return false;
@@ -1669,7 +1711,8 @@ function diagnose(rows, settings, slate, existingCount, prevKeys, opts, pin = nu
       ...(oppStackActive(opts) && !focusSets(setsOpponents) ? [{ label: `stacking the quarterback with ${stackWords(opts.stackOpp, opts.stackOppOrMore, "player", "players")} from the team he faces`, patch: { stackOpp: 0, stackOppOrMore: true } }] : [])
     ],
     minUnique: opts.minUnique,
-    posCaps: Object.keys(opts.capCount).length > 0,
+    posCaps: Object.keys(opts.capCount).map((pos) => ({ pos, label: opts.capLabel[pos] })),
+    givenMax: base.maxExposure && typeof base.maxExposure === "object" ? base.maxExposure : {},
     spreadDst: opts.spreadDst,
     // Per-player Max %: only a player already at his cap can be what blocks.
     blocking: [...opts.playerCap].filter(([id, { n }]) => rowOf.has(id) && (batchCounts.get(dkKeyOf(rowOf.get(id), id)) ?? 0) >= n).map(([id, { pct }]) => ({ id, name: nameOf(id), pct })),

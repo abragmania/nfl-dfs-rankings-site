@@ -260,7 +260,12 @@ export function bendTrials(s) {
   }
   for (const g of s.stacks) trials.push({ ...g, kind: "qbStackGlobal" });
   if (s.minUnique > 1) trials.push({ label: `minimum unique players (${s.minUnique})`, kind: "minUnique", patch: { minUnique: 1 } });
-  if (s.posCaps) trials.push({ label: "the maximum exposure settings", kind: "posMax", patch: { maxExposure: {} } });
+  // Adam 2026-10-18: each position cap is tried alone, so a bend relaxes only the one that blocks and never clears every
+  // cap. s.posCaps: [{pos, label}], s.givenMax: the request's maxExposure.
+  for (const { pos, label } of Array.isArray(s.posCaps) ? s.posCaps : []) {
+    const rest = Object.fromEntries(Object.entries(s.givenMax ?? {}).filter(([k]) => k !== pos));
+    trials.push({ label: `the ${pos} maximum exposure (${label})`, kind: "posMax", patch: { maxExposure: rest } });
+  }
   if (s.spreadDst) trials.push({ label: "Spread defenses", kind: "spreadDst", patch: { spreadDst: false } });
   if (s.blocking.length > 6) {
     trials.push({ label: "the players' Max % settings", kind: "playerMax", patch: { playerMaxExposure: {} } });
