@@ -1,11 +1,12 @@
 // One colour per team for the lineup card rows, picked so no two teams on the slate look alike (Team rows, Adam
-// 2026-10-17: Falcons and Buccaneers are both red, so the Falcons go black and red). Pure and browser-safe.
+// 2026-10-18: every team keeps its real primary; close colours are told apart by lightness, never a hue shift; only a primary on the page background may take its secondary). Pure and browser-safe.
 import { TEAM_BY_ABBR } from "./teams-data.js";
 import { contrastRatio } from "./format.js";
 
 // Two colours clash when their CIELAB distance (CIE76 delta E) is under this: below it a reader cannot tell two rows apart.
-// 25 puts KC #e31837 / SF #aa0000 (21.5) in and CIN #fb4f14 / KC #e31837 (28.9) out.
-export const CLASH_DELTA_E = 25;
+// One distance for the clash test and the nudge (Adam 2026-10-18: "give each team its own color scheme and they all look
+// different enough"): a team already 15 apart keeps its real colour, so KC #e31837 / SF #aa0000 (21.5) both stay as they are.
+export const CLASH_DELTA_E = 15;
 
 // A secondary this close to the page (white or the light and dark backgrounds, delta E) would vanish; 5 keeps black.
 export const BACKGROUND_DELTA_E = 5;
@@ -39,16 +40,20 @@ const nearPage = (c) => PAGE_COLOURS.some((p) => deltaE(c, p) < BACKGROUND_DELTA
 
 // Team rows round 2, Adam 2026-10-17 ("even if you have to fudge the colors a bit"): the nudge ladder, fixed so a render never differs.
 const L_STEPS = [4, -4, 8, -8, 12, -12, 16, -16, 20, -20, 24, -24, 28, -28]; // lighter first, then darker, smallest shift first
-const HUE_STEPS = [0, 15, -15, 30, -30, 45, -45, 60, -60]; // degrees; lightness alone (0) is tried before any hue shift
+export const NUDGE_DELTA_E = CLASH_DELTA_E; // a nudged colour must clear every placed colour by the clash distance; one value so they never drift apart
+const hueGap = (x, y) => { const d = Math.abs((Math.atan2(x[2], x[1]) - Math.atan2(y[2], y[1])) * 180 / Math.PI) % 360; return d > 180 ? 360 - d : d; };
 const fromLinear = (c) => { const v = Math.min(1, Math.max(0, c)); return v <= 0.0031308 ? 12.92 * v : 1.055 * v ** (1 / 2.4) - 0.055; };
 const uncube = (f) => (f ** 3 > 216 / 24389 ? f ** 3 : (116 * f - 16) / (24389 / 27));
 
-/** CIELAB [L, a, b] to the nearest "#rrggbb" (sRGB, D65, clipped to the gamut). */
-export function fromLab([L, a, b]) {
+const linearRgb = (L, a, b) => {
   const fy = (L + 16) / 116;
   const [x, y, z] = [0.95047 * uncube(fy + a / 500), uncube(fy), 1.08883 * uncube(fy - b / 200)];
-  const rgb = [3.2404542 * x - 1.5371385 * y - 0.4985314 * z, -0.969266 * x + 1.8760108 * y + 0.041556 * z, 0.0556434 * x - 0.2040259 * y + 1.0572252 * z];
-  return `#${rgb.map((c) => Math.round(fromLinear(c) * 255).toString(16).padStart(2, "0")).join("")}`;
+  return [3.2404542 * x - 1.5371385 * y - 0.4985314 * z, -0.969266 * x + 1.8760108 * y + 0.041556 * z, 0.0556434 * x - 0.2040259 * y + 1.0572252 * z];
+};
+
+/** CIELAB [L, a, b] to the nearest "#rrggbb" (sRGB, D65, clipped to the gamut). */
+export function fromLab([L, a, b]) {
+  return `#${linearRgb(L, a, b).map((c) => Math.round(fromLinear(c) * 255).toString(16).padStart(2, "0")).join("")}`;
 }
 
 /** The team colour a step richer, for the row wash's left end: CIELAB lightness down 8, chroma up 12% (so it reads deep, not pastel). */
@@ -78,26 +83,30 @@ export function washScale(deep, colour, alt) {
   return 0;
 }
 
-/** The smallest nudge of `hex` (lightness, then hue) that sits CLASH_DELTA_E from every colour in `taken` and off the page, or null. */
+/** The smallest lightness-only nudge of `hex` that sits NUDGE_DELTA_E from every colour in `taken`, farther from them than `hex`
+ *  itself is (a nudge never moves toward the team it clashed with), and off the page, or null. A step that leaves the sRGB gamut
+ *  has a and b shrunk together (same ratio, so the hue holds) until it fits, rather than clipping a channel and drifting the hue. */
 export function nudgeColour(hex, taken) {
   const [L, a, b] = toLab(hex);
-  const chroma = Math.hypot(a, b);
-  const hue = Math.atan2(b, a);
-  for (const dh of HUE_STEPS) {
-    for (const dl of dh === 0 ? L_STEPS : [0, ...L_STEPS]) {
-      const rad = hue + (dh * Math.PI) / 180;
-      const c = fromLab([Math.min(100, Math.max(0, L + dl)), chroma * Math.cos(rad), chroma * Math.sin(rad)]);
-      if (c !== hex && !nearPage(c) && !taken.some((t) => coloursClash(c, t))) return c;
-    }
+  const nearest = (c) => Math.min(...taken.map((t) => deltaE(c, t))); // Infinity when nothing is placed
+  const start = nearest(hex);
+  for (const dl of L_STEPS) {
+    const L2 = Math.min(100, Math.max(0, L + dl));
+    let k = 1;
+    while (k > 0 && linearRgb(L2, a * k, b * k).some((v) => v < -1e-3 || v > 1 + 1e-3)) k = Math.max(0, k - 0.01);
+    const c = fromLab([L2, a * k, b * k]);
+    const d = nearest(c);
+    const hueHeld = Math.hypot(a, b) <= 5 || hueGap(toLab(c), [L, a, b]) <= 2; // 8-bit rounding at low L can swing the hue; such a step is skipped
+    if (c !== hex && !nearPage(c) && hueHeld && d >= NUDGE_DELTA_E && (d > start || !taken.length)) return c;
   }
   return null;
 }
 
 /** Abbr to { colour, alt, clash?, fudged?, original? } for the teams on a slate. Teams are placed in alphabetical
  *  order, so the input order never matters: the first keeps its primary; a later team that clashes with a placed
- *  colour takes its secondary unless that clashes too or sits on the page, and then its primary is nudged (nudgeColour,
- *  `fudged: true`, the colour it was in `original`); a chosen colour on the page background is nudged the same way. If no
- *  nudge fits, the colour stays and `clash` names the team it clashes with. A team with no usable colours gets no entry. */
+ *  colour, or whose primary sits on the page background, has its primary nudged in lightness (nudgeColour, `fudged: true`,
+ *  the colour it was in `original`). If no nudge fits, the primary stays and `clash` names the team it clashes with; only a
+ *  primary on the page takes its secondary (primary as `alt`, in `original`). A team with no usable colours gets no entry. */
 export function slatePalette(teamAbbrs, teamsByAbbr = TEAM_BY_ABBR) {
   const out = new Map();
   const placed = [];
@@ -107,16 +116,16 @@ export function slatePalette(teamAbbrs, teamsByAbbr = TEAM_BY_ABBR) {
     if (!HEX.test(primary ?? "")) continue;
     const secondary = HEX.test(t.colourSecondary ?? "") ? t.colourSecondary : null;
     const hit = placed.find((p) => coloursClash(primary, p.colour));
-    const useSecondary = hit && secondary && !nearPage(secondary) && !placed.some((p) => coloursClash(secondary, p.colour));
-    const colour = useSecondary ? secondary : primary;
-    const entry = { colour, alt: useSecondary ? primary : secondary };
-    if (!useSecondary && (hit || nearPage(colour))) {
-      // The primary is nudged first; only when it clashed (`hit`) and no nudge fits (PIT black among black and dark navy teams) is the secondary nudged.
-      const taken = placed.map((p) => p.colour);
-      const tries = [[colour, secondary], ...(hit && secondary && !nearPage(secondary) ? [[secondary, colour]] : [])];
-      const found = tries.map(([from, alt]) => ({ from, alt, to: nudgeColour(from, taken) })).find((r) => r.to);
-      if (found) Object.assign(entry, { colour: found.to, alt: found.alt, fudged: true, original: found.from });
-      else if (hit) entry.clash = hit.abbr;
+    const entry = { colour: primary, alt: secondary };
+    const onPage = nearPage(primary);
+    if (hit || onPage) {
+      const nudged = nudgeColour(primary, placed.map((p) => p.colour));
+      if (nudged) Object.assign(entry, { colour: nudged, fudged: true, original: primary });
+      else if (onPage && secondary && !nearPage(secondary)) {
+        Object.assign(entry, { colour: secondary, alt: primary, fudged: true, original: primary });
+        const hit2 = placed.find((p) => coloursClash(secondary, p.colour)); // the secondary can clash too: say so
+        if (hit2) entry.clash = hit2.abbr;
+      } else if (hit) entry.clash = hit.abbr;
     }
     entry.deep = deepen(entry.colour);
     entry.wash = washScale(entry.deep, entry.colour, entry.alt);

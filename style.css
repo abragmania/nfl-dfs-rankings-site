@@ -1903,6 +1903,7 @@ select.opt-input { text-align: left; padding: 3px 4px; }
 .role-mini-2 { --c: var(--pos-dst); }
 .opt-p-line2 .role-tag { margin-left: 0; }
 .opt-card-totals { font-size: var(--fs-sm); color: var(--text-muted); border-top: 1px solid var(--border); padding-top: var(--sp-1); }
+.opt-nowrap { white-space: nowrap; } /* Adam 2026-10-18: a New card's totals line breaks between figures */
 /* Team rows round 2, Adam 2026-10-17: each row wears its team's colours (--tc, --tc2 alt, --tcd deepened, from team-palette.js) as a
    two-colour edge (3px colour over 1px alt) and a 135deg wash, deep 34% to colour 18% to alt 10%, over the card, all times --tcs
    (1, or less where muted text would fall under 4.5:1; washScale in team-palette.js); a player new since
@@ -1940,6 +1941,12 @@ select.opt-input { text-align: left; padding: 3px 4px; }
 .opt-tab.active { color: var(--text); border-bottom-color: var(--accent); }
 .opt-tab-n { margin-left: 4px; padding: 0 6px; border-radius: 9px; font-size: var(--fs-sm); background: var(--bg-elevated-2); color: var(--text-muted); }
 .opt-tab.active .opt-tab-n { background: rgba(var(--accent-rgb), 0.15); color: var(--accent); }
+/* Adam 2026-10-17: the sort line above the New and Saved cards, quiet like the exposure header's sort arrow; the active key in the accent. */
+.opt-sort { display: flex; align-items: center; flex-wrap: wrap; gap: 2px var(--sp-1); margin: 0 0 var(--sp-2); font-size: var(--fs-sm); color: var(--text-muted); }
+.opt-sort-label { font-weight: 600; margin-right: 2px; }
+.opt-sort-btn { background: none; border: none; padding: 1px 6px; font: inherit; font-size: var(--fs-sm); color: var(--text-muted); cursor: pointer; border-radius: 4px; }
+.opt-sort-btn:hover { color: var(--text); }
+.opt-sort-btn.active { color: var(--accent-text); font-weight: 600; }
 .opt-tab-panel { display: flex; flex-direction: column; gap: var(--sp-2); }
 .opt-tab-panel .saved-lineups { margin-top: 0; }
 /* Phone: the fixed columns give back a little room so the player name keeps more than a few letters. */

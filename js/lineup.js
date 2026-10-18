@@ -22,6 +22,7 @@ import { sortableHeadHtml } from "./tabs.js";
 import { matchupText, lineupOutTagHtml, lineupRevivedTagHtml, statusTagsHtml, gradedCellHtml, rowIsOut, twoGunOutReason, STATUS_INFO } from "./table.js"; // D43: the one copy of "vs DAL" / "@ DET"; the red OUT tag (Adam 2026-10-15)
 import { shownTotal, lineupCeilTotal } from "./totals.js";
 import { newBuildId, batchBuild, handBuild, buildTypeText, groupByBuild, groupHeaderText } from "./lineup-builds.js";
+import { lineupFigures, geoOwn, geoText, medianText, sortKeysFor, sortLineups, nextSort, cleanSortState, effectiveSort, sortRowHtml } from "./lineup-sort.js"; // Adam 2026-10-17: sort options; geo own = geometric mean of ownership, his multiplicative uniqueness
 import { rowsGradedForView } from "./grade.js";
 import { posChipsHtml, showAllToggleHtml, wireShowAllButtons } from "./filterbar.js";
 import { filterLineups, bulkUids, bulkLabel, toggleMustHave, pickButtonHtml, filterBarHtml } from "./lineup-filter.js";
@@ -39,7 +40,7 @@ import { TAG_OPTIONS, numberLineups, lineupPrefix } from "./lineup-tags.js";
 import { phoneMinHeight, panelMinHeight } from "./expand.js";
 import {
   defaultCashState, cleanCashState, swapModeStash, modeSwitchHtml, cashChipHtml, convictionChipsHtml, cashHeadLine, buildCashSettings, boardHasMedians,
-  poolReport, wantSwaps, swapDecisionHtml, excludedListHtml, cashTotalsText, unusedCapText, cashBadgeHtml, builtInTextCash, lineupModeOf,
+  poolReport, wantSwaps, swapDecisionHtml, excludedListHtml, cashTotalsText, unusedCapText, cashBadgeHtml, builtInTextCash, lineupModeOf, scoreOfRow,
 } from "./lineup-cash.js";
 
 const LINEUP_SLOTS = ["QB", "RB", "RB", "WR", "WR", "WR", "TE", "FLEX", "DST"];
@@ -174,6 +175,7 @@ function savePersisted() {
         mode: opt.mode, // Cash mode job 3b, 2026-10-17: the switch, cash's own settings and Want lists, and the other mode's slots
         cash: opt.cash,
         stash: opt.stash,
+        sort: opt.sort,
       })
     );
   } catch (e) {
@@ -211,6 +213,7 @@ function hydrateFromStorage() {
   opt.mode = persisted.mode === "cash" ? "cash" : "gpp"; // Cash mode job 3b
   opt.cash = cleanCashState(persisted.cash);
   opt.stash = cleanStash(persisted.stash);
+  opt.sort = cleanSortState(persisted.sort);
   if (Array.isArray(persisted.locks)) state.locks = new Set(persisted.locks.map(String));
   if (Array.isArray(persisted.excludes)) state.excludes = new Set(persisted.excludes.map(String));
   opt.playerMax = cleanPlayerMax(persisted.playerMax);
@@ -881,6 +884,8 @@ function savedLineupCardHtml(lineup, rowById, pick = null, numbers = null) {
   const buildText = buildTypeText(lineup.build);
   const buildBadge = buildText ? `<span class="saved-lineup-badge saved-lineup-badge-build" title="How this lineup was made">${escapeHtml(buildText)}</span>` : "";
   const ceilHtml = savedCeilHtml(lineup.build);
+  // Adam 2026-10-18: the median total beside proj, the figure the Median sort uses; only on a TwoGun board with medians.
+  const medianPart = boardMediansForSort() ? medianText(savedLineupFigures(lineup, rowById).median, (lineup.slots ?? []).some((s) => scoreOfRow(rowById.get(String(s.playerId)), "median") != null), "a player has no TwoGun median or is no longer on the slate") : "";
 
   const nameHtml = isRenaming
     ? `<span class="saved-lineup-rename">
@@ -923,8 +928,8 @@ function savedLineupCardHtml(lineup, rowById, pick = null, numbers = null) {
       <div class="saved-lineup-slots">${rowsHtml}</div>
       <div class="saved-lineup-totals">
         <span class="${overCap ? "saved-lineup-totals-over" : ""}">${salaryText}</span>
-        <span>&middot; ${dec1(totals.totalProj)} proj</span>${ceilHtml}
-        <span>&middot; ${escapeHtml(ownText)}</span>
+        <span>&middot; ${dec1(totals.totalProj)} proj</span>${medianPart ? `<span>&middot; ${medianPart}</span>` : ""}${ceilHtml}
+        <span>&middot; ${escapeHtml(ownText)}${isCash ? "" : ` &middot; ${geoText(savedLineupFigures(lineup, rowById).geo, "a player has no ownership figure or is no longer on the slate")}`}</span>
       </div>
       <div class="saved-lineup-actions">
         <button type="button" class="saved-lineup-btn" data-action="lineup-load" data-id="${escapeHtml(lineup.id)}">Load</button>
@@ -975,7 +980,15 @@ function savedLineupsSectionHtml(rowById, savedHere) {
     if (k === 0) {
       body = `<div class="saved-lineups-empty">${NO_MATCH_TEXT}</div>`;
     } else {
-      body = savedGroupsHtml(shown.map((e) => e.item), (l) => savedLineupCardHtml(l, rowById, pick, numbers));
+      // Adam 2026-10-17: a sort row above the cards; As built keeps the build groups, any other key is one flat sorted list
+      const items = shown.map((e) => e.item);
+      const keys = sortKeysFor(opt.mode, boardMediansForSort());
+      const sort = effectiveSort(opt.sort.saved, keys);
+      const cardOf = (l) => savedLineupCardHtml(l, rowById, pick, numbers);
+      const cards = sort.key === "built"
+        ? savedGroupsHtml(items, cardOf)
+        : `<div class="saved-lineups-list">${sortLineups(items, sort.key, sort.dir, (l) => savedLineupFigures(l, rowById)).map(cardOf).join("")}</div>`;
+      body = (k >= 2 ? sortRowHtml("saved", keys, sort) : "") + cards;
       const subtitle = opt.mustHave.length ? `${k} of ${n} saved lineup${n === 1 ? "" : "s"}, filtered` : `${n} saved lineup${n === 1 ? "" : "s"}`;
       lastExposure = { exposure: exposureOfLineups(shown.map((e) => savedLineupPlayers(e.item, rowById))), subtitle };
       exposureHtml = optExposureHtml(lastExposure.exposure, lastExposure.subtitle, opt.expSortDir, pick);
@@ -1024,6 +1037,23 @@ export function savedLineupPlayers(lineup, rowById) {
       : { id, name: s.name, pos: s.pos, team: s.team, opp: "", own: s.own ?? null, identity: id };
   });
 }
+
+/** A saved lineup's sort and geo figures, off the live board rows (Adam 2026-10-17): all null when it is not nine players or a
+ *  player is no longer on the board, so it sorts last and shows "— geo" rather than a figure from the players that remain. */
+export function savedLineupFigures(lineup, rowById) {
+  const rows = (lineup.slots ?? []).map((s) => rowById.get(String(s.playerId)));
+  if (rows.length !== LINEUP_SLOTS.length || rows.some((r) => !r)) return lineupFigures([]);
+  return lineupFigures(rows.map((r) => ({ proj: r.proj, own: r.own, median: scoreOfRow(r, "median") })));
+}
+
+/** A new lineup's figures: a player's own `median` when the batch carries one (a cash median build), else the board row's. */
+const newPlayerMedian = (p, rowById) => ("median" in p ? p.median : scoreOfRow(rowById?.get(String(p.id)), "median"));
+function newLineupFigures(lineup, rowById) {
+  return lineupFigures((lineup.players ?? []).map((p) => ({ proj: p.proj, own: p.own, median: newPlayerMedian(p, rowById) })));
+}
+
+/** Whether the board is in TwoGun mode and carries medians: the only case the Median sort is offered for a GPP list or a saved list. */
+const boardMediansForSort = () => isTwoGunMode(store.get().board) && boardHasMedians(activeSlateRows(store.get().board));
 
 /** The identity of every currently-placed player (🔵 finding 6), used both to disable Add on an
  *  already-placed row and to block adding the same DraftKings player twice under a different board id. */
@@ -1393,6 +1423,7 @@ const opt = {
   mustHave: [],
   mustHaveNames: {},
   expSortDir: "desc", // the exposure lists' one sort, by exposure: "desc" (highest first) or "asc"
+  sort: cleanSortState(null), // the card lists' sort, per tab: {new: {key, dir}, saved: {key, dir}}, persisted (lineup-sort.js)
   generating: false,
   saving: false,
   error: null, // the server's sentence for a refused or failed request
@@ -2077,11 +2108,19 @@ export function optLineupCardHtml(lineup, index, busy, { saved = false, fresh = 
     decor.rolesFor = (p) => (cash.strip.wantIn.has(String(p.id)) ? `<span class="role-tag role-want" title="On your Want list">WANT</span>` : "");
   }
   const rows = (lineup.players ?? []).map((p, i) => cardPlayerRowHtml(p, LINEUP_SLOTS[i] ?? p.pos ?? "", Boolean(fresh?.has(String(p.id))), pick, decor)).join("");
-  const ownText = totals.own == null ? "" : ` &middot; ${Math.round(totals.own)}% own`;
+  const ownText = totals.own == null ? " &middot; — own" : ` &middot; ${Math.round(totals.own)}% own`;
+  const geoHtml = ` &middot; ${geoText(geoOwn((lineup.players ?? []).map((p) => p.own)))}`; // Adam 2026-10-17: geo own on the GPP card only
   // TwoGun mode: the lineup's total of TwoGun's ceilings, as the server summed it (absent in current mode; a dash
   // when a player has none, never a partial sum).
   const ceil = lineupCeilTotal(lineup); // ChatGPT wish d: the shown sum, totals.js
   const ceilText = ceil === undefined ? "" : ` &middot; ${ceil == null ? `<span title="A player in this lineup has no TwoGun ceiling">—</span>` : dec1(ceil)} ceil`;
+  // Adam 2026-10-18: the median total beside proj, off the sort's own figure; only on a TwoGun board with medians or a batch carrying them.
+  const plist = lineup.players ?? [];
+  const medianPart = !cash && (boardMediansForSort() || plist.some((p) => "median" in p)) ? medianText(newLineupFigures(lineup, rowById).median, plist.some((p) => newPlayerMedian(p, rowById) != null)) : "";
+  const nw = (s) => (s ? ` <span class="opt-nowrap">${s}</span>` : ""); // with a median the line is long: breaks fall between figures, not inside one
+  const gppTotals = medianPart
+    ? `${nw(`&middot; ${dec1(totals.proj) ?? "—"} proj &middot; ${medianPart}`)}${nw(ceilText.trim())}${nw(`${ownText.trim()}${geoHtml}`)}`
+    : ` &middot; ${dec1(totals.proj) ?? "—"} proj${ceilText}${ownText}${geoHtml}`;
   const uid = escapeHtml(lineup.uid ?? "");
   const saveBtn = saved
     ? `<button type="button" class="saved-lineup-btn opt-saved-btn" disabled>Saved ✓</button>`
@@ -2098,7 +2137,7 @@ export function optLineupCardHtml(lineup, index, busy, { saved = false, fresh = 
       <div class="opt-card-players">${rows}</div>
       ${cash
         ? `<div class="opt-card-totals"><span class="${overCap ? "saved-lineup-totals-over" : ""}">${escapeHtml(cashTotalsText(lineup, cash.basis))}</span>${unusedCapText(totals.salary) ? ` <span class="cash-unused-chip" title="Salary left under the $50,000 cap">${escapeHtml(unusedCapText(totals.salary))}</span>` : ""}</div>${cash.strip.html}`
-        : `<div class="opt-card-totals"><span class="${overCap ? "saved-lineup-totals-over" : ""}">${money(totals.salary)}</span> &middot; ${dec1(totals.proj) ?? "—"} proj${ceilText}${ownText}</div>`}
+        : `<div class="opt-card-totals"><span class="${overCap ? "saved-lineup-totals-over" : ""}">${money(totals.salary)}</span>${gppTotals}</div>`}
     </div>`;
 }
 
@@ -2378,9 +2417,14 @@ function newLineupsTabHtml(rowById, savedHere) {
     // Adam 2026-10-17: the exposure tables above the cards, so they are high on the screen
     parts.push(optExposureHtml(lastExposure.exposure, lastExposure.subtitle, opt.expSortDir, pick, lastExposure.marks));
     // The new-player highlight compares a card with the previous card SHOWN.
-    const fresh = newPlayerIds(shown.map((e) => e.item), rowById);
+    // Adam 2026-10-17: the sort orders the shown cards (they keep their own numbers); the highlight compares with the card before in that order
+    const keys = sortKeysFor(isCash ? "cash" : "gpp", isCash ? r.basis === "median" : boardMediansForSort());
+    const sort = effectiveSort(opt.sort.new, keys);
+    const ordered = sortLineups(shown, sort.key, sort.dir, (e) => newLineupFigures(e.item, rowById));
+    if (ordered.length >= 2) parts.push(sortRowHtml("new", keys, sort));
+    const fresh = newPlayerIds(ordered.map((e) => e.item), rowById);
     const cardCash = (lineup) => (isCash ? { basis: r.basis, strip: cashStrip(lineup, r, rowById, busy) } : null);
-    parts.push(`<div class="opt-cards">${shown.map((e, k) => optLineupCardHtml(e.item, e.index, busy, { saved: savedFlags[e.index], fresh: fresh[k], pick, rowById, cash: cardCash(e.item) })).join("")}</div>`);
+    parts.push(`<div class="opt-cards">${ordered.map((e, k) => optLineupCardHtml(e.item, e.index, busy, { saved: savedFlags[e.index], fresh: fresh[k], pick, rowById, cash: cardCash(e.item) })).join("")}</div>`);
     if (whole) parts.push(bendsLineHtml(r.bends, r.made));
   } else {
     lastExposure = { exposure: {}, subtitle: "" };
@@ -2733,6 +2777,13 @@ function wireOptimizer(container) {
     btn.addEventListener("click", () => {
       if (opt.resultsTab === btn.dataset.tab) return;
       opt.resultsTab = btn.dataset.tab === "saved" ? "saved" : "new";
+      commit();
+    });
+  });
+  container.querySelectorAll("[data-action='opt-sort']").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const tab = btn.dataset.tab === "saved" ? "saved" : "new";
+      opt.sort = { ...opt.sort, [tab]: nextSort(opt.sort[tab], btn.dataset.key) };
       commit();
     });
   });
