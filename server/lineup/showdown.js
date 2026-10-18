@@ -127,11 +127,13 @@ export function cheapestTable(flex) {
  * result are exactly what optimizeShowdown always had:
  *   overlap  { priors: Set<string>[], max, keyOf(candidate) } - a lineup may share at most `max` keys with each prior;
  *   maxSteps a step budget (one step per search node); stats, when given, gets { steps, aborted }. When the budget runs
- *            out the best lineup found so far is returned (or null), and stats.aborted says it was not proven best.
+ *            out the best lineup found so far is returned (or null), and stats.aborted says it was not proven best;
+ *   ruleGate (capt, lockedFlex, flex) -> {open(start, left), leaf(), add(c), remove(c)}: hard lineup rules (D81,
+ *            showdown-rules.js searchGate), cutting every branch that breaks one or can no longer meet one.
  * Forced men are `lockIds`. A branch whose cheapest possible completion already breaks the cap is cut (sound, so the
  * lineup found never changes).
  */
-export function exactSearch(pool, { lockIds, cap, maxFromTeam, floor, overlap = null, maxSteps = Infinity, stats = null }) {
+export function exactSearch(pool, { lockIds, cap, maxFromTeam, floor, overlap = null, maxSteps = Infinity, stats = null, ruleGate = null }) {
   const locks = new Set(lockIds);
   // Every lock must be rosterable, and at most one of them can be the Captain.
   if (![...locks].every((id) => pool.some((c) => c.id === id))) return null;
@@ -186,6 +188,7 @@ export function exactSearch(pool, { lockIds, cap, maxFromTeam, floor, overlap = 
     if (baseScore + top <= bestScore + 1e-9) continue;
     const cheapest = cheapestTable(flex);
     if (baseSalary + cheapest[0][need] > cap) continue;
+    const gate = ruleGate ? ruleGate(capt, lockedFlex, flex) : null;
 
     shift(capt, 1);
     const pick = [];
@@ -196,8 +199,9 @@ export function exactSearch(pool, { lockIds, cap, maxFromTeam, floor, overlap = 
         return;
       }
       const left = need - pick.length;
+      if (gate && !gate.open(start, left)) return;
       if (left === 0) {
-        if (violations === 0 && score > bestScore + 1e-9) {
+        if (violations === 0 && score > bestScore + 1e-9 && (!gate || gate.leaf())) {
           bestScore = score;
           best = [capt, ...lockedFlex, ...pick];
         }
@@ -216,7 +220,9 @@ export function exactSearch(pool, { lockIds, cap, maxFromTeam, floor, overlap = 
         teams.set(c.team, n + 1);
         pick.push(c);
         shift(c, 1);
+        gate?.add(c);
         if (violations === 0) dfs(i + 1, score + c.score, salary + c.salary);
+        gate?.remove(c);
         shift(c, -1);
         pick.pop();
         teams.set(c.team, n);
