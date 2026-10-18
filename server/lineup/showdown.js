@@ -8,12 +8,12 @@
 // Locks and excludes use candidate ids: a person's FLEX id (row.id) means his FLEX candidate for a lock, and a
 // Captain id (row.cptId) means his Captain candidate. Excluding a FLEX id (row.id) removes the person entirely;
 // excluding a Captain id removes only his Captain candidate. Rows flagged "no projection" are never auto-rostered
-// (the classic optimiser's own rule, kept because the candidates carry the row's flags and override).
+// (the classic optimiser's own rule, kept because the candidates carry the row's flags and override), nor is a
+// projection of 0 or less; injury status never filters (rosterable below).
 // The lineups maximise projection: the "lev" and "projMinusOwn" objectives are retired (Adam 2026-10-15, Lev
 // measure to be redesigned; projection minus ownership removed), and a request naming one is built on projection
 // with the classic optimiser's note (optimize.js retiredObjectiveNote).
 import { optimizeLineup, retiredObjectiveNote } from "./optimize.js";
-import { rowIsOut } from "../rank/sidelined.js"; // pure: the public site runs this in a browser (D71)
 
 export const SHOWDOWN_SLOTS = Object.freeze(["CPT", "FLEX", "FLEX", "FLEX", "FLEX", "FLEX"]);
 export const SHOWDOWN_FLEX = Object.freeze(["QB", "RB", "WR", "TE", "K", "DST"]);
@@ -87,15 +87,34 @@ function scoreOf(c) {
   return num(c.proj) ?? 0;
 }
 
-/** Would the classic optimiser auto-roster this candidate? (Its own filter, repeated because a Captain is locked
- *  in below, and a locked candidate skips that filter.) */
-function rosterable(c) {
+/** May the showdown search auto-roster this candidate? A projection above 0, not flagged "no projection" unless a
+ *  typed projection overrides it, and a price. One copy: showdown-multi.js imports it.
+ *  Adam 2026-10-18 and D45: status never filters; a projection of 0 or less, or none, is never auto-rostered (the
+ *  board sets an Out, Doubtful or IR man's projection to 0 until Adam types one above 0). A lock still puts him in. */
+export function rosterable(c) {
   const overridden = num(c.override?.proj) !== null;
-  if (num(c.proj) === null) return false;
-  if (!overridden && c.flags.includes("no projection")) return false;
-  if (rowIsOut(c)) return false;
+  if (!(num(c.proj) > 0)) return false;
+  if (!overridden && (c.flags ?? []).includes("no projection")) return false;
   if (num(c.salary) === null) return false;
   return true;
+}
+
+/** cheapest[i][k] for k = 0..5: the sum of the k lowest salaries among flex[i..] (Infinity when fewer than k are
+ *  left), the least k more men can cost. One backward pass keeping the five lowest seen, O(5n). */
+export function cheapestTable(flex) {
+  const cheapest = new Array(flex.length + 1);
+  cheapest[flex.length] = [0, ...Array(5).fill(Infinity)];
+  const low = []; // the five lowest salaries among flex[i..], ascending
+  for (let i = flex.length - 1; i >= 0; i--) {
+    const s = flex[i].salary;
+    if (low.length < 5) low.push(s);
+    else if (s < low[4]) low[4] = s;
+    for (let j = low.length - 1; j > 0 && low[j] < low[j - 1]; j--) [low[j], low[j - 1]] = [low[j - 1], low[j]];
+    const row = [0];
+    for (let k = 0; k < 5; k++) row.push(k < low.length ? row[k] + low[k] : Infinity);
+    cheapest[i] = row;
+  }
+  return cheapest;
 }
 
 /**
@@ -104,8 +123,15 @@ function rosterable(c) {
  * FLEX candidates are taken in score order and a branch is cut when even the best remaining scores cannot beat the
  * best lineup found so far, or when the salary is already over the cap. Returns the six candidates (Captain first)
  * or null when no legal lineup exists. `floor` is a score already achieved (the classic run's), used to prune.
+ * Optional, for the showdown Optimizer (server/lineup/showdown-multi.js, Adam 2026-10-18); left out, the search and its
+ * result are exactly what optimizeShowdown always had:
+ *   overlap  { priors: Set<string>[], max, keyOf(candidate) } - a lineup may share at most `max` keys with each prior;
+ *   maxSteps a step budget (one step per search node); stats, when given, gets { steps, aborted }. When the budget runs
+ *            out the best lineup found so far is returned (or null), and stats.aborted says it was not proven best.
+ * Forced men are `lockIds`. A branch whose cheapest possible completion already breaks the cap is cut (sound, so the
+ * lineup found never changes).
  */
-function exactSearch(pool, { lockIds, cap, maxFromTeam, floor }) {
+export function exactSearch(pool, { lockIds, cap, maxFromTeam, floor, overlap = null, maxSteps = Infinity, stats = null }) {
   const locks = new Set(lockIds);
   // Every lock must be rosterable, and at most one of them can be the Captain.
   if (![...locks].every((id) => pool.some((c) => c.id === id))) return null;
@@ -119,9 +145,33 @@ function exactSearch(pool, { lockIds, cap, maxFromTeam, floor }) {
   const need = 5 - lockedFlex.length;
   if (need < 0) return null;
 
+  // Prior-lineup overlap (minimum unique): per key, the priors holding it; over[i] counts what the lineup in hand
+  // shares with prior i, and `violations` how many priors it shares more than `max` with.
+  const priorsWith = new Map();
+  const over = overlap ? new Int32Array(overlap.priors.length) : null;
+  let violations = 0;
+  if (overlap) {
+    overlap.priors.forEach((keys, i) => {
+      for (const k of keys) priorsWith.set(k, [...(priorsWith.get(k) ?? []), i]);
+    });
+  }
+  const shift = (c, d) => {
+    if (!overlap) return;
+    for (const i of priorsWith.get(overlap.keyOf(c)) ?? []) {
+      const before = over[i];
+      over[i] += d;
+      if (d > 0 && before === overlap.max) violations++;
+      if (d < 0 && before === overlap.max + 1) violations--;
+    }
+  };
+
   let best = null;
   let bestScore = Number.isFinite(floor) ? floor - 1e-9 : -Infinity;
+  let steps = 0;
+  let aborted = false;
+  for (const c of lockedFlex) shift(c, 1);
   for (const capt of captains) {
+    if (aborted) break;
     if (lockedFlex.some((c) => c.personId === capt.personId)) continue;
     const baseSalary = capt.salary + lockedFlex.reduce((a, c) => a + c.salary, 0);
     if (baseSalary > cap) continue;
@@ -134,12 +184,20 @@ function exactSearch(pool, { lockIds, cap, maxFromTeam, floor }) {
     // Upper bound for this Captain: the best `need` remaining scores.
     const top = flex.slice(0, need).reduce((a, c) => a + c.score, 0);
     if (baseScore + top <= bestScore + 1e-9) continue;
+    const cheapest = cheapestTable(flex);
+    if (baseSalary + cheapest[0][need] > cap) continue;
 
+    shift(capt, 1);
     const pick = [];
     const dfs = (start, score, salary) => {
+      if (aborted) return;
+      if (++steps > maxSteps) {
+        aborted = true;
+        return;
+      }
       const left = need - pick.length;
       if (left === 0) {
-        if (score > bestScore + 1e-9) {
+        if (violations === 0 && score > bestScore + 1e-9) {
           bestScore = score;
           best = [capt, ...lockedFlex, ...pick];
         }
@@ -152,16 +210,25 @@ function exactSearch(pool, { lockIds, cap, maxFromTeam, floor }) {
         if (bound <= bestScore + 1e-9) return;
         const c = flex[i];
         if (salary + c.salary > cap) continue;
+        if (salary + c.salary + cheapest[i + 1][left - 1] > cap) continue;
         const n = teams.get(c.team) ?? 0;
         if (n >= maxFromTeam) continue;
         teams.set(c.team, n + 1);
         pick.push(c);
-        dfs(i + 1, score + c.score, salary + c.salary);
+        shift(c, 1);
+        if (violations === 0) dfs(i + 1, score + c.score, salary + c.salary);
+        shift(c, -1);
         pick.pop();
         teams.set(c.team, n);
+        if (aborted) return;
       }
     };
-    dfs(0, baseScore, baseSalary);
+    if (violations === 0) dfs(0, baseScore, baseSalary);
+    shift(capt, -1);
+  }
+  if (stats) {
+    stats.steps = steps;
+    stats.aborted = aborted;
   }
   return best;
 }
@@ -195,11 +262,17 @@ export function optimizeShowdown(rows, { objective = "proj", locks, excludes, ca
   const allExcludes = [...excludeIds];
   for (const c of candidates) if (personExcluded.has(c.personId) && !allExcludes.includes(c.id)) allExcludes.push(c.id);
   const excluded = new Set(allExcludes);
+  // The classic run must not auto-roster a man the exact search refuses (rosterable: a projection of 0 or less, Adam
+  // 2026-10-18 and D45), or its lineup would stand whenever the exact search cannot beat it. Unlocked only, so no
+  // lock is ever also an exclude; these are left out of `excluded`, which holds Adam's own excludes.
+  const lockSet = new Set(lockIds);
+  const classicExcludes = [...allExcludes];
+  for (const c of candidates) if (!lockSet.has(c.id) && !rosterable(c) && !excluded.has(c.id)) classicExcludes.push(c.id);
 
   // The asked objective goes to the classic optimiser as asked, so a retired one gets its note there and is built
   // on projection.
   const options = {
-    excludes: allExcludes,
+    excludes: classicExcludes,
     objective,
     cap,
     slots: [...SHOWDOWN_SLOTS],
