@@ -20,7 +20,7 @@ import { escapeHtml, money, dec1, textColourFor, logoFor } from "./format.js";
 import { store, matchesPosition, filterRows, sortRows, passesProjFloor, FLEX_POS, defaultDirFor, activeSlate, activeSlateRows, activeSlateGames, slateDisplayName, boardHasCeilings, isTwoGunMode } from "./state.js";
 import { sortableHeadHtml } from "./tabs.js";
 import { matchupText, lineupOutTagHtml, statusTagsHtml, gradedCellHtml, rowIsOut, twoGunOutReason, STATUS_INFO } from "./table.js"; // D43: the one copy of "vs DAL" / "@ DET"; the red OUT tag (Adam 2026-10-15)
-import { shownTotal, lineupCeilTotal } from "./totals.js";
+import { shownTotal, lineupCeilTotal, perSpotText } from "./totals.js";
 import { newBuildId, batchBuild, handBuild, buildTypeText, groupByBuild, groupHeaderText } from "./lineup-builds.js";
 import { lineupFigures, geoOwn, geoText, medianText, sortKeysFor, sortLineups, nextSort, cleanSortState, effectiveSort, sortRowHtml } from "./lineup-sort.js"; // Adam 2026-10-17: sort options; geo own = geometric mean of ownership, his multiplicative uniqueness
 import { rowsGradedForView } from "./grade.js";
@@ -405,17 +405,19 @@ function computeTotals(rowById) {
   const projs = [];
   let totalOwn = 0;
   let ownUnknown = false;
+  let filled = 0;
   for (const s of state.slots) {
     if (!s) continue;
     const row = rowById.get(String(s.id));
     if (!row) continue; // not on this slate; validateAgainstBoard drops these on the next board load
+    filled++;
     salaryUsed += row.salary ?? 0;
     projs.push(row.proj);
     if (row.own == null) ownUnknown = true;
     else totalOwn += row.own;
   }
   // ChatGPT wish d, Adam 2026-10-17: the total is the sum of the slot projections as shown (totals.js).
-  return { salaryUsed, salaryLeft: SALARY_CAP - salaryUsed, totalProj: shownTotal(projs) ?? 0, totalOwn: ownUnknown ? null : totalOwn };
+  return { filled, salaryUsed, salaryLeft: SALARY_CAP - salaryUsed, totalProj: shownTotal(projs) ?? 0, totalOwn: ownUnknown ? null : totalOwn };
 }
 
 /** First empty slot legal for `pos`: its own slot(s) first, then FLEX for RB/WR/TE. -1 if none is free. */
@@ -675,8 +677,11 @@ function panelHtml() {
   const roles = lineupRoles(state.slots.map((s) => rowById.get(String(s?.id))));
   const overCap = totals.salaryUsed > SALARY_CAP;
   const fillPct = Math.max(0, Math.min(100, (totals.salaryUsed / SALARY_CAP) * 100));
+  const perSpot = perSpotText(totals.salaryLeft, LINEUP_SLOTS.length - totals.filled); // Adam 2026-10-18: salary per remaining spot; null when full or over
   const salaryText =
-    totals.salaryLeft < 0 ? `${money(totals.salaryUsed)} used · ${money(-totals.salaryLeft)} over` : `${money(totals.salaryUsed)} used · ${money(totals.salaryLeft)} left`;
+    totals.salaryLeft < 0
+      ? `${money(totals.salaryUsed)} used · ${money(-totals.salaryLeft)} over`
+      : `${money(totals.salaryUsed)} used · ${money(totals.salaryLeft)} left${perSpot ? ` · ${perSpot}` : ""}`;
   // 🔵 finding 3: any placed player with a null own% makes the total unknown, not smaller.
   const ownText = totals.totalOwn == null ? "— (not every player has a published number)" : `${Math.round(totals.totalOwn)}% own`;
 
