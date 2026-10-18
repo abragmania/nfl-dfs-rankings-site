@@ -96,11 +96,9 @@ export function cardDecor(lineup, rowById, palette = null) {
 }
 
 // D54: a card row is 50px.
-export function cardPlayerRowHtml(p, slotName, isNew, pick, decor) {
-  const dot = isNew ? `<span class="opt-p-dot" role="img" aria-label="new" title="Not in the lineup before"></span>` : `<span class="opt-p-dot"></span>`;
+export function cardPlayerRowHtml(p, slotName, pick, decor) {
   return `
-      <div class="opt-p${isNew ? " opt-p-new" : ""}" style="${teamColourStyle(decor ? decor.coloursFor(p.team) : teamColours(null, p.team))}">
-        ${dot}
+      <div class="opt-p" style="${teamColourStyle(decor ? decor.coloursFor(p.team) : teamColours(null, p.team))}">
         <span class="opt-p-slot">${escapeHtml(slotName)}</span>
         ${teamLogoHtml(p.team, "opt-p-logo", 38) || badgeHtml(p.name, p.pos, p.team)}
         <span class="opt-p-body">

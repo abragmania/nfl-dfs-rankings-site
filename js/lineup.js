@@ -1704,16 +1704,6 @@ export function savedSetKeys(savedLineups, rowById) {
   return new Set((savedLineups ?? []).map((l) => lineupSetKey((l.slots ?? []).map((s) => s.playerId), rowById)));
 }
 
-/** Per new-lineup card, the ids of players who were not in the card before it (by DraftKings identity, Adam
- *  2026-10-11: "highlight the new players from the previous lineup"); the first card has none. */
-export function newPlayerIds(lineups, rowById) {
-  return (lineups ?? []).map((l, k) => {
-    if (k === 0) return new Set();
-    const before = new Set((lineups[k - 1].ids ?? []).map((id) => identityOf(id, rowById)));
-    return new Set((l.ids ?? []).map(String).filter((id) => !before.has(identityOf(id, rowById))));
-  });
-}
-
 /** The saved lineups of the slate on screen: those saved with its key; one saved with no slate counts on the main
  *  slate always and on a second slate when every player is in its games. This is the server's existingForSlate rule
  *  (server/lineup/generate-request.js), repeated because the browser app cannot import server files. With a `mode` (cash
@@ -2108,10 +2098,9 @@ export function avoidChipsHtml(games, avoid) {
 
 /** One "new lineup" card: the nine players in DK slot order (name, matchup D43, salary, projection, own% D32),
  *  the totals, and Save / Discard. `busy` disables both while a save is in flight. `saved`: the card is saved, or
- *  its nine players equal a saved lineup's, so Save shows a disabled "Saved ✓" (Adam 2026-10-11). `fresh`: the
- *  ids of players not in the card before, highlighted. `pick` ({isChosen(id)}): each name is the "only lineups
- *  with" button (Adam 2026-10-11). */
-export function optLineupCardHtml(lineup, index, busy, { saved = false, fresh = null, pick = null, rowById = null, cash = null } = {}) {
+ *  its nine players equal a saved lineup's, so Save shows a disabled "Saved ✓" (Adam 2026-10-11). `pick`
+ *  ({isChosen(id)}): each name is the "only lineups with" button (Adam 2026-10-11). */
+export function optLineupCardHtml(lineup, index, busy, { saved = false, pick = null, rowById = null, cash = null } = {}) {
   const totals = lineupTotalsOf(lineup);
   const overCap = totals.salary > SALARY_CAP;
   const decor = cardDecor(lineup, rowById, paletteForRows(rowById)); // Team rows, Adam 2026-10-17: one palette per render (cached on rowById)
@@ -2121,7 +2110,7 @@ export function optLineupCardHtml(lineup, index, busy, { saved = false, fresh = 
     decor.stack = "";
     decor.rolesFor = (p) => (cash.strip.wantIn.has(String(p.id)) ? `<span class="role-tag role-want" title="On your Want list">WANT</span>` : "");
   }
-  const rows = (lineup.players ?? []).map((p, i) => cardPlayerRowHtml(p, LINEUP_SLOTS[i] ?? p.pos ?? "", Boolean(fresh?.has(String(p.id))), pick, decor)).join("");
+  const rows = (lineup.players ?? []).map((p, i) => cardPlayerRowHtml(p, LINEUP_SLOTS[i] ?? p.pos ?? "", pick, decor)).join("");
   const ownBody = totals.own == null ? "— own" : `${Math.round(totals.own)}% own`;
   const geoBody = geoText(geoOwn((lineup.players ?? []).map((p) => p.own))); // Adam 2026-10-17: geo own on the GPP card only
   // TwoGun mode: the lineup's total of TwoGun's ceilings, as the server summed it (absent in current mode; a dash
@@ -2445,15 +2434,13 @@ function newLineupsTabHtml(rowById, savedHere) {
     lastExposure = { exposure, subtitle, marks };
     // Adam 2026-10-17: the exposure tables above the cards, so they are high on the screen
     parts.push(optExposureHtml(lastExposure.exposure, lastExposure.subtitle, opt.expSortDir, pick, lastExposure.marks));
-    // The new-player highlight compares a card with the previous card SHOWN.
-    // Adam 2026-10-17: the sort orders the shown cards (they keep their own numbers); the highlight compares with the card before in that order
+    // Adam 2026-10-17: the sort orders the shown cards (they keep their own numbers)
     const keys = sortKeysFor(isCash ? "cash" : "gpp", isCash ? r.basis === "median" : boardMediansForSort());
     const sort = effectiveSort(opt.sort.new, keys);
     const ordered = sortLineups(shown, sort.key, sort.dir, (e) => newLineupFigures(e.item, rowById));
     if (ordered.length >= 2) parts.push(sortRowHtml("new", keys, sort));
-    const fresh = newPlayerIds(ordered.map((e) => e.item), rowById);
     const cardCash = (lineup) => (isCash ? { basis: r.basis, strip: cashStrip(lineup, r, rowById, busy) } : null);
-    parts.push(`<div class="opt-cards">${ordered.map((e, k) => optLineupCardHtml(e.item, e.index, busy, { saved: savedFlags[e.index], fresh: fresh[k], pick, rowById, cash: cardCash(e.item) })).join("")}</div>`);
+    parts.push(`<div class="opt-cards">${ordered.map((e) => optLineupCardHtml(e.item, e.index, busy, { saved: savedFlags[e.index], pick, rowById, cash: cardCash(e.item) })).join("")}</div>`);
     if (whole) parts.push(bendsLineHtml(r.bends, r.made));
   } else {
     lastExposure = { exposure: {}, subtitle: "" };

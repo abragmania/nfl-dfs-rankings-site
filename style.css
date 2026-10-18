@@ -1869,7 +1869,7 @@ select.opt-input { text-align: left; padding: 3px 4px; }
 .opt-card-title { font-weight: 700; font-size: var(--fs-base); }
 .opt-card-actions { display: inline-flex; gap: var(--sp-2); align-items: center; }
 .opt-card-players { display: flex; flex-direction: column; gap: 2px; }
-/* D54 (Adam 2026-10-16): a card row is 50px; its fixed parts take 196px (card padding and border 26, row padding 6, dot, slot, badge or logo (38px) and figures 132, four gaps 32), so a name has 204px at the narrowest card (400px); fixed 2026-10-17. */
+/* D54 (Adam 2026-10-16): a card row is 50px; its fixed parts take 186px (card padding and border 26, row padding and border 10, slot, badge or logo (38px) and figures 126, three gaps 24), so a name has 214px at the narrowest card (400px); fixed 2026-10-17, the new-player dot removed 2026-10-18. */
 .opt-p { display: flex; align-items: center; gap: 8px; min-height: 50px; font-size: var(--fs-sm); white-space: nowrap; }
 .opt-p-slot { width: 30px; flex: 0 0 30px; font-weight: 700; color: var(--text-muted); }
 .opt-p-body { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
@@ -1900,8 +1900,7 @@ select.opt-input { text-align: left; padding: 3px 4px; }
 .opt-nowrap { white-space: nowrap; } /* Adam 2026-10-18: a New card's totals line breaks between figures */
 .opt-nowrap:not(:last-child)::after { content: " \00b7"; } /* the separator ends the group before it, so a wrapped line never starts with a dot (as .saved-lineup-totals) */
 .opt-card-totals > .saved-lineup-totals-over::after { color: var(--text-muted); font-weight: 400; }
-/* Team rows round 2, Adam 2026-10-17: each row wears its team's colours (--tc, --tc2 alt, from team-palette.js) over the card; a player new since
-   the card before (Adam 2026-10-11) is marked by the green dot alone. Every row keeps the dot's room. Also the Saved slot rows.
+/* Team rows round 2, Adam 2026-10-17: each row wears its team's colours (--tc, --tc2 alt, from team-palette.js) over the card. Also the Saved slot rows.
    Round 6, Adam 2026-10-18 ("looks like 2012"): flat, one colour at --row-fill-a (:root; a team whose text could not hold 4.5:1 has its own --tca / --tcb),
    the left bar 4px (--tcbl / --tcbd, barColour: the secondary when it shows, else a fallback); the row's text is --tct, picked per row and theme from --tctl / --tctd (solidRow). */
 .opt-p, .saved-lineup-slot-tc:not(.saved-lineup-slot-empty) { --tct: var(--tctl); --tcchip: var(--tcchipl); color: var(--tct); border: 1px solid rgba(0, 0, 0, 0.06); border-radius: 4px; box-shadow: inset 4px 0 0 var(--tcbl, var(--tc2)); background: color-mix(in srgb, var(--tclp, var(--tc)) var(--tca, var(--row-fill-a)), transparent); }
@@ -1928,8 +1927,6 @@ select.opt-input { text-align: left; padding: 3px 4px; }
 /* 👁 2026-10-18 round 6: on light every team-row logo sits on a white round plate (none on dark); the Saved row's 16px logo keeps its size, the plate hangs 2px around it. */
 :root:not([data-theme="dark"]) :is(.opt-p-logo, .saved-lineup-slot-logo) { background: rgba(255, 255, 255, 0.9); border-radius: 50%; padding: 2px; }
 :root:not([data-theme="dark"]) .saved-lineup-slot-logo { box-sizing: content-box; margin: -2px; }
-.opt-p-dot { flex: 0 0 6px; width: 6px; height: 6px; border-radius: 50%; }
-.opt-p-new .opt-p-dot { background: var(--success); box-shadow: 0 0 0 1.5px var(--tct); } /* the ring keeps the dot on a green team's row */
 /* Saved (or the same nine players as a saved lineup): the Save button becomes a disabled "Saved ✓". */
 .opt-card.opt-card-saved { border-color: rgba(var(--success-rgb), 0.6); }
 .saved-lineup-btn.opt-saved-btn:disabled { border-color: var(--success); color: var(--success); background: rgba(var(--success-rgb), 0.12); opacity: 1; cursor: default; font-weight: 600; }
@@ -1964,9 +1961,8 @@ select.opt-input { text-align: left; padding: 3px 4px; }
 /* Phone: the fixed columns give back a little room so the player name keeps more than a few letters. */
 @media (max-width: 700px) {
   .opt-card { padding: var(--sp-2); }
-  /* Phone: no dot, and the bar's 4px plus 1px border and 3px of air before the slot label, so names keep their letters. */
+  /* Phone: the bar's 4px plus 1px border and 3px of air before the slot label, so names keep their letters. */
   .opt-p { gap: 4px; padding-left: 8px; }
-  .opt-p-dot { display: none; }
   .opt-p-slot { width: 28px; flex-basis: 28px; }
 }
 
