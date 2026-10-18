@@ -435,8 +435,12 @@ function bindFillActions(on) {
     refresh();
   });
   on("[data-action='entries-fill-repropose']", "click", (btn) => {
-    ent.fill[btn.dataset.file] = reproposeFill(ent.fill[btn.dataset.file]); // the kept rows open again
-    storeKeep(btn.dataset.file); // 🔵 2026-10-17 (F1): keep is null now, so the stored key goes
+    const file = btn.dataset.file;
+    const f = ent.files.find((x) => x.file === file);
+    // The effective picks, as keptOpenCount gets them: a pick whose lineup was deleted is no hand pick, so its row reopens (🔵 2026-10-18 F1).
+    const picks = f?.slate ? effectiveAssignments(f.entries, slateLineups(ctx.getSaved(), f.slate.key), ent.assign[file]) : ent.assign[file];
+    ent.fill[file] = reproposeFill(ent.fill[file], picks); // the "(leave as is)" rows open again; hand picks stay (Adam 2026-10-18)
+    storeKeep(btn.dataset.file); // 🔵 2026-10-17 (F1): the stored key follows the new keep
     refresh();
   });
 }

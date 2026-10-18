@@ -21,7 +21,7 @@ import { store, matchesPosition, filterRows, sortRows, passesProjFloor, FLEX_POS
 import { sortableHeadHtml } from "./tabs.js";
 import { matchupText, lineupOutTagHtml, statusTagsHtml, gradedCellHtml, rowIsOut, twoGunOutReason, STATUS_INFO } from "./table.js"; // D43: the one copy of "vs DAL" / "@ DET"; the red OUT tag (Adam 2026-10-15)
 import { shownTotal, lineupCeilTotal, perSpotText } from "./totals.js";
-import { newBuildId, batchBuild, handBuild, buildTypeText, groupByBuild, groupHeaderText } from "./lineup-builds.js";
+import { newBuildId, batchBuild, handBuild, buildTypeText, groupByBuild } from "./lineup-builds.js";
 import { lineupFigures, geoOwn, geoText, medianText, sortKeysFor, sortLineups, nextSort, cleanSortState, effectiveSort, sortRowHtml } from "./lineup-sort.js"; // Adam 2026-10-17: sort options; geo own = geometric mean of ownership, his multiplicative uniqueness
 import { rowsGradedForView } from "./grade.js";
 import { posChipsHtml, showAllToggleHtml, wireShowAllButtons } from "./filterbar.js";
@@ -944,16 +944,12 @@ export function savedLineupCardHtml(lineup, rowById, pick = null, numbers = null
     </div>`;
 }
 
-/** The Saved tab's cards under one small header per build, newest build first (ChatGPT wish g, Adam 2026-10-17). Lineups saved
- *  before builds were recorded sit last as "earlier"; when they are all there is, no header is drawn and the list reads as before.
+/** The Saved tab's cards in "As built" order as ONE flat grid, no build sections or headers (Adam 2026-10-18: "i dont need them
+ *  sectioned off", "consistent 4 across"): newest build first, cards in their order within a build, lineups saved before builds were recorded last.
  *  `cardHtml(lineup)` draws one card. */
 export function savedGroupsHtml(lineups, cardHtml) {
-  const groups = groupByBuild(lineups);
-  if (groups.length === 1 && groups[0].kind === "earlier") return `<div class="saved-lineups-list">${groups[0].lineups.map(cardHtml).join("")}</div>`;
-  return groups.map((g) => {
-    const when = g.kind === "batch" && g.newest > 0 ? formatSavedAt(new Date(g.newest).toISOString()) : "";
-    return `<section class="saved-build-group" data-build="${escapeHtml(g.key)}"><h4 class="saved-build-head">${escapeHtml(groupHeaderText(g, when))}</h4><div class="saved-lineups-list">${g.lineups.map(cardHtml).join("")}</div></section>`;
-  }).join("");
+  const ordered = groupByBuild(lineups).flatMap((g) => g.lineups);
+  return `<div class="saved-lineups-list">${ordered.map(cardHtml).join("")}</div>`;
 }
 
 /** The Saved lineups tab (D74): this slate's saved cards (Load, rename, Delete as before; on the site the D69
@@ -986,7 +982,7 @@ function savedLineupsSectionHtml(rowById, savedHere) {
     if (k === 0) {
       body = `<div class="saved-lineups-empty">${NO_MATCH_TEXT}</div>`;
     } else {
-      // Adam 2026-10-17: a sort row above the cards; As built keeps the build groups, any other key is one flat sorted list
+      // Adam 2026-10-17: a sort row above the cards; As built is one flat list in build order, any other key is one flat sorted list
       const items = shown.map((e) => e.item);
       const keys = sortKeysFor(opt.mode, boardMediansForSort());
       const sort = effectiveSort(opt.sort.saved, keys);

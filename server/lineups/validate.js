@@ -55,7 +55,7 @@ export function validateLineupMode(value) {
 }
 
 // Optional saved-lineup `build` record (ChatGPT wish g, Adam 2026-10-17): where the lineup came from, so the Saved tab
-// groups by build. {kind: "batch" (made by the Optimizer; id = one stamp per Go, shared by every lineup saved from it) or
+// orders by build. {kind: "batch" (made by the Optimizer; id = one stamp per Go, shared by every lineup saved from it) or
 // "hand" (manual builder; no id), boardMode "current" | "twogun", objective (batch only), totalCeil (batch only: TwoGun's
 // ceilings summed, null when a player has none), edited (true only: the players were replaced by hand after the save, set by
 // buildAfterSlotEdit)}. Omitted stays omitted; the stored copy holds only these keys.

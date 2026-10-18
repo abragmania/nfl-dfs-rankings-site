@@ -3,7 +3,7 @@
 // Split out of entries.js for size (🔵 2026-10-17); entries.js imports and re-exports every name here. Imports only
 // format.js, entries-plan.js, lineup-tags.js and totals.js, never entries.js.
 import { escapeHtml, money, dec1 } from "./format.js";
-import { groupByContest, effectiveClasses, orderedFillLineups, planFill, validProposals, contestKey, lineupModeOf } from "./entries-plan.js";
+import { groupByContest, effectiveClasses, orderedFillLineups, planFill, validProposals, contestKey, lineupModeOf, rowHolds } from "./entries-plan.js";
 import { numberLineups, lineupLabel, sortLineupsBy } from "./lineup-tags.js";
 import { shownTotal } from "./totals.js";
 
@@ -71,10 +71,12 @@ export function handPick(assign, keep, entryId, lineupId) {
   return { assign: next, keep: new Set([...(keep ?? []), String(entryId)]) };
 }
 
-/** Re-propose: the proposal comes back in full, kept rows included and planned afresh (🔵 2026-10-17; Discard leaves
- *  `keep` as it is). */
-export function reproposeFill(s) {
-  return { ...FILL_DEFAULT, ...(s ?? {}), keep: null, dismissed: false, prior: null };
+/** Re-propose: the proposal comes back in full and "(leave as is)" rows are planned afresh (🔵 2026-10-17; Discard leaves
+ *  `keep` as it is). Adam 2026-10-18: a hand pick is final, so a kept row that has an effective pick in `assign` (the caller passes effectiveAssignments, so a deleted lineup's id is no pick) stays kept; without `assign`
+ *  every kept row reopens. */
+export function reproposeFill(s, assign = null) {
+  const hand = [...(s?.keep ?? [])].filter((id) => Boolean(assign?.[id]));
+  return { ...FILL_DEFAULT, ...(s ?? {}), keep: hand.length ? new Set(hand) : null, dismissed: false, prior: null };
 }
 
 /** 🔵 2026-10-17 (F1): the localStorage key of one uploaded file's kept rows, beside its picks (a newer upload starts open). */
@@ -107,11 +109,11 @@ export function confirmFill(assign, fill, proposals, scoped = false) {
   };
 }
 
-/** 🔵 2026-10-17 (F3): how many kept rows "Reopen" would visibly change: kept rows of the file with no effective pick, or
- *  any kept row while Replace is on. A hand-picked kept row (assigned, shown as such) does not count with Replace off. */
-export function keptOpenCount(kept, entries, eff, overwrite) {
+/** 🔵 2026-10-17 (F3): how many kept rows "Reopen" would visibly change: kept rows of the file with no effective pick.
+ *  Adam 2026-10-18: a hand-picked kept row is final, so it never counts, Replace or not. */
+export function keptOpenCount(kept, entries, eff) {
   const inFile = new Set((entries ?? []).map((e) => String(e.entryId)));
-  return [...(kept ?? [])].filter((id) => inFile.has(String(id)) && (Boolean(overwrite) || !eff?.[id])).length;
+  return [...(kept ?? [])].filter((id) => inFile.has(String(id)) && !eff?.[id]).length;
 }
 
 /** The control that opens kept rows again (🔵 2026-10-17): "Re-propose" after Discard, else "Reopen N kept rows" while
@@ -180,8 +182,10 @@ export function fillModelOf(entries, slateKey, lineups, eff, slates, view) {
   // 🔵 2026-10-17: validProposals sees every pick, Replace and the kept rows, as planFill did and as Confirm will write.
   const valid = validProposals(plan.proposed, entries, lineups, eff, classes, slateKey, slates, { overwrite: fill.overwrite, keep: fill.keep });
   const kept = new Set(Array.from(fill.keep ?? [], String));
-  // 🔵 2026-10-17 (F3): `keptOpen` is the count the Reopen button shows (kept rows that are unpicked or that Replace would open).
-  return { fill, ...lists, lineups, groups, classes, plan, kept, keptOpen: keptOpenCount(kept, entries, eff, fill.overwrite), proposals: fill.dismissed ? {} : valid };
+  // 🔵 2026-10-17 (F3): `keptOpen` is the count the Reopen button shows: kept rows with no effective pick (a hand pick never counts, D75, Adam 2026-10-18).
+  // Adam 2026-10-18: rowHolds is the one decision; a proposal for a hand-picked row is dropped here too, so neither the picker nor Confirm can use it.
+  const shown = Object.fromEntries(Object.entries(valid).filter(([id, lid]) => rowHolds({ pick: eff?.[id], kept: kept.has(String(id)), proposedId: lid }).state === "proposed"));
+  return { fill, ...lists, lineups, groups, classes, plan, kept, keptOpen: keptOpenCount(kept, entries, eff), proposals: fill.dismissed ? {} : shown };
 }
 
 function fillListHtml(file, title, which, list, m, empty) {

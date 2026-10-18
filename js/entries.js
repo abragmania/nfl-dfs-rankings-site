@@ -13,7 +13,7 @@
 import { escapeHtml } from "./format.js";
 import {
   lineupUsedElsewhere, cellId, lineupFileKey, heldLineupKeys, lineupBlockedFor, contestKey, groupByContest, effectiveAssignments,
-  classifyContest,
+  classifyContest, rowHolds,
 } from "./entries-plan.js";
 import { lineupLabel } from "./lineup-tags.js";
 import {
@@ -23,7 +23,7 @@ import {
 import { decodeEntriesBytes } from "./dk-csv-kind.js";
 // The assignment logic moved to entries-plan.js and the strip builders to entries-fill.js; re-exported so every existing
 // importer still resolves.
-export { lineupUsedElsewhere, cellId, lineupFileKey, heldLineupKeys, lineupBlockedFor, contestKey, groupByContest, effectiveAssignments };
+export { lineupUsedElsewhere, cellId, lineupFileKey, heldLineupKeys, lineupBlockedFor, contestKey, groupByContest, effectiveAssignments, rowHolds };
 export { lineupOptionLabel, assignedInContest, contestHeadHtml, handPick, reproposeFill, reopenLabel, clearContestFill, fillListsOf, fillModelOf, fillStripHtml, fillTopHtml, classProposals, tickClassContests, fillClassPreset, keepStorageKey, restoreKeep, confirmFill, keptOpenCount };
 export { decodeEntriesBytes }; // moved to dk-csv-kind.js with the file-kind routing (Adam 2026-10-18)
 
@@ -179,7 +179,7 @@ export function exportResultOf(res, count) {
 // until Adam confirms it or picks by hand (D75 as amended 2026-10-17, entries fill plan item 6).
 function pickerHtml(file, entry, lineups, assigned, entries, slateKey, slates, extra = null) {
   if (!lineups.length) return `<select class="entries-pick" disabled aria-label="Lineup for entry ${escapeHtml(entry.entryId)}"><option>No saved lineups</option></select>`;
-  const cur = extra?.proposedId ?? assigned?.[entry.entryId] ?? "";
+  const cur = rowHolds({ pick: assigned?.[entry.entryId], kept: extra?.kept, proposedId: extra?.proposedId }).lineupId ?? ""; // Adam 2026-10-18: a hand pick is never shown under a proposal
   // 🔵 2026-10-17: a lineup proposed for another row of the contest is marked (still selectable), so no silent reshuffle.
   const c = contestKey(entry);
   const elsewhere = new Set(
@@ -197,8 +197,9 @@ function pickerHtml(file, entry, lineups, assigned, entries, slateKey, slates, e
 
 export function entryRowHtml(file, entry, lineups, assigned, entries, slateKey = "main", slates = [], extra = null) {
   const sum = currentSummary(entry.current);
-  const proposed = extra?.proposedId != null;
   const picked = assigned?.[entry.entryId];
+  const holds = rowHolds({ pick: picked, kept: extra?.kept, proposedId: extra?.proposedId });
+  const proposed = holds.state === "proposed";
   const set = Boolean(picked);
   const held = lineups.find((l) => l.id === picked);
   const heldLabel = held ? lineupLabel(held, extra?.numbers) : "";

@@ -1404,16 +1404,18 @@ tr:last-child .cell-edit-hint { top: auto; bottom: 100%; margin-top: 0; margin-b
 }
 
 /* ---------- Saved lineups (Adam's "draw up a lineup, press Save, see it in a list") ---------- */
-/* Full width of the tab (below the two-column builder above it), but the cards themselves stop at a
-   width that reads well via the grid's minmax column, rather than each card stretching edge to edge. */
+/* Full width of the tab (below the two-column builder above it); the saved cards sit in four equal columns. */
 .saved-lineups { width: 100%; margin-top: var(--sp-5); }
 .saved-lineups-title { margin: 0 0 var(--sp-2); font-size: var(--fs-md); color: var(--text-muted); }
 .saved-lineups-empty, .saved-lineups-loading { color: var(--text-dim); font-size: var(--fs-base); font-style: italic; }
 .saved-lineups-list {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr)); /* Adam 2026-10-18: a consistent 4 across, one flat grid */
   gap: var(--sp-3);
 }
+@media (max-width: 1279px) { .saved-lineups-list { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (max-width: 959px) { .saved-lineups-list { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 599px) { .saved-lineups-list { grid-template-columns: minmax(0, 1fr); } }
 .saved-lineup-card {
   background: var(--bg-elevated);
   border: 1px solid var(--border);
@@ -1445,10 +1447,8 @@ tr:last-child .cell-edit-hint { top: auto; bottom: 100%; margin-top: 0; margin-b
 .saved-lineup-badge-danger { color: var(--danger); background: rgba(var(--danger-rgb), 0.15); }
 .saved-lineup-badge-loaded { color: var(--accent-text); background: rgba(var(--accent-rgb), 0.15); }
 .saved-lineup-badge-cash { color: color-mix(in srgb, var(--cash) 70%, var(--text)); background: rgba(var(--cash-rgb), 0.16); } /* cash mode job 3b: the green "$ Cash" badge */
-/* ChatGPT wish g, Adam 2026-10-17: the Saved tab's cards under one small header per build (lineup.js savedGroupsHtml). */
+/* ChatGPT wish g, Adam 2026-10-17: each card carries its own build badge (lineup.js savedLineupCardHtml); no build sections or headers (Adam 2026-10-18). */
 .saved-lineup-badge-build { color: var(--text-muted); background: var(--bg-elevated-2); font-weight: 600; }
-.saved-build-group + .saved-build-group { margin-top: var(--sp-4); }
-.saved-build-head { margin: 0 0 var(--sp-2); font-size: var(--fs-sm); font-weight: 700; letter-spacing: 0.04em; color: var(--text-muted); }
 .saved-lineup-rename { display: flex; align-items: center; gap: var(--sp-1); }
 .saved-lineup-rename-input {
   background: var(--bg-elevated-2);
@@ -1985,7 +1985,7 @@ select.opt-input { text-align: left; padding: 3px 4px; }
 }
 
 .opt-exposure { margin: var(--sp-2) 0 var(--sp-3); display: flex; flex-direction: column; gap: var(--sp-2); container-type: inline-size; }
-.saved-lineups > .opt-exposure { margin-bottom: var(--sp-4); } /* Saved view: the same 16px below the exposure block as between build groups */
+.saved-lineups > .opt-exposure { margin-bottom: var(--sp-4); } /* Saved view: 16px below the exposure block */
 /* One compact table per position (Adam 2026-10-11): boxes at least 330px, five across when wide enough, else three, then one column. */
 .opt-exp-grid { display: grid; grid-template-columns: max-content; gap: var(--sp-2); align-items: start; }
 .opt-exp-grid > .opt-exp-box { min-width: 0; }

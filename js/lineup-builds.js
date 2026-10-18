@@ -1,5 +1,5 @@
 // Which build a saved lineup came from (ChatGPT wish g, Adam 2026-10-17): the `build` record saved on a lineup, the words
-// that describe it, and the grouping of the Saved tab under one header per build. Pure; lineup.js imports it and
+// that describe it, and the Saved tab's As built order. Pure; lineup.js imports it and
 // server/lineups/validate.js validateLineupBuild checks the same record on the way in.
 import { lineupCeilTotal } from "./totals.js";
 
@@ -68,14 +68,4 @@ export function groupByBuild(lineups) {
   for (const group of groups.values()) group.lineups.sort((a, b) => savedMs(a) - savedMs(b)); // stable: equal times keep the given order
   const rank = (g) => (g.kind === "earlier" ? 1 : 0);
   return [...groups.values()].sort((a, b) => rank(a) - rank(b) || b.newest - a.newest);
-}
-
-/** A group's header words: "Build of Oct 17, 3:42 PM · TwoGun · by ceiling · 5 lineups". `whenText` is the batch's time
- *  already formatted by the page. */
-export function groupHeaderText(group, whenText) {
-  const n = group.lineups.length;
-  const count = `${n} lineup${n === 1 ? "" : "s"}`;
-  if (group.kind === "earlier") return `Earlier lineups, no build recorded · ${count}`;
-  if (group.kind === "hand") return `Built by hand · ${count}`;
-  return [whenText ? `Build of ${whenText}` : "Build", buildTypeText(group.build), count].filter(Boolean).join(" · ");
 }

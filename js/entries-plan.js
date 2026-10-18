@@ -168,6 +168,18 @@ export function effectiveAssignments(entries, lineups, assigned) {
   return out;
 }
 
+/** What one entry row holds and shows (Adam 2026-10-18: "choose which lineup goes where without it getting overridden"; D75).
+ *  The one decision. `pick`: the row's effective app pick or null; `kept`: the row is in the fill's keep set (a hand pick or
+ *  "(leave as is)"); `proposedId`: the fill's pending proposal for the row or null. A row with a pick that is kept is a HAND PICK:
+ *  it holds and shows its pick, a proposal for it is ignored (never shown, never confirmed), whatever Replace says.
+ *  Returns { lineupId, state: "proposed"|"assigned"|"kept"|"none", hand }. */
+export function rowHolds({ pick = null, kept = false, proposedId = null } = {}) {
+  const hand = Boolean(pick) && Boolean(kept);
+  if (!hand && proposedId != null && proposedId !== "") return { lineupId: proposedId, state: "proposed", hand: false };
+  if (pick) return { lineupId: pick, state: "assigned", hand };
+  return { lineupId: null, state: kept ? "kept" : "none", hand: false };
+}
+
 // D75: lineupBlockedFor, or a different saved lineup with the same nine players already in the contest.
 function fillBlocked(entries, merged, entry, lineup, byId, slateKey, slates) {
   if (lineupBlockedFor(entries, merged, entry, lineup, slateKey, slates)) return true;
