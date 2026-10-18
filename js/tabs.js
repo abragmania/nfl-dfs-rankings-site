@@ -7,7 +7,8 @@ import { store, passesProjFloor, CLASSIC_PROJ_FLOOR, activeSlateRows, sortRows }
 import { favoritesTabLabel } from "./favorites.js";
 import { showAllToggleHtml, wireShowAllButtons } from "./filterbar.js";
 import { unmatchedPartsHtml, slateTeamSet } from "./unmatched.js";
-import { matchupText, sourceFailedMarkerHtml, outTagHtml } from "./table.js";
+import { sourceFailedMarkerHtml, sortArrowHtml, sortArrowText } from "./table.js";
+import { playerLineHtml } from "./player-row.js";
 
 // TwoGun's card (merge plan 2026-10-15) is read-only: his figures are used as he publishes them (D25 as amended) and
 // POST /api/sources does not know his id, so the card has no Enabled box and no weight box.
@@ -182,19 +183,18 @@ const PASTE_POSITIONS = ["QB", "RB", "WR", "TE", "DST"];
 let lastPasteResultText = null;
 
 // The Projections table's sort, kept here (separate from ownSort) so it survives the re-render that follows a board
-// reload. Default Proj high to low. Column keys: player, team, proj, cov, or "src:<id>".
+// reload. Default Proj high to low. Column keys: player, proj, cov, or "src:<id>".
 let projSort = { col: "proj", dir: "desc" };
 
 // A projection source is in the blend when it is switched on and its weight is above 0; otherwise it is "(not used)".
 const isProjectionNotUsed = (s) => Number(s.weight) <= 0 || s.enabled === false;
 
-// Projections table columns (Adam, 2026-10-10: like Projected Ownership): Player, Team, Proj (the blend), the sources
-// in the blend in config order, the sources not in the blend, then Coverage.
+// Projections table columns (Adam, 2026-10-10: like Projected Ownership): Player, Proj (the blend), the sources
+// in the blend in config order, the sources not in the blend, then Coverage. No Team column: the player line already shows
+// the team (D80; Adam 2026-10-18 round 3, as Rankings did in round 1).
 export function projectionColumns(sources, isNotUsed = isProjectionNotUsed) {
   return [
     { key: "player", label: "Player" },
-    { key: "team", label: "Team" },
-    { key: "opp", label: "Opp", cls: "opp-col" }, // D43: "vs DAL" / "@ DET", left-aligned (style.css .opp-col)
     { key: "proj", label: "Proj" },
     ...sources.filter((s) => !isNotUsed(s)).map((s) => ({ key: `src:${s.id}`, label: s.label })),
     ...sources.filter(isNotUsed).map((s) => ({ key: `src:${s.id}`, label: `${s.label} (not used)` })),
@@ -223,7 +223,7 @@ export function renderProjectionsPanel(container, board, callbacks) {
       <div id="paste-result" class="paste-result">${lastPasteResultText ? escapeHtml(lastPasteResultText) : ""}</div>
     </details>
     ${floorNoteHtml(activeSlateRows(board), floorRows(activeSlateRows(board)))}
-    <div class="tab-table-wrap scroll-panel"><table class="source-value-table"><thead></thead><tbody></tbody></table></div>
+    <div class="tab-table-group"><div class="tab-table-wrap scroll-panel"><table class="source-value-table sv-classic"><thead></thead><tbody></tbody></table></div></div>
   `;
 
   wireSourceCards(container, callbacks.onSourceChange);
@@ -234,8 +234,6 @@ export function renderProjectionsPanel(container, board, callbacks) {
   const cols = projectionColumns(sources, isProjectionNotUsed);
   const valueOf = (r, col) => {
     if (col === "player") return r.name ?? null;
-    if (col === "team") return r.team ?? null;
-    if (col === "opp") return matchupText(r) || null;
     if (col === "proj") return r.proj ?? null;
     if (col === "cov") return r.coverage ?? null;
     return r.projBySource?.[col.slice(4)] ?? null;
@@ -247,7 +245,7 @@ export function renderProjectionsPanel(container, board, callbacks) {
   const tbodyEl = container.querySelector(".source-value-table tbody");
   const shownRows = floorRows(activeSlateRows(board));
   const draw = () => {
-    theadEl.innerHTML = sortableHeadHtml(cols, projSort);
+    theadEl.innerHTML = sortableHeadHtml(cols, projSort, true);
     // A1: a player blended without a source that failed for his position says so beside his coverage.
     tbodyEl.innerHTML = sortableBodyHtml(shownRows, cols, projSort, valueOf, (r) => sourceFailedMarkerHtml(r, board.sources));
     theadEl.querySelectorAll("th[data-col]").forEach((th) => {
@@ -288,16 +286,16 @@ export function renderProjectionsPanel(container, board, callbacks) {
 }
 
 // The Projected Ownership table's sort, kept here so it survives the re-render that follows a board reload or a
-// floor toggle. Default Own% high to low, as on Rankings. Column keys: player, team, own, cov, or "src:<id>".
+// floor toggle. Default Own% high to low, as on Rankings. Column keys: player, own, cov, or "src:<id>".
 let ownSort = { col: "own", dir: "desc" };
 
-// Player, Team and Opp start A to Z; every number column starts high to low (the Rankings pattern, state.js).
+// Player starts A to Z; every number column starts high to low (the Rankings pattern, state.js). No Opp or Team column (Adam 2026-10-18 Q1, round 3).
 export function sortDefaultDir(col) {
-  return col === "player" || col === "team" || col === "opp" ? "asc" : "desc";
+  return col === "player" ? "asc" : "desc";
 }
 
 // Projected Ownership table (Adam, 2026-10-10: Own% close to the left, every column sortable). Columns: Player,
-// Team, Own% (the blend), the sources that feed the blend in config order, the sources not in the blend
+// Own% (the blend), the sources that feed the blend in config order, the sources not in the blend
 // ("(not used)": weight 0 or switched off), then Quoted coverage. Header clicks reuse the Rankings pattern
 // (sortable/sorted classes, ▲/▼ arrow, blanks last either way via state.js sortRows). The scroll wrapper and
 // <table> are rendered once by renderOwnershipPanel; only the thead and tbody are rebuilt on a sort click, so
@@ -305,8 +303,6 @@ export function sortDefaultDir(col) {
 function ownershipColumns(sources, isNotUsed) {
   return [
     { key: "player", label: "Player" },
-    { key: "team", label: "Team" },
-    { key: "opp", label: "Opp", cls: "opp-col" }, // D43: "vs DAL" / "@ DET", left-aligned (style.css .opp-col)
     { key: "own", label: "Own%" },
     ...sources.filter((s) => !isNotUsed(s)).map((s) => ({ key: `src:${s.id}`, label: s.label })),
     ...sources.filter(isNotUsed).map((s) => ({ key: `src:${s.id}`, label: `${s.label} (not used)` })),
@@ -314,11 +310,14 @@ function ownershipColumns(sources, isNotUsed) {
   ];
 }
 
-export function sortableHeadHtml(cols, sort) {
+// `reserveArrow`: the Projections and Projected Ownership tables draw the (hidden) arrow span on every header so a sort click moves no column (D80);
+// the Optimizer pool keeps plain text. Both take the arrow from table.js, the one copy.
+export function sortableHeadHtml(cols, sort, reserveArrow = false) {
   const head = cols
     .map((c) => {
-      const arrow = sort.col === c.key ? (sort.dir === "asc" ? " ▲" : " ▼") : "";
-      const extra = c.cls ? ` ${escapeHtml(c.cls)}` : ""; // a column's own class (the Opp column's opp-col)
+      const active = sort.col === c.key;
+      const arrow = reserveArrow ? sortArrowHtml(active, sort.dir, true) : active ? sortArrowText(sort.dir) : "";
+      const extra = c.cls ? ` ${escapeHtml(c.cls)}` : ""; // a column's own class (the Optimizer pool's lineup-star-col)
       return `<th data-col="${escapeHtml(c.key)}" class="sortable${sort.col === c.key ? " sorted" : ""}${extra}">${escapeHtml(c.label)}${arrow}</th>`;
     })
     .join("");
@@ -326,16 +325,15 @@ export function sortableHeadHtml(cols, sort) {
 }
 
 // `covMark(row)`: optional extra HTML after the Coverage number (the Projections tab's A1 marker).
-function sortableBodyHtml(rows, cols, sort, valueOf, covMark = () => "") {
+export function sortableBodyHtml(rows, cols, sort, valueOf, covMark = () => "") {
   return sortRows(rows, sort.col, sort.dir, valueOf)
     .map((r) => {
       const cells = cols
         .map((c) => {
           const v = valueOf(r, c.key);
-          if (c.key === "opp") return `<td class="opp-col">${escapeHtml(v ?? "")}</td>`; // D43, left-aligned (style.css)
-          // The red OUT tag (Adam 2026-10-15, TwoGun merge adjustment 1) beside the name, as on Rankings.
-          if (c.key === "player") return `<td class="pc-name" data-card-id="${escapeHtml(String(r.id))}">${escapeHtml(v ?? "")}${outTagHtml(r)}</td>`;
-          if (c.key === "team") return `<td>${escapeHtml(v ?? "")}</td>`;
+          // D80: the shared row; "main" keeps the red OUT tag (Adam 2026-10-15). The cell carries data-card-id so the name opens his card (2026-10-18).
+          // Adam 2026-10-18 Q10: the full matchup pill shows here too (the shared row's default).
+          if (c.key === "player") return `<td data-card-id="${escapeHtml(String(r.id))}"><span class="player-cell">${playerLineHtml(r, { tag: "main" })}</span></td>`;
           if (c.key === "cov") return `<td>${v == null ? "—" : `${Math.round(v * 100)}%`}${covMark(r)}</td>`;
           return `<td>${v == null ? "—" : dec1(v)}</td>`;
         })
@@ -377,7 +375,7 @@ export function renderOwnershipPanel(container, board, callbacks) {
     ${tabNotesHtml(board.tabNotes?.ownership)}
     <div class="source-card-grid">${cards}</div>
     ${floorNoteHtml(rows, floorRows(rows))}
-    <div class="tab-table-wrap scroll-panel"><table class="source-value-table"><thead></thead><tbody></tbody></table></div>
+    <div class="tab-table-group"><div class="tab-table-wrap scroll-panel"><table class="source-value-table sv-classic"><thead></thead><tbody></tbody></table></div></div>
   `;
 
   wireSourceCards(container, callbacks.onSourceChange);
@@ -386,8 +384,6 @@ export function renderOwnershipPanel(container, board, callbacks) {
   const cols = ownershipColumns(sources, isKeptOnly);
   const valueOf = (r, col) => {
     if (col === "player") return r.name ?? null;
-    if (col === "team") return r.team ?? null;
-    if (col === "opp") return matchupText(r) || null;
     if (col === "own") return r.own ?? null;
     if (col === "cov") return coverageFn(r);
     return r.ownBySource?.[col.slice(4)] ?? null;
@@ -399,7 +395,7 @@ export function renderOwnershipPanel(container, board, callbacks) {
   const tbodyEl = container.querySelector(".source-value-table tbody");
   const shownRows = floorRows(rows);
   const draw = () => {
-    theadEl.innerHTML = sortableHeadHtml(cols, ownSort);
+    theadEl.innerHTML = sortableHeadHtml(cols, ownSort, true);
     tbodyEl.innerHTML = sortableBodyHtml(shownRows, cols, ownSort, valueOf);
     theadEl.querySelectorAll("th[data-col]").forEach((th) => {
       th.addEventListener("click", () => {

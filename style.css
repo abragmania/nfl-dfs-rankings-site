@@ -775,31 +775,32 @@ body.table-expanded { overflow: hidden; }
   table-layout: fixed;
 }
 .rankings-table th:nth-child(1), .rankings-table td:nth-child(1) { width: 36px; }
+/* D80: a one-position list hides Pos (nth-child still counts it, so the widths below hold); the Team column is gone. */
+.rankings-table.pos-off th.pos-col, .rankings-table.pos-off td.pos-col { display: none; }
+/* Adam 2026-10-18 Q1: no Opp or Status column, so the columns after Pos are Salary 4, Proj 5, Own% 6, Value 7, Lev 8, Tags, Note. */
 .rankings-table th:nth-child(3), .rankings-table td:nth-child(3) { width: 54px; }
-.rankings-table th:nth-child(4), .rankings-table td:nth-child(4) { width: 62px; }
-.rankings-table th:nth-child(5), .rankings-table td:nth-child(5) { width: 62px; }
+.rankings-table th:nth-child(4), .rankings-table td:nth-child(4) { width: 82px; }
+.rankings-table th:nth-child(5), .rankings-table td:nth-child(5) { width: 72px; }
 .rankings-table th:nth-child(6), .rankings-table td:nth-child(6) { width: 82px; }
-.rankings-table th:nth-child(7), .rankings-table td:nth-child(7) { width: 72px; }
-.rankings-table th:nth-child(8), .rankings-table td:nth-child(8) { width: 82px; }
 /* Salary/Proj/Own%/Value/Lev right-align with tabular figures (👁 visual-qa third pass) so the numbers
    themselves line up column-on-column instead of ragging left; font-variant-numeric inherits into the
    editable-cell's span/input and the grade-cell span underneath. */
+.rankings-table th:nth-child(4), .rankings-table td:nth-child(4),
+.rankings-table th:nth-child(5), .rankings-table td:nth-child(5),
 .rankings-table th:nth-child(6), .rankings-table td:nth-child(6),
 .rankings-table th:nth-child(7), .rankings-table td:nth-child(7),
-.rankings-table th:nth-child(8), .rankings-table td:nth-child(8),
-.rankings-table th:nth-child(9), .rankings-table td:nth-child(9),
-.rankings-table th:nth-child(10), .rankings-table td:nth-child(10) {
+.rankings-table th:nth-child(8), .rankings-table td:nth-child(8) {
   text-align: right;
   font-variant-numeric: tabular-nums;
 }
-.rankings-table td:nth-child(7) .editable-cell,
-.rankings-table td:nth-child(8) .editable-cell {
+.rankings-table td:nth-child(5) .editable-cell,
+.rankings-table td:nth-child(6) .editable-cell {
   justify-content: flex-end;
 }
 /* Value/Lev widened from 62px (👁 visual-qa third pass: chip padding clipped a leading "-" on negative
    leverage like "-1.42"); widened again (🎨 polish) to keep pace with the larger table type scale. */
-.rankings-table th:nth-child(9), .rankings-table td:nth-child(9) { width: 88px; }
-.rankings-table th:nth-child(10), .rankings-table td:nth-child(10) { width: 88px; }
+.rankings-table th:nth-child(7), .rankings-table td:nth-child(7) { width: 88px; }
+.rankings-table th:nth-child(8), .rankings-table td:nth-child(8) { width: 88px; }
 .rankings-table thead {
   position: sticky;
   top: 0;
@@ -830,7 +831,7 @@ body.table-expanded { overflow: hidden; }
 /* Every column has a width, Player included, so no single column soaks up the spare room and opens a gap
    before the next one (Adam: "a grand canyon between the player and position columns"). Whatever spare width
    the width-capped page (.main) leaves is shared across all columns in proportion. */
-.rankings-table th:nth-child(2), .rankings-table td:nth-child(2) { width: 250px; }
+.rankings-table th:nth-child(2), .rankings-table td:nth-child(2) { width: 486px; } /* 312px + the 174px of the dropped Opp (62) and Status (112) columns, for the logo, name, tag, chip, matchup pill and note icon (Adam 2026-10-18 Q1, Q10) */
 /* The star cell is narrower than the cell padding allows, so the shared ellipsis rule was printing stray
    dots beside every star; it is centred with tight padding and never ellipsised. */
 .rankings-table th:nth-child(1), .rankings-table td:nth-child(1) {
@@ -841,18 +842,15 @@ body.table-expanded { overflow: hidden; }
 /* Tags is a compact fixed width sized for two or three short pills; the reason text is hover-only (see
    .tag-reason below), so the column no longer needs to hold prose (🎨 polish). Pills wrap onto a second
    line inside the cell rather than pushing the column wider. */
-.rankings-table th:nth-child(11), .rankings-table td.tags-cell {
-  width: 142px; /* 170px less the 28px given to Status so "Questionable" fits */
+.rankings-table th[data-col="tags"], .rankings-table td.tags-cell {
+  width: 142px;
   white-space: normal;
   overflow: visible;
   text-overflow: clip;
   vertical-align: middle;
 }
 .rankings-table td.tags-cell { line-height: 1.6; }
-/* Status is usually empty; give it a small fixed width rather than an auto column so the room it would
-   otherwise hold sits with Player instead (👁 visual-qa). */
-.rankings-table th[data-col="status"], .rankings-table td.status-cell { width: 112px; }
-.rankings-table th[data-col="note"], .rankings-table td:nth-child(13) { width: 100px; }
+.rankings-table th[data-col="note"], .rankings-table td:nth-child(10) { width: 100px; }
 .rankings-table tbody tr:hover { background: var(--row-hover); }
 .rankings-table tbody tr.row-dimmed { color: var(--row-dim-text); }
 .rankings-table tbody tr.row-dimmed .team-chip-mini { opacity: 0.6; }
@@ -1000,8 +998,8 @@ tr:last-child .cell-edit-hint { top: auto; bottom: 100%; margin-top: 0; margin-b
 }
 
 /* TwoGun mode's six Rankings columns (Med, Ceil, Ceil/$, Nuke, 3x%, 4x%; table.js TG_COLUMNS) sit after Lev; the <table>
-   carries "tg-on". Widths are re-shared so the table stays inside D54's 1250px box: Player, Tags and Status (usually
-   empty) give up the most, Team, Salary, Own% and Lev a little, Ceil/$ takes 60px (Nuke 56px, the other four 50px each),
+   carries "tg-on". Widths are re-shared so the table stays inside D54's 1250px box: Tags (52px, with or without the Note column: one 46px
+   pill whole) gives up some, Pos, Salary, Own% and Lev a little, and Player takes the room (there is no Team, Opp or Status column), Ceil/$ takes 60px (Nuke 56px, the other four 50px each),
    and the columns sum to 1230px, what the box holds beside its vertical scrollbar (1920x947 render, 2026-10-15; Ceil/$
    added 2026-10-17, DQ1). The generic nth-child widths above still apply in current mode, untouched. */
 .rankings-table th.tg-col, .rankings-table td.tg-col {
@@ -1013,28 +1011,58 @@ tr:last-child .cell-edit-hint { top: auto; bottom: 100%; margin-top: 0; margin-b
 }
 .rankings-table.tg-on th.tg-col, .rankings-table.tg-on td.tg-col { padding-left: 6px; padding-right: 6px; }
 .rankings-table.tg-on th.tg-col { width: 50px; vertical-align: middle; }
+/* Round 5: a sorted header is never clipped. The sort arrow is a little smaller (9px) in every Rankings header; in TwoGun mode the six number headers drop their left
+   padding to 2px (the right padding stays 6px so a header still lines up with its numbers; headers are right-aligned, so the left padding is only spare room) and Pos
+   drops its right padding to 6px. Measured at 1920: "Med ▼" needs 54px of its 50px, Ceil/$, Nuke, 3x% and 4x% 3px more than they have, Pos 2px more. */
+.rankings-table th .sort-arrow { font-size: 9px; }
+.rankings-table.tg-on th.tg-col { padding-left: 2px; }
+.rankings-table.tg-on th.pos-col { padding-right: 6px; }
 .rankings-table.tg-on th[data-col="tgNuke"] { width: 56px; } /* "Nuke ▼" whole when sorted */
 .rankings-table.tg-on th[data-col="value"] { padding-left: 6px; padding-right: 6px; } /* "Proj/$ ▼" whole in its 64-66px when sorted, the default sort (🔵 2026-10-17) */
 .rankings-table.tg-on th[data-col="tgCeilPer1k"] { width: 60px; } /* "Ceil/$ ▼" whole when sorted (Adam 2026-10-17, DQ1) */
-.rankings-table.tg-on th:nth-child(2) { width: 248px; }
-.rankings-table.tg-on th:nth-child(4) { width: 58px; }
-.rankings-table.tg-on th:nth-child(5) { width: 68px; } /* "@ NYG" whole: the table has no spare width to share here */
-.rankings-table.tg-on th:nth-child(6), .rankings-table.tg-on th:nth-child(8) { width: 70px; }
-.rankings-table.tg-on th:nth-child(9) { width: 72px; }
-.rankings-table.tg-on th:nth-child(10) { width: 40px; }
-.rankings-table.tg-on th[data-col="tags"] { width: 64px; white-space: normal; }
-.rankings-table.tg-on th[data-col="status"] { width: 62px; }
-/* With the Note column on as well: Player takes 218px (the longest name plus logo and note icon, ellipsis past it) and
-   Status 60px (a badge never clips, 👁 finding 2026-10-17); the columns still total 1230px. */
-.rankings-table.tg-on:has(th[data-col="note"]) th:nth-child(2) { width: 218px; }
+/* Adam 2026-10-18 Q1: the Opp (68px) and Status (62px) columns are gone, so Player takes their width (306 + 130 = 436px), then 12px from Tags (64px to 52px) and 22px from Pos, Salary, Own% and Lev (470px). */
+.rankings-table.tg-on th:nth-child(2) { width: 470px; } /* the longest name ("Marquez Valdes-Scantling" with a tag) needs 464px, so no long name is cut (Adam 2026-10-18 Q1) */
+.rankings-table.tg-on th:nth-child(3) { width: 44px; }
+.rankings-table.tg-on th:nth-child(4), .rankings-table.tg-on th:nth-child(6) { width: 66px; }
+.rankings-table.tg-on th:nth-child(7) { width: 72px; }
+.rankings-table.tg-on th:nth-child(8) { width: 36px; }
+/* Tags: 52px holds the header "Tags" (37px) and one 46px pill whole (3px cell padding); a second pill is clipped at the cell edge, never stacked into a taller row, and the cell's title carries every reason. */
+.rankings-table.tg-on th[data-col="tags"] { width: 52px; white-space: normal; padding-left: 3px; padding-right: 3px; }
+.rankings-table.tg-on td.tags-cell { padding-left: 3px; padding-right: 3px; white-space: nowrap; overflow: hidden; text-overflow: clip; }
+/* With the Note column on as well (Adam 2026-10-18, rounds 4 and 5: no cut name, no clipped sorted header): Player takes 464px (the longest name with its tag pill needs 464px), the room
+   coming from Note (74px to 44px: the header "Note" with no padding, a preview ellipsis and the full note as its hover), the six TwoGun columns
+   (4px cell padding instead of 6px, so each is 4px narrower with the same room for its number and sorted header), Lev (36px to 32px) and Salary (66px to 64px);
+   the columns total 1230px before round 6/7; with Note 102px and Tags 60px (below) they total 1296px in a 1316px box. */
+.rankings-table.tg-on:has(th[data-col="note"]) th:nth-child(2) { width: 464px; } /* D80 round 7 (Adam 2026-10-18 Q1: no long name is cut): back to the 464px the longest name needs; the 66px for Note and Tags comes from the wider box below, not from Player */
 .rankings-table.tg-on:has(th[data-col="note"]) th:nth-child(3) { width: 44px; }
-.rankings-table.tg-on:has(th[data-col="note"]) th:nth-child(6),
-.rankings-table.tg-on:has(th[data-col="note"]) th:nth-child(8) { width: 66px; }
-.rankings-table.tg-on:has(th[data-col="note"]) th:nth-child(9) { width: 64px; }
-.rankings-table.tg-on:has(th[data-col="note"]) th:nth-child(10) { width: 36px; }
-.rankings-table.tg-on:has(th[data-col="note"]) th[data-col="tags"] { width: 50px; }
-.rankings-table.tg-on:has(th[data-col="note"]) th[data-col="status"] { width: 60px; }
-.rankings-table.tg-on th[data-col="note"] { width: 76px; }
+.rankings-table.tg-on:has(th[data-col="note"]) th:nth-child(4) { width: 64px; }
+.rankings-table.tg-on:has(th[data-col="note"]) th:nth-child(6) { width: 66px; }
+.rankings-table.tg-on:has(th[data-col="note"]) th:nth-child(7) { width: 64px; }
+.rankings-table.tg-on:has(th[data-col="note"]) th:nth-child(8) { width: 32px; }
+.rankings-table.tg-on:has(th[data-col="note"]) th.tg-col, .rankings-table.tg-on:has(th[data-col="note"]) td.tg-col { padding-left: 4px; padding-right: 4px; }
+.rankings-table.tg-on:has(th[data-col="note"]) th.tg-col { width: 46px; padding-left: 0; }
+.rankings-table.tg-on:has(th[data-col="note"]) th[data-col="tgCeilPer1k"] { width: 56px; }
+.rankings-table.tg-on:has(th[data-col="note"]) th[data-col="tgNuke"] { width: 52px; }
+.rankings-table.tg-on th[data-col="note"] { width: 44px; padding-left: 0; padding-right: 0; overflow: hidden; text-overflow: clip; } /* round 5: "Note ▲" needs 43px, so the sorted header is whole in 44px with no padding (Player 464px) */
+.rankings-table.tg-on:has(th[data-col="note"]) td:last-child { padding-left: 2px; padding-right: 2px; }
+/* D80 round 6: with notes on, Note is 102px (as in current mode, so "Moni..." reads) and the Tags header and cells start 10px in, so "4x%" and "Tags" sit 14px apart (was 7px);
+   60px still holds the 46px pill whole. Player 464px, Note 102px and Tags 60px total 626px, 66px more than round 6's 560px. */
+.rankings-table.tg-on:has(th[data-col="note"]) th[data-col="note"] { width: 102px; }
+.rankings-table.tg-on:has(th[data-col="note"]) th[data-col="tags"] { width: 60px; padding-left: 10px; }
+.rankings-table.tg-on:has(th[data-col="note"]) td.tags-cell { padding-left: 10px; }
+/* D80 round 7 (Adam 2026-10-18 Q1: no long name is cut): the columns now total 1296px, so while Rankings is in TwoGun mode with the Note column on, its box (the expand bar, the
+   ownership note, the table and the legend share it, so their left edges still line up) is 1316px instead of 1250px: 1296px + 2px of border + the 15px vertical scrollbar + 3px spare.
+   It is a max-width on a 100%-wide box, so a 1366px window (1318px of room inside the page's 24px side padding) holds it with no sideways scroll. Expanded, the full-screen rules still apply. */
+#rankings-panel:has(.rankings-table.tg-on th[data-col="note"]) > .expand-bar:not(.is-expanded),
+#rankings-panel:has(.rankings-table.tg-on th[data-col="note"]) > .own-banner,
+#rankings-panel:has(.rankings-table.tg-on th[data-col="note"]) > .table-wrap:not(.is-expanded),
+#rankings-panel:has(.rankings-table.tg-on th[data-col="note"]) > .table-legend { max-width: 1316px; }
+/* D80 round 7 fallback (Adam 2026-10-18 Q1: no long name is cut, no sideways scroll): below 1396px of window (1316px box + 48px page padding + a possible 15px page scrollbar + spare) the box is the room
+   the page has, so the Player column gives up the shortfall: 464px, or 100vw - 912px when that is less (912 = 80px of padding, border and scrollbars + the 832px of the other columns). The matchup pill
+   is what gives way for it, shrinking with an ellipsis (its full text is the row's matchup); the name, tag, chip and note icon never shrink. At 1366px Player is 454px; from 1376px it is the full 464px. */
+.rankings-table.tg-on:has(th[data-col="note"]) th:nth-child(2) { width: min(464px, calc(100vw - 912px)); }
+.rankings-table.tg-on:has(th[data-col="note"]) .player-cell > .meta-pill { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.rankings-table.tg-on:has(th[data-col="note"]) .player-cell > .player-name { flex: 0 0 auto; }
 /* The Player cell never clips the red OUT tag or the team chip (visual QA V1): every item keeps its size and only the
    name shrinks, with an ellipsis (its full text on hover). TwoGun mode only, so current mode is exactly as before. */
 .rankings-table.tg-on .player-cell { gap: 4px; min-width: 0; }
@@ -1215,13 +1243,29 @@ tr:last-child .cell-edit-hint { top: auto; bottom: 100%; margin-top: 0; margin-b
   text-align: right;
   font-variant-numeric: tabular-nums;
 }
-/* D43: the Opp column ("vs DAL" / "@ DET", public/js/tabs.js) is text, left-aligned as on Rankings. It sits in
-   column 3, which the rule above right-aligns, so this one is more specific (0,3,2) and comes after it. */
-.source-value-table tr th.opp-col:not(:last-child),
-.source-value-table tr td.opp-col:not(:last-child) {
-  text-align: left;
-  font-variant-numeric: normal;
+/* Classic's two Sources tables (.sv-classic) have no Team column (D80's player line shows it), so the second column is already a number,
+   and a long source header ("Stokastic DK cheat sheet (not used)") wraps onto two lines so the table fits its panel (Adam 2026-10-18, round 3). */
+.source-value-table.sv-classic th:nth-child(2), .source-value-table.sv-classic td:nth-child(2) {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
 }
+.source-value-table.sv-classic th { white-space: normal; vertical-align: bottom; }
+/* The table takes the width its columns need and the wrapper shrinks to it, so Player stays as wide as its longest name with chips
+   (about 470px) and the numbers sit beside the names instead of 300px right of them; when the headers need more than the page
+   holds, the table fills the page and the long headers wrap (Adam 2026-10-18, round 4). */
+.tab-table-wrap:not(.is-expanded):has(> .source-value-table.sv-classic) { width: fit-content; max-width: 100%; } /* not while expanded: the full-screen panel is 100% wide (D80, 🔵 round 5) */
+.source-value-table.sv-classic { width: auto; }
+#ownership-panel .source-value-table.sv-classic th, #ownership-panel .source-value-table.sv-classic td { padding-left: 4px; padding-right: 4px; }
+/* D80 round 6: one width for every source column of Projected Ownership (was a width per source: 104, 137, 139, 134, 134px), so a new source needs no new rule.
+   Five sources at 130px keep the table inside the 1286px a 1366 screen holds; the two longest headers ("RotoWire projected roster %", "Footballguys percent rostered") may take a third line. */
+#ownership-panel .source-value-table.sv-classic th[data-col^="src:"] { width: 130px; }
+/* Quoted coverage (the last column) starts 14px in, so the right-aligned "—" of the last source is not read as part of "100%" (round 6). */
+#ownership-panel .source-value-table.sv-classic th:last-child, #ownership-panel .source-value-table.sv-classic td:last-child { padding-left: 14px; }
+/* The sort arrow on these two tables is the same 9px span as on Rankings; an unsorted header keeps its width, hidden, so a sort click moves no column (round 6). */
+.source-value-table th .sort-arrow { font-size: 9px; }
+.sort-arrow.is-idle { visibility: hidden; }
+/* The Expand bar sits in the same group as the table, so its right edge follows the table's right edge, as on Rankings (round 6). */
+.tab-table-group { width: fit-content; max-width: 100%; }
 
 /* ---------- Lineup builder ---------- */
 /* Left column (slots, salary bar, controls) is a fixed width so the right column (the rankings rows,
@@ -1327,7 +1371,7 @@ tr:last-child .cell-edit-hint { top: auto; bottom: 100%; margin-top: 0; margin-b
 .lineup-rows-table thead { position: sticky; top: 0; background: var(--bg-elevated-2); }
 /* Salary/Proj/Own%/Value right-align with tabular figures, same treatment as the Rankings table (👁 visual-qa
    third pass). The Showdown pool's columns: 1 Player, 2 FLEX $, 3 CPT $, 4 Proj, 5 Own FLEX. The Optimizer pool
-   (.lineup-pool-table, Adam 2026-10-17): 1 star, 2 Player (team chip, status tag, name, position chip, matchup pill),
+   (.lineup-pool-table, Adam 2026-10-17): 1 star, 2 Player (logo, name, status tag, team chip, position chip, matchup pill),
    3 Sal, 4 Proj, 5 Own%, 6 Value, 7 Min %, 8 Max %, then actions; its own rules follow the Showdown ones. */
 .lineup-rows-table:where(:not(.lineup-pool-table)) th:nth-child(3), .lineup-rows-table:where(:not(.lineup-pool-table)) td:nth-child(3),
 .lineup-rows-table:where(:not(.lineup-pool-table)) th:nth-child(4), .lineup-rows-table:where(:not(.lineup-pool-table)) td:nth-child(4),
@@ -1341,7 +1385,7 @@ tr:last-child .cell-edit-hint { top: auto; bottom: 100%; margin-top: 0; margin-b
 }
 .lineup-pool-table .lineup-star-col { width: 1%; padding-left: 4px; padding-right: 2px; text-align: center; }
 .lineup-pool-table .star-btn { padding: 0 2px; line-height: 1; }
-.lineup-pool-table .team-chip-mini { min-width: 40px; box-sizing: border-box; text-align: center; } /* "WAS" is 27.2px plus 12px padding */
+.player-cell .team-chip-mini { min-width: 40px; box-sizing: border-box; text-align: center; } /* "WAS" is 27.2px plus 12px padding */
 .lineup-pool-table td.lineup-pool-empty { text-align: center; color: var(--text-muted); padding: var(--sp-3) var(--sp-2); }
 /* Min % and Max %: narrow boxes (three digits), centred under their headers; the headers are plain text, not a sort. */
 .lineup-rows-table th.lineup-min-head, .lineup-rows-table td.lineup-min-cell,
@@ -1358,14 +1402,24 @@ tr:last-child .cell-edit-hint { top: auto; bottom: 100%; margin-top: 0; margin-b
    takes the slack so the table still spans the panel and the Lock / Exclude / Add buttons land right after Max %. */
 .lineup-pool-table th:last-child, .lineup-pool-table td.lineup-row-actions { width: 100%; }
 .lineup-pool-table .player-cell { display: inline-flex; gap: var(--sp-2); min-width: 0; }
+/* Adam 2026-10-18 round 3: the position chip in the Player cell widened it by 40px and "no proj" widened Proj, so the number columns
+   (3 to 6) and the Lock / Exclude / Add buttons pack tighter, and the table fits its panel at 1920 and 2560 with the buttons whole. */
+.lineup-pool-table th:nth-child(n+3):nth-child(-n+6), .lineup-pool-table td:nth-child(n+3):nth-child(-n+6) { padding-left: 5px; padding-right: 5px; }
+.lineup-pool-table th:nth-child(2), .lineup-pool-table td:nth-child(2) { padding-left: 6px; padding-right: 6px; }
+.lineup-pool-table .player-cell { gap: 6px; }
+.lineup-pool-table .lineup-row-actions { gap: 3px; }
+.lineup-pool-table .lineup-row-btn { padding: 2px 5px; }
+.lineup-pool-table .lineup-row-btn[data-action="row-lock"] { min-width: 50px; }
+.lineup-pool-table .lineup-row-btn[data-action="row-exclude"] { min-width: 58px; }
 /* The status tag is a square the height of the team chip (chip = 13px text + 2px padding = 18px). */
-.lineup-pool-table .player-cell .status-badge, .lineup-pool-table .player-cell .out-tag {
+.player-cell .status-badge, .player-cell .out-tag {
   display: inline-flex; align-items: center; justify-content: center;
   height: 18px; min-width: 18px; padding: 0 4px; line-height: 1; margin: 0;
 }
-.lineup-pool-table .player-cell .out-tag { font-size: 11px; }
-.lineup-pool-table .pos-mini { font-size: 12px; font-weight: 600; line-height: 16px; padding: 0 5px; border: 1px solid var(--border); border-radius: 4px; color: var(--text-muted); }
-.lineup-pool-table .meta-pill { font-size: var(--fs-sm); font-weight: 400; color: var(--text-muted); background: var(--bg-elevated-2); border: 1px solid var(--border); border-radius: 10px; padding: 0 8px; line-height: 17px; font-variant-numeric: tabular-nums; }
+.player-cell .out-tag { font-size: 11px; }
+.player-cell .pos-mini { font-size: 12px; font-weight: 600; line-height: 16px; padding: 0 5px; border: 1px solid var(--border); border-radius: 4px; color: var(--text-muted); }
+.meta-pill { font-size: var(--fs-sm); font-weight: 400; color: var(--text-muted); background: var(--bg-elevated-2); border: 1px solid var(--border); border-radius: 10px; padding: 0 8px; line-height: 17px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.rankings-table tr.row-dimmed .meta-pill, .rankings-table tr.row-dimmed .pos-mini,
 .lineup-pool-table tr.row-dimmed .meta-pill, .lineup-pool-table tr.row-dimmed .pos-mini,
 .lineup-pool-table tr.lineup-row-excluded .meta-pill, .lineup-pool-table tr.lineup-row-excluded .pos-mini { color: var(--row-dim-text); }
 .lineup-rows-table tbody tr.row-dimmed td, .lineup-rows-table tbody tr.lineup-row-excluded td { color: inherit; }
@@ -1474,9 +1528,6 @@ tr:last-child .cell-edit-hint { top: auto; bottom: 100%; margin-top: 0; margin-b
 .saved-lineup-slot-pos { width: 34px; flex: 0 0 34px; font-weight: 700; color: var(--text-muted); }
 .saved-lineup-slot-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .saved-lineup-slot > .out-tag { flex: 0 0 auto; margin-left: 0; } /* a sibling of the name, so the name's ellipsis never clips it */
-.saved-lineup-slot-team { color: var(--text-muted); }
-/* Layout round 2, 2026-10-17: the classic Saved row's abbr in a team-logo's place takes the logo's 16px box, so its name starts where a logo row's does (Showdown's abbr sits after the name and is untouched). */
-.saved-lineup-slot-pos + .saved-lineup-slot-team { flex: 0 0 16px; width: 16px; font-size: 8px; font-weight: 700; text-align: center; white-space: nowrap; overflow: visible; }
 .saved-lineup-slot-salary { color: var(--text-muted); margin-left: auto; font-variant-numeric: tabular-nums; }
 .saved-lineup-slot-empty-text { color: var(--text-dim); font-style: italic; }
 .saved-lineup-slot.saved-lineup-slot-missing { color: var(--row-dim-text); opacity: 0.65; }
@@ -1828,8 +1879,9 @@ select.opt-input { text-align: left; padding: 3px 4px; }
 /* Per-QB stack settings (lineup-qb-stacks.js): a list in the Stacking card, a full-width panel under the cards for each open QB. */
 .qbs-item { padding: 2px 0; }
 .qbs-toggle { display: flex; align-items: center; gap: 6px; width: 100%; min-height: 24px; padding: 0; border: 0; background: none; color: var(--text); font: inherit; font-size: var(--fs-sm); cursor: pointer; text-align: left; }
-.qbs-name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+.qbs-name { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
 .qbs-vs, .qbs-set { flex: 0 0 auto; font-size: var(--fs-sm); color: var(--text-dim); white-space: nowrap; }
+.qbs-set { margin-left: auto; }
 .qbs-set { color: var(--accent); }
 .qbs-toggle:focus-visible, .qbs-seg-btn:focus-visible, .qbs-link:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .qbs-sum { display: inline-block; margin: 0 0 2px; padding: 0 7px; border-radius: 999px; background: rgba(var(--accent-rgb), 0.16); border: 1px solid var(--accent); font-size: 12px; line-height: 16px; color: var(--text); white-space: nowrap; }
@@ -1849,12 +1901,14 @@ select.opt-input { text-align: left; padding: 3px 4px; }
 .qbs-pl { display: flex; align-items: center; gap: 6px; min-height: 24px; font-size: var(--fs-sm); }
 .qbs-pl + .qbs-pl { border-top: 1px solid var(--border); }
 .qbs-pos { flex: 0 0 22px; font-size: 12px; font-weight: 700; color: var(--text-dim); }
-.qbs-pname { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.qbs-pname { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.qbs-sal { margin-left: auto; }
 .qbs-sal, .qbs-proj { flex: 0 0 auto; font-size: var(--fs-sm); color: var(--text-muted); font-variant-numeric: tabular-nums; text-align: right; }
 .qbs-sal { min-width: 44px; }
 .qbs-proj { min-width: 30px; }
 .qbs-out { opacity: 0.55; }
 .qbs-toggle.qbs-dead { cursor: default; }
+.qbs-toggle .meta-pill { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .qbs-out .qbs-pname { flex: 0 1 auto; }
 .qbs-out .qbs-sal { margin-left: auto; }
 .qbs-ph { visibility: hidden; }
@@ -1926,7 +1980,7 @@ select.opt-input { text-align: left; padding: 3px 4px; }
 /* Dark theme: the fill --tcfp (L 28 to 42, so every row takes white text) at --tcb, the bar --tcbd (👁 2026-10-18 round 6). */
 :root[data-theme="dark"] .opt-p, :root[data-theme="dark"] .saved-lineup-slot-tc:not(.saved-lineup-slot-empty) { --tct: var(--tctd); --tcchip: var(--tcchipd); border-color: rgba(255, 255, 255, 0.08); box-shadow: inset 4px 0 0 var(--tcbd, var(--tc2)); background: color-mix(in srgb, var(--tcfp, var(--tc)) var(--tcb, var(--row-fill-a)), transparent); }
 /* Every child of a row reads in the row's full text colour (the second line is set apart by size and weight 400 only, 👁 2026-10-18 round 6); the role tags are neutral translucent chips; no logo halo (flat). */
-.opt-p-slot, .opt-p-line2, .opt-p-nums, .opt-p-proj, .saved-lineup-slot-tc:not(.saved-lineup-slot-empty) :is(.saved-lineup-slot-pos, .saved-lineup-slot-team, .saved-lineup-slot-salary) { color: var(--tct); }
+.opt-p-slot, .opt-p-line2, .opt-p-nums, .opt-p-proj, .saved-lineup-slot-tc:not(.saved-lineup-slot-empty) :is(.saved-lineup-slot-pos, .saved-lineup-slot-salary) { color: var(--tct); }
 .opt-p-line2, .opt-p-proj { font-weight: 400; }
 .opt-p-slot, .opt-p-sal, .saved-lineup-slot-tc .saved-lineup-slot-pos { font-weight: 600; }
 .opt-p .role-tag, .saved-lineup-slot-tc .role-tag { border: 0; border-radius: 3px; background: var(--tcchip); color: var(--tct); padding: 2px 7px; font-size: 12px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; line-height: 14px; } /* --tcchip: the row's solidRow choice per theme (🔵 2026-10-18 series review) */
@@ -1939,12 +1993,18 @@ select.opt-input { text-align: left; padding: 3px 4px; }
 .saved-lineup-slot-tc { padding: 0 4px 0 8px; border: 1px solid transparent; } /* the bar's 4px and air; the empty rows keep the air and the 1px so the labels line up */
 /* Team rows round 3, Adam 2026-10-17: the team logo fills the badge's 38px box (same size, so the fixed-parts figure above holds); a Saved row's is 16px, the row's text height. */
 .opt-p-logo { flex: 0 0 38px; width: 38px; height: 38px; box-sizing: border-box; padding: 2px; object-fit: contain; display: block; }
-.saved-lineup-slot-logo { flex: 0 0 16px; width: 16px; height: 16px; object-fit: contain; align-self: center; }
+.saved-lineup-slot .player-logo { flex: 0 0 16px; width: 16px; height: 16px; object-fit: contain; align-self: center; }
+.opt-p .team-chip-plain, .saved-lineup-slot-tc .team-chip-plain { background: var(--tcchip); color: var(--tct); text-shadow: none; }
+.opt-p .team-chip-mini, .saved-lineup-slot .team-chip-mini { flex: 0 0 auto; }
+/* A Saved row is one line of 360px or so, too narrow for the matchup pill beside the name: the pill takes a second line under the name, as plain text. */
+.saved-lineup-slot { flex-wrap: wrap; }
+.saved-lineup-slot .meta-pill { order: 9; flex: 0 0 calc(100% - 42px); margin-left: 42px; padding: 0; border: 0; background: none; font-size: 11px; line-height: 13px; color: inherit; opacity: 0.8; overflow: hidden; text-overflow: ellipsis; }
+.opt-p .meta-pill { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; background: none; color: var(--tct); border-color: var(--tcchip); }
 /* Layout round 2, 2026-10-17: a dark mark (the Panthers') vanishes on a dark tint, so in dark theme only the 16px logo gets a light edge halo on the mark itself (a disc behind it read as grey coins); the 16px box unchanged. */
-:root[data-theme="dark"] .saved-lineup-slot-logo { filter: none; } /* round 6: no halo */
+:root[data-theme="dark"] .saved-lineup-slot .player-logo { filter: none; } /* round 6: no halo */
 /* 👁 2026-10-18 round 6: on light every team-row logo sits on a white round plate (none on dark); the Saved row's 16px logo keeps its size, the plate hangs 2px around it. */
-:root:not([data-theme="dark"]) :is(.opt-p-logo, .saved-lineup-slot-logo) { background: rgba(255, 255, 255, 0.9); border-radius: 50%; padding: 2px; }
-:root:not([data-theme="dark"]) .saved-lineup-slot-logo { box-sizing: content-box; margin: -2px; }
+:root:not([data-theme="dark"]) :is(.opt-p-logo, .saved-lineup-slot .player-logo) { background: rgba(255, 255, 255, 0.9); border-radius: 50%; padding: 2px; }
+:root:not([data-theme="dark"]) .saved-lineup-slot .player-logo { box-sizing: content-box; margin: -2px; }
 /* Saved (or the same nine players as a saved lineup): the Save button becomes a disabled "Saved ✓". */
 .opt-card.opt-card-saved { border-color: rgba(var(--success-rgb), 0.6); }
 .saved-lineup-btn.opt-saved-btn:disabled { border-color: var(--success); color: var(--success); background: rgba(var(--success-rgb), 0.12); opacity: 1; cursor: default; font-weight: 600; }
@@ -1989,8 +2049,10 @@ select.opt-input { text-align: left; padding: 3px 4px; }
 /* One compact table per position (Adam 2026-10-11): boxes at least 330px, five across when wide enough, else three, then one column. */
 .opt-exp-grid { display: grid; grid-template-columns: max-content; gap: var(--sp-2); align-items: start; }
 .opt-exp-grid > .opt-exp-box { min-width: 0; }
-@container (min-width: 1006px) { .opt-exp-grid { grid-template-columns: repeat(3, minmax(330px, 1fr)); } }
-@container (min-width: 1682px) { .opt-exp-grid { grid-template-columns: repeat(5, minmax(330px, 1fr)); } }
+/* D80: a row now carries the player cell and the matchup pill, so a box is at least 560px (the widest row, a long name with a tag, is about 550px). */
+@container (min-width: 1160px) { .opt-exp-grid { grid-template-columns: repeat(2, minmax(560px, 1fr)); } }
+@container (min-width: 1700px) { .opt-exp-grid { grid-template-columns: repeat(3, minmax(560px, 1fr)); } }
+@container (min-width: 2830px) { .opt-exp-grid { grid-template-columns: repeat(5, minmax(560px, 1fr)); } }
 @media (max-width: 600px) { .opt-exp-grid { grid-template-columns: minmax(0, 1fr); } } /* phone: stacked boxes line up full width */
 .opt-exp-box { background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 8px; padding: var(--sp-2) 6px; }
 .opt-exp-title { font-weight: 700; color: var(--text-muted); font-size: var(--fs-sm); margin-bottom: 2px; }
@@ -2035,7 +2097,6 @@ select.opt-input { text-align: left; padding: 3px 4px; }
 .lineup-slot-filled { border-left: 4px solid var(--tc); background: color-mix(in srgb, var(--tc) 22%, var(--bg-elevated)); } /* flat, no gradient (🔵 2026-10-18 series review); this slot's text stays the page text colour, so the tint stays at the old gradient's start strength */
 .lineup-slot-top { display: flex; align-items: center; gap: var(--sp-2); min-width: 0; max-width: 100%; }
 .lineup-slot-player-2 .lineup-slot-name { white-space: normal; overflow: visible; text-overflow: clip; }
-.lineup-slot-matchup { color: var(--text-muted); font-size: var(--fs-sm); white-space: nowrap; }
 .lineup-slot-player-2 .lineup-slot-detail { white-space: normal; overflow: visible; text-overflow: clip; }
 
 /* ---------- Entries (its own tab, rules repo 2026-10-17): Adam's DraftKings entries file, one picker per entry ---------- */

@@ -10,8 +10,8 @@
 // re-attached to every cell on every render: that lets a single row (updateRow) or a single cell
 // (restoreCell) be patched in place — on a blur/Escape cancel, or after a failed save — without
 // rebuilding the whole tbody and losing whatever the next click was about to land on.
-import { escapeHtml, money, dec1, dec2, logoFor, textColourFor } from "./format.js";
-import { TEAM_BY_ABBR } from "./teams-data.js";
+import { escapeHtml, money, dec1, dec2 } from "./format.js";
+import { playerLineHtml, showPos } from "./player-row.js";
 import { store } from "./state.js";
 import { twoGunOutReason, rowIsOut, untagged, revivedStatusTitle } from "./out.js";
 
@@ -19,8 +19,6 @@ const BASE_COLUMNS = [
   { key: "star", label: "★" },
   { key: "player", label: "Player" },
   { key: "pos", label: "Pos" },
-  { key: "team", label: "Team" },
-  { key: "opp", label: "Opp" },
   { key: "salary", label: "Salary" },
   { key: "proj", label: "Proj" },
   { key: "own", label: "Own%" },
@@ -30,8 +28,8 @@ const BASE_COLUMNS = [
   // not sort (there is nothing to sort on).
   { key: "lev", label: "Lev", title: "Lev: no measure yet", sortable: false },
   { key: "tags", label: "Tags" },
-  { key: "status", label: "Status" },
 ];
+// Adam 2026-10-18 Q1: no Opp or Status column; the shared row (player-row.js) carries the matchup pill and the status tag in the Player cell.
 const NOTE_COLUMN = { key: "note", label: "Note" };
 export const COLUMNS = BASE_COLUMNS;
 
@@ -56,9 +54,7 @@ function columnsFor(hasNoteColumn, twogun) {
 
 // Adam 2026-10-15 (TwoGun merge, adjustment 1): "put a red 'OUT' tag or something obvious so
 // I can see it". A row ruled out after TwoGun's board stamp (flag "outAfterStamp") or one TwoGun calls OUT carries a
-// red OUT tag beside the name on every main-slate list (Rankings, Favorites, Projections, Projected Ownership and the
-// Optimizer); on Rankings and Favorites it sits after the logo, before the name, so it never clips (visual QA
-// 2026-10-15). Such a row gets no Value grade either. The one copy of the test and the tag: tabs.js and lineup.js import these.
+// red OUT tag beside the name (drawn by player-row.js since D80). Such a row gets no Value grade either. The one copy of the test and the tag.
 export { twoGunOutReason, rowIsOut };
 
 export function outTagHtml(row) {
@@ -86,8 +82,8 @@ function markerHtml(texts) {
   return list.length ? `<sup class="row-flag-marker tg-marker" title="${escapeHtml(list.join(" "))}">&#8226;</sup>` : "";
 }
 
-/** The hover sentences for one Rankings cell ("proj", "own", "salary", "ceilPer1k", "status") of a TwoGun-mode row. The game-line
- *  note sits with the status dot: the narrow Opp cell has no room for a dot beside "@ NYG". */
+/** The hover sentences for one Rankings cell ("proj", "own", "salary", "ceilPer1k", "status") of a TwoGun-mode row. The "status"
+ *  dot now follows the name in the Player cell (Adam 2026-10-18 Q1: the Status column is gone). */
 export function twoGunMarkerTexts(row, field) {
   const src = row?.src;
   if (!src && !row?.tg) return [];
@@ -196,18 +192,11 @@ function noteIconHtml(row) {
   return `<button type="button" class="note-icon${has ? " has-note" : ""}" data-action="edit-note" data-id="${idAttr(row)}" title="${escapeHtml(title)}">&#9998;</button>`;
 }
 
+// Adam 2026-10-18 Q10: the full matchup pill shows (the shared row's default). Q1: the TwoGun status-changed dot, which sat in the dropped Status cell, follows the row.
 function playerCellHtml(row) {
-  const t = TEAM_BY_ABBR[row.team];
-  const logo = logoFor(t);
-  const primary = t?.colourPrimary ?? "#333333";
-  const textColour = textColourFor(primary, t?.colourSecondary ?? "#ffffff");
-  // D80, Adam 2026-10-18: logo, then name, then team abbr, then the OUT tag and the note.
   return `
     <div class="player-cell">
-      ${logo ? `<img class="player-logo" src="${logo}" alt="${escapeHtml(row.team ?? "")}" width="20" height="20" />` : ""}
-      <span class="player-name"${row.src ? ` title="${escapeHtml(row.name)}"` : ""}>${escapeHtml(row.name)}</span>
-      <span class="team-chip-mini" style="background:${primary};color:${textColour}">${escapeHtml(row.team ?? "")}</span>
-      ${outTagHtml(row)}
+      ${playerLineHtml(row, { titled: Boolean(row.src), tag: "main" })}${markerHtml(twoGunMarkerTexts(row, "status"))}
       <span class="note-slot" data-id="${idAttr(row)}">${noteIconHtml(row)}</span>
     </div>`;
 }
@@ -302,13 +291,16 @@ function tagsCellHtml(row) {
     .join(" ");
 }
 
-// Full, untrimmed reason text for every tag in the cell, used as the tags-cell <td> title so hovering
-// anywhere in the cell (not just the pill or reason span) reveals what the ellipsis cut off (👁 visual-qa
-// fourth pass).
+// Hover text for the whole tags cell, one entry per tag, "tag: reason" (just "tag" when it has no reason), so a pill the
+// narrow cell clips is still readable (👁 visual-qa fourth pass; every tag listed, round 4).
 function tagsCellTitle(row) {
   if (!row.tags || !row.tags.length) return "";
   return row.tags
-    .map((t) => (t.reason ?? "").trim())
+    .map((t) => {
+      const name = String(t.tag ?? "").trim();
+      const reason = (t.reason ?? "").trim();
+      return reason ? `${name}: ${reason}` : name;
+    })
     .filter(Boolean)
     .join(" · ");
 }
@@ -325,11 +317,6 @@ export function statusTagsHtml(row) {
 /** Whether a row shows any status tag. */
 export function rowHasStatus(row) {
   return Boolean((row?.status ?? "").trim() || (row?.injury?.status ?? "").trim());
-}
-
-// R82: one OUT mark per row; the red OUT tag replaces the status tags.
-function statusCellHtml(row) {
-  return `${outTagHtml(row) ? "" : statusTagsHtml(row)}${markerHtml(twoGunMarkerTexts(row, "status"))}`;
 }
 
 function noteCellHtml(row) {
@@ -352,9 +339,7 @@ function rowHtml(row, hasNoteColumn, twogun = false) {
     <tr class="rank-row${dimmed ? " row-dimmed" : ""}" data-id="${idAttr(row)}">
       <td><button type="button" class="star-btn${row.starred ? " active" : ""}" data-action="toggle-star" data-id="${idAttr(row)}">${row.starred ? "★" : "☆"}</button></td>
       <td>${playerCellHtml(row)}</td>
-      <td>${escapeHtml(row.pos)}</td>
-      <td>${escapeHtml(row.team)}</td>
-      <td>${escapeHtml(matchupText(row))}</td>
+      <td class="pos-col">${escapeHtml(row.pos)}</td>
       <td>${money(row.salary)}${markerHtml(twoGunMarkerTexts(row, "salary"))}</td>
       <td>${editableCellHtml(row, "proj")}</td>
       <td>${editableCellHtml(row, "own")}</td>
@@ -362,13 +347,22 @@ function rowHtml(row, hasNoteColumn, twogun = false) {
       <td></td>
       ${twogun ? tgCellsHtml(row) : ""}
       <td class="tags-cell" title="${escapeHtml(tagsCellTitle(row))}">${tagsCellHtml(row)}</td>
-      <td class="status-cell">${statusCellHtml(row)}</td>
       ${hasNoteColumn ? `<td${row.note ? ` title="${escapeHtml(row.note)}"` : ""}>${noteCellHtml(row)}</td>` : ""}
     </tr>`;
 }
 
+// The one copy of the sort arrow (PROJECT.md D80). The space before it is an escaped no-break space (U+00A0) so the arrow stays on the last word's line.
+// `reserve` (the Projections and Ownership tables) draws it on every header, hidden when not sorted, so a sort click never moves a column.
+export function sortArrowText(dir) {
+  return `\u{a0}${dir === "asc" ? "▲" : "▼"}`;
+}
+export function sortArrowHtml(active, dir, reserve = false) {
+  if (!active && !reserve) return "";
+  return `<span class="sort-arrow${active ? "" : " is-idle"}"${active ? "" : ' aria-hidden="true"'}>${sortArrowText(active ? dir : "desc")}</span>`;
+}
+
 // `opts.twogun`: the Rankings table in TwoGun mode adds the TG_COLUMNS and marks the <table> "tg-on" (style.css sizes
-// its columns to stay inside D54's 1250px). Favorites passes nothing, so it never shows them.
+// its columns to stay inside D54's 1250px). Favorites passes nothing, so it never shows them. `opts.pos`: the position filter (D80: one position hides Pos).
 export function renderTableHead(theadEl, sort, onSortClick, hasNoteColumn = false, opts = {}) {
   const twogun = Boolean(opts.twogun);
   const cols = columnsFor(hasNoteColumn, twogun);
@@ -377,12 +371,13 @@ export function renderTableHead(theadEl, sort, onSortClick, hasNoteColumn = fals
       const title = c.title ? ` title="${escapeHtml(c.title)}"` : "";
       // A column with nothing to sort on (Lev) has no data-col, so no click handler, and no sortable class.
       if (c.sortable === false) return `<th class="not-sortable"${title}>${escapeHtml(c.label)}</th>`;
-      const arrow = sort.col === c.key ? (sort.dir === "asc" ? " ▲" : " ▼") : "";
-      const tgCls = c.field ? " tg-col" : "";
+      const arrow = sortArrowHtml(sort.col === c.key, sort.dir); // its own span so style.css can set the arrow a little smaller: a sorted header in a narrow column must not clip (round 5)
+      const tgCls = c.field ? " tg-col" : c.key === "pos" ? " pos-col" : "";
       return `<th data-col="${c.key}" class="sortable${sort.col === c.key ? " sorted" : ""}${tgCls}"${title}>${escapeHtml(c.label)}${arrow}</th>`;
     })
     .join("");
   theadEl.closest?.("table")?.classList.toggle("tg-on", twogun);
+  theadEl.closest?.("table")?.classList.toggle("pos-off", !showPos(opts.pos ?? "All"));
   theadEl.innerHTML = `<tr>${cells}</tr>`;
   theadEl.querySelectorAll("th[data-col]").forEach((th) => {
     th.addEventListener("click", () => onSortClick(th.dataset.col));

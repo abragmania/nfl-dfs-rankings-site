@@ -5,11 +5,10 @@
 // public/js/lineup.js, which this module mirrors in structure but keeps leaner: no per-row lock/exclude
 // UI, since the brief's Lineup Builder description for Showdown does not ask for one — Build always runs
 // a fresh optimize with empty locks/excludes and replaces whatever is currently placed with the result).
-import { escapeHtml, money, dec1, textColourFor, logoFor } from "../format.js";
-import { TEAM_BY_ABBR } from "../teams-data.js";
-import { statusTagsHtml } from "../table.js";
+import { escapeHtml, money, dec1 } from "../format.js";
+import { playerLineHtml, matchupPillHtml, showPos } from "../player-row.js";
 import { postShowdownLineupOptimize, getShowdownLineups, postShowdownLineup, deleteShowdownLineup, putShowdownLineupName } from "./api.js";
-import { posPillHtml, shownRows } from "./table.js";
+import { posPillHtml, shownRows, SD_POS_FILTER, SD_PILL } from "./table.js";
 import { showAllToggleHtml, wireShowAllButtons } from "../filterbar.js";
 import { store } from "../state.js";
 import { showdownPerSpotText } from "../totals.js";
@@ -291,11 +290,9 @@ function ownParen(own) {
   return own == null ? "" : ` (${Math.round(own)}% own)`;
 }
 
-function slotPlayerHtml(row, isCpt) {
-  const t = TEAM_BY_ABBR[row.team];
-  const primary = t?.colourPrimary ?? "#333333";
-  const secondary = t?.colourSecondary ?? "#ffffff";
-  const textColour = textColourFor(primary, secondary);
+const sdLine = (row, opts = {}) => playerLineHtml(row, { pos: showPos(SD_POS_FILTER), posHtml: posPillHtml, pill: SD_PILL, tag: "main", ...opts }); // tag "main": the O, D, IR and Q badges as on classic Rankings (Adam 2026-10-18); a caller's own tag wins
+
+export function slotPlayerHtml(row, isCpt) {
   const salary = isCpt ? row.cptSalary : row.salary;
   const proj = isCpt ? row.cptProj : row.proj;
   const own = isCpt ? row.ownCpt : row.ownFlex;
@@ -303,11 +300,8 @@ function slotPlayerHtml(row, isCpt) {
   return `
     <span class="lineup-slot-player lineup-slot-player-2" data-card-id="${escapeHtml(String(row.id))}">
       <span class="lineup-slot-body">
-        <span class="lineup-slot-top">
-          <span class="lineup-slot-name">${escapeHtml(row.name)}</span>
-          <span class="team-chip-mini" style="background:${primary};color:${textColour}">${escapeHtml(row.team ?? "")}</span>
-          ${posPillHtml(row.pos)}
-        </span>
+        <span class="lineup-slot-top">${sdLine(row, { nameCls: "lineup-slot-name", pill: false, tag: "out" })}</span>
+        ${SD_PILL ? matchupPillHtml(row) : ""}
         <span class="lineup-slot-detail">${money(salary)} &middot; ${projText} proj${escapeHtml(ownParen(own))}</span>
       </span>
     </span>`;
@@ -384,25 +378,13 @@ function placedIdSet() {
   return set;
 }
 
-function rightRowHtml(row, placed) {
-  const t = TEAM_BY_ABBR[row.team];
-  const primary = t?.colourPrimary ?? "#333333";
-  const secondary = t?.colourSecondary ?? "#ffffff";
-  const textColour = textColourFor(primary, secondary);
+export function rightRowHtml(row, placed) {
   const isPlaced = placed.has(String(row.id));
   const isCpt = state.cpt && String(state.cpt.id) === String(row.id);
-  const logo = logoFor(t); // D80, Adam 2026-10-18: logo, name, team abbr, position pill, status tags
-  const logoImg = logo ? `<img class="player-logo" src="${logo}" alt="${escapeHtml(row.team ?? "")}" width="20" height="20" />` : "";
   return `
     <tr class="lineup-row${isPlaced ? " lineup-row-locked" : ""}" data-id="${escapeHtml(String(row.id))}">
       <td>
-        <span class="player-cell">
-          ${logoImg}
-          <span class="player-name">${escapeHtml(row.name)}</span>
-          <span class="team-chip-mini" style="background:${primary};color:${textColour}">${escapeHtml(row.team ?? "")}</span>
-          ${posPillHtml(row.pos)}
-          ${statusTagsHtml(row)}
-        </span>
+        <span class="player-cell">${sdLine(row)}</span>
       </td>
       <td>${money(row.salary)}</td>
       <td>${money(row.cptSalary)}</td>
@@ -436,7 +418,7 @@ function formatSavedAt(iso) {
   return d.toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
 }
 
-function savedLineupSlotHtml(entry) {
+export function savedLineupSlotHtml(entry) {
   if (!entry) return "";
   const { slot, row, snap } = entry;
   const src = row ?? snap;
@@ -446,8 +428,7 @@ function savedLineupSlotHtml(entry) {
   return `
     <div class="saved-lineup-slot${missingCls}" data-card-id="${escapeHtml(String(row?.id ?? snap?.playerId ?? ""))}">
       <span class="saved-lineup-slot-pos">${escapeHtml(slot)}</span>
-      <span class="saved-lineup-slot-name">${escapeHtml(src.name ?? "")}</span>
-      <span class="saved-lineup-slot-team">${escapeHtml(src.team ?? "")}</span>
+      ${sdLine(src, { nameCls: "saved-lineup-slot-name", tag: row ? "out" : false })}
       <span class="saved-lineup-slot-salary">${money(slot === "CPT" ? row?.cptSalary ?? snap?.salary : row?.salary ?? snap?.salary)}</span>
       ${noteHtml}
     </div>`;

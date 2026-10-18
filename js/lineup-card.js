@@ -1,8 +1,8 @@
 // Pieces of the Optimizer's lineup slots and new-lineup cards (lineup.js).
-import { escapeHtml, money, dec1, textColourFor, logoFor } from "./format.js";
+import { escapeHtml, money, dec1, textColourFor } from "./format.js";
 import { fillForDark, fillForLight, solidRow, barColour, ROW_FILL } from "./team-palette.js";
 import { TEAM_BY_ABBR } from "./teams-data.js";
-import { lineupOutTagHtml } from "./table.js";
+import { playerIdentityHtml, matchupPillHtml, teamLogoHtml } from "./player-row.js";
 import { lineupRoles, roleTagsHtml, stackLabel } from "./lineup-marks.js";
 
 // D32: any list of players carries ownership as "(NN% own)", but only when the player has a real number.
@@ -69,13 +69,7 @@ export function teamColourStyle({ colour, alt, fillDark, fillLight, rowLight, ro
   return `--tc:${escapeHtml(colour)};--tc2:${escapeHtml(alt)};--tcfp:${escapeHtml(tcfp)};--tclp:${escapeHtml(tclp)};--tcbd:${escapeHtml(tcbd)};--tcbl:${escapeHtml(tcbl)}`
     + theme(L, "l") + pulled(L, "light", "a") + theme(D, "d") + pulled(D, "dark", "b");
 }
-// Team rows round 3, Adam 2026-10-17: the team logo (theme variant) at `size` px, with the abbr as its alt; "" for a team with no logo,
-// so the caller keeps its badge (card row) or its abbr text (Saved row).
-export function teamLogoHtml(team, cls, size) {
-  const src = logoFor(TEAM_BY_ABBR[team]);
-  if (!src) return "";
-  return `<img class="${cls}" src="${escapeHtml(src)}" alt="${escapeHtml(team)}" title="${escapeHtml(team)}" width="${size}" height="${size}" />`;
-}
+export { teamLogoHtml };
 
 export function cardDecor(lineup, rowById, palette = null) {
   const rowOf = (p) => rowById?.get(String(p.id)) ?? null;
@@ -84,10 +78,7 @@ export function cardDecor(lineup, rowById, palette = null) {
   const stack = stackLabel(players);
   return {
     stack: stack ? `<span class="opt-card-stack" title="${escapeHtml(stack.title)}">${escapeHtml(stack.text)}</span>` : "",
-    tagsFor: (p) => {
-      const out = rowOf(p) ? lineupOutTagHtml(rowOf(p)) : "";
-      return out ? `<span class="opt-p-tags">${out}</span>` : "";
-    },
+    rowFor: (p) => (rowOf(p) ? { ...p, ...rowOf(p) } : p),
     rolesFor: (p) => roleTagsHtml(roles.get(String(p.id))),
     coloursFor: (team) => teamColours(palette, team), // Team rows, Adam 2026-10-17
   };
@@ -95,13 +86,14 @@ export function cardDecor(lineup, rowById, palette = null) {
 
 // D54: a card row is 50px.
 export function cardPlayerRowHtml(p, slotName, decor) {
+  const row = decor?.rowFor ? decor.rowFor(p) : p;
   return `
       <div class="opt-p" style="${teamColourStyle(decor ? decor.coloursFor(p.team) : teamColours(null, p.team))}"${p.id != null ? ` data-card-id="${escapeHtml(String(p.id))}"` : ""}>
         <span class="opt-p-slot">${escapeHtml(slotName)}</span>
         ${teamLogoHtml(p.team, "opt-p-logo", 38) || badgeHtml(p.name, p.pos, p.team)}
         <span class="opt-p-body">
-          <span class="opt-p-line1"><span class="opt-p-name">${cardNameHtml(p)}</span>${decor ? decor.tagsFor(p) : ""}</span>
-          <span class="opt-p-line2"><span class="opt-p-opp">${escapeHtml(p.opp ?? "")}</span><span class="opt-p-own">${escapeHtml(ownParen(p.own).trim())}</span>${decor ? decor.rolesFor(p) : ""}</span>
+          <span class="opt-p-line1">${playerIdentityHtml(row, { logo: false, nameCls: "opt-p-name", nameHtml: cardNameHtml(p), chipPlain: true, tagCls: "opt-p-tags", tag: "out" })}</span>
+          <span class="opt-p-line2">${matchupPillHtml(row)}<span class="opt-p-own">${escapeHtml(ownParen(p.own).trim())}</span>${decor ? decor.rolesFor(p) : ""}</span>
         </span>
         <span class="opt-p-nums"><span class="opt-p-sal">${money(p.salary)}</span><span class="opt-p-proj">${p.proj == null ? "—" : dec1(p.proj)}</span></span>
       </div>`;

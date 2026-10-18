@@ -7,7 +7,7 @@ const POSITION_CHIPS = ["All", "QB", "RB", "WR", "TE", "DST", "FLEX"];
 const FLEX_POS = new Set(["RB", "WR", "TE"]);
 
 // Star and every numeric column default to descending on the first click of a new column; text columns
-// (player, pos, team, opp, tags, status) default ascending. Value is the table's own default sort, set once
+// (player, pos, tags) default ascending (no Opp or Status column, Adam 2026-10-18 Q1). Value is the table's own default sort, set once
 // at load rather than from a click. The Lev column has no number at all (Adam 2026-10-15, Lev measure to be
 // redesigned), so it is not sortable (table.js); a leftover sort on "lev" reads null for every row and keeps the
 // board's order.
@@ -204,10 +204,6 @@ function sortValue(row, col) {
       return row.name ?? null;
     case "pos":
       return row.pos ?? null;
-    case "team":
-      return row.team ?? null;
-    case "opp":
-      return row.opp ?? null;
     case "salary":
       return row.salary ?? null;
     case "proj":
@@ -218,8 +214,6 @@ function sortValue(row, col) {
       return row.value ?? null;
     case "tags":
       return row.tags && row.tags.length ? row.tags.map((t) => t.tag).join(",") : null;
-    case "status":
-      return row.status && row.status.trim() ? row.status : null;
     // TwoGun mode's Rankings columns (table.js TG_COLUMNS); a row he does not cover has none and sorts last.
     case "tgMed":
       return row.tg?.median ?? null;

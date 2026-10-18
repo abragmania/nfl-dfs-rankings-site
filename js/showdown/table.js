@@ -4,9 +4,9 @@
 // Val (one column — Captain value is identical to FLEX value since Captain price and points are both
 // 1.5x), Own FLEX, Own CPT (gold), Notes. No inline editing here (unlike the classic table): the brief's
 // column list for Showdown Rankings has no star or edit affordance, only display plus sort and filter.
-import { escapeHtml, money, dec1, dec2, textColourFor, logoFor } from "../format.js";
-import { TEAM_BY_ABBR } from "../teams-data.js";
-import { statusTagsHtml, rowIsOut } from "../table.js";
+import { escapeHtml, money, dec1, dec2 } from "../format.js";
+import { rowIsOut } from "../table.js";
+import { playerLineHtml, showPos } from "../player-row.js";
 import { store } from "../state.js";
 
 export function shownRows(rows) {
@@ -37,20 +37,10 @@ export function posPillHtml(pos) {
   return `<span class="sd-pos${cls ? ` ${cls}` : ""}">${escapeHtml(label)}</span>`;
 }
 
+export const SD_POS_FILTER = "FLEX";
+export const SD_PILL = false; // D80: a Showdown row has no home/away or totals, only a bare opponent code, so no pill
 function playerCellHtml(row) {
-  const t = TEAM_BY_ABBR[row.team];
-  const logo = logoFor(t);
-  const primary = t?.colourPrimary ?? "#333333";
-  const secondary = t?.colourSecondary ?? "#ffffff";
-  const textColour = textColourFor(primary, secondary);
-  return `
-    <div class="player-cell">
-      <img class="player-logo" src="${logo}" alt="${escapeHtml(row.team ?? "")}" width="20" height="20" />
-      <span class="player-name">${escapeHtml(row.name)}</span>
-      <span class="team-chip-mini" style="background:${primary};color:${textColour}">${escapeHtml(row.team ?? "")}</span>
-      ${posPillHtml(row.pos)}
-      ${statusTagsHtml(row)}
-    </div>`;
+  return `<div class="player-cell">${playerLineHtml(row, { pos: showPos(SD_POS_FILTER), posHtml: posPillHtml, pill: SD_PILL, tag: "main" })}</div>`; // tag "main": the O, D, IR and Q badges as on classic Rankings (Adam 2026-10-18)
 }
 
 function gradedValueHtml(row) {

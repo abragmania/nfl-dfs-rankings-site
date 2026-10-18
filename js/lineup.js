@@ -16,10 +16,11 @@
 // re-validated against the live board on every board load rather than trusted as-is (🔵 finding 1): an id
 // with no row anymore (a stale localStorage entry, or last week's slate) is dropped instead of rendering
 // stale data or throwing.
-import { escapeHtml, money, dec1, textColourFor, logoFor } from "./format.js";
+import { escapeHtml, money, dec1 } from "./format.js";
 import { store, matchesPosition, filterRows, sortRows, passesProjFloor, FLEX_POS, defaultDirFor, activeSlate, activeSlateRows, activeSlateGames, slateDisplayName, boardHasCeilings, isTwoGunMode } from "./state.js";
 import { sortableHeadHtml } from "./tabs.js";
-import { matchupText, lineupOutTagHtml, statusTagsHtml, gradedCellHtml, rowIsOut, twoGunOutReason, STATUS_INFO } from "./table.js"; // D43: the one copy of "vs DAL" / "@ DET"; the red OUT tag (Adam 2026-10-15)
+import { matchupText, gradedCellHtml, rowIsOut, twoGunOutReason, STATUS_INFO } from "./table.js"; // D43: the one copy of "vs DAL" / "@ DET"
+import { playerLineHtml, matchupPillHtml, showPos, teamLogoHtml } from "./player-row.js";
 import { shownTotal, lineupCeilTotal, perSpotText } from "./totals.js";
 import { newBuildId, batchBuild, handBuild, buildTypeText, groupByBuild } from "./lineup-builds.js";
 import { lineupFigures, geoOwn, geoText, medianText, sortKeysFor, sortLineups, nextSort, cleanSortState, effectiveSort, sortRowHtml } from "./lineup-sort.js"; // Adam 2026-10-17: sort options; geo own = geometric mean of ownership, his multiplicative uniqueness
@@ -27,7 +28,7 @@ import { rowsGradedForView } from "./grade.js";
 import { posChipsHtml, showAllToggleHtml, wireShowAllButtons } from "./filterbar.js";
 import { filterLineups, bulkUids, bulkLabel, toggleMustHave, filterBarHtml } from "./lineup-filter.js";
 import { OPT_POSITIONS, optExposureHtml, sortExposure, exposureLimit, minLimit, exposureMark, zeroMinRows } from "./lineup-exposure.js";
-import { cardPlayerRowHtml, cardDecor, badgeHtml, teamLogoHtml, ownParen, teamColours, teamColourStyle } from "./lineup-card.js";
+import { cardPlayerRowHtml, cardDecor, badgeHtml, ownParen, teamColours, teamColourStyle } from "./lineup-card.js";
 import { lineupRoles, roleTagsHtml } from "./lineup-marks.js";
 import { paletteForRows } from "./team-palette.js";
 import { poolSearchChipHtml, wirePoolSearchChip } from "./lineup-search.js";
@@ -757,21 +758,15 @@ function slotsHtml(rowById, roles) {
 
 // `row` is the live board row for this slot's id (🔵 finding 2), never a cached copy: an override on
 // Proj or Own shows up here automatically because this reads the same fields the Rankings table does.
-function slotPlayerHtml(row, tags = []) {
-  const t = TEAM_BY_ABBR[row.team];
-  const primary = t?.colourPrimary ?? "#333333";
-  const secondary = t?.colourSecondary ?? "#ffffff";
-  const textColour = textColourFor(primary, secondary);
+// Adam 2026-10-18 Q2: the team logo the card rows show (lineup-card.js); the initials badge only for a team with no logo.
+export function slotPlayerHtml(row, tags = []) {
   const projText = row.proj == null ? "no proj" : dec1(row.proj);
   return `
     <span class="lineup-slot-player lineup-slot-player-2" data-card-id="${escapeHtml(String(row.id))}">
-      ${badgeHtml(row.name, row.pos, row.team)}
+      ${teamLogoHtml(row.team, "opt-p-logo", 38) || badgeHtml(row.name, row.pos, row.team)}
       <span class="lineup-slot-body">
-        <span class="lineup-slot-top">
-          <span class="lineup-slot-name">${escapeHtml(row.name)}</span>
-          <span class="team-chip-mini" style="background:${primary};color:${textColour}">${escapeHtml(row.team ?? "")}</span>${lineupOutTagHtml(row)}
-          <span class="lineup-slot-matchup">${escapeHtml(matchupText(row))}</span>
-        </span>
+        <span class="lineup-slot-top">${playerLineHtml(row, { logo: false, nameCls: "lineup-slot-name", pill: false, tag: "out" })}</span>
+        ${matchupPillHtml(row)}
         <span class="lineup-slot-detail">${money(row.salary)} &middot; ${projText} proj${escapeHtml(ownParen(row.own))}${roleTagsHtml(tags)}</span>
       </span>
     </span>`;
@@ -849,8 +844,7 @@ export function savedLineupSlotHtml(slotName, entry, palette = null) {
   return `
     <div class="saved-lineup-slot saved-lineup-slot-tc${missingCls}" style="${teamColourStyle(teamColours(palette, src.team))}"${pickId != null ? ` data-card-id="${escapeHtml(String(pickId))}"` : ""}>
       <span class="saved-lineup-slot-pos">${escapeHtml(slotName)}</span>
-      ${teamLogoHtml(src.team, "saved-lineup-slot-logo", 16) || `<span class="saved-lineup-slot-team">${escapeHtml(src.team ?? "")}</span>`}
-      <span class="saved-lineup-slot-name">${nameHtml}</span>${entry.row ? lineupOutTagHtml(entry.row) : ""}
+      ${playerLineHtml(src, { nameCls: "saved-lineup-slot-name", nameHtml, chipPlain: true, tag: entry.row ? "out" : false })}
       <span class="saved-lineup-slot-salary">${money(src.salary)}</span>
       ${noteHtml}
     </div>`;
@@ -1132,8 +1126,7 @@ export function rightColumnHtml(rows, rowById) {
   const slateKey = slateKeyOf(store.get().board);
   const maxMap = playerMaxFor(slateKey);
   const minMap = playerMinFor(slateKey);
-  const showPos = filters.pos === "All" || filters.pos === "FLEX";
-  const bodyRows = sorted.map((row) => rightRowHtml(row, placed, showPos, maxMap, minMap, cash ? wantSet : null)).join("");
+  const bodyRows = sorted.map((row) => rightRowHtml(row, placed, showPos(filters.pos), maxMap, minMap, cash ? wantSet : null)).join("");
   const emptyRow = sorted.length === 0 && filters.starredOnly ? poolEmptyRowHtml(graded, filters.pos, headBefore.length + (cash ? 2 : 3)) : "";
   return `
     <div class="lineup-rows-wrap scroll-panel">
@@ -1145,32 +1138,12 @@ export function rightColumnHtml(rows, rowById) {
     <div class="table-legend">&mdash; = nobody has published one</div>`;
 }
 
-/** A finite number with at most one decimal and no trailing ".0" (25 -> "25", 23.75 -> "23.8"); null when not a finite number. */
-function num1(n) {
-  return Number.isFinite(n) ? String(Math.round(n * 10) / 10) : null;
-}
-
-/** The pool row's matchup pill text: "vs CHI · 26.5tm / 52tot / +1" (opponent, then team total, game total and the team's own spread, joined by " / "). Each part is left out when its data is missing; "" when all are. */
-function matchupPillText(row) {
-  const opp = matchupText(row);
-  const team = num1(row.impliedTotal);
-  const game = num1(row.total);
-  const nums = []; // Adam 2026-10-17: the pill reads tm / tot
-  if (team !== null && game !== null) nums.push(`${team}tm / ${game}tot`);
-  if (Number.isFinite(row.spread)) nums.push(row.spread < 0 ? num1(row.spread) : row.spread > 0 ? `+${num1(row.spread)}` : "pk");
-  return [opp, nums.join(" / ")].filter(Boolean).join(" · ");
-}
-
-function rightRowHtml(row, placedSet, showPos, maxMap = {}, minMap = {}, cashWant = null) { // cashWant: a Set of Want ids in cash mode, else null
+function rightRowHtml(row, placedSet, posShown, maxMap = {}, minMap = {}, cashWant = null) { // cashWant: a Set of Want ids in cash mode, else null
   const id = String(row.id);
   const maxText = maxMap[id] ?? "";
   const maxBad = Number.isNaN(parsePct(maxText));
   const minText = minMap[id] ?? "";
   const minBad = Number.isNaN(parsePct(minText));
-  const t = TEAM_BY_ABBR[row.team];
-  const primary = t?.colourPrimary ?? "#333333";
-  const secondary = t?.colourSecondary ?? "#ffffff";
-  const textColour = textColourFor(primary, secondary);
   const locked = state.locks.has(id);
   const excluded = state.excludes.has(id);
   // 🔵 finding 6: "already placed" is a DraftKings-identity comparison, not a board-id comparison.
@@ -1178,21 +1151,11 @@ function rightRowHtml(row, placedSet, showPos, maxMap = {}, minMap = {}, cashWan
   // 🔵 finding 8: same dimming rule as the Rankings table.
   const dimmed = rowIsOut(row);
   const rowClass = `${excluded ? " lineup-row-excluded" : locked ? " lineup-row-locked" : ""}${dimmed ? " row-dimmed" : ""}`;
-  // D80, Adam 2026-10-18: logo, name, team abbr, then the status tag (the red OUT tag alone when the row has one),
-  // the position chip only on the All and FLEX tabs, and the matchup pill (opponent, totals, the team's spread) ends the cell.
-  const logo = logoFor(t);
-  const logoImg = logo ? `<img class="player-logo" src="${logo}" alt="${escapeHtml(row.team ?? "")}" width="20" height="20" />` : "";
-  const statusTag = lineupOutTagHtml(row) || statusTagsHtml(row);
-  const pillText = matchupPillText(row);
-  const posChip = showPos && row.pos ? `<span class="pos-mini">${escapeHtml(row.pos)}</span>` : "";
-  const pill = pillText ? `<span class="meta-pill">${escapeHtml(pillText)}</span>` : "";
   return `
     <tr class="lineup-row${rowClass}" data-id="${escapeHtml(id)}">
       <td class="lineup-star-col"><button type="button" class="star-btn${row.starred ? " active" : ""}" data-action="toggle-star" data-id="${escapeHtml(id)}"${poolCallbacks?.onToggleStar ? "" : " disabled"}>${row.starred ? "★" : "☆"}</button></td>
       <td>
-        <span class="player-cell">
-          ${logoImg}<span class="player-name">${escapeHtml(row.name)}</span><span class="team-chip-mini" style="background:${primary};color:${textColour}">${escapeHtml(row.team ?? "")}</span>${statusTag}${posChip}${pill}
-        </span>
+        <span class="player-cell">${playerLineHtml(row, { pos: posShown })}</span>
       </td>
       <td>${money(row.salary)}</td>
       <td>${row.proj == null ? "no proj" : dec1(row.proj)}</td>

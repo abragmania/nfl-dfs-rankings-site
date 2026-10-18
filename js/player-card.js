@@ -10,7 +10,7 @@ import { cardHtml, initialsBadgeHtml } from "./player-card-body.js";
 
 // What counts as a player's name: the Player cell of the Rankings, Favorites, Showdown and Optimizer-pool rows
 // (.player-name, inside a <tr data-id>), the other lists' names (each inside an element carrying data-card-id), and
-// the Projections and Ownership name cells (.pc-name).
+// Showdown's Projections and Ownership name cells (.pc-name; classic's use the shared .player-name).
 export const NAME_SELECTOR = ".player-name, .pc-name, .lineup-slot-name, .saved-lineup-slot-name, .opt-p-name, .qbs-pname, .qbs-head-name, .cash-swap-name";
 const INTERACTIVE = "button, a, input, select, textarea";
 

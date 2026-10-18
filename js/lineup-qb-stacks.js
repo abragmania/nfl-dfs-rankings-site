@@ -1,7 +1,7 @@
 // RULES.md D73 (amended 2026-10-17): per-QB stack settings, entry { min, max, oppMin, oppMax, players }; null = blank = follow the global (server/lineup/qb-stacks.js).
-import { escapeHtml, money, dec1, textColourFor } from "./format.js";
-import { TEAM_BY_ABBR } from "./teams-data.js";
-import { matchupText, lineupOutTagHtml, rowIsOut } from "./table.js";
+import { escapeHtml, money, dec1 } from "./format.js";
+import { rowIsOut } from "./table.js";
+import { playerLineHtml, teamChipHtml } from "./player-row.js";
 import { hasRealProjection } from "./state.js";
 
 export const SKILL_POS = Object.freeze(["RB", "WR", "TE"]);
@@ -161,12 +161,6 @@ export function summaryText(e) {
   return parts.join(" · ");
 }
 
-function teamChipHtml(team) {
-  const t = TEAM_BY_ABBR[team];
-  const primary = t?.colourPrimary ?? "#333333";
-  return `<span class="team-chip-mini" style="background:${primary};color:${textColourFor(primary, t?.colourSecondary ?? "#ffffff")}">${escapeHtml(team)}</span>`;
-}
-
 const sumHtml = (qbId, e) => `<span class="qbs-sum" data-qb="${escapeHtml(qbId)}"${e ? "" : " hidden"}>${e ? escapeHtml(summaryText(e)) : ""}</span>`;
 
 export function qbListHtml(qbRows, qbs, lockedIdList) {
@@ -175,8 +169,8 @@ export function qbListHtml(qbRows, qbs, lockedIdList) {
     .map((qb) => {
       const id = escapeHtml(String(qb.id));
       const open = qbs.open.has(String(qb.id));
-      if (qbIsOut(qb, lockedIdList)) return `<div class="qbs-item qbs-out"><div class="qbs-toggle qbs-dead"><span class="qbs-name" title="${escapeHtml(qb.name)}">${escapeHtml(qb.name)}</span>${lineupOutTagHtml(qb)}${teamChipHtml(upper(qb.team))}</div></div>`;
-      return `<div class="qbs-item"><button type="button" class="qbs-toggle" data-qbs="toggle" data-qb="${id}" aria-expanded="${open ? "true" : "false"}"><span class="qbs-name" title="${escapeHtml(qb.name)}">${escapeHtml(qb.name)}</span>${lineupOutTagHtml(qb)}${teamChipHtml(upper(qb.team))}<span class="qbs-set">Set up ${open ? "▾" : "▸"}</span></button>${sumHtml(String(qb.id), qbs.entries[String(qb.id)])}</div>`;
+      if (qbIsOut(qb, lockedIdList)) return `<div class="qbs-item qbs-out"><div class="qbs-toggle qbs-dead">${playerLineHtml(qb, { nameCls: "qbs-name", titled: true, tag: "out" })}</div></div>`;
+      return `<div class="qbs-item"><button type="button" class="qbs-toggle" data-qbs="toggle" data-qb="${id}" aria-expanded="${open ? "true" : "false"}">${playerLineHtml(qb, { nameCls: "qbs-name", titled: true, tag: "out" })}<span class="qbs-set">Set up ${open ? "▾" : "▸"}</span></button>${sumHtml(String(qb.id), qbs.entries[String(qb.id)])}</div>`;
     })
     .join("");
   return `<div class="opt-set qbs-block">${rows}</div>`;
@@ -213,7 +207,7 @@ function playerColumnHtml(title, team, list, e, qbId) {
       const out = rowIsOut(r);
       const choice = e.players[String(r.id)] ?? "avail";
       const control = out ? outControlHtml(choice) : segHtml(`data-qbs="pl" data-qb="${qbId}" data-pid="${escapeHtml(String(r.id))}"`, PLAYER_CHOICES, choice);
-      return `<div class="qbs-pl${out ? " qbs-out" : ""}"><span class="qbs-pos">${escapeHtml(upper(r.pos))}</span><span class="qbs-pname" title="${escapeHtml(r.name)}" data-card-id="${escapeHtml(String(r.id))}">${escapeHtml(r.name)}</span>${lineupOutTagHtml(r)}<span class="qbs-sal">${money(r.salary)}</span><span class="qbs-proj">${dec1(r.proj) ?? "—"}</span>${control}</div>`;
+      return `<div class="qbs-pl${out ? " qbs-out" : ""}" data-card-id="${escapeHtml(String(r.id))}"><span class="qbs-pos">${escapeHtml(upper(r.pos))}</span>${playerLineHtml(r, { nameCls: "qbs-pname", titled: true, pill: false, tag: "out" })}<span class="qbs-sal">${money(r.salary)}</span><span class="qbs-proj">${dec1(r.proj) ?? "—"}</span>${control}</div>`;
     })
     .join("");
   const empty = list.all.length ? "None with a projection." : "None on the board.";
@@ -249,7 +243,7 @@ export function qbPanelsHtml(qbRows, qbs, g, rows, ownMax, oppMax, lockedIdList)
         return `<span class="qbs-opt qbs-opt-side"><span class="qbs-opt"><span class="opt-set-label">${title}</span>${box(minKey, e[minField], view.minPh, "Minimum")}<span class="opt-unit">to</span>${box(maxKey, e[maxField], view.maxPh, "Maximum")}</span><span class="opt-set-hint qbs-side-hint" data-qb="${id}" data-side="${side}">${escapeHtml(view.hint)}</span></span>`;
       };
       return `<section class="opt-group opt-group-wide qbs-panel" data-qb="${id}">
-        <div class="qbs-head"><span class="qbs-head-name" data-card-id="${escapeHtml(String(qb.id))}">${escapeHtml(qb.name)}</span>${teamChipHtml(team)}<span class="qbs-vs">${escapeHtml(matchupText(qb))}</span>${sumHtml(idRaw, qbs.entries[idRaw])}<span class="qbs-grow"></span>${more}<button type="button" class="qbs-link qbs-reset" data-qbs="reset" data-qb="${id}"${qbs.entries[idRaw] ? "" : " hidden"}>Reset</button><button type="button" class="qbs-link qbs-close" data-qbs="toggle" data-qb="${id}">Close ▾</button></div>
+        <div class="qbs-head" data-card-id="${id}">${playerLineHtml(qb, { nameCls: "qbs-head-name", tag: "out" })}${sumHtml(idRaw, qbs.entries[idRaw])}<span class="qbs-grow"></span>${more}<button type="button" class="qbs-link qbs-reset" data-qbs="reset" data-qb="${id}"${qbs.entries[idRaw] ? "" : " hidden"}>Reset</button><button type="button" class="qbs-link qbs-close" data-qbs="toggle" data-qb="${id}">Close ▾</button></div>
         <div class="qbs-opts">
           ${sideHtml("own", "Teammates", "min", "max", ownMax)}
           ${sideHtml("opp", "Opponents", "omin", "omax", oppMax)}

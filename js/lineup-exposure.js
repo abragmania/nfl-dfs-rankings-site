@@ -1,29 +1,21 @@
 // The Optimizer's exposure tables: one per position, over a set of lineups (lineup.js draws and re-draws them).
-import { escapeHtml, textColourFor } from "./format.js";
-import { TEAM_BY_ABBR } from "./teams-data.js";
+import { escapeHtml } from "./format.js";
 import { store } from "./state.js";
-import { lineupOutTagHtml } from "./table.js";
+import { playerLineHtml, matchupPillHtml } from "./player-row.js";
 import { pickButtonHtml } from "./lineup-filter.js";
 
 export const OPT_POSITIONS = ["QB", "RB", "WR", "TE", "DST"];
 
 let lookupBoard = null;
 let lookup = new Map();
-function outTagForId(id) {
+function liveRowFor(e) {
   const board = store.get().board;
   if (board !== lookupBoard) {
     lookupBoard = board;
     lookup = new Map((board?.rows ?? []).map((r) => [String(r.id), r]));
   }
-  const row = lookup.get(String(id));
-  return row ? lineupOutTagHtml(row) : "";
-}
-
-function teamBadgeHtml(team) {
-  const t = TEAM_BY_ABBR[team];
-  const primary = t?.colourPrimary ?? "#333333";
-  const secondary = t?.colourSecondary ?? "#ffffff";
-  return `<span class="team-chip-mini" style="background:${primary};color:${textColourFor(primary, secondary)}">${escapeHtml(team ?? "")}</span>`;
+  const row = e.id != null ? lookup.get(String(e.id)) : null;
+  return row ? { ...e, ...row } : e;
 }
 
 export function sortExposure(list, dir) {
@@ -72,23 +64,24 @@ export function zeroMinRows(exposure, marks, playerOf, inBatch) {
   return out;
 }
 
-// D55: exposure by position, columns Exposure, Player, Team, Matchup (D43), Own% (D32); D74: over the new batch or the saved lineups.
+// D55: exposure by position, columns Exposure, Player (the D80 shared cell, so no Team column), Matchup (the pill), Own% (D32); D74: over the new batch or the saved lineups.
 export function optExposureHtml(exposure, subtitle = "", sortDir = "desc", pick = null, marks = null) {
   const dir = sortDir === "asc" ? "asc" : "desc";
   const arrow = dir === "asc" ? " ▲" : " ▼";
-  const head = `<tr><th class="sortable sorted opt-exp-pct" data-action="opt-exp-sort" aria-sort="${dir === "asc" ? "ascending" : "descending"}">Exposure${arrow}</th><th>Player</th><th>Team</th><th>Matchup</th><th class="opt-exp-own">Own%</th></tr>`;
+  const head = `<tr><th class="sortable sorted opt-exp-pct" data-action="opt-exp-sort" aria-sort="${dir === "asc" ? "ascending" : "descending"}">Exposure${arrow}</th><th>Player</th><th>Matchup</th><th class="opt-exp-own">Own%</th></tr>`;
   const boxes = OPT_POSITIONS.map((pos) => {
     const list = Array.isArray(exposure?.[pos]) ? exposure[pos] : [];
     const body = list.length
       ? `<table class="opt-exp-table"><thead>${head}</thead><tbody>${sortExposure(list, dir)
           .map((e) => {
             const mark = exposureMark(e, marks);
+            const live = liveRowFor(e);
+            const nameHtml = pick && e.id != null ? pickButtonHtml({ id: e.id, name: e.name ?? "", chosen: pick.isChosen(e.id) }) : undefined;
             return `
           <tr class="opt-exp-row${mark ? " exp-off" : ""}"${mark ? ` title="${escapeHtml(mark.title)}"` : ""}>
             <td class="opt-exp-pct">${escapeHtml(String(Math.round(e.pct ?? 0)))}% <span class="opt-exp-count">(${escapeHtml(String(e.count ?? 0))})</span></td>
-            <td class="opt-exp-name">${pick && e.id != null ? pickButtonHtml({ id: e.id, name: e.name ?? "", chosen: pick.isChosen(e.id) }) : escapeHtml(e.name ?? "")}${e.id != null ? outTagForId(e.id) : ""}</td>
-            <td class="opt-exp-team">${teamBadgeHtml(e.team)}</td>
-            <td class="opt-exp-opp">${escapeHtml(e.opp ?? "")}</td>
+            <td class="opt-exp-name"><span class="player-cell">${playerLineHtml(live, { nameHtml, pill: false, tag: "out" })}</span></td>
+            <td class="opt-exp-opp">${matchupPillHtml(live)}</td>
             <td class="opt-exp-own">${e.own == null ? "" : `${escapeHtml(String(Math.round(e.own)))}%`}</td>
           </tr>`;
           })

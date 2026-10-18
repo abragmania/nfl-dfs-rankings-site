@@ -594,7 +594,7 @@ function renderDynamic() {
     const filtered = filterRows(allRows, filters);
     const sorted = sortRows(filtered, sort.col, sort.dir);
     const hasNoteColumn = allRows.some((r) => r.note);
-    const tg = { twogun: isTwoGunMode(board) }; // TwoGun mode adds Med, Ceil, Ceil/$, Nuke, 3x%, 4x% (table.js TG_COLUMNS)
+    const tg = { twogun: isTwoGunMode(board), pos: filters.pos }; // TwoGun mode adds Med, Ceil, Ceil/$, Nuke, 3x%, 4x% (table.js TG_COLUMNS); a one-position list hides Pos (D80)
     renderTableHead(el.thead, sort, onSortClick, hasNoteColumn, tg);
     renderTableBody(el.tbody, sorted, tableCallbacks, hasNoteColumn, tg);
     const activeGame = filters.gameId ? (board.slate?.games ?? []).find((g) => g.id === filters.gameId) : null;

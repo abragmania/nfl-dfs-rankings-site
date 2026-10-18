@@ -1,5 +1,5 @@
 {
-  "publishedAt": "2026-10-18T21:12:00.500Z",
+  "publishedAt": "2026-10-18T22:46:14.765Z",
   "season": 2026,
   "week": 6,
   "boardGeneratedAt": "2026-10-18T21:11:58.483Z",
@@ -7,7 +7,7 @@
   "showdowns": [
     "2026-w06-DALGB"
   ],
-  "sourceCommit": "eccd9d7e8aabd7b8cf05471b61393d19c5767a34",
+  "sourceCommit": "554e567b1fca25b7f0404fd10737707f5ede22db",
   "appCommit": "eccd9d7e8aabd7b8cf05471b61393d19c5767a34",
   "machine": "desktop",
   "matchups": false
