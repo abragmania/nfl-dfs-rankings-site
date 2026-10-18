@@ -1,11 +1,13 @@
 {
-  "publishedAt": "2026-10-18T18:45:13.103Z",
+  "publishedAt": "2026-10-18T19:13:06.305Z",
   "season": 2026,
   "week": 6,
   "boardGeneratedAt": "2026-10-18T18:45:07.001Z",
   "defaultMode": "twogun",
-  "showdowns": [],
-  "sourceCommit": "1e854064fcaf620013a65c1e14aa20baf3dd480f",
+  "showdowns": [
+    "2026-w06-DALGB"
+  ],
+  "sourceCommit": "eb0f97bed16b4268430ed7e8978382a6320cd87e",
   "appCommit": "1e854064fcaf620013a65c1e14aa20baf3dd480f",
   "machine": "desktop",
   "matchups": false

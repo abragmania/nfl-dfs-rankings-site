@@ -2,8 +2,11 @@
 // panels), fetches and normalizes the showdown board, and renders whichever tab is active. Mounted from
 // app.js, which owns the mode row and the classic-vs-showdown visibility toggle (app.js reads/writes
 // location.hash's "#sd=<key>" itself); this module reacts to whatever key it is told to show.
+// Two tabs (Rankings, Optimizer) plus the Sources view, whose sub-tabs are Projections and Projected Ownership
+// (Adam 2026-10-18, as classic; app.js and public/js/tabs.js supply the same helpers).
 import { getShowdownBoard, postShowdownRefresh, postShowdownProjectionsPaste } from "./api.js";
-import { renderPills, kickoffDateAndClock } from "../header.js";
+import { renderPills, kickoffDateAndClock, paintSourcesLink, wireSourcesLink } from "../header.js";
+import { renderSourcesTabs, isSourcesTab, sourcesTabToOpen } from "../tabs.js";
 import { escapeHtml, dec1 } from "../format.js";
 import { TEAM_BY_ABBR } from "../teams-data.js";
 import { applyGrades } from "../grade.js";
@@ -14,6 +17,7 @@ import { renderShowdownTabs, renderShowdownProjectionsPanel, renderShowdownOwner
 
 const state = {
   activeTab: "rankings",
+  lastSourcesTab: null, // the Sources sub-tab shown last, which the Sources button reopens (Adam 2026-10-18)
   // Default sort is Proj descending, matching the hosted sheet (coordinator fix) — Val stays sortable by
   // clicking its header, same as any other column; a null projection always sorts last (sortRows below).
   sort: { col: "proj", dir: "desc" },
@@ -65,6 +69,8 @@ export const showdownBoardAsOf = () => state.board?.generatedAt ?? null;
 const els = {
   status: document.getElementById("sd-status"),
   tabs: document.getElementById("sd-tabs"),
+  sourcesTabs: document.getElementById("sd-sources-tabs"),
+  sourcesBtn: document.getElementById("sd-sources-btn"),
   band: document.getElementById("sd-band"),
   pillsRow: document.getElementById("sd-pills-row"),
   refreshBtn: document.getElementById("sd-refresh-btn"),
@@ -440,11 +446,16 @@ async function loadBoard(key) {
   }
 }
 
+function onTabClick(tab) {
+  state.activeTab = tab;
+  render();
+}
+
 function render() {
-  renderShowdownTabs(els.tabs, state.activeTab, (tab) => {
-    state.activeTab = tab;
-    render();
-  });
+  if (isSourcesTab(state.activeTab)) state.lastSourcesTab = state.activeTab;
+  renderShowdownTabs(els.tabs, state.activeTab, onTabClick);
+  renderSourcesTabs(els.sourcesTabs, state.activeTab, onTabClick);
+  paintSourcesLink(els.sourcesBtn, isSourcesTab(state.activeTab));
   if (!state.board) {
     renderEmpty();
     return;
@@ -455,7 +466,7 @@ function render() {
   els.ownershipPanel.hidden = state.activeTab !== "ownership";
   els.lineupPanel.hidden = state.activeTab !== "lineup";
 
-  // The gold band and stale/failed source pills show on all four tabs (brief).
+  // The gold band and stale/failed source pills show on both tabs and the Sources view (brief).
   renderBand();
   renderPills(els.pillsRow, { staleIds: state.board.stale ?? [], sources: state.board.sources ?? null, warnings: [], injuryReport: state.board.injuryReport });
 
@@ -483,6 +494,14 @@ function render() {
 
 store.subscribe(() => {
   if (state.board && document.getElementById("showdown-main")?.hidden === false) render();
+});
+
+// The Sources button opens the sub-tab already showing, else the last one shown, else Projections (tabs.js sourcesTabToOpen).
+wireSourcesLink(els.sourcesBtn, {
+  onOpen: () => {
+    state.activeTab = sourcesTabToOpen(state.activeTab, state.lastSourcesTab);
+    render();
+  },
 });
 
 els.refreshBtn?.addEventListener("click", async () => {

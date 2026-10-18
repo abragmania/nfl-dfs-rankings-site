@@ -63,11 +63,12 @@
 
   <!-- Showdown header (D39/D40): hidden while the classic slate is showing; public/js/showdown/view.js
        fills #sd-band with the gold "SHOWDOWN · <away team name> at <home team name> · <kickoff>" band and
-       shows it on all four showdown tabs. -->
+       shows it on both showdown tabs and the Sources view. -->
   <header class="header sd-header" id="showdown-header" hidden>
     <div class="header-top">
       <div id="sd-band" class="sd-band"></div>
       <div class="header-actions">
+        <button id="sd-sources-btn" class="sources-btn" type="button" title="The projection and ownership sources: cards and tables">Sources</button>
         <button id="sd-refresh-btn" class="refresh-btn" type="button">Refresh</button>
       </div>
     </div>
@@ -124,6 +125,8 @@
     <div id="sd-status" class="status"></div>
 
     <nav id="sd-tabs" class="tabs"></nav>
+    <!-- Sources view (Adam 2026-10-18): the Projections and Projected Ownership sub-tabs, shown only while the header's Sources button is on. -->
+    <nav id="sd-sources-tabs" class="sources-tabs" aria-label="Sources" hidden></nav>
 
     <div id="sd-rankings-panel" class="panel sd-rankings-panel">
       <div id="sd-gameline" class="sd-gameline"></div>
@@ -196,7 +199,8 @@
           var scope = window.location.hash.indexOf("#sd=") === 0 ? "#sd-tabs" : "#tabs";
           // "?tab=projections" and "?tab=ownership" are the Sources view's sub-tabs now (#sources-tabs).
           // Only on the classic page (scope "#tabs"): on a showdown the classic row is hidden and must not be clicked while #sd-tabs is not drawn yet.
-          var btn = document.querySelector(scope + ' [data-tab="' + wantTab + '"]') || (scope === "#tabs" ? document.querySelector('#sources-tabs [data-tab="' + wantTab + '"]') : null);
+          // A showdown has its own Sources row (#sd-sources-tabs; Adam 2026-10-18), tried only when scope is "#sd-tabs".
+          var btn = document.querySelector(scope + ' [data-tab="' + wantTab + '"]') || (scope === "#tabs" ? document.querySelector('#sources-tabs [data-tab="' + wantTab + '"]') : null) || (scope === "#sd-tabs" ? document.querySelector('#sd-sources-tabs [data-tab="' + wantTab + '"]') : null);
           if (btn) {
             btn.click();
             tabClicked = true;

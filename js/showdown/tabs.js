@@ -1,6 +1,7 @@
-// Showdown tabs: the same four as classic (Rankings, Projections, Projected Ownership, Lineup Builder).
-// Rankings is rendered by view.js/table.js; Lineup Builder's real implementation lives in lineup.js and
-// is re-exported at the bottom of this file, mirroring how public/js/tabs.js re-exports its own
+// Showdown tabs: Rankings and Optimizer, as classic keeps its own (Adam 2026-10-18). Projections and Projected Ownership are
+// the two sub-tabs of the Sources view the header's Sources button opens (view.js, with public/js/tabs.js SOURCE_TABS).
+// Rankings is rendered by view.js/table.js; the Optimizer's real implementation lives in lineup.js (its key stays "lineup")
+// and is re-exported at the bottom of this file, mirroring how public/js/tabs.js re-exports its own
 // renderLineupPanel from public/js/lineup.js.
 //
 // The Projections tab used to call classic's renderProjectionsPanel unchanged (public/js/tabs.js), but
@@ -17,12 +18,11 @@ import { shownRows } from "./table.js";
 import { showAllToggleHtml, wireShowAllButtons } from "../filterbar.js";
 import { store } from "../state.js";
 
-const TABS = [
-  { key: "rankings", label: "Rankings" },
-  { key: "projections", label: "Projections" },
-  { key: "ownership", label: "Projected Ownership" },
-  { key: "lineup", label: "Lineup Builder" },
-];
+export const SHOWDOWN_TABS = Object.freeze([
+  Object.freeze({ key: "rankings", label: "Rankings" }),
+  Object.freeze({ key: "lineup", label: "Optimizer" }),
+]);
+const TABS = SHOWDOWN_TABS;
 
 export function renderShowdownTabs(container, activeTab, onTabClick) {
   container.innerHTML = TABS.map(
