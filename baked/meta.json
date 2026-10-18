@@ -1,10 +1,10 @@
 {
-  "publishedAt": "2026-10-17T22:37:54.816Z",
+  "publishedAt": "2026-10-18T01:38:07.089Z",
   "season": 2026,
   "week": 6,
-  "boardGeneratedAt": "2026-10-17T22:37:31.873Z",
+  "boardGeneratedAt": "2026-10-18T01:32:12.949Z",
   "showdowns": [],
-  "sourceCommit": "dbe1ee82c8c7db2e562a0fac3deaeb2560f3b95d",
+  "sourceCommit": "8b1d7826329dd2914a468ddf6d23e781ee2a338a",
   "appCommit": "dbe1ee82c8c7db2e562a0fac3deaeb2560f3b95d",
   "machine": "desktop",
   "matchups": false
