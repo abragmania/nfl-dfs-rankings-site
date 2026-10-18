@@ -26,16 +26,21 @@ import { rowsGradedForView } from "./grade.js";
 import { posChipsHtml, showAllToggleHtml, wireShowAllButtons } from "./filterbar.js";
 import { filterLineups, bulkUids, bulkLabel, toggleMustHave, pickButtonHtml, filterBarHtml } from "./lineup-filter.js";
 import { OPT_POSITIONS, optExposureHtml, sortExposure, exposureLimit, minLimit, exposureMark, zeroMinRows } from "./lineup-exposure.js";
-import { cardPlayerRowHtml, cardDecor, badgeHtml, ownParen } from "./lineup-card.js";
+import { cardPlayerRowHtml, cardDecor, badgeHtml, teamLogoHtml, ownParen, teamColours, teamColourStyle } from "./lineup-card.js";
 import { lineupRoles, roleTagsHtml } from "./lineup-marks.js";
+import { paletteForRows } from "./team-palette.js";
 import { poolSearchChipHtml, wirePoolSearchChip } from "./lineup-search.js";
-import { settingRowHtml, settingGroupHtml, switchButtonHtml, switchCheckboxHtml, numberBoxHtml } from "./lineup-settings.js";
+import { settingRowHtml, settingGroupHtml, settingChipsRowHtml, settingSubtitleHtml, activeRulesSummary, switchButtonHtml, switchCheckboxHtml, numberBoxHtml } from "./lineup-settings.js";
 import { newQbState, listedQbs, pruneEntries, cleanSavedEntries, qbStacksPayload, qbListHtml, qbPanelsHtml, wireQbStacks, SPREAD_HINT } from "./lineup-qb-stacks.js";
 import { TEAM_BY_ABBR } from "./teams-data.js";
 import { postLineupGenerate, getLineups, postLineup, putLineup, deleteLineup } from "./api.js";
 import { renderEntriesSection, wireEntries, slateLineups } from "./entries.js";
 import { TAG_OPTIONS, numberLineups, lineupPrefix } from "./lineup-tags.js";
 import { phoneMinHeight, panelMinHeight } from "./expand.js";
+import {
+  defaultCashState, cleanCashState, swapModeStash, modeSwitchHtml, cashChipHtml, convictionChipsHtml, cashHeadLine, buildCashSettings, boardHasMedians,
+  poolReport, wantSwaps, swapDecisionHtml, excludedListHtml, cashTotalsText, unusedCapText, cashBadgeHtml, builtInTextCash, lineupModeOf,
+} from "./lineup-cash.js";
 
 const LINEUP_SLOTS = ["QB", "RB", "RB", "WR", "WR", "WR", "TE", "FLEX", "DST"];
 const SALARY_CAP = 50000;
@@ -166,6 +171,9 @@ function savePersisted() {
         playerMin: opt.playerMin,
         qbStacks: opt.qb.entries,
         spreadDst: opt.spreadDst,
+        mode: opt.mode, // Cash mode job 3b, 2026-10-17: the switch, cash's own settings and Want lists, and the other mode's slots
+        cash: opt.cash,
+        stash: opt.stash,
       })
     );
   } catch (e) {
@@ -175,6 +183,22 @@ function savePersisted() {
 
 let hydrated = false;
 
+// Cash mode job 3b, 2026-10-17: hydrate's slot normalising, also run on the slots a mode switch restores; null when `raw` is no nine-slot list.
+const normalSlots = (raw) =>
+  Array.isArray(raw) && raw.length === LINEUP_SLOTS.length ? raw.map((s, i) => (s && s.id != null ? { id: String(s.id), slot: LINEUP_SLOTS[i] } : null)) : null;
+
+// Cash mode job 3b: the other mode's saved build as storage gives it back (loadedId and saveName live in memory only).
+function cleanStash(raw) {
+  const out = {};
+  for (const mode of ["gpp", "cash"]) {
+    const s = raw?.[mode];
+    if (!s || typeof s !== "object") continue;
+    const ids = (list) => (Array.isArray(list) ? list.map(String) : []);
+    out[mode] = { slots: normalSlots(s.slots) ?? new Array(LINEUP_SLOTS.length).fill(null), locks: ids(s.locks), excludes: ids(s.excludes), loadedId: null, saveName: "" };
+  }
+  return out;
+}
+
 /** Reads localStorage exactly once per page load. Everything it accepts is still subject to
  *  validateAgainstBoard() once a board exists (🔵 finding 1), so a stale slate never survives here. */
 function hydrateFromStorage() {
@@ -182,9 +206,11 @@ function hydrateFromStorage() {
   hydrated = true;
   const persisted = loadPersisted();
   if (!persisted) return;
-  if (Array.isArray(persisted.slots) && persisted.slots.length === LINEUP_SLOTS.length) {
-    state.slots = persisted.slots.map((s, i) => (s && s.id != null ? { id: String(s.id), slot: LINEUP_SLOTS[i] } : null));
-  }
+  const slots = normalSlots(persisted.slots);
+  if (slots) state.slots = slots;
+  opt.mode = persisted.mode === "cash" ? "cash" : "gpp"; // Cash mode job 3b
+  opt.cash = cleanCashState(persisted.cash);
+  opt.stash = cleanStash(persisted.stash);
   if (Array.isArray(persisted.locks)) state.locks = new Set(persisted.locks.map(String));
   if (Array.isArray(persisted.excludes)) state.excludes = new Set(persisted.excludes.map(String));
   opt.playerMax = cleanPlayerMax(persisted.playerMax);
@@ -219,6 +245,7 @@ function seasonWeekKey(board) {
 function validateAgainstBoard(board) {
   if (!board || board === lastValidatedBoard) return;
   lastValidatedBoard = board;
+  opt.cashUndo = null; // Cash 3b fix round 2, 2026-10-17: a snapshot made on another board never comes back past this check
   const savedKey = seasonWeekKey(board);
   if (savedKey !== lastSavedKey) {
     lastSavedKey = savedKey;
@@ -230,10 +257,12 @@ function validateAgainstBoard(board) {
     resetOptimizerResults(); // new lineups belong to the week they were made for
     clearMustHave(); // the players he filtered by belong to that week too
     opt.avoid.clear(); // avoid-game picks are games of that week
+    opt.cash.avoid = []; // Cash mode job 3b: the same for cash's avoided games
   }
   const rowById = new Map((board.rows ?? []).map((r) => [String(r.id), r]));
   for (const id of [...state.locks]) if (!rowById.has(id)) state.locks.delete(id);
   for (const id of [...state.excludes]) if (!rowById.has(id)) state.excludes.delete(id);
+  for (const key of Object.keys(opt.cash.want)) opt.cash.want[key] = opt.cash.want[key].filter((id) => rowById.has(id)); // Cash mode job 3b: Want ids off the board go, as locks do
   for (const map of [...Object.values(opt.playerMax), ...Object.values(opt.playerMin)]) for (const id of Object.keys(map)) if (!rowById.has(id)) delete map[id];
   state.slots = state.slots.map((s, i) => {
     if (!s) return null;
@@ -306,27 +335,33 @@ function redrawEntries() {
 // (snapPanelMaxHeight there). It's duplicated here rather than imported because app.js is the page's
 // entry module — it imports tabs.js, which imports this module, so importing app.js back into lineup.js
 // would make that a circular module dependency. Keep both copies in sync.
-function snapPanelMaxHeight(panelEl, top, reserve) {
+export function snapPanelMaxHeight(panelEl, top, reserve) {
+  // Layout round 2, 2026-10-17: a panel in a hidden tab reads every rect as 0 and would be sized to 0px: leave it alone.
+  if (panelEl.getClientRects().length === 0) return;
+  // Layout round 2, 2026-10-17: the room is measured from the panel's place in the document (docTop), not its place
+  // in the window, so a page scrolled past the panel's top (a negative `top`, 586 px became 1,769 px after Undo at
+  // 1920x947) sizes it exactly as an unscrolled page does; nothing is stored, so nothing goes stale.
+  const docTop = top + window.scrollY;
   // Same phone minimum as app.js's copy (70% of the window's height at max-width 700px, via expand.js).
   const phoneMin = Math.max(phoneMinHeight(), panelMinHeight(panelEl, top)); // the Optimizer pool's floor too (expand.js)
-  const available = Math.max(window.innerHeight - top - reserve, phoneMin);
+  const available = Math.max(window.innerHeight - docTop - reserve, phoneMin);
   const rows = panelEl.querySelectorAll("tbody tr");
   const borderAllowance = panelEl.offsetHeight - panelEl.clientHeight;
   if (rows.length === 0) {
     panelEl.style.maxHeight = phoneMin
-      ? `${Math.max(Math.round(window.innerHeight - top - reserve), phoneMin)}px`
-      : `calc(100vh - ${Math.round(top)}px - ${Math.round(reserve)}px)`;
+      ? `${Math.max(Math.round(window.innerHeight - docTop - reserve), phoneMin)}px`
+      : `calc(100vh - ${Math.round(docTop)}px - ${Math.round(reserve)}px)`;
     return;
   }
   let lastFitBottom = null;
   rows.forEach((row) => {
-    const bottomOffset = row.getBoundingClientRect().bottom - top;
+    const bottomOffset = row.getBoundingClientRect().bottom + window.scrollY - docTop; // the row's bottom below the panel's top
     if (bottomOffset <= available) lastFitBottom = bottomOffset;
   });
   if (lastFitBottom == null) {
     // Not even one body row fits: show through the header only rather than clip a partial row.
     const theadEl = panelEl.querySelector("thead");
-    lastFitBottom = theadEl ? theadEl.getBoundingClientRect().bottom - top : 0;
+    lastFitBottom = theadEl ? theadEl.getBoundingClientRect().bottom + window.scrollY - docTop : 0;
   }
   panelEl.style.maxHeight = `${Math.floor(lastFitBottom + borderAllowance)}px`;
 }
@@ -344,6 +379,8 @@ function resizeLineupScrollPanels(container) {
     let reserve = 16;
     const legend = panelEl.parentElement?.querySelector(".table-legend");
     if (legend) reserve += legend.getBoundingClientRect().height + 8;
+    // The sticky Build footer covers the window bottom, so the pool must end above it (🔵 d842f0b); app.js keeps the same line.
+    reserve += document.querySelector("#lineup-panel .opt-footer")?.getBoundingClientRect().height ?? 0;
     snapPanelMaxHeight(panelEl, top, reserve);
   });
 }
@@ -432,6 +469,33 @@ function addPlayer(row, rowById) {
   state.addError = addWarning(row);
 }
 
+// DECISIONS.md D70: pool Lock = in the base lineup, unlock = out of it. Unlock clears his slot too (a pool-only
+// lock from older saved state has no slot and just loses the lock). Lock places him like Add does (which also
+// adds the lock); already placed (under this id, or the same DraftKings player under another id): lock that
+// placed copy. Excluded or refused: nothing locks, and addPlayer's state.addError sentence shows.
+function unlockPool(id) {
+  state.locks.delete(id);
+  for (let i = 0; i < state.slots.length; i++) {
+    if (state.slots[i] && String(state.slots[i].id) === id) state.slots[i] = null;
+  }
+  state.addError = null;
+}
+
+function lockPool(id) {
+  if (state.excludes.has(id)) return;
+  const rowById = new Map((store.get().board?.rows ?? []).map((r) => [String(r.id), r]));
+  const row = rowById.get(id);
+  if (!row) return;
+  state.addError = null;
+  const identity = dkIdentity(row);
+  const placedSlot = state.slots.find((s) => {
+    const placedRow = s ? rowById.get(String(s.id)) : null;
+    return placedRow && dkIdentity(placedRow) === identity;
+  });
+  if (placedSlot) state.locks.add(String(placedSlot.id));
+  else addPlayer(row, rowById);
+}
+
 /** Places `entries` ({slot, id}, in any order) into a fresh LINEUP_SLOTS-shaped array, each by its own
  *  `slot` name into the next free slot of that name (🔵 finding 7) — not by its position in the input
  *  array, which need not line up with LINEUP_SLOTS' order. An entry whose slot name has no free slot left
@@ -482,7 +546,7 @@ async function doSaveLineup(name, { asNew = false } = {}) {
   try {
     data = editId
       ? await putLineup(editId, { name, slots: slotsPayload, slate })
-      : await postLineup({ name: asNew ? uniqueSavedName(name, savedOfActiveSlate().map((l) => l.name)) : name, slots: slotsPayload, slate, build: handBuild(boardModeOf(store.get().board)) });
+      : await postLineup({ name: asNew ? uniqueSavedName(name, savedOfActiveSlate(null).map((l) => l.name)) : name, slots: slotsPayload, slate, ...(opt.mode === "cash" ? { mode: "cash" } : {}), build: handBuild(boardModeOf(store.get().board)) }); // Cash mode job 3b: names stay unique across both modes; a new lineup carries the mode on screen (Cash 3b fix round: only "cash" is sent, so GPP files keep their old shape)
   } catch (e) {
     failure = `Could not reach the server: ${e.message}`;
   }
@@ -587,6 +651,7 @@ function doLoadLineup(id) {
   state.saveError = null;
   state.saveConfirm = null;
   state.addError = null;
+  opt.cashUndo = null; // Cash 3b fix round 2, 2026-10-17: Undo never replaces a loaded lineup
   commit();
 }
 
@@ -601,6 +666,7 @@ function panelHtml() {
   // it goes through activeSlateRows() like every other classic list.
   const rows = board?.rows ?? [];
   const rowById = new Map(rows.map((r) => [String(r.id), r]));
+  paletteForRows(rowById, activeSlateRows(board)); // Team rows fix, 2026-10-17: the cards' palette is the active slate's teams, fixed here once per render
   const totals = computeTotals(rowById);
   const roles = lineupRoles(state.slots.map((s) => rowById.get(String(s?.id))));
   const overCap = totals.salaryUsed > SALARY_CAP;
@@ -633,7 +699,8 @@ function panelHtml() {
         ${rightColumnHtml(activeSlateRows(board), rowById)}
       </div>
     </div>
-    ${optimizerResultsHtml(rowById)}`;
+    ${optimizerResultsHtml(rowById)}
+    ${optimizerFooterHtml(board)}`;
 }
 
 /** The Save controls (PROJECT.md Part 4 Lineups): Save and Copy when a saved lineup is loaded, else Save lineup. */
@@ -758,10 +825,11 @@ function computeLiveTotals(lineup, rowById) {
   return { slotEntries, filled, salaryUsed, totalProj: shownTotal(projs) ?? 0, totalOwn, ownPublished }; // ChatGPT wish d: the shown sum (totals.js)
 }
 
-/** `pick` ({isChosen(id)}, see pickOptions) turns the player's name into the "only lineups with" button. */
-function savedLineupSlotHtml(slotName, entry, pick = null) {
+/** `pick` ({isChosen(id)}, see pickOptions) turns the player's name into the "only lineups with" button. `palette`: the slate's
+ *  team colours (paletteForRows on the active slate's rows), so a Saved row wears the same colours as the new-lineup card's. */
+export function savedLineupSlotHtml(slotName, entry, pick = null, palette = null) {
   if (!entry) {
-    return `<div class="saved-lineup-slot saved-lineup-slot-empty"><span class="saved-lineup-slot-pos">${escapeHtml(slotName)}</span><span class="saved-lineup-slot-empty-text">Empty</span></div>`;
+    return `<div class="saved-lineup-slot saved-lineup-slot-tc saved-lineup-slot-empty"><span class="saved-lineup-slot-pos">${escapeHtml(slotName)}</span><span class="saved-lineup-slot-empty-text">Empty</span></div>`;
   }
   const src = entry.row ?? entry.snap;
   if (!src) return "";
@@ -770,10 +838,10 @@ function savedLineupSlotHtml(slotName, entry, pick = null) {
   const pickId = entry.row?.id ?? entry.snap?.playerId;
   const nameHtml = pick && pickId != null ? pickButtonHtml({ id: pickId, name: src.name ?? "", chosen: pick.isChosen(pickId) }) : escapeHtml(src.name ?? "");
   return `
-    <div class="saved-lineup-slot${missingCls}">
+    <div class="saved-lineup-slot saved-lineup-slot-tc${missingCls}" style="${teamColourStyle(teamColours(palette, src.team))}">
       <span class="saved-lineup-slot-pos">${escapeHtml(slotName)}</span>
+      ${teamLogoHtml(src.team, "saved-lineup-slot-logo", 16) || `<span class="saved-lineup-slot-team">${escapeHtml(src.team ?? "")}</span>`}
       <span class="saved-lineup-slot-name">${nameHtml}</span>${entry.row ? lineupOutTagHtml(entry.row) : ""}${entry.row ? lineupRevivedTagHtml(entry.row, true) : ""}
-      <span class="saved-lineup-slot-team">${escapeHtml(src.team ?? "")}</span>
       <span class="saved-lineup-slot-salary">${money(src.salary)}</span>
       ${noteHtml}
     </div>`;
@@ -804,7 +872,7 @@ function savedLineupCardHtml(lineup, rowById, pick = null, numbers = null) {
 
   const badges = [
     state.loadedId === lineup.id ? `<span class="saved-lineup-badge saved-lineup-badge-loaded">Loaded</span>` : "",
-    isCash ? `<span class="saved-lineup-badge saved-lineup-badge-cash">Cash</span>` : "",
+    isCash ? cashBadgeHtml() : "", // Cash mode job 3b
     state.lineupErrors[lineup.id] ? `<span class="saved-lineup-badge saved-lineup-badge-danger">${escapeHtml(state.lineupErrors[lineup.id])}</span>` : "",
     incomplete ? `<span class="saved-lineup-badge saved-lineup-badge-warning">Incomplete</span>` : "",
     overCap ? `<span class="saved-lineup-badge saved-lineup-badge-danger">Over cap</span>` : "",
@@ -823,7 +891,8 @@ function savedLineupCardHtml(lineup, rowById, pick = null, numbers = null) {
       </span>`
     : `<button type="button" class="saved-lineup-name-btn" data-action="lineup-rename-start" data-id="${escapeHtml(lineup.id)}" title="Click to rename">${escapeHtml(lineup.name)}</button>`;
 
-  const rowsHtml = totals.slotEntries.map((entry, i) => savedLineupSlotHtml(LINEUP_SLOTS[i], entry, pick)).join("");
+  const palette = paletteForRows(rowById); // Team rows round 2, Adam 2026-10-17: the Saved rows wear the new-lineup rows' colours
+  const rowsHtml = totals.slotEntries.map((entry, i) => savedLineupSlotHtml(LINEUP_SLOTS[i], entry, pick, palette)).join("");
 
   const salaryLeft = SALARY_CAP - totals.salaryUsed;
   const salaryText = overCap
@@ -878,7 +947,8 @@ export function savedGroupsHtml(lineups, cardHtml) {
 }
 
 /** The Saved lineups tab (D74): this slate's saved cards (Load, rename, Delete as before; on the site the D69
- *  device- ids work the same way), then the exposure tables over those saved lineups only. */
+ *  device- ids work the same way). Order: the exposure tables over the shown saved lineups, then this slate's saved cards
+ *  (Adam 2026-10-17: exposure above the cards). */
 function savedLineupsSectionHtml(rowById, savedHere) {
   let body;
   let exposureHtml = "";
@@ -893,7 +963,7 @@ function savedLineupsSectionHtml(rowById, savedHere) {
     // lineups yet" — that would read as "you have none" when the real answer is "couldn't check".
     body = `<div class="saved-lineups-empty saved-lineups-error">${escapeHtml(state.savedError)}</div>`;
   } else if (savedHere.length === 0) {
-    body = `<div class="saved-lineups-empty">No saved lineups for this slate yet.</div>`;
+    body = `<div class="saved-lineups-empty">No saved ${opt.mode === "cash" ? "cash " : ""}lineups for this slate yet.</div>`;
   } else {
     // Adam 2026-10-11: only the saved lineups holding every chosen player show, and the exposure counts those only.
     const pick = pickOptions(rowById);
@@ -912,12 +982,22 @@ function savedLineupsSectionHtml(rowById, savedHere) {
       exposureHtml = optExposureHtml(lastExposure.exposure, lastExposure.subtitle, opt.expSortDir, pick);
     }
   }
+  // Adam 2026-10-17: the exposure tables above the cards, so they are high on the screen
   return `
     <div class="saved-lineups" id="saved-lineups">
       ${mustHaveBarHtml(shownCount, savedHere.length)}
-      ${body}
       ${exposureHtml}
+      ${body}
+      ${state.savedLoaded && !state.savedError ? otherModeSavedHtml() : ""}
     </div>`;
+}
+
+/** Cash mode job 3b, 2026-10-17: the quiet line for this slate's saved lineups of the mode not on screen. */
+function otherModeSavedHtml() {
+  const other = opt.mode === "cash" ? "gpp" : "cash";
+  const n = savedOfActiveSlate(other).length;
+  const word = other === "cash" ? "Cash" : "GPP";
+  return n ? `<div class="saved-lineups-other">${n} ${word} lineup${n === 1 ? "" : "s"} saved; switch to ${word} to see ${n === 1 ? "it" : "them"}</div>` : "";
 }
 
 const NO_MATCH_TEXT = "No lineups here have all of the chosen players.";
@@ -994,8 +1074,10 @@ export function rightColumnHtml(rows, rowById) {
   // a player already locked or excluded stays listed so his lock or exclude can still be undone here.
   // D33: Value colours as on Rankings, FLEX included.
   const graded = rowsGradedForView(rows, filters.pos, store.get().board?.rows ?? rows);
+  const cash = opt.mode === "cash"; // Cash mode job 3b, 2026-10-17: one Cash column of Must | Want | Fine in place of Min % and Max %
+  const wantSet = new Set(cash ? wantIdsFor(slateKeyOf(store.get().board)) : []);
   const filtered = filterRows(graded, { ...filters, showAllPlayers: true }).filter(
-    (row) => passesProjFloor(row, filters) || state.locks.has(String(row.id)) || state.excludes.has(String(row.id))
+    (row) => passesProjFloor(row, filters) || state.locks.has(String(row.id)) || state.excludes.has(String(row.id)) || wantSet.has(String(row.id))
   );
   const sorted = sortRows(filtered, sort.col, sort.dir);
   const placed = placedIdentities(rowById);
@@ -1014,13 +1096,14 @@ export function rightColumnHtml(rows, rowById) {
   const inner = (cols) => sortableHeadHtml(cols, sort).replace(/^<tr>|<\/tr>$/g, "");
   const maxHead = `<th class="lineup-max-head" title="Most of the new lineups this player may be in; blank = no cap">Max %</th>`;
   const minHead = `<th class="lineup-min-head" title="Fewest of the new lineups this player must be in; blank = none">Min %</th>`;
-  const headHtml = `<tr>${inner(headBefore)}${minHead}${maxHead}<th></th></tr>`;
+  const cashHead = `<th class="lineup-cash-head" title="Must puts a player in every lineup; Want puts him on your list, and each lineup shows whether he made it; Fine leaves him to the numbers">Cash</th>`;
+  const headHtml = `<tr>${inner(headBefore)}${cash ? cashHead : minHead + maxHead}<th></th></tr>`;
   const slateKey = slateKeyOf(store.get().board);
   const maxMap = playerMaxFor(slateKey);
   const minMap = playerMinFor(slateKey);
   const showPos = filters.pos === "All" || filters.pos === "FLEX";
-  const bodyRows = sorted.map((row) => rightRowHtml(row, placed, showPos, maxMap, minMap)).join("");
-  const emptyRow = sorted.length === 0 && filters.starredOnly ? poolEmptyRowHtml(graded, filters.pos, headBefore.length + 3) : "";
+  const bodyRows = sorted.map((row) => rightRowHtml(row, placed, showPos, maxMap, minMap, cash ? wantSet : null)).join("");
+  const emptyRow = sorted.length === 0 && filters.starredOnly ? poolEmptyRowHtml(graded, filters.pos, headBefore.length + (cash ? 2 : 3)) : "";
   return `
     <div class="lineup-rows-wrap scroll-panel">
       <table class="lineup-rows-table lineup-pool-table">
@@ -1036,19 +1119,18 @@ function num1(n) {
   return Number.isFinite(n) ? String(Math.round(n * 10) / 10) : null;
 }
 
-/** The pool row's matchup pill text: "vs CHI · 25 / 51 · +1" (opponent, team total / game total, the team's own spread). Each part is left out when its data is missing; "" when all are. */
+/** The pool row's matchup pill text: "vs CHI · 26.5tm / 52tot / +1" (opponent, then team total, game total and the team's own spread, joined by " / "). Each part is left out when its data is missing; "" when all are. */
 function matchupPillText(row) {
-  const parts = [];
   const opp = matchupText(row);
-  if (opp) parts.push(opp);
   const team = num1(row.impliedTotal);
   const game = num1(row.total);
-  if (team !== null && game !== null) parts.push(`${team} / ${game}`);
-  if (Number.isFinite(row.spread)) parts.push(row.spread < 0 ? num1(row.spread) : row.spread > 0 ? `+${num1(row.spread)}` : "PK");
-  return parts.join(" · ");
+  const nums = []; // Adam 2026-10-17: the pill reads tm / tot
+  if (team !== null && game !== null) nums.push(`${team}tm / ${game}tot`);
+  if (Number.isFinite(row.spread)) nums.push(row.spread < 0 ? num1(row.spread) : row.spread > 0 ? `+${num1(row.spread)}` : "pk");
+  return [opp, nums.join(" / ")].filter(Boolean).join(" · ");
 }
 
-function rightRowHtml(row, placedSet, showPos, maxMap = {}, minMap = {}) {
+function rightRowHtml(row, placedSet, showPos, maxMap = {}, minMap = {}, cashWant = null) { // cashWant: a Set of Want ids in cash mode, else null
   const id = String(row.id);
   const maxText = maxMap[id] ?? "";
   const maxBad = Number.isNaN(parsePct(maxText));
@@ -1083,10 +1165,12 @@ function rightRowHtml(row, placedSet, showPos, maxMap = {}, minMap = {}) {
       <td>${row.proj == null ? "no proj" : dec1(row.proj)}</td>
       <td>${row.own == null ? "—" : `${dec1(row.own)}%`}</td>
       <td>${gradedCellHtml(row.value, row.valueGrade)}</td>
-      <td class="lineup-min-cell"><input type="text" inputmode="decimal" maxlength="5" class="opt-input lineup-min-input${minBad ? " invalid" : ""}" data-player-min="${escapeHtml(id)}" value="${escapeHtml(minText)}" aria-label="Min % for ${escapeHtml(row.name ?? "")}" /></td>
-      <td class="lineup-max-cell"><input type="text" inputmode="decimal" maxlength="5" class="opt-input lineup-max-input${maxBad ? " invalid" : ""}" data-player-max="${escapeHtml(id)}" value="${escapeHtml(maxText)}" aria-label="Max % for ${escapeHtml(row.name ?? "")}" /></td>
+      ${cashWant
+        ? `<td class="lineup-cash-cell">${convictionChipsHtml(row, { locked, wanted: cashWant.has(id), excluded })}</td>`
+        : `<td class="lineup-min-cell"><input type="text" inputmode="decimal" maxlength="5" class="opt-input lineup-min-input${minBad ? " invalid" : ""}" data-player-min="${escapeHtml(id)}" value="${escapeHtml(minText)}" aria-label="Min % for ${escapeHtml(row.name ?? "")}" /></td>
+      <td class="lineup-max-cell"><input type="text" inputmode="decimal" maxlength="5" class="opt-input lineup-max-input${maxBad ? " invalid" : ""}" data-player-max="${escapeHtml(id)}" value="${escapeHtml(maxText)}" aria-label="Max % for ${escapeHtml(row.name ?? "")}" /></td>`}
       <td class="lineup-row-actions">
-        <button type="button" class="lineup-row-btn${locked ? " active" : ""}" data-action="row-lock" data-id="${escapeHtml(id)}"${excluded ? " disabled" : ""}>${locked ? "Locked" : "Lock"}</button>
+        ${cashWant ? "" : `<button type="button" class="lineup-row-btn${locked ? " active" : ""}" data-action="row-lock" data-id="${escapeHtml(id)}"${excluded ? " disabled" : ""}>${locked ? "Locked" : "Lock"}</button>`}
         <button type="button" class="lineup-row-btn${excluded ? " active danger" : ""}" data-action="row-exclude" data-id="${escapeHtml(id)}">${excluded ? "Excluded" : "Exclude"}</button>
         <button type="button" class="lineup-row-btn" data-action="row-add" data-id="${escapeHtml(id)}"${excluded || placed ? " disabled" : ""}>Add</button>
       </td>
@@ -1103,6 +1187,10 @@ function wire(container) {
     state.locks = new Set();
     state.excludes = new Set();
     state.addError = null;
+    if (opt.mode === "cash") {
+      delete opt.cash.want[slateKeyOf(store.get().board)]; // Cash mode job 3b: Clear all in cash clears cash's slots, Must, Want and excludes only (Cash 3b fix round: the Wants of the slate on screen only)
+      opt.cashUndo = null;
+    }
     clearLoaded();
     commit();
   });
@@ -1115,6 +1203,7 @@ function wire(container) {
       state.locks.delete(p.id);
       state.slots[i] = null;
       state.addError = null;
+      opt.cashUndo = null; // Cash 3b fix round 2, 2026-10-17: a cleared slot is never silently refilled by Undo
       commit();
     });
   });
@@ -1122,30 +1211,15 @@ function wire(container) {
   container.querySelectorAll("[data-action='row-lock']").forEach((btn) => {
     btn.addEventListener("click", () => {
       const id = btn.dataset.id;
-      // DECISIONS.md D70: pool Lock = in the base lineup, unlock = out of it. Unlock clears his slot too (a pool-only
-      // lock from older saved state has no slot and just loses the lock). Lock places him like Add does (which also
-      // adds the lock); already placed (under this id, or the same DraftKings player under another id): lock that
-      // placed copy. Excluded or refused: nothing locks, and addPlayer's state.addError sentence shows.
-      if (state.locks.has(id)) {
-        state.locks.delete(id);
-        for (let i = 0; i < state.slots.length; i++) {
-          if (state.slots[i] && String(state.slots[i].id) === id) state.slots[i] = null;
-        }
-        state.addError = null;
-      } else if (!state.excludes.has(id)) {
-        const rowById = new Map((store.get().board?.rows ?? []).map((r) => [String(r.id), r]));
-        const row = rowById.get(id);
-        if (row) {
-          state.addError = null;
-          const identity = dkIdentity(row);
-          const placedSlot = state.slots.find((s) => {
-            const placedRow = s ? rowById.get(String(s.id)) : null;
-            return placedRow && dkIdentity(placedRow) === identity;
-          });
-          if (placedSlot) state.locks.add(String(placedSlot.id));
-          else addPlayer(row, rowById);
-        }
-      }
+      if (state.locks.has(id)) unlockPool(id);
+      else lockPool(id);
+      commit();
+    });
+  });
+  // Cash mode job 3b, 2026-10-17: a Must | Want | Fine click on the pool row.
+  container.querySelectorAll("[data-cash-pick]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      cashPick(btn.dataset.id, btn.dataset.cashPick);
       commit();
     });
   });
@@ -1179,6 +1253,7 @@ function wire(container) {
   container.querySelectorAll("[data-action='row-exclude']").forEach((btn) => {
     btn.addEventListener("click", () => {
       const id = btn.dataset.id;
+      opt.cashUndo = null; // Cash 3b fix round, 2026-10-17: an exclude after Make them Must is never silently undone by Undo
       if (state.excludes.has(id)) {
         state.excludes.delete(id);
       } else {
@@ -1198,6 +1273,7 @@ function wire(container) {
       const rowById = new Map(rows.map((r) => [String(r.id), r]));
       const row = rowById.get(btn.dataset.id);
       if (!row) return;
+      opt.cashUndo = null; // Cash 3b fix round, 2026-10-17: as for an exclude
       addPlayer(row, rowById);
       commit();
     });
@@ -1293,9 +1369,14 @@ export const OPT_RULES = [
   { key: "noDstVsOwnPlayers", label: "no DST vs own players" },
 ];
 
-export const RULES_ROSTER = ["starredQbOnly", "noSameTeamRbs", "noSameGameRbs", "noDstVsOwnPlayers"];
+// 🔵 2026-10-17: the rule keys named once; each OPT_RULES key sits in exactly one group (Pool or Build) of the panel.
+export const RULE_GROUPS = Object.freeze({ pool: ["starredQbOnly"], build: ["noSameTeamRbs", "noSameGameRbs", "noDstVsOwnPlayers"] });
 
 const opt = {
+  mode: "gpp", // Cash mode job 3b, 2026-10-17: "gpp" | "cash"; the slots, locks and excludes in `state` belong to this mode
+  cash: defaultCashState(), // cash's own settings and Want lists (lineup-cash.js)
+  stash: {}, // the other mode's slots, locks, excludes (swapModeStash)
+  cashUndo: null, // {slots, locks, after, names}: the build before the last "Make them Must and rebuild" and the one it left (after); page-only
   count: String(OPT_DEFAULT_COUNT),
   minUnique: String(OPT_DEFAULT_UNIQUE),
   maxExp: { QB: "", RB: "", WR: "", TE: "", DST: "" }, // percent text as typed; blank = no cap
@@ -1346,6 +1427,176 @@ function pruneQbStacks(board) {
 
 function qbStacksForRequest(board, notes) {
   return qbStacksPayload(opt.qb.entries, boardRowMap(board), listedQbIds(activeSlateRows(board)), notes, lockedIds(state.slots, state.locks));
+}
+
+// ---- Cash mode job 3b, 2026-10-17 (PROJECT.md Part 4 "Cash mode"; the pure pieces are in lineup-cash.js) ----
+
+const wantIdsFor = (slateKey) => opt.cash.want[slateKey] ?? [];
+
+function setWant(slateKey, id, on) {
+  const rest = wantIdsFor(slateKey).filter((w) => w !== id);
+  opt.cash.want = { ...opt.cash.want, [slateKey]: on ? [...rest, id] : rest };
+}
+
+/** Must is the lock (D70), Want is membership of the cash pool for the slate on screen, Fine is neither (it takes a placed
+ *  player out of his slot as unlocking does). Must keeps a Want listing; Want and Fine on a Must player unlock him first. */
+function cashPick(id, pick) {
+  opt.cashUndo = null; // Cash 3b fix round, 2026-10-17: a pick after Make them Must is never silently undone by Undo
+  const slateKey = slateKeyOf(store.get().board);
+  if (pick === "must") {
+    if (!state.locks.has(id)) lockPool(id);
+    return;
+  }
+  const wasMust = state.locks.has(id);
+  if (wasMust) unlockPool(id);
+  // Want: a Must or Fine player becomes Want only, a Want player goes back to Fine. Fine: off the list.
+  setWant(slateKey, id, pick === "want" && (wasMust || !wantIdsFor(slateKey).includes(id)));
+}
+
+/** The mode switch: the build on screen goes under its mode and the other mode's comes back, through hydrate's slot
+ *  normalising and the board check (🔵 on 3a). */
+function setMode(next) {
+  if ((next !== "gpp" && next !== "cash") || next === opt.mode) return;
+  const swapped = swapModeStash({ slots: state.slots, locks: [...state.locks], excludes: [...state.excludes], loadedId: state.loadedId, saveName: state.saveName, stash: opt.stash }, opt.mode, next);
+  state.slots = normalSlots(swapped.slots) ?? new Array(LINEUP_SLOTS.length).fill(null);
+  state.locks = new Set(swapped.locks.map(String));
+  state.excludes = new Set(swapped.excludes.map(String));
+  state.loadedId = swapped.loadedId;
+  state.saveName = swapped.saveName;
+  opt.stash = swapped.stash;
+  opt.mode = next;
+  opt.cashUndo = null;
+  opt.formError = null;
+  state.addError = null;
+  lastValidatedBoard = null; // validateAgainstBoard runs again on the restored build
+  validateAgainstBoard(store.get().board);
+  commit();
+}
+
+/** What a cash build is made by: {basis "median" | "proj" | null, blocked, text}. TwoGun mode builds by TwoGun's median, else
+ *  by projection; TwoGun mode on a board with no medians cannot build (CQ5). The server picks the same basis. */
+function cashBasisInfo(board) {
+  if (!isTwoGunMode(board)) return { basis: "proj", blocked: false, text: "Projection" };
+  if (!boardHasMedians(activeSlateRows(board))) return { basis: null, blocked: true, text: "TwoGun mode is on but this board has no medians; switch to current mode to build by projection" };
+  const when = board?.mode?.twogun?.boardUpdated;
+  return { basis: "median", blocked: false, text: `TwoGun's median${when ? ` (board updated ${when})` : ""}` };
+}
+
+/** The Wants of the slate on screen that are not Must, as board rows. */
+function wantRowsFor(slateKey, rowById) {
+  return wantIdsFor(slateKey).filter((id) => !state.locks.has(id)).map((id) => rowById.get(id)).filter(Boolean);
+}
+
+/** The footer sentence in cash: "2 cash lineups by TwoGun's median · 1 Must · 2 Want · max 3 per team" (no minimum-unique clause: Adam 2026-10-17). */
+function cashSummaryText(board) {
+  const s = buildCashSettings(opt.cash);
+  const info = cashBasisInfo(board);
+  const rowById = currentRowById();
+  const by = info.blocked ? "no basis (no TwoGun medians)" : info.basis === "median" ? "TwoGun's median" : "projection";
+  const parts = [`${s.count} cash lineup${s.count === 1 ? "" : "s"} by ${by}`, `${lockedNames(rowById).length} Must`, `${wantRowsFor(slateKeyOf(board), rowById).length} Want`];
+  if (s.maxPerTeam !== null) parts.push(`max ${s.maxPerTeam} per team`);
+  return parts.join(" · ");
+}
+
+/** The Wants a cash batch is judged on: the slate's Want list without the players locked when it was built (a Must is in every lineup). */
+const cashWantIds = (results) => wantIdsFor(results.slateKey ?? "main").filter((id) => !(results.cash?.lockedIds ?? []).includes(id));
+
+// Cash 3b fix round, 2026-10-17: the swap search costs about 0.9 s per hard Want over 150 cards, so each card's decisions are kept
+// per batch (a WeakMap on the results object: a new batch starts clean) and searched again only when the Want list or the board changes.
+const swapCache = new WeakMap();
+export const swapScanHook = { onScan: null }; // tests only (tests/cash-wiring.test.mjs): counts the searches through wantSwaps' onScan
+
+/** wantSwaps for one cash card, under the limits the batch was built with (results.cash). */
+function cardSwapDecisions(lineup, results) {
+  const board = store.get().board;
+  const wantIds = cashWantIds(results);
+  const key = [...wantIds].sort().join("|");
+  if (!swapCache.has(results)) swapCache.set(results, new Map());
+  const perCard = swapCache.get(results);
+  const hit = perCard.get(lineup.uid);
+  if (hit && hit.key === key && hit.board === board) return hit.decisions;
+  const c = results.cash ?? {};
+  const decisions = wantSwaps(lineup, wantIds, activeSlateRows(board), {
+    basis: results.basis ?? "proj", cap: SALARY_CAP, excludedIds: c.excludedIds ?? [], lockedIds: c.lockedIds ?? [], maxPerTeam: c.maxPerTeam ?? null, avoidGames: c.avoidGames ?? [], onScan: swapScanHook.onScan,
+  });
+  perCard.set(lineup.uid, { key, board, decisions });
+  return decisions;
+}
+
+/** A cash card's pool strip: the Wants left out and the cheapest swap for each (excludedListHtml, swapDecisionHtml), and the ids of the Wants that are in.
+ *  Cash 3b fix round, 2026-10-17: the swap button is drawn only in cash mode, and disabled while `busy`. */
+function cashStrip(lineup, results, rowById, busy = false) {
+  const wantIds = cashWantIds(results);
+  if (!wantIds.length) return { html: "", wantIn: new Set() };
+  const report = poolReport(lineup, wantIds, rowById);
+  const decisions = cardSwapDecisions(lineup, results);
+  const look = { button: opt.mode === "cash", disabled: busy };
+  return { html: `<div class="cash-strip">${excludedListHtml(report)}${decisions.map((d, i) => swapDecisionHtml(d, i, look)).join("")}</div>`, wantIn: new Set(report.inLineup.map((r) => String(r.id))) };
+}
+
+// Cash 3b fix round, 2026-10-17: Make them Must and Undo act only in cash mode and never while a build or a save runs.
+const cashSwapIdle = () => opt.mode === "cash" && !opt.generating && !opt.saving;
+
+// Cash 3b fix round 2, 2026-10-17: the slots and locks as a copy, and whether the builder still holds a copy exactly.
+const buildSnapshot = () => ({ slots: state.slots.map((s) => (s ? { ...s } : null)), locks: [...state.locks] });
+const sameBuild = (b) => b.slots.length === state.slots.length && b.slots.every((s, i) => (s?.id ?? null) === (state.slots[i]?.id ?? null))
+  && b.locks.length === state.locks.size && b.locks.every((id) => state.locks.has(id));
+
+/** "Make them Must and rebuild": locks the Want(s) of one swap decision (never the partner), builds again, and offers Undo only
+ *  when that build put a new batch in place (Cash 3b fix round 2, 2026-10-17); a build that did not run puts the locks and slots
+ *  back, so the old batch stays with the form's or the server's sentence as the only message. */
+async function cashMakeMust(uid, index) {
+  if (!cashSwapIdle()) return;
+  const board = store.get().board;
+  if (cashBasisInfo(board).blocked) return;
+  const r = opt.results;
+  const lineup = r?.lineups.find((l) => l.uid === uid);
+  if (!lineup || r.mode !== "cash") return;
+  const d = cardSwapDecisions(lineup, r)[index];
+  if (!d || d.kind === "none") return;
+  const wants = new Set(cashWantIds(r));
+  const picked = d.in.filter((x) => wants.has(String(x.id)));
+  const before = buildSnapshot();
+  opt.cashUndo = null;
+  for (const x of picked) {
+    const id = String(x.id);
+    lockPool(id);
+    // No open slot for him: a pool-only lock still counts as Must, since the server assigns slots itself; the Must chip instead
+    // refuses with no open slot (D70). The two paths differ on purpose (Cash 3b fix round, 2026-10-17).
+    if (!state.locks.has(id) && state.addError) {
+      state.locks.add(id);
+      state.addError = null;
+    }
+  }
+  const after = buildSnapshot();
+  const built = await doGenerate();
+  // A later edit during the build wins: nothing is put back over it and no Undo is offered for it. Layout round 2, 2026-10-17:
+  // a new board (a star in the pool) gates only the Undo offer, so a refused build still puts the locks back; the restore
+  // also clears lockPool's "added anyway" note for a player no longer in a slot.
+  if (!sameBuild(after)) return;
+  if (!built) {
+    state.slots = before.slots;
+    state.locks = new Set(before.locks);
+    state.addError = null;
+  } else if (store.get().board === board) opt.cashUndo = { ...before, after, names: picked.map((x) => x.name) };
+  commit();
+}
+
+/** Puts back the build before the last Make them Must and builds again; refused (the snapshot dropped, no rebuild) unless the
+ *  slots and locks are still exactly what Make them Must left (Cash 3b fix round 2, 2026-10-17). */
+function cashUndo() {
+  if (!cashSwapIdle()) return;
+  const u = opt.cashUndo;
+  if (!u) return;
+  opt.cashUndo = null;
+  if (!sameBuild(u.after)) {
+    commit();
+    return;
+  }
+  state.slots = u.slots;
+  state.locks = new Set(u.locks);
+  state.addError = null;
+  doGenerate();
 }
 
 // ---- Pure helpers (exported for tests/optimizer-ui.test.mjs) ----
@@ -1435,22 +1686,24 @@ export function newPlayerIds(lineups, rowById) {
 
 /** The saved lineups of the slate on screen: those saved with its key; one saved with no slate counts on the main
  *  slate always and on a second slate when every player is in its games. This is the server's existingForSlate rule
- *  (server/lineup/generate-request.js), repeated because the browser app cannot import server files. */
-export function savedForSlate(saved, slateKey, slateIds) {
+ *  (server/lineup/generate-request.js), repeated because the browser app cannot import server files. With a `mode` (cash
+ *  mode job 3b, 2026-10-17) only lineups of that mode count, a missing mode reading as GPP, as the server's mode filter does. */
+export function savedForSlate(saved, slateKey, slateIds, mode = null) {
   const key = slateKey || "main";
   return (Array.isArray(saved) ? saved : [])
     .filter((l) => Array.isArray(l?.slots) && l.slots.length > 0)
+    .filter((l) => mode === null || lineupModeOf(l) === mode)
     .filter((l) => (typeof l.slate === "string" && l.slate !== "" ? l.slate === key : key === "main" || l.slots.every((s) => slateIds.has(String(s.playerId)))));
 }
 
 /** A saved name that is unique on this slate: `wanted` when no name in `taken` equals it, else the lowest free
  *  "Lineup N" (N from 1). Names compare exactly, as the server's own "Lineup N" numbering does. */
-export function uniqueSavedName(wanted, taken) {
+export function uniqueSavedName(wanted, taken, stem = "Lineup") {
   const used = new Set((taken ?? []).map(String));
   if (!used.has(wanted)) return wanted;
   let n = 1;
-  while (used.has(`Lineup ${n}`)) n++;
-  return `Lineup ${n}`;
+  while (used.has(`${stem} ${n}`)) n++;
+  return `${stem} ${n}`;
 }
 
 /** The board mode a lineup is built in, for its saved build record: "twogun" or "current", null where the board has no mode switch. */
@@ -1817,10 +2070,16 @@ export function avoidChipsHtml(games, avoid) {
  *  its nine players equal a saved lineup's, so Save shows a disabled "Saved ✓" (Adam 2026-10-11). `fresh`: the
  *  ids of players not in the card before, highlighted. `pick` ({isChosen(id)}): each name is the "only lineups
  *  with" button (Adam 2026-10-11). */
-export function optLineupCardHtml(lineup, index, busy, { saved = false, fresh = null, pick = null, rowById = null } = {}) {
+export function optLineupCardHtml(lineup, index, busy, { saved = false, fresh = null, pick = null, rowById = null, cash = null } = {}) {
   const totals = lineupTotalsOf(lineup);
   const overCap = totals.salary > SALARY_CAP;
-  const decor = cardDecor(lineup, rowById);
+  const decor = cardDecor(lineup, rowById, paletteForRows(rowById)); // Team rows, Adam 2026-10-17: one palette per render (cached on rowById)
+  // Cash mode job 3b, 2026-10-17: `cash` = {basis, strip: {html, wantIn}} on a card built in cash: "Cash N", the cash totals, the unused-cap chip, a WANT tag on the Wants that made it and the pool strip.
+  if (cash) {
+    // 👁 fix round, 2026-10-17: stacking is no cash goal (PROJECT.md Part 4, Cash mode), so a cash card draws no QB-stack chip and no STACK / RUNBACK / MINI / PAIR tags; WANT and the OUT tags stay.
+    decor.stack = "";
+    decor.rolesFor = (p) => (cash.strip.wantIn.has(String(p.id)) ? `<span class="role-tag role-want" title="On your Want list">WANT</span>` : "");
+  }
   const rows = (lineup.players ?? []).map((p, i) => cardPlayerRowHtml(p, LINEUP_SLOTS[i] ?? p.pos ?? "", Boolean(fresh?.has(String(p.id))), pick, decor)).join("");
   const ownText = totals.own == null ? "" : ` &middot; ${Math.round(totals.own)}% own`;
   // TwoGun mode: the lineup's total of TwoGun's ceilings, as the server summed it (absent in current mode; a dash
@@ -1834,14 +2093,16 @@ export function optLineupCardHtml(lineup, index, busy, { saved = false, fresh = 
   return `
     <div class="opt-card${saved ? " opt-card-saved" : ""}" data-uid="${uid}">
       <div class="opt-card-head">
-        <span class="opt-card-title">Lineup ${index + 1}</span>${decor.stack}
+        <span class="opt-card-title">${cash ? "Cash" : "Lineup"} ${index + 1}</span>${decor.stack}
         <span class="opt-card-actions">
           ${saveBtn}
           <button type="button" class="saved-lineup-btn danger" data-action="opt-discard" data-uid="${uid}"${busy ? " disabled" : ""}>Discard</button>
         </span>
       </div>
       <div class="opt-card-players">${rows}</div>
-      <div class="opt-card-totals"><span class="${overCap ? "saved-lineup-totals-over" : ""}">${money(totals.salary)}</span> &middot; ${dec1(totals.proj) ?? "—"} proj${ceilText}${ownText}</div>
+      ${cash
+        ? `<div class="opt-card-totals"><span class="${overCap ? "saved-lineup-totals-over" : ""}">${escapeHtml(cashTotalsText(lineup, cash.basis))}</span>${unusedCapText(totals.salary) ? ` <span class="cash-unused-chip" title="Salary left under the $50,000 cap">${escapeHtml(unusedCapText(totals.salary))}</span>` : ""}</div>${cash.strip.html}`
+        : `<div class="opt-card-totals"><span class="${overCap ? "saved-lineup-totals-over" : ""}">${money(totals.salary)}</span> &middot; ${dec1(totals.proj) ?? "—"} proj${ceilText}${ownText}</div>`}
     </div>`;
 }
 
@@ -1881,70 +2142,148 @@ function lockedNames(rowById) {
     .filter(Boolean);
 }
 
+/** The pool the starred-QB count is taken over (ChatGPT wish k): excluded, avoided and ceiling-less QBs fall out. */
+function starredQbPool(board) {
+  return { excludes: state.excludes, avoid: new Set([...opt.avoid].map((g) => String(g).toUpperCase())), objective: effectiveObjective(opt.objective, boardHasCeilings(activeSlateRows(board))) };
+}
+
+/** ChatGPT wish i, Adam 2026-10-17: the footer's one-line summary of the settings in effect, from the same `opt` the
+ *  controls edit; count and unique as the request parses them, the objective as the build will use it. */
+function optSummaryText(board) {
+  if (opt.mode === "cash") return cashSummaryText(board); // Cash mode job 3b
+  const rows = activeSlateRows(board);
+  const lockedQb = lockedNames(currentRowById()).some((r) => upperOf(r.pos) === "QB");
+  const qualifiers = opt.rules.starredQbOnly !== false ? starredQbQualifiers(rows, starredQbPool(board)) : null;
+  const qbOwnCount = Object.keys(qbStacksPayload(opt.qb.entries, boardRowMap(board), listedQbIds(rows), null, lockedIds(state.slots, state.locks))).length;
+  // 🔵 2026-10-17: the percents parsed by parsePct as buildGenerateSettings does (a blank or invalid box is null), and the
+  // players with a Max % or Min % box counted from the request's own maps, for the players still in this slate's pool.
+  const maxExp = Object.fromEntries(OPT_POSITIONS.map((pos) => { const p = parsePct(opt.maxExp[pos]); return [pos, Number.isNaN(p) ? null : p]; }));
+  const slateKey = slateKeyOf(board);
+  const poolIds = new Set(rows.map((r) => String(r.id)));
+  const inPool = (map) => Object.fromEntries(Object.entries(map).filter(([id]) => poolIds.has(id)));
+  const caps = buildGenerateSettings({ playerMax: inPool(playerMaxFor(slateKey)), playerMin: inPool(playerMinFor(slateKey)) });
+  const playerCapCount = new Set([...Object.keys(caps.playerMaxExposure ?? {}), ...Object.keys(caps.playerMinExposure ?? {})]).size;
+  const shown = { ...opt, maxExp, count: requestCount(opt.count), minUnique: parseWhole(opt.minUnique, 1, OPT_MAX_UNIQUE, OPT_DEFAULT_UNIQUE), objective: effectiveObjective(opt.objective, boardHasCeilings(rows)) };
+  return activeRulesSummary(shown, { games: activeSlateGames(board), starredQbCount: qualifiers === 0 && lockedQb ? null : qualifiers, qbOwnCount, playerCapCount });
+}
+
 function optimizerControlsHtml(rowById) {
+  if (opt.mode === "cash") return cashControlsHtml(rowById); // Cash mode job 3b
   const board = store.get().board;
   const locked = lockedNames(rowById);
   const games = activeSlateGames(board);
   const info = locked.length
     ? `<span class="opt-lockinfo">${locked.length} locked: ${escapeHtml(locked.map((r) => r.name).join(", "))}</span>`
     : `<span class="opt-warn">${escapeHtml(nothingLockedText(opt.rules))}</span>`;
-  const expRows = OPT_POSITIONS.map((pos) =>
-    settingRowHtml(pos, numberBoxHtml(`type="text" inputmode="decimal" class="opt-input opt-input-pct" data-opt-exp="${pos}" value="${escapeHtml(opt.maxExp[pos])}" placeholder="no cap" aria-label="${pos} maximum exposure percent"`, "%"))
-  ).join("") + settingRowHtml("Spread defenses", switchButtonHtml(opt.spreadDst, "Spread defenses", `data-action="opt-spread-dst"`), SPREAD_HINT);
+  // 🔵 2026-10-17 (👁 render): the five position caps are one row of five small boxes, not five rows.
+  const expRows = `<div class="opt-cap-row">${OPT_POSITIONS.map((pos) =>
+    `<label class="opt-cap"><span class="opt-cap-pos">${pos}</span>${numberBoxHtml(`type="text" inputmode="decimal" class="opt-input opt-input-pct" data-opt-exp="${pos}" value="${escapeHtml(opt.maxExp[pos])}" placeholder="no cap" aria-label="${pos} maximum exposure percent"`, "%")}</label>`
+  ).join("")}</div>` + settingRowHtml("Spread defenses", switchButtonHtml(opt.spreadDst, "Spread defenses", `data-action="opt-spread-dst"`), SPREAD_HINT);
   const lockedList = lockedIds(state.slots, state.locks);
   const qbRows = listedQbs(activeSlateRows(board), lockedList);
-  const avoidGroup = games.length ? settingGroupHtml("Avoid game", `<div class="opt-chips">${avoidChipsHtml(games, opt.avoid)}</div>`, "", "opt-group-wide") : "";
+  const avoidRow = games.length ? settingChipsRowHtml("Avoid game", avoidChipsHtml(games, opt.avoid)) : "";
   const formError = opt.formError ? `<div class="lineup-status lineup-status-error opt-form-error">${escapeHtml(opt.formError)}</div>` : "";
-  const busy = opt.generating || opt.saving;
   const options = (values, current, label = (v) => String(v)) =>
     values.map((v) => `<option value="${escapeHtml(String(v))}"${String(current) === String(v) ? " selected" : ""}>${escapeHtml(label(v))}</option>`).join("");
   const upTo = (max) => Array.from({ length: max + 1 }, (_, i) => i);
   const select = (id, label, values, current, text) => `<select id="${id}" class="opt-input opt-select-n" aria-label="${label}">${options(values, current, text)}</select>`;
+  // ChatGPT wish i, Adam 2026-10-17: three groups, Pool (who may be used), Stacks, Build; the exposure caps are a sub-block of Build.
   const build = [
     settingRowHtml("Lineups to make", numberBoxHtml(`type="number" min="1" max="${OPT_MAX_COUNT}" class="opt-input opt-input-num" id="opt-count" value="${escapeHtml(opt.count)}" aria-label="How many lineups"`), "From the slots you have locked"),
     settingRowHtml("Min unique players", numberBoxHtml(`type="number" min="1" max="${OPT_MAX_UNIQUE}" class="opt-input opt-input-num" id="opt-min-unique" value="${escapeHtml(opt.minUnique)}" aria-label="Minimum unique players between lineups"`), "Between any two lineups"),
     settingRowHtml("Build by", `<span class="opt-chips">${objectiveChipsHtml(opt.objective, boardHasCeilings(activeSlateRows(board)))}</span>`),
+    settingSubtitleHtml("Max share of lineups"),
+    expRows,
+    ruleRowsHtml(opt.rules, RULE_GROUPS.build),
   ].join("");
   const stacking = [
     settingRowHtml("Teammates", `${select("opt-stack-own", "Teammates to stack with the quarterback", upTo(OPT_STACK_OWN_MAX), opt.stackOwn)}${switchCheckboxHtml("opt-stack-own-more", opt.stackOwnOrMore, "or more", "exactly")}`),
     settingRowHtml("Opponents", `${select("opt-stack-opp", "Opponents to stack with the quarterback", upTo(OPT_STACK_OPP_MAX), opt.stackOpp)}${switchCheckboxHtml("opt-stack-opp-more", opt.stackOppOrMore, "or more", "exactly")}`),
     qbListHtml(qbRows, opt.qb, lockedList),
   ].join("");
+  // 👁 2026-10-17: the open QBs' panels are full-width cards after the three groups (inside Stacks they grew to 822px).
+  const qbPanels = qbPanelsHtml(qbRows, opt.qb, qbGlobals(), activeSlateRows(board), OPT_STACK_OWN_MAX, OPT_STACK_OPP_MAX, lockedList);
   // ChatGPT wish k, Adam 2026-10-17: with "starred QBs only" on, the line under it counts the QBs that qualify.
   const qbNotes = {};
   if (opt.rules.starredQbOnly !== false) {
-    const pool = { excludes: state.excludes, avoid: new Set([...opt.avoid].map((g) => String(g).toUpperCase())), objective: effectiveObjective(opt.objective, boardHasCeilings(activeSlateRows(board))) };
-    qbNotes.starredQbOnly = starredQbNote(starredQbQualifiers(activeSlateRows(board), pool), locked.some((r) => upperOf(r.pos) === "QB"));
+    qbNotes.starredQbOnly = starredQbNote(starredQbQualifiers(activeSlateRows(board), starredQbPool(board)), locked.some((r) => upperOf(r.pos) === "QB"));
   }
-  const roster = [
-    ruleRowsHtml(opt.rules, RULES_ROSTER, qbNotes),
+  const pool = [
+    ruleRowsHtml(opt.rules, RULE_GROUPS.pool, qbNotes),
     settingRowHtml("Max per team", `<select id="opt-max-team" class="opt-input opt-select" aria-label="Max per team">${options(MAX_TEAM_OPTIONS, opt.maxPerTeam, (v) => (v === "" ? "No limit" : v))}</select>`, "Not applied to the QB's team or his opponent"),
+    avoidRow,
   ].join("");
   return `
     <div class="opt-panel opt-settings" id="opt-panel">
-      <div class="opt-settings-head">
-        <h3 class="opt-title">Optimizer</h3>
-        ${info}
-        ${opt.error ? `<span class="lineup-status-error opt-go-error">${escapeHtml(opt.error)}</span>` : ""}
-        <button type="button" id="opt-go-btn" class="lineup-build-btn opt-go"${busy ? " disabled" : ""}>${opt.generating ? "Making…" : "Go"}</button>
-      </div>
+      ${optHeadHtml(info)}
       ${formError}
       <div class="opt-groups">
+        ${settingGroupHtml("Pool", pool)}
+        ${settingGroupHtml("Stacks", stacking)}
         ${settingGroupHtml("Build", build)}
-        ${settingGroupHtml("Stacking with the QB", stacking)}
-        ${settingGroupHtml("Exposure", expRows, "Max share of lineups; blank = no cap")}
-        ${settingGroupHtml("Roster rules", roster)}
-        ${qbPanelsHtml(qbRows, opt.qb, qbGlobals(), activeSlateRows(board), OPT_STACK_OWN_MAX, OPT_STACK_OPP_MAX, lockedList)}
-        ${avoidGroup}
+        ${qbPanels}
       </div>
     </div>`;
 }
 
-/** The saved lineups of the slate on screen (D57 slate key, savedForSlate). */
-function savedOfActiveSlate() {
+/** The Optimizer band's head: the title with the GPP | Cash switch beside it (a green $ chip on the title in cash), the
+ *  Must / lock line and a refused Build's sentence (cash mode job 3b, 2026-10-17). */
+function optHeadHtml(infoHtml) {
+  return `<div class="opt-settings-head">
+        <h3 class="opt-title">Optimizer${opt.mode === "cash" ? ` ${cashChipHtml()}` : ""}${modeSwitchHtml(opt.mode)}</h3>
+        ${infoHtml}
+        ${opt.error ? `<span class="lineup-status-error opt-go-error">${escapeHtml(opt.error)}</span>` : ""}
+      </div>`;
+}
+
+/** The Optimizer band in cash (cash mode job 3b): Pool (Max per team, Avoid game) and Build (Lineups to make, the fixed
+ *  basis). No Stacks group, QB panels, caps row, Spread defenses, roster rules or minimum unique (Adam 2026-10-17): they are off in cash. */
+function cashControlsHtml(rowById) {
+  const board = store.get().board;
+  const basis = cashBasisInfo(board);
+  const games = activeSlateGames(board);
+  const info = `<span class="opt-lockinfo">${cashHeadLine(lockedNames(rowById), wantRowsFor(slateKeyOf(board), rowById))}</span>`;
+  const formError = opt.formError ? `<div class="lineup-status lineup-status-error opt-form-error">${escapeHtml(opt.formError)}</div>` : "";
+  const teamOptions = MAX_TEAM_OPTIONS.map((v) => `<option value="${v}"${String(opt.cash.maxPerTeam) === v ? " selected" : ""}>${v === "" ? "No limit" : v}</option>`).join("");
+  const pool = [
+    settingRowHtml("Max per team", `<select id="opt-cash-max-team" class="opt-input opt-select" aria-label="Max per team">${teamOptions}</select>`, "Every team, the quarterback's included"),
+    games.length ? settingChipsRowHtml("Avoid game", avoidChipsHtml(games, new Set(opt.cash.avoid))) : "",
+  ].join("");
+  const build = [
+    settingRowHtml("Lineups to make", numberBoxHtml(`type="number" min="1" max="${OPT_MAX_COUNT}" class="opt-input opt-input-num" id="opt-cash-count" value="${escapeHtml(opt.cash.count)}" aria-label="How many lineups"`), "The best first, then the next best"),
+    basis.blocked ? settingRowHtml("Build by", "", basis.text, "opt-warn") : settingRowHtml("Build by", `<span class="cash-basis">${escapeHtml(basis.text)}</span>`),
+  ].join("");
+  return `
+    <div class="opt-panel opt-settings" id="opt-panel">
+      ${optHeadHtml(info)}
+      ${formError}
+      <div class="opt-groups opt-groups-cash">
+        ${settingGroupHtml("Pool", pool)}
+        ${settingGroupHtml("Build", build)}
+      </div>
+    </div>`;
+}
+
+/** Adam 2026-10-17: the Build button always in view (sticky footer at the tab's end). The summary sentence and Build sit
+ *  in the last child of the panel (#lineup-panel), so position: sticky holds them to the bottom of the screen. */
+function optimizerFooterHtml(board) {
+  const busy = opt.generating || opt.saving || (opt.mode === "cash" && cashBasisInfo(board).blocked); // cash mode job 3b: no medians in TwoGun mode cannot build (CQ5)
+  // 🔵 d842f0b: a refusal from Build must show where Build was pressed, which can be far below the settings head.
+  const footerError = opt.formError ? `<div class="lineup-status lineup-status-error opt-form-error-footer">${escapeHtml(opt.formError)}</div>` : "";
+  return `
+    <div class="opt-footer">
+      ${footerError}
+      <span class="opt-summary">${escapeHtml(optSummaryText(board))}</span>
+      <button type="button" id="opt-go-btn" class="lineup-build-btn opt-go opt-go-big"${busy ? " disabled" : ""}>${opt.generating ? "Making…" : "Build"}</button>
+    </div>`;
+}
+
+/** The saved lineups of the slate on screen (D57 slate key, savedForSlate), of the mode on screen unless `mode` says another
+ *  (cash mode job 3b: null = both, for names that must stay unique across modes). */
+function savedOfActiveSlate(mode = opt.mode) {
   const board = store.get().board;
   const slateIds = new Set(activeSlateRows(board).map((r) => String(r.id)));
-  return savedForSlate(state.savedLineups, slateKeyOf(board), slateIds);
+  return savedForSlate(state.savedLineups, slateKeyOf(board), slateIds, mode);
 }
 
 /** Which results tab shows (D74): Adam's pick this page load, else New when there is a batch (or one is being
@@ -1989,13 +2328,14 @@ function newLineupsTabHtml(rowById, savedHere) {
   parts.push(mustHaveBarHtml(shown.length, r?.lineups.length ?? 0));
   if (opt.error) parts.push(`<div class="lineup-status lineup-status-error">${escapeHtml(opt.error)}</div>`);
   if (!r) {
-    parts.push(`<div class="saved-lineups-empty">${opt.generating ? "Making lineups…" : "No new lineups. Press Go to make some."}</div>`);
+    parts.push(`<div class="saved-lineups-empty">${opt.generating ? "Making lineups…" : "No new lineups. Press Build to make some."}</div>`);
     lastExposure = { exposure: {}, subtitle: "" };
     return parts.join("");
   }
   const n = r.lineups.length;
   const busy = opt.saving || opt.generating;
-  const savedKeys = savedSetKeys(savedHere, rowById);
+  const isCash = r.mode === "cash"; // Cash mode job 3b: a batch keeps the mode it was built in; "Saved ✓" looks among the saved lineups of that mode
+  const savedKeys = savedSetKeys(isCash === (opt.mode === "cash") ? savedHere : savedOfActiveSlate(isCash ? "cash" : "gpp"), rowById);
   const savedFlags = r.lineups.map((l) => cardIsSaved(l, savedKeys, rowById));
   const nSaved = savedFlags.filter(Boolean).length;
   // Save all / Discard all act only on the lineups shown while the filter is on (Adam 2026-10-11).
@@ -2008,26 +2348,23 @@ function newLineupsTabHtml(rowById, savedHere) {
   parts.push(
     n
       ? `<div class="opt-results-head">
-           <span class="opt-sub">${n} lineup${n === 1 ? "" : "s"} from the last Go${r.builtIn ? ` (${escapeHtml(r.builtIn)})` : ""}${nSaved ? `, ${nSaved} saved` : ", not saved yet"}</span>
+           <span class="opt-sub">${isCash ? escapeHtml(builtInTextCash(n, r.basis, r.boardMode)) : `${n} lineup${n === 1 ? "" : "s"} from the last Build${r.builtIn ? ` (${escapeHtml(r.builtIn)})` : ""}`}${nSaved ? `, ${nSaved} saved` : ", not saved yet"}</span>
            <span class="opt-card-actions">
              <button type="button" class="saved-lineup-btn" data-action="opt-save-all"${busy || allSaved || noneShown ? " disabled" : ""}>${bulkLabel("Save", nShownUnsaved, filtered)}</button>
              <button type="button" class="saved-lineup-btn danger" data-action="opt-discard-all"${busy || noneShown ? " disabled" : ""}>${bulkLabel("Discard", nShown, filtered)}</button>
            </span>
          </div>`
-      : `<div class="opt-sub">None left from the last Go.</div>`
+      : `<div class="opt-sub">None left from the last Build.</div>`
   );
   if (opt.saveError) parts.push(`<div class="lineup-status lineup-status-error">${escapeHtml(opt.saveError)}</div>`);
+  if (isCash && opt.cashUndo) parts.push(`<div class="cash-undo">Made ${escapeHtml(opt.cashUndo.names.join(" and "))} Must and built again. <button type="button" class="lineup-row-btn" data-cash-undo${busy ? " disabled" : ""}>Undo</button></div>`);
   parts.push(optNotesHtml(r.notes));
   if (n && !shown.length) {
     parts.push(`<div class="saved-lineups-empty">${NO_MATCH_TEXT}</div>`);
     lastExposure = { exposure: {}, subtitle: "" };
   } else if (n) {
-    // The new-player highlight compares a card with the previous card SHOWN.
-    const fresh = newPlayerIds(shown.map((e) => e.item), rowById);
-    parts.push(`<div class="opt-cards">${shown.map((e, k) => optLineupCardHtml(e.item, e.index, busy, { saved: savedFlags[e.index], fresh: fresh[k], pick, rowById })).join("")}</div>`);
     // Bend numbers and marks describe the batch as made: hidden once a card is discarded.
     const whole = n === r.made;
-    if (whole) parts.push(bendsLineHtml(r.bends, r.made));
     const players = shown.map((e) => (e.item.players ?? []).map((p) => ({ ...p, identity: identityOf(p.id, rowById) })));
     const k = shown.length;
     const subtitle = opt.mustHave.length ? `${k} of ${n} new lineup${n === 1 ? "" : "s"}, filtered` : `${n} new lineup${n === 1 ? "" : "s"}`;
@@ -2042,7 +2379,13 @@ function newLineupsTabHtml(rowById, savedHere) {
       exposure = zeroMinRows(exposure, marks, playerOf, (id) => held.has(identityOf(id, rowById)));
     }
     lastExposure = { exposure, subtitle, marks };
+    // Adam 2026-10-17: the exposure tables above the cards, so they are high on the screen
     parts.push(optExposureHtml(lastExposure.exposure, lastExposure.subtitle, opt.expSortDir, pick, lastExposure.marks));
+    // The new-player highlight compares a card with the previous card SHOWN.
+    const fresh = newPlayerIds(shown.map((e) => e.item), rowById);
+    const cardCash = (lineup) => (isCash ? { basis: r.basis, strip: cashStrip(lineup, r, rowById, busy) } : null);
+    parts.push(`<div class="opt-cards">${shown.map((e, k) => optLineupCardHtml(e.item, e.index, busy, { saved: savedFlags[e.index], fresh: fresh[k], pick, rowById, cash: cardCash(e.item) })).join("")}</div>`);
+    if (whole) parts.push(bendsLineHtml(r.bends, r.made));
   } else {
     lastExposure = { exposure: {}, subtitle: "" };
   }
@@ -2051,8 +2394,9 @@ function newLineupsTabHtml(rowById, savedHere) {
 
 // ---- Actions ----
 
+/** Cash 3b fix round 2, 2026-10-17: true only when a new batch was put in place; false on every other exit (cashMakeMust reads it). */
 async function doGenerate() {
-  if (opt.generating || opt.saving) return;
+  if (opt.generating || opt.saving) return false;
   const board = store.get().board;
   const slate = activeSlate(board);
   const slateKey = slate ? slate.key : "main";
@@ -2064,10 +2408,12 @@ async function doGenerate() {
   const playerMin = pickSlate(playerMinFor(slateKey));
   const nameOf = (id) => nameById.get(id) ?? id;
   const rowOf = new Map((board?.rows ?? []).map((r) => [String(r.id), r]));
-  opt.formError = exposureProblem(opt.maxExp) ?? playerMaxProblem(playerMax, nameOf) ?? minProblemFor(opt.count, playerMin, playerMax, state.excludes, nameOf);
+  const cash = opt.mode === "cash"; // Cash mode job 3b, 2026-10-17: a cash build sends buildCashSettings and none of the GPP-only boxes
+  const basis = cashBasisInfo(board);
+  opt.formError = cash ? (basis.blocked ? basis.text : null) : exposureProblem(opt.maxExp) ?? playerMaxProblem(playerMax, nameOf) ?? minProblemFor(opt.count, playerMin, playerMax, state.excludes, nameOf);
   if (opt.formError) {
     commit();
-    return;
+    return false;
   }
   // The week and the slate on screen when Go was pressed: a response that arrives after either changed belongs to
   // something no longer shown and is dropped.
@@ -2075,7 +2421,7 @@ async function doGenerate() {
   const madeForSlate = store.get().activeSlateKey ?? null;
   let locks = lockedIds(state.slots, state.locks);
   const slateNotes = [];
-  let avoid = [...opt.avoid];
+  let avoid = cash ? [...opt.cash.avoid] : [...opt.avoid];
   if (slate) {
     // D57: the server builds from the second slate's games only and refuses a lock outside them, so those locks are
     // left out of this request and said so, as the single Build does.
@@ -2089,47 +2435,55 @@ async function doGenerate() {
   }
   const gameIds = new Set(activeSlateGames(board).map((g) => String(g.id)));
   avoid = avoid.filter((g) => gameIds.has(g));
-  const form = {
-    count: opt.count,
-    minUnique: opt.minUnique,
-    maxExposure: opt.maxExp,
-    rules: opt.rules,
-    avoid,
-    locks,
-    excludes: [...state.excludes],
-    objective: effectiveObjective(opt.objective, boardHasCeilings(activeSlateRows(board))),
-    maxPerTeam: opt.maxPerTeam,
-    stackOwn: opt.stackOwn,
-    stackOwnOrMore: opt.stackOwnOrMore,
-    stackOpp: opt.stackOpp,
-    stackOppOrMore: opt.stackOppOrMore,
-    playerMax,
-    playerMin,
-    qbStacks: qbStacksForRequest(board, slateNotes),
-    spreadDst: opt.spreadDst,
-  };
-  const sent = buildGeneratePayload(form, slateKey);
-  // The pre-Go Min % checks read the request as built: only the locks that stay in this slate count (the route sees those alone).
-  const rowAt = (id) => rowOf.get(String(id));
-  const pool = {
-    excludes: new Set(form.excludes.map(String)),
-    avoid: new Set(avoid.map((g) => String(g).toUpperCase())),
-    starredQbOnly: sent.settings.rules.starredQbOnly !== false,
-    objective: sent.settings.objective,
-  };
-  opt.formError = playerMinPositionProblem(playerMin, {
-    posOf: (id) => String(rowAt(id)?.pos ?? "").toUpperCase(),
-    locked: new Set(locks),
-    posMax: opt.maxExp,
-    asked: sent.settings.count,
-    keyOf: (id) => dkKeyOfRow(rowAt(id), id),
-    outOf: (id) => !rowAt(id) || minRowOut(rowAt(id), id, pool),
-    ...minLockSkips(rowAt, sent.settings),
-  }, nameOf);
-  if (opt.formError) {
-    commit();
-    return;
+  let form; // the GPP request's form; in cash only its objective is read (none: the head uses builtInTextCash)
+  let sent;
+  if (cash) {
+    form = { objective: null };
+    sent = { slate: slateKey, settings: buildCashSettings(opt.cash, { locks, excludes: [...state.excludes], avoidGames: avoid }) };
+  } else {
+    form = {
+      count: opt.count,
+      minUnique: opt.minUnique,
+      maxExposure: opt.maxExp,
+      rules: opt.rules,
+      avoid,
+      locks,
+      excludes: [...state.excludes],
+      objective: effectiveObjective(opt.objective, boardHasCeilings(activeSlateRows(board))),
+      maxPerTeam: opt.maxPerTeam,
+      stackOwn: opt.stackOwn,
+      stackOwnOrMore: opt.stackOwnOrMore,
+      stackOpp: opt.stackOpp,
+      stackOppOrMore: opt.stackOppOrMore,
+      playerMax,
+      playerMin,
+      qbStacks: qbStacksForRequest(board, slateNotes),
+      spreadDst: opt.spreadDst,
+    };
+    sent = buildGeneratePayload(form, slateKey);
+    // The pre-Go Min % checks read the request as built: only the locks that stay in this slate count (the route sees those alone).
+    const rowAt = (id) => rowOf.get(String(id));
+    const pool = {
+      excludes: new Set(form.excludes.map(String)),
+      avoid: new Set(avoid.map((g) => String(g).toUpperCase())),
+      starredQbOnly: sent.settings.rules.starredQbOnly !== false,
+      objective: sent.settings.objective,
+    };
+    opt.formError = playerMinPositionProblem(playerMin, {
+      posOf: (id) => String(rowAt(id)?.pos ?? "").toUpperCase(),
+      locked: new Set(locks),
+      posMax: opt.maxExp,
+      asked: sent.settings.count,
+      keyOf: (id) => dkKeyOfRow(rowAt(id), id),
+      outOf: (id) => !rowAt(id) || minRowOut(rowAt(id), id, pool),
+      ...minLockSkips(rowAt, sent.settings),
+    }, nameOf);
+    if (opt.formError) {
+      commit();
+      return false;
+    }
   }
+  let built = false;
   opt.generating = true;
   opt.error = null;
   opt.saveError = null;
@@ -2140,7 +2494,7 @@ async function doGenerate() {
     if (seasonWeekKey(store.get().board) !== madeForWeek || (store.get().activeSlateKey ?? null) !== madeForSlate) {
       opt.generating = false;
       commit();
-      return;
+      return false;
     }
     if (!data || data.ok === false) {
       opt.error = data?.error?.code === "GENERATE_BUSY" ? data.error.message || OPT_BUSY_TEXT : data?.error?.message ?? "Could not make lineups.";
@@ -2158,6 +2512,13 @@ async function doGenerate() {
       // ChatGPT wish g, Adam 2026-10-17: what a save from this batch records on each lineup (lineup-builds.js batchBuild).
       const build = { buildId: newBuildId(Date.now(), Math.random()), boardMode: boardModeOf(board), objective: form.objective };
       opt.results = { slateKey, lineups, notes, builtIn, bends, made: lineups.length, marks, ...build };
+      // Cash mode job 3b: the batch keeps the mode and basis the answer names, and the limits its cards' swap search must respect.
+      if (cash) {
+        opt.results.mode = "cash";
+        opt.results.basis = data.basis ?? null;
+        opt.results.cash = { lockedIds: sent.settings.locks, excludedIds: sent.settings.excludes, maxPerTeam: sent.settings.maxPerTeam, avoidGames: sent.settings.avoidGames };
+      }
+      built = true;
     }
   } catch (e) {
     opt.error = `Could not reach the server: ${e.message}`;
@@ -2169,6 +2530,7 @@ async function doGenerate() {
   } catch (e) {
     // Scrolling is a convenience only.
   }
+  return built;
 }
 
 /** Saves the given new lineups one after another through the existing save-lineup route (D57: with the active slate
@@ -2182,15 +2544,17 @@ async function saveGenerated(uids) {
   const results = opt.results;
   const slateKey = results.slateKey ?? "main"; // the slate these lineups were made for, not the one on screen now
   const rowById = new Map((store.get().board?.rows ?? []).map((r) => [String(r.id), r]));
+  const mode = results.mode === "cash" ? "cash" : "gpp"; // Cash mode job 3b, 2026-10-17: a card saves in the mode it was built in
   for (const uid of uids) {
     const lineup = results.lineups.find((l) => l.uid === uid);
-    if (!lineup || cardIsSaved(lineup, savedSetKeys(savedOfActiveSlate(), rowById), rowById)) continue;
+    if (!lineup || cardIsSaved(lineup, savedSetKeys(savedOfActiveSlate(mode), rowById), rowById)) continue;
     try {
-      // The card's own name ("Lineup 2") is kept as the saved name unless this slate already has it (Entries picks
-      // lineups by name, so names stay unique per slate).
-      const taken = savedOfActiveSlate().map((l) => l.name);
-      const name = uniqueSavedName(`Lineup ${results.lineups.indexOf(lineup) + 1}`, taken);
-      const data = await postLineup({ name, slots: slotsForSave(lineup.players), slate: slateKey, build: batchBuild(results, lineup) });
+      // The card's own name ("Lineup 2", "Cash 2") is kept as the saved name unless this slate already has it (Entries
+      // picks lineups by name, so names stay unique per slate, across both modes).
+      const taken = savedOfActiveSlate(null).map((l) => l.name);
+      const stem = mode === "cash" ? "Cash" : "Lineup";
+      const name = uniqueSavedName(`${stem} ${results.lineups.indexOf(lineup) + 1}`, taken, stem);
+      const data = await postLineup({ name, slots: slotsForSave(lineup.players), slate: slateKey, ...(mode === "cash" ? { mode } : {}), build: batchBuild(results, lineup) }); // Cash 3b fix round, 2026-10-17: GPP sends no mode
       if (!data || data.ok === false) {
         opt.saveError = data?.error?.message ?? "Could not save the lineup.";
         break;
@@ -2264,20 +2628,44 @@ function wirePickButtons(container) {
 }
 
 function wireOptimizer(container) {
+  // ChatGPT wish i: the footer summary follows the boxes that do not re-render the panel as they are typed in.
+  const refreshSummary = () => {
+    const el = container.querySelector(".opt-summary");
+    if (el) el.textContent = optSummaryText(store.get().board);
+  };
   const bind = (sel, key) => {
     const el = container.querySelector(sel);
     el?.addEventListener("input", () => {
       opt[key] = el.value;
+      refreshSummary();
     });
   };
   bind("#opt-count", "count");
   bind("#opt-min-unique", "minUnique");
+  // Cash mode job 3b, 2026-10-17: the mode switch, cash's own boxes (kept on every keystroke, as the Min % boxes are) and the swap buttons.
+  container.querySelectorAll("[data-opt-mode]").forEach((btn) => {
+    btn.addEventListener("click", () => setMode(btn.dataset.optMode));
+  });
+  for (const [sel, key, event] of [["#opt-cash-count", "count", "input"],["#opt-cash-max-team", "maxPerTeam", "change"]]) {
+    const el = container.querySelector(sel);
+    el?.addEventListener(event, () => {
+      opt.cash[key] = el.value;
+      savePersisted();
+      refreshSummary();
+    });
+  }
+  container.querySelectorAll("[data-cash-swap]").forEach((btn) => {
+    btn.addEventListener("click", () => cashMakeMust(btn.closest(".opt-card")?.dataset.uid, Number(btn.dataset.cashSwap)));
+  });
+  container.querySelector("[data-cash-undo]")?.addEventListener("click", () => cashUndo());
   container.querySelectorAll("[data-opt-exp]").forEach((el) => {
     el.addEventListener("input", () => {
       opt.maxExp[el.dataset.optExp] = el.value;
+      refreshSummary();
       if (opt.formError) {
         opt.formError = null;
         container.querySelector(".opt-form-error")?.remove();
+        container.querySelector(".opt-form-error-footer")?.remove(); // the footer copy goes with the head copy
       }
     });
   });
@@ -2287,6 +2675,7 @@ function wireOptimizer(container) {
     const el = container.querySelector(sel);
     el?.addEventListener("change", () => {
       opt[key] = read(el);
+      refreshSummary();
     });
   };
   bindValue("#opt-max-team", "maxPerTeam", (el) => el.value);
@@ -2319,11 +2708,17 @@ function wireOptimizer(container) {
     commit();
   });
   const settingsEl = container.querySelector("#opt-panel");
-  if (settingsEl) wireQbStacks(settingsEl, { qbs: opt.qb, globals: qbGlobals, ownMax: OPT_STACK_OWN_MAX, oppMax: OPT_STACK_OPP_MAX, commit, save: savePersisted });
+  if (settingsEl) {
+    wireQbStacks(settingsEl, { qbs: opt.qb, globals: qbGlobals, ownMax: OPT_STACK_OWN_MAX, oppMax: OPT_STACK_OPP_MAX, commit, save: savePersisted });
+    // 🔵 2026-10-17: wireQbStacks saves a QB's own stack boxes without a re-render; this listener (added after its own,
+    // so it runs after the edit) keeps the footer's "custom stacks on N QBs" current.
+    settingsEl.addEventListener("change", refreshSummary);
+  }
   container.querySelectorAll("[data-action='opt-avoid']").forEach((btn) => {
     btn.addEventListener("click", () => {
       const g = btn.dataset.game;
-      if (opt.avoid.has(g)) opt.avoid.delete(g);
+      if (opt.mode === "cash") opt.cash.avoid = opt.cash.avoid.includes(g) ? opt.cash.avoid.filter((x) => x !== g) : [...opt.cash.avoid, g]; // Cash mode job 3b: cash's own list
+      else if (opt.avoid.has(g)) opt.avoid.delete(g);
       else opt.avoid.add(g);
       commit();
     });
@@ -2359,8 +2754,10 @@ function wireOptimizer(container) {
         if (opt.formError) {
           opt.formError = null;
           container.querySelector(".opt-form-error")?.remove();
+          container.querySelector(".opt-form-error-footer")?.remove(); // the footer copy goes with the head copy
         }
         savePersisted();
+        refreshSummary(); // "caps on N players" follows the boxes
       });
     });
   }

@@ -3,7 +3,7 @@
 // Split out of entries.js for size (🔵 2026-10-17); entries.js imports and re-exports every name here. Imports only
 // format.js, entries-plan.js, lineup-tags.js and totals.js, never entries.js.
 import { escapeHtml, money, dec1 } from "./format.js";
-import { groupByContest, effectiveClasses, orderedFillLineups, planFill, validProposals, contestKey } from "./entries-plan.js";
+import { groupByContest, effectiveClasses, orderedFillLineups, planFill, validProposals, contestKey, lineupModeOf } from "./entries-plan.js";
 import { numberLineups, lineupLabel, sortLineupsBy } from "./lineup-tags.js";
 import { shownTotal } from "./totals.js";
 
@@ -12,7 +12,8 @@ import { shownTotal } from "./totals.js";
 export function lineupOptionLabel(lineup, numbers = null) {
   const name = numbers ? lineupLabel(lineup, numbers) : String(lineup?.name ?? "").trim() || "Lineup";
   const proj = dec1(shownTotal((lineup?.slots ?? []).map((s) => s?.proj)) ?? lineup?.totalProj); // ChatGPT wish d, Adam 2026-10-17: the sum of the saved players' shown projections
-  return `${name} · ${proj == null ? "no proj" : `${proj} proj`} · ${money(lineup?.salaryUsed)}`;
+  const cash = lineupModeOf(lineup) === "cash" ? "$ Cash · " : ""; // Cash mode job 3b, 2026-10-17: the one browser mode rule (lineup-cash.js, through entries-plan.js)
+  return `${cash}${name} · ${proj == null ? "no proj" : `${proj} proj`} · ${money(lineup?.salaryUsed)}`;
 }
 
 /** How many of a contest's entries have a lineup picked in `assigned`. */

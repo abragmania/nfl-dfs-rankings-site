@@ -43,11 +43,12 @@ export function generateResponse({ board, slate, body: rawBody, saved }) {
   if (checked.error) return errorBody("VALIDATION_ERROR", checked.error);
   const { rows, rowById, slateIds } = checked;
 
-  const existing = existingForSlate(saved, secondSlate, slateIds);
+  const existing = existingForSlate(saved, secondSlate, slateIds, checked.settings.mode);
 
   const stale = Array.isArray(board.stale) ? board.stale : [];
   try {
-    const result = generateLineups({ rows, slate, settings: checked.settings, existing });
+    // Cash mode job 2b, 2026-10-17: the mode the board was baked in (board.mode.active) picks a cash build's basis.
+    const result = generateLineups({ rows, slate, settings: checked.settings, existing, boardMode: board.mode?.active });
     return envelope(enrichGenerateResult(result, rowById), { stale });
   } catch (e) {
     console.error("lineup generate: failed", e);

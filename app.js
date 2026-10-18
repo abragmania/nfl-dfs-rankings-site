@@ -32,7 +32,8 @@ import { applyGrades, rowsGradedForView } from "./js/grade.js";
 import { renderGameStrip, getGamestripCollapsed, setGamestripCollapsed } from "./js/gamestrip.js";
 import { renderFilterBar, updateFilterSummary } from "./js/filterbar.js";
 import { renderTableHead, renderTableBody, updateRow } from "./js/table.js";
-import { renderTabs, shownTab, renderProjectionsPanel, renderOwnershipPanel, renderLineupPanel, renderEntriesPanel } from "./js/tabs.js";
+import { renderTabs, shownTab, onSitePage, renderProjectionsPanel, renderOwnershipPanel, renderLineupPanel, renderEntriesPanel } from "./js/tabs.js";
+import { renderShowdownTab } from "./js/showdown-tab.js";
 import { renderFavoritesPanel, favoriteRows } from "./js/favorites.js";
 import { initExpand, syncExpandUi, phoneMinHeight, panelMinHeight } from "./js/expand.js";
 
@@ -64,6 +65,7 @@ const el = {
   ownBanner: document.getElementById("own-banner"),
   ownershipPanel: document.getElementById("ownership-panel"),
   lineupPanel: document.getElementById("lineup-panel"),
+  showdownPanel: document.getElementById("showdown-panel"), // ChatGPT wish t, Adam 2026-10-17
   entriesPanel: document.getElementById("entries-panel"), // rules repo 2026-10-17: Entries is its own tab
   emptyState: document.getElementById("empty-state"),
   gamestrip: document.getElementById("gamestrip"),
@@ -310,10 +312,49 @@ function renderSlateChrome() {
 // showdown header/main once a key is active.
 // ---------------------------------------------------------------------------------------------------
 let showdownList = [];
+let showdownListError = null; // 🔵 2026-10-17: a failed list read is "unknown" (the message), never an empty list shown as "none loaded"
+let showdownListRead = false; // 🔵 2026-10-17 (cold read is unknown): false until the first list read returns, so the tab says "reading", not "none loaded"
 
 function mainSlateLabel() {
   const games = store.get().board?.slate?.games?.length;
   return games != null ? `Main slate · ${games} game${games === 1 ? "" : "s"}` : "Main slate";
+}
+
+// The one showdown-CSV upload, used by the mode row's tile and the Showdown tab's button (ChatGPT wish t, Adam 2026-10-17).
+async function uploadShowdownCsv(file) {
+  // A showdown upload's own failure or success must show wherever Adam is actually looking: the
+  // classic #status is hidden while a showdown is on screen, so this writes to #sd-status instead
+  // whenever one is active (🔵 review item 8).
+  const showdownActive = Boolean(showdownKeyFromHash());
+  const sdStatusEl = document.getElementById("sd-status");
+  const setUploadStatus = (text, isError) => {
+    if (showdownActive && sdStatusEl) {
+      sdStatusEl.textContent = text;
+      sdStatusEl.className = isError ? "status error" : "status";
+    } else {
+      setStatusMessage(text, isError);
+    }
+  };
+  try {
+    const text = await file.text();
+    const data = await postShowdownUpload(text);
+    if (data?.ok) {
+      await loadShowdownList();
+      // The upload's own stale list is shown immediately, before any reload/navigation lands (same as
+      // the classic header's wireUpload) — but only when the showdown just uploaded is the one already
+      // on screen; otherwise the tile/hash switch below is about to load it fresh anyway.
+      if (data.key === showdownKeyFromHash()) {
+        showUploadPills(data.stale ?? []);
+        await forceReloadShowdown(data.key);
+      } else {
+        window.location.hash = `sd=${encodeURIComponent(data.key)}`;
+      }
+    } else {
+      setUploadStatus(`Showdown upload failed: ${data?.error?.message ?? "unknown error"}`, true);
+    }
+  } catch (e) {
+    setUploadStatus(`Showdown upload failed: ${e.message}`, true);
+  }
 }
 
 function renderModeRowNow() {
@@ -332,52 +373,38 @@ function renderModeRowNow() {
     onSelectShowdown: (key) => {
       window.location.hash = `sd=${encodeURIComponent(key)}`;
     },
-    onUploadShowdownCsv: async (file) => {
-      // A showdown upload's own failure or success must show wherever Adam is actually looking: the
-      // classic #status is hidden while a showdown is on screen, so this writes to #sd-status instead
-      // whenever one is active (🔵 review item 8).
-      const showdownActive = Boolean(showdownKeyFromHash());
-      const sdStatusEl = document.getElementById("sd-status");
-      const setUploadStatus = (text, isError) => {
-        if (showdownActive && sdStatusEl) {
-          sdStatusEl.textContent = text;
-          sdStatusEl.className = isError ? "status error" : "status";
-        } else {
-          setStatusMessage(text, isError);
-        }
-      };
-      try {
-        const text = await file.text();
-        const data = await postShowdownUpload(text);
-        if (data?.ok) {
-          await loadShowdownList();
-          // The upload's own stale list is shown immediately, before any reload/navigation lands (same as
-          // the classic header's wireUpload) — but only when the showdown just uploaded is the one already
-          // on screen; otherwise the tile/hash switch below is about to load it fresh anyway.
-          if (data.key === showdownKeyFromHash()) {
-            showUploadPills(data.stale ?? []);
-            await forceReloadShowdown(data.key);
-          } else {
-            window.location.hash = `sd=${encodeURIComponent(data.key)}`;
-          }
-        } else {
-          setUploadStatus(`Showdown upload failed: ${data?.error?.message ?? "unknown error"}`, true);
-        }
-      } catch (e) {
-        setUploadStatus(`Showdown upload failed: ${e.message}`, true);
-      }
+    onUploadShowdownCsv: uploadShowdownCsv,
+  });
+}
+
+// The Showdown tab (ChatGPT wish t, Adam 2026-10-17): its games are the whole week's main-slate games (none before an upload,
+// whichever slate is on screen; 🔵 2026-10-17) plus the loaded showdowns.
+function renderShowdownTabNow() {
+  renderShowdownTab(el.showdownPanel, { games: store.get().board?.slate?.games ?? [], showdowns: showdownList, listError: showdownListError, listRead: showdownListRead, onSite: onSitePage() }, {
+    onOpen: (key) => {
+      window.location.hash = `sd=${encodeURIComponent(key)}`;
     },
+    onUpload: uploadShowdownCsv,
   });
 }
 
 async function loadShowdownList() {
   try {
     const data = await getShowdowns();
-    showdownList = data?.ok ? data.showdowns ?? [] : [];
+    if (data?.ok) {
+      showdownList = data.showdowns ?? [];
+      showdownListError = null;
+    } else {
+      showdownList = [];
+      showdownListError = data?.error?.message || "the server did not return the list"; // an empty message falls back too (🔵 low)
+    }
   } catch (e) {
     showdownList = [];
+    showdownListError = e?.message || "the server did not return the list"; // a thrown value with no message is still unknown, never "none loaded" (🔵 low)
   }
+  showdownListRead = true; // 🔵 2026-10-17 (cold read is unknown): the first read has returned, by success or failure
   renderModeRowNow();
+  if (shownTab(store.get().activeTab) === "showdown") renderShowdownTabNow(); // the list arrives after the first draw
 }
 
 // Switches the whole page between the classic slate and a showdown, driven entirely by location.hash so
@@ -446,28 +473,34 @@ function renderEmptyState({ loading, boardError }) {
 // else) while lineup.js is imported by tabs.js which app.js itself imports — importing app.js back into
 // lineup.js would make that a circular module dependency. Duplicated on purpose; keep both in sync.
 function snapPanelMaxHeight(panelEl, top, reserve) {
+  // Layout round 2, 2026-10-17: a panel in a hidden tab reads every rect as 0 and would be sized to 0px: leave it alone.
+  if (panelEl.getClientRects().length === 0) return;
+  // Layout round 2, 2026-10-17: the room is measured from the panel's place in the document (docTop), not its place
+  // in the window, so a page scrolled past the panel's top (a negative `top`) sizes it exactly as an unscrolled page
+  // does; nothing is stored, so nothing goes stale (same as lineup.js).
+  const docTop = top + window.scrollY;
   // On a phone (max-width 700px) the table gets at least 70% of the window's height, however much of the page
   // sits above it (Adam, 2026-10-10: the list showed about three rows); the page scrolls to reach it. Wider
   // windows size exactly as before. window.innerHeight is the dynamic viewport height (what dvh measures).
   const phoneMin = Math.max(phoneMinHeight(), panelMinHeight(panelEl, top)); // the Optimizer pool's floor too (expand.js)
-  const available = Math.max(window.innerHeight - top - reserve, phoneMin);
+  const available = Math.max(window.innerHeight - docTop - reserve, phoneMin);
   const rows = panelEl.querySelectorAll("tbody tr");
   const borderAllowance = panelEl.offsetHeight - panelEl.clientHeight;
   if (rows.length === 0) {
     panelEl.style.maxHeight = phoneMin
-      ? `${Math.max(Math.round(window.innerHeight - top - reserve), phoneMin)}px`
-      : `calc(100vh - ${Math.round(top)}px - ${Math.round(reserve)}px)`;
+      ? `${Math.max(Math.round(window.innerHeight - docTop - reserve), phoneMin)}px`
+      : `calc(100vh - ${Math.round(docTop)}px - ${Math.round(reserve)}px)`;
     return;
   }
   let lastFitBottom = null;
   rows.forEach((row) => {
-    const bottomOffset = row.getBoundingClientRect().bottom - top;
+    const bottomOffset = row.getBoundingClientRect().bottom + window.scrollY - docTop; // the row's bottom below the panel's top
     if (bottomOffset <= available) lastFitBottom = bottomOffset;
   });
   if (lastFitBottom == null) {
     // Not even one body row fits: show through the header only rather than clip a partial row.
     const theadEl = panelEl.querySelector("thead");
-    lastFitBottom = theadEl ? theadEl.getBoundingClientRect().bottom - top : 0;
+    lastFitBottom = theadEl ? theadEl.getBoundingClientRect().bottom + window.scrollY - docTop : 0;
   }
   panelEl.style.maxHeight = `${Math.floor(lastFitBottom + borderAllowance)}px`;
 }
@@ -485,6 +518,8 @@ function adjustScrollPanels() {
     let reserve = 16;
     const legend = panelEl.parentElement?.querySelector(".table-legend");
     if (legend) reserve += legend.getBoundingClientRect().height + 8;
+    // The sticky Build footer covers the window bottom, so the pool must end above it (🔵 d842f0b); lineup.js keeps the same line.
+    reserve += document.querySelector("#lineup-panel .opt-footer")?.getBoundingClientRect().height ?? 0;
     snapPanelMaxHeight(panelEl, top, reserve);
   });
 }
@@ -511,6 +546,14 @@ function renderDynamic() {
     el.ownershipPanel.hidden = true;
     el.lineupPanel.hidden = true;
     el.entriesPanel.hidden = true;
+    // ChatGPT wish t, Adam 2026-10-17: the Showdown tab needs no main-slate board, so it stands in for the message.
+    el.showdownPanel.hidden = activeTab !== "showdown";
+    if (activeTab === "showdown") {
+      el.emptyState.hidden = true;
+      renderShowdownTabNow();
+      syncExpandUi();
+      return;
+    }
     renderEmptyState({ loading, boardError });
     syncExpandUi();
     return;
@@ -521,6 +564,7 @@ function renderDynamic() {
   el.projectionsPanel.hidden = activeTab !== "projections";
   el.ownershipPanel.hidden = activeTab !== "ownership";
   el.lineupPanel.hidden = activeTab !== "lineup";
+  el.showdownPanel.hidden = activeTab !== "showdown";
   el.entriesPanel.hidden = activeTab !== "entries";
 
   if (activeTab === "rankings") {
@@ -553,6 +597,8 @@ function renderDynamic() {
     renderOwnershipPanel(el.ownershipPanel, board, sourceCallbacks);
   } else if (activeTab === "lineup") {
     renderLineupPanel(el.lineupPanel, tableCallbacks);
+  } else if (activeTab === "showdown") {
+    renderShowdownTabNow();
   } else if (activeTab === "entries") {
     renderEntriesPanel(el.entriesPanel);
   }

@@ -1,7 +1,11 @@
 // The pure logic of the Entries section's lineup-to-entry assignment: who holds what, what blocks a lineup in a contest
 // (PROJECT.md Part 4 "Optimizer" Entries; RULES.md D56, D57, D75). Browser-loadable leaf module, imported by entries.js;
-// its only import is the label leaf lineup-tags.js (one copy of the oldest-first order).
+// its imports are the label leaf lineup-tags.js (one copy of the oldest-first order) and lineupModeOf from lineup-cash.js
+// (the one browser copy; lineup-cash.js imports only format.js, totals.js and out.js, so there is no cycle).
 import { byAge } from "./lineup-tags.js";
+import { lineupModeOf } from "./lineup-cash.js";
+
+export { lineupModeOf };
 
 /** Per-contest use of lineups: true when `lineupId` is already picked by ANOTHER entry of the same contest. */
 export function lineupUsedElsewhere(entries, assigned, entry, lineupId) {
@@ -101,11 +105,6 @@ export function groupByContest(entries) {
 // ---- The fill proposal (RULES.md D75 as amended 2026-10-17; PROJECT.md Part 4 Entries) -----------------------------
 
 const CLASSES = new Set(["cash", "gpp"]);
-
-/** D75: a lineup is cash only when saved as a Cash lineup; no mark is GPP (as server/lineups/validate.js reads it). */
-export function lineupModeOf(lineup) {
-  return lineup?.mode === "cash" ? "cash" : "gpp";
-}
 
 export function isCashLineup(lineup) {
   return lineupModeOf(lineup) === "cash";

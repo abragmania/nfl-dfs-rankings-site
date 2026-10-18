@@ -12,14 +12,24 @@ import {
 import { retiredObjectiveNote } from "./optimize.js";
 import { validateQbStacks } from "./qb-stacks.js";
 import { slotsFull, lockedSlotWords, minSlotProblem } from "./soft.js";
+import { medianOf, CASH_NOTES } from "./cash.js";
+import { lineupModeOf } from "../lineups/validate.js";
 
 // An older saved request may still carry the D55 rule keys D73 replaced; they are accepted (and must be booleans).
 const GENERATE_RULE_KEYS = [...RULE_KEYS, ...LEGACY_RULE_KEYS];
 const GENERATE_BODY_KEYS = new Set(["slate", "settings"]);
-const GENERATE_SETTING_KEYS = new Set([
+export const GENERATE_SETTING_KEYS = new Set([
   "count", "minUnique", "locks", "excludes", "catchers", "maxExposure", "rules", "maxPerTeam", "allowRbGames", "avoidGames",
-  "objective", "stackOwn", "stackOwnOrMore", "stackOpp", "stackOppOrMore", "playerMaxExposure", "playerMinExposure", "qbStacks", "spreadDst"
+  "objective", "stackOwn", "stackOwnOrMore", "stackOpp", "stackOppOrMore", "playerMaxExposure", "playerMinExposure", "qbStacks", "spreadDst", "mode"
 ]);
+// Cash mode job 2b, 2026-10-17: what a cash request may not send, each with the engine's own sentence (cash.js CASH_NOTES).
+const CASH_REFUSED = [
+  { keys: ["objective"], error: CASH_NOTES.basis },
+  { keys: ["stackOwn", "stackOwnOrMore", "stackOpp", "stackOppOrMore", "qbStacks"], error: CASH_NOTES.stacks },
+  { keys: ["rules"], error: CASH_NOTES.rules },
+  { keys: ["maxExposure", "playerMaxExposure", "playerMinExposure", "spreadDst"], error: CASH_NOTES.exposure },
+  { keys: ["minUnique"], error: CASH_NOTES.unique } // Cash: no minimum unique, Adam 2026-10-17
+];
 // D73: the QB stack's two numbers, in Adam's words for the refusal sentence.
 const GENERATE_STACK_NUMBERS = [
   { key: "stackOwn", max: STACK_OWN_MAX, words: "teammates to stack with the quarterback" },
@@ -137,7 +147,13 @@ export function validateGenerateSettings(raw, ctx) {
   for (const key of Object.keys(raw)) {
     if (!GENERATE_SETTING_KEYS.has(key)) return { error: `Unknown setting ${JSON.stringify(key)}.` };
   }
-  const out = {};
+  const mode = raw.mode === undefined || raw.mode === null ? "gpp" : raw.mode;
+  if (mode !== "gpp" && mode !== "cash") return { error: "mode must be cash or gpp" };
+  if (mode === "cash") {
+    const refused = CASH_REFUSED.find(({ keys }) => keys.some((k) => raw[k] !== undefined && raw[k] !== null));
+    if (refused) return { error: refused.error };
+  }
+  const out = { mode };
   if (raw.count !== undefined && raw.count !== null) {
     if (!Number.isInteger(raw.count) || raw.count < 1 || raw.count > GENERATE_MAX_COUNT) {
       return { error: `count must be a whole number from 1 to ${GENERATE_MAX_COUNT}` };
@@ -298,11 +314,14 @@ export function prepareGenerate(boardRows, secondSlate, rawSettings) {
 
 // Saved lineups of this week that belong to this slate: those saved with this slate's key. A lineup saved with
 // no slate (before the field existed, or by a caller that sent none) falls back to membership: a second slate
-// counts it when every player is in its games; the main slate counts it always.
-export function existingForSlate(saved, secondSlate, slateIds) {
+// counts it when every player is in its games; the main slate counts it always. A cash batch counts no saved lineups
+// (Cash 3b fix round, 2026-10-17).
+export function existingForSlate(saved, secondSlate, slateIds, mode = "gpp") {
+  if (mode === "cash") return []; // Cash: no minimum unique, Adam 2026-10-17: a cash batch is the X best, saves never count
   const slateKey = secondSlate ? secondSlate.key : "main";
   return (Array.isArray(saved) ? saved : [])
     .filter((l) => Array.isArray(l?.slots) && l.slots.length > 0)
+    .filter((l) => lineupModeOf(l) === mode) // Cash mode job 2b, 2026-10-17: a GPP batch counts only GPP lineups (no mode reads as GPP)
     .filter((l) => (typeof l.slate === "string" && l.slate !== ""
       ? l.slate === slateKey
       : !secondSlate || l.slots.every((s) => slateIds.has(String(s.playerId)))));
@@ -313,6 +332,10 @@ export function existingForSlate(saved, secondSlate, slateIds) {
  * carry the matchup (D43), salary and own% (D32) beside the engine's own fields. On a TwoGun-mode board a lineup
  * also carries `ceil` (TwoGun's ceilings summed, null when any player lacks one) and so does every one of its players
  * (null for a player TwoGun does not cover); a current-mode answer has neither field, so it is exactly what it was.
+ * Cash only (Cash 2b fix, 2026-10-17): the body adds `mode` ("cash") and `basis` ("median" or "proj", the basis the
+ * server picked, also on a refusal inside the build; null only when no basis could be picked); on a median build each
+ * lineup adds `median` (TwoGun's medians summed, null when any player lacks one) and each player his own `median`, and
+ * the lineup's `proj` is null when any player's projection is missing or only a stand-in. A GPP body has none of these.
  */
 export function enrichGenerateResult(result, rowById) {
   const lineups = result.lineups.map((l) => ({
@@ -320,11 +343,13 @@ export function enrichGenerateResult(result, rowById) {
     salary: l.salary,
     proj: l.proj,
     ...(l.ceil !== undefined ? { ceil: l.ceil } : {}),
+    ...(l.median !== undefined ? { median: l.median } : {}),
     ...(l.bent !== undefined ? { bent: l.bent } : {}),
     players: l.ids.map((id) => {
       const r = rowById.get(String(id)) ?? {};
       const player = { id, name: r.name ?? id, pos: r.pos ?? null, team: r.team ?? null, opp: matchupString(r), salary: r.salary ?? null, proj: r.proj ?? null, own: r.own ?? null };
       if (l.ceil !== undefined) player.ceil = ceilingOf(r); // the engine's figure: 0 for an out player
+      if (l.median !== undefined) player.median = medianOf(r);
       return player;
     })
   }));
@@ -335,5 +360,7 @@ export function enrichGenerateResult(result, rowById) {
       return { ...e, team: r.team ?? null, opp: matchupString(r), salary: r.salary ?? null, own: r.own ?? null };
     });
   }
-  return { lineups, exposure, notes: result.notes, bends: result.bends };
+  // Cash mode job 2b, 2026-10-17: mode and basis only when the engine set them (cash), so a GPP answer is unchanged.
+  const cash = { ...(result.mode !== undefined ? { mode: result.mode } : {}), ...(result.basis !== undefined ? { basis: result.basis } : {}) };
+  return { lineups, exposure, notes: result.notes, bends: result.bends, ...cash };
 }

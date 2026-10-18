@@ -9,7 +9,8 @@
 // three position mixes the FLEX allows (3 RB, 4 WR or 2 TE), group by group (QB, RB, WR, TE, DST), each group a
 // combination in projection order, so no lineup is visited twice. The bound for the unfilled part of a lineup is a
 // per-position 0/1 knapsack (best projection for k players of a position within a salary budget), combined across
-// the remaining positions; it ignores the team rules, so it is always an upper bound. Before each lineup, players
+// the remaining positions; it ignores the team rules (cash's every-team cap included, cash mode job 1, 2026-10-17), so it
+// is always an upper bound. Before each lineup, players
 // that are dominated (dearer and lower projected than enough others that one of them can always replace them
 // without breaking a rule) are trimmed; the safety argument is at trimPosition() and a test proves it.
 //
@@ -28,6 +29,9 @@ import {
   MAX_AT, CONFIGS, listNames, slotsFull, lockedSlotWords, minPlan, forcedSet, lowestScoreFirst, trialOrder, chooseBend, bendLabel, settleBend,
   bendTrials, diagnosisSentence, percentNote, unmetMinNotes
 } from "./soft.js"; // pure; Min % and soft rules
+import { objectiveScore, ceilingOf, ceilingNotes, NO_CEILING_SENTENCE, FIGURE_BUILDS, figureOf } from "./objective.js"; // pure; cash mode job 1, 2026-10-17
+export { ceilingOf, NO_CEILING_SENTENCE }; // every importer of multi.js keeps working
+import { cashEngineSettings, medianOf } from "./cash.js"; // pure; entered only when settings.mode is "cash" (cash mode job 1, 2026-10-17)
 
 // --------------------------------------------------------------------------------------------------------
 // Constants
@@ -61,9 +65,6 @@ export const LEGACY_RULE_KEYS = Object.freeze(["qbStack", "oneOffensivePerOtherT
  *  row.tg.ceil, D25 as amended 2026-10-15), refused on a board without ceilings. The retired "lev" and "projMinusOwn"
  *  are built on projection with optimize.js retiredObjectiveNote's note. */
 export const OBJECTIVES = Object.freeze(["proj", "ceil"]);
-
-/** The refusal when a ceiling build is asked of a board with no TwoGun ceiling on any row. */
-export const NO_CEILING_SENTENCE = "This board has no TwoGun ceilings (current mode, or no TwoGun board could be read), so lineups cannot be built by ceiling; build by projection.";
 
 /** D73: the most teammates and opponents the QB stack can ask for, and the defaults (1 or more, 0 or more). */
 export const STACK_OWN_MAX = 4;
@@ -184,7 +185,8 @@ function normaliseSettings(settings, slate, existingCount, notes) {
   const retiredNote = retiredObjectiveNote(asked);
   if (retiredNote) notes.push(retiredNote);
   const objective = retiredNote ? "proj" : asked;
-  if (!OBJECTIVES.includes(objective)) {
+  const cash = s._cash === true; // cash mode job 1, 2026-10-17: set only by cash.js cashEngineSettings, never by a request
+  if (!OBJECTIVES.includes(objective) && !(cash && objective === "median")) {
     fatal = `The objective "${objective}" is not one the Optimizer knows; use Projection or Ceiling.`;
   }
 
@@ -239,6 +241,7 @@ function normaliseSettings(settings, slate, existingCount, notes) {
     minUnderOne,
     existingCount,
     maxPerTeam,
+    capAllTeams: cash && s.capAllTeams === true,
     stackOwn,
     stackOwnOrMore,
     stackOpp,
@@ -307,19 +310,6 @@ function stackNumber(value, fallback, max, what, notes) {
   return clamped;
 }
 
-/** The score one candidate adds: his projection, or for "ceil" TwoGun's published ceiling (D25 as amended
- *  2026-10-15), 0 for a locked player without one, never an estimate; a typed projection never moves a ceiling. */
-function objectiveScore(row, proj, objective) {
-  return objective === "ceil" ? ceilingOf(row) ?? 0 : proj;
-}
-
-/** TwoGun's published ceiling for a board row (row.tg.ceil, TwoGun mode only), or null; 0 for an out row that has one
- *  (out = projection 0 and ceiling 0, Adam). Nothing else is read. */
-export function ceilingOf(row) {
-  const ceil = num(row && row.tg && row.tg.ceil);
-  return ceil !== null && rowIsOut(row) ? 0 : ceil;
-}
-
 /** Ruled out after TwoGun's board stamp: out of every build unless locked. */
 function outAfterStamp(flags) {
   return flags.includes("outAfterStamp") && !flags.includes("revived");
@@ -341,37 +331,32 @@ function rowFlags(row, pos, opts) {
   const overridden = num(row.override && row.override.proj) !== null;
   const game = upper(row.gameId) || null;
   const ceil = ceilingOf(row);
+  const figureBuild = Object.hasOwn(FIGURE_BUILDS, opts.objective);
+  const figure = figureBuild ? figureOf(row, opts.objective) : null;
+  // Cash 2b fix, 2026-10-17: projMissing (none, or only the stand-in) makes a median lineup's proj null, never a partial sum.
+  const projMissing = proj === null || (!overridden && flags.includes("no projection"));
   return {
-    proj, overridden, game, ceil,
-    noProjection: proj === null || (!overridden && flags.includes("no projection")),
+    proj, overridden, game, ceil, projMissing,
+    // Cash mode job 2b, 2026-10-17: in a median build medianOf alone decides (noCeiling below), never the projection.
+    noProjection: opts.objective !== "median" && projMissing,
     sidelined: rowIsOut(row),
     avoided: game !== null && opts.avoidGames.has(game),
     unstarredQb: opts.rules.starredQbOnly && pos === "QB" && !row.starred,
-    noCeiling: opts.objective === "ceil" && ceil === null,
+    noCeiling: figureBuild && figure === null,
     // ChatGPT wish r, Adam 2026-10-17 (D25, D27): a listed-out player brought back by a typed projection stays in a ceiling
     // build on his own published ceiling; he is left out (unless locked) only when he has none or TwoGun calls him OUT.
     // revivedOut is the reason ("noCeiling" or "calledOut") or false.
-    revivedOut: opts.objective === "ceil" && flags.includes("revived") && (ceil === null || (row.tg && row.tg.call) === "OUT")
-      ? (ceil === null ? "noCeiling" : "calledOut") : false,
+    revivedOut: figureBuild && flags.includes("revived") && (figure === null || (row.tg && row.tg.call) === "OUT")
+      ? (figure === null ? "noCeiling" : "calledOut") : false,
     lateOut: outAfterStamp(flags)
   };
 }
 
-/** Why a revived (listed-out, typed projection) player is out of a ceiling build, by rowFlags' revivedOut reason. */
+/** Why a revived (listed-out, typed projection) player is out of a ceiling or median build, by rowFlags' revivedOut reason. */
 const REVIVED_OUT_WORDS = {
-  noCeiling: "he is listed out with no TwoGun ceiling to build on",
-  calledOut: "he is listed out and TwoGun calls him OUT"
+  noCeiling: (word) => `he is listed out with no TwoGun ${word} to build on`,
+  calledOut: () => "he is listed out and TwoGun calls him OUT"
 };
-
-/** A ceiling build's notes: how many were left out for want of a ceiling, and that typed projections do not move it. */
-function ceilingNotes(leftOut, typed, notes) {
-  if (leftOut > 0) {
-    notes.push(`${leftOut} player${leftOut === 1 ? "" : "s"} with no TwoGun ceiling ${leftOut === 1 ? "was" : "were"} left out of this ceiling build.`);
-  }
-  if (typed > 0) {
-    notes.push(`${typed} typed projection${typed === 1 ? "" : "s"} ${typed === 1 ? "does" : "do"} not change a ceiling build; it ranks by TwoGun's ceilings as he publishes them.`);
-  }
-}
 
 /** D73: the stack constraints that bind at all ("0 or more" binds nothing). */
 const ownStackActive = (opts) => !(opts.stackOwn === 0 && opts.stackOwnOrMore);
@@ -410,23 +395,30 @@ const oppStackActive = (opts) => !(opts.stackOpp === 0 && opts.stackOppOrMore);
  *   maxPerTeam: most players (defense included) from one team, as optimize.js maxFromTeam; default none. D76: it
  *     never limits the lineup quarterback's team or the team he faces, only every other team.
  *   Every running back, receiver and tight end counts toward the stack (D55 as amended 2026-10-17); catchers is ignored.
+ *   mode: "gpp" (default) or "cash" (cash.js cashEngineSettings patches the settings; the result gains mode and basis).
+ * @param {string}   [args.boardMode] "twogun" or "current": the board's mode, which picks a cash build's basis (cash refuses any other)
  * @param {Array}    [args.existing] Adam's saved lineups (arrays of ids, or objects with ids/lineup/players/slots);
- *   they count for minimum unique players only, never for the exposure caps (D74)
- * @returns {{lineups: Array<{ids: string[], salary: number, proj: number, ceil?: number|null, bent?: string}>, exposure: object, notes: string[], bends: Array<{lineup: number, label: string}>}}
+ *   they count for minimum unique players only, never for the exposure caps (D74); in cash the route and the site pass
+ *   none (existingForSlate) and the engine ignores any it is given (Cash 3b fix round, 2026-10-17)
+ * @returns {{lineups: Array<{ids: string[], salary: number, proj: number|null, ceil?: number|null, median?: number|null, bent?: string}>, exposure: object, notes: string[], bends: Array<{lineup: number, label: string}>, mode?: "cash", basis?: "median"|"proj"|null}}
  *   exposure is still reported over saved plus new lineups (the Optimizer tab computes its own per tab, D74).
  *   ids are in DraftKings slot order QB, RB, RB, WR, WR, WR, TE, FLEX, DST; proj is always the lineup's projection,
  *   whatever the objective. ceil (TwoGun's ceilings summed) is present only when some row carries one, and null when
  *   any player in the lineup lacks one; a board without ceilings gives exactly the output it always did. Never throws.
+ *   Cash only (Cash 2b fix, 2026-10-17): median (TwoGun's medians summed) is present on a median build, null when any
+ *   player lacks one, and that build's proj is null when any player's projection is missing or only a stand-in; mode
+ *   is "cash"; basis is the picked basis, also on a refusal inside the build, and null only when none could be picked.
  */
 export function generateLineups(args) {
   const notes = [];
   try {
-    const { rows, slate, settings, existing } = args ?? {};
-    return run(rows, slate, settings, existing, notes);
+    const { rows, slate, settings, existing, boardMode } = args ?? {};
+    return runMode(rows, slate, settings, existing, notes, boardMode);
   } catch (e) {
     warn("lineup: generate failed", { error: e && e.message });
     notes.push(`Could not make lineups: ${e && e.message ? e.message : "unexpected error"}.`);
-    return { lineups: [], exposure: emptyExposure(), notes, bends: [] };
+    const cash = args?.settings?.mode === "cash" ? { mode: "cash", basis: null } : {}; // Cash mode job 2b, 2026-10-17
+    return { lineups: [], exposure: emptyExposure(), notes, bends: [], ...cash };
   }
 }
 
@@ -434,6 +426,29 @@ function emptyExposure() {
   const out = {};
   for (const pos of POSITIONS) out[pos] = [];
   return out;
+}
+
+/** Cash mode job 1, 2026-10-17: GPP (mode "gpp" or absent) runs as it always did and never enters cash.js; cash runs on
+ *  cashEngineSettings' patched settings everywhere and adds mode and basis; any other mode makes nothing. */
+function runMode(rows, slate, settings, existing, notes, boardMode) {
+  const mode = settings && typeof settings === "object" ? settings.mode : undefined;
+  if (mode === undefined || mode === null || mode === "gpp") {
+    // Cash mode job 2b, 2026-10-17: only cashEngineSettings may set the internal cash keys, never a GPP caller.
+    const { _cash, capAllTeams, ...gpp } = settings && typeof settings === "object" ? settings : {};
+    return run(rows, slate, settings && typeof settings === "object" ? gpp : settings, existing, notes);
+  }
+  if (mode !== "cash") {
+    notes.push("mode must be cash or gpp");
+    return { lineups: [], exposure: emptyExposure(), notes, bends: [] };
+  }
+  const c = cashEngineSettings(settings, rows, boardMode);
+  if (c.fatal) {
+    notes.push(c.fatal);
+    return { lineups: [], exposure: emptyExposure(), notes, bends: [], mode: "cash", basis: null };
+  }
+  notes.push(...c.notes);
+  // Cash 3b fix round, 2026-10-17: saves never count in cash (Adam: no minimum unique), so the engine drops them itself.
+  return { ...run(rows, slate, c.settings, [], notes), mode: "cash", basis: c.settings.objective };
 }
 
 function run(rows, slate, settings, existing, notes) {
@@ -647,8 +662,9 @@ export function minOutReason(row, id, opts) {
   if (f.noProjection) return "he has no projection";
   if (f.avoided) return "his game is set to avoid";
   if (f.unstarredQb) return "he is not starred";
-  if (f.revivedOut) return REVIVED_OUT_WORDS[f.revivedOut];
-  if (f.noCeiling) return "he has no TwoGun ceiling for this ceiling build";
+  const word = FIGURE_BUILDS[opts.objective];
+  if (f.revivedOut) return REVIVED_OUT_WORDS[f.revivedOut](word);
+  if (f.noCeiling) return `he has no TwoGun ${word} for this ${word} build`;
   return null;
 }
 
@@ -888,7 +904,10 @@ function prepare(rows, opts, notes) {
   // hasCeil: the board carries TwoGun ceilings (TwoGun mode); only then does a lineup report a ceiling total.
   const hasCeil = [...byId.values()].some((row) => ceilingOf(row) !== null);
   const st = { keyOfId, byId, fatal: null, cap: opts.cap, rules: opts.rules, maxPerTeam: opts.maxPerTeam, minUnique: opts.minUnique, hasCeil };
+  st.capAllTeams = opts.capAllTeams;
+  st.medianBuild = opts.objective === "median";
   const ceilBuild = opts.objective === "ceil";
+  const figureWord = Object.hasOwn(FIGURE_BUILDS, opts.objective) ? FIGURE_BUILDS[opts.objective] : null;
   if (ceilBuild && !hasCeil) {
     st.fatal = NO_CEILING_SENTENCE;
     return st;
@@ -951,7 +970,7 @@ function prepare(rows, opts, notes) {
       }
       continue;
     }
-    const { proj, overridden, noProjection, sidelined, game, avoided, unstarredQb, ceil, noCeiling, revivedOut, lateOut } = rowFlags(row, pos, opts);
+    const { proj, overridden, projMissing, noProjection, sidelined, game, avoided, unstarredQb, ceil, noCeiling, revivedOut, lateOut } = rowFlags(row, pos, opts);
     const otherwiseOut = noProjection || sidelined || avoided || unstarredQb || lateOut;
     if (!locked && (otherwiseOut || noCeiling || revivedOut)) {
       if (revivedOut && !otherwiseOut) revivedLeftOut.set(name, revivedOut);
@@ -963,11 +982,11 @@ function prepare(rows, opts, notes) {
       if (lateOut) notes.push(`Locked ${name} was ruled out after TwoGun's board was made; he is kept because he is locked.`);
       else if (sidelined) notes.push(`Locked ${name} is listed ${row.status ?? "injured"}; he is kept because he is locked.`);
       if (noProjection) notes.push(`Locked ${name} has no projection from any source and counts as ${proj === null ? "0" : `his stand-in ${round2(proj)}`}.`);
-      if (noCeiling) notes.push(`Locked ${name} has no TwoGun ceiling and counts as 0 in this ceiling build.`);
+      if (noCeiling) notes.push(`Locked ${name} has no TwoGun ${figureWord} and counts as 0 in this ${figureWord} build.`);
       if (avoided) notes.push(`Locked ${name} plays in ${game}, a game set to avoid; he is kept because he is locked.`);
       if (unstarredQb) notes.push(`Locked ${name} is not starred; he is used because he is locked.`);
     }
-    if (ceilBuild && overridden) typedIgnored++;
+    if (figureWord && overridden) typedIgnored++;
 
     const cand = {
       id,
@@ -983,6 +1002,8 @@ function prepare(rows, opts, notes) {
       salary,
       proj: proj ?? 0,
       ceil,
+      median: st.medianBuild ? medianOf(row) : null,
+      projMissing,
       own: num(row.own),
       score: Math.round(objectiveScore(row, proj ?? 0, opts.objective) * SCORE_SCALE),
       stackOk: countsTowardStack(pos),
@@ -1003,8 +1024,8 @@ function prepare(rows, opts, notes) {
     }
     byKey.set(cand.key, cand);
   }
-  if (ceilBuild) ceilingNotes(noCeilingLeftOut, typedIgnored, notes);
-  for (const [name, reason] of revivedLeftOut) notes.push(`${name} ${REVIVED_OUT_WORDS[reason].replace(/^he /, "")}; include him by locking him.`);
+  if (figureWord) ceilingNotes(noCeilingLeftOut, typedIgnored, notes, figureWord);
+  for (const [name, reason] of revivedLeftOut) notes.push(`${name} ${REVIVED_OUT_WORDS[reason](figureWord).replace(/^he /, "")}; include him by locking him.`);
 
   const all = [...byKey.values()];
   st.teamCount = teamIx.size;
@@ -1261,7 +1282,9 @@ function availableLists(st, opts, counts, prev) {
  *     eight offensive players (8), the game (2), the per-team cap. D76: the per-team cap never blocks the
  *     quarterback's team or the team he faces, so it blocks only other teams, each holding `cap` of M's eight
  *     others; 8 / cap still bounds them, and a replacement from an exempt team is fine for the cap (any stack
- *     effect is already counted above).
+ *     effect is already counted above). Cash mode job 1, 2026-10-17: with capAllTeams every team is capped, the
+ *     quarterback's included; a team at the cap still holds `cap` of M's eight others, so 8 / cap stays a valid
+ *     bound, and with the stacks and roster rules off the stack and rule terms (and the stack-counted guard) drop to 0.
  *   A dominator from p's OWN team keeps every team rule and both stack counts exactly as they were (every back,
  *   receiver and tight end counts alike, D55 as amended 2026-10-17), so `need` same-team dominators are always
  *   enough. Cross-team dominators are not used for a quarterback (his team decides the stack) or for a player who
@@ -1345,6 +1368,7 @@ function searchOne(st, avail, prev, opts, nodeLimit) {
   const overlap = new Int16Array(Math.max(1, prev.capacity));
   const maxShare = SLOT_COUNT - st.minUnique;
   const maxPerTeam = st.maxPerTeam;
+  const capAllTeams = st.capAllTeams === true;
   const allowRbGame = st.allowRbGame;
   const placed = [];
   let games = 0;
@@ -1369,7 +1393,8 @@ function searchOne(st, avail, prev, opts, nodeLimit) {
     // D76: Max per team skips the quarterback's team and the team he faces. Before he is placed (only locks: the QB
     // group is searched first) a team is not refused, since it may turn out to be his game; his own placement
     // below then checks every placed team outside his game, so the limit holds whatever the order.
-    if (maxPerTeam !== null && c.pos !== "QB" && qbTeam !== -1 && c.teamIx !== qbTeam && c.teamIx !== qbOpp && teamN[c.teamIx] >= maxPerTeam) return false;
+    // Cash mode job 1, 2026-10-17: with capAllTeams every team is capped, the quarterback's and his opponent's included.
+    if (maxPerTeam !== null && (capAllTeams || (c.pos !== "QB" && qbTeam !== -1 && c.teamIx !== qbTeam && c.teamIx !== qbOpp)) && teamN[c.teamIx] >= maxPerTeam) return false;
     if (c.pos !== "QB" && qbTeam !== -1 && rule.neverKeys.has(c.key)) return false;
     if (c.pos === "DST") {
       if (dstOpp !== -1) return false;
@@ -1651,6 +1676,7 @@ function diagnose(rows, settings, slate, existingCount, prevKeys, opts, pin = nu
     givenCaps: base.playerMaxExposure && typeof base.playerMaxExposure === "object" ? base.playerMaxExposure : {},
     entryTrials: stackTrials(entries, nameOf).map((t) => ({ label: t.label, patch: { qbStacks: { ...others, ...t.patch.qbStacks } } })),
     maxPerTeam: opts.maxPerTeam,
+    capAllTeams: opts.capAllTeams,
     avoidGames: opts.avoidGames.size > 0,
     locks: opts.locks.length > 0,
     pin
@@ -1717,10 +1743,12 @@ function presentLineup(st, players) {
   }
   const salary = players.reduce((s, c) => s + c.salary, 0);
   const proj = players.reduce((s, c) => s + c.proj, 0);
-  const out = { ids, salary, proj: round2(proj) };
+  // Cash 2b fix, 2026-10-17: a median build's proj is null when any player's projection is missing or a stand-in.
+  const out = { ids, salary, proj: st.medianBuild && players.some((c) => c.projMissing) ? null : round2(proj) };
   // TwoGun's ceilings summed, only on a board that carries them (so a current-mode answer is unchanged); null, never
-  // a partial sum, when any player lacks one.
+  // a partial sum, when any player lacks one. The same for a median build's medians.
   if (st.hasCeil) out.ceil = players.every((c) => c.ceil !== null) ? round2(players.reduce((s, c) => s + c.ceil, 0)) : null;
+  if (st.medianBuild) out.median = players.every((c) => c.median !== null) ? round2(players.reduce((s, c) => s + c.median, 0)) : null;
   return out;
 }
 

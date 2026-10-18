@@ -271,7 +271,8 @@ export function bendTrials(s) {
     }
   }
   for (const e of s.entryTrials) trials.push({ ...e, kind: "qbStackEntry" });
-  if (s.maxPerTeam !== null) trials.push({ label: `the limit of ${s.maxPerTeam} per team (outside the quarterback's game)`, kind: "maxPerTeam", patch: { maxPerTeam: null } });
+  // Cash mode job 1, 2026-10-17: in cash (capAllTeams) the cap covers every team, so the label drops the D76 words.
+  if (s.maxPerTeam !== null) trials.push({ label: `the limit of ${s.maxPerTeam} per team${s.capAllTeams ? "" : " (outside the quarterback's game)"}`, kind: "maxPerTeam", patch: { maxPerTeam: null } });
   if (s.avoidGames) trials.push({ label: "the games to avoid", kind: "avoidGames", patch: { avoidGames: [] } });
   if (s.locks) trials.push({ label: "the locks", kind: "locks", patch: { locks: s.pin ? [s.pin] : [] } });
   return trials;

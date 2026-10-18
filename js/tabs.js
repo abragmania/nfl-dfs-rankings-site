@@ -34,6 +34,7 @@ function floorNoteHtml(allRows, shownRows) {
 const TABS = [
   { key: "rankings", label: "Rankings" },
   { key: "lineup", label: "Optimizer" }, // DECISIONS.md D70: "Optimizer" (was "Lineup Builder"), second tab
+  { key: "showdown", label: "Showdown" }, // ChatGPT wish t, Adam 2026-10-17: a second door to the Showdown boards, in the app and on the site
   { key: "entries", label: "Entries" }, // rules repo 2026-10-17: Entries is its own tab (was a section under the Optimizer); app-only, see visibleTabs
   { key: "favorites", label: "Favorites" },
   { key: "projections", label: "Projections" },
@@ -42,7 +43,7 @@ const TABS = [
 
 // Rules repo 2026-10-17: the public site marks the page `is-site` (tools/publish.mjs injectSite marks the html tag at publish time; site-src/site.js adds it too), the same signal filterbar.js reads;
 // Entries holds Adam's private entries files (site.css hides .entries-section there), so the site gets no Entries tab.
-function onSitePage() {
+export function onSitePage() {
   return typeof document !== "undefined" && document.documentElement.classList.contains("is-site");
 }
 

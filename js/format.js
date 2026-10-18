@@ -75,16 +75,15 @@ export function kickoffClockPart(kickoffEt) {
 
 // Relative luminance (WCAG) used only to pick the more legible of two fixed text colours (white vs
 // a team's secondary colour) against a team's primary colour background.
-function luminance(hex) {
-  const c = hex.replace("#", "");
-  const r = parseInt(c.substring(0, 2), 16) / 255;
-  const g = parseInt(c.substring(2, 4), 16) / 255;
-  const b = parseInt(c.substring(4, 6), 16) / 255;
-  const lin = (v) => (v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4));
-  return 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
+// Team rows fix, 2026-10-17: the one contrast helper (team-palette.js uses it too); a colour is "#rrggbb" or [r, g, b] (0 to 255,
+// fractions allowed), and 0.04045 is the sRGB threshold (the old 0.03928 differs for no whole 0-255 channel value).
+function luminance(colour) {
+  const rgb = typeof colour === "string" ? [0, 2, 4].map((i) => parseInt(colour.replace("#", "").substring(i, i + 2), 16)) : colour;
+  const [r, g, b] = rgb.map((v) => v / 255).map((v) => (v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4)));
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
 }
 
-function contrastRatio(hexA, hexB) {
+export function contrastRatio(hexA, hexB) {
   const la = luminance(hexA) + 0.05;
   const lb = luminance(hexB) + 0.05;
   return la > lb ? la / lb : lb / la;
