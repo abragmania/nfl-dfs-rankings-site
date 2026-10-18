@@ -236,7 +236,7 @@ export function fillStripHtml(file, m) {
       <div class="entries-fill">
         <div class="entries-fill-bar"><span class="entries-fill-title">Fill from saved lineups</span><span class="entries-fill-sort"><span class="entries-quiet">Sort:</span>${sortChip("number", "1 2 3")}${sortChip("letter", "A B C")}</span></div>
         <div class="entries-fill-lists">
-          ${fillListHtml(file, "Cash Lineups", "cash", m.cash, m, "No Cash lineups. Mark a saved lineup \"Cash lineup\" on its card.")}
+          ${fillListHtml(file, "Cash Lineups", "cash", m.cash, m, "No Cash lineups. Save a lineup in Cash mode and it shows here.")}
           ${fillListHtml(file, "GPP lineups", "gpp", m.gpp, m, "No GPP lineups saved.")}
         </div>
         <div class="entries-fill-bar"><span class="entries-fill-title">Contests</span>${cBtn("all", "All")}${cBtn("none", "None")}${cBtn("cash", "All cash")}${cBtn("gpp", "All GPP")}${foldBtn("fold", "Fold all")}${foldBtn("unfold", "Unfold all")}<span class="entries-quiet">${tickedC} of ${m.groups.length} take part</span></div>

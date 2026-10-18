@@ -47,7 +47,7 @@ export function validateLineupName(value) {
 }
 
 // Optional saved-lineup mode (PROJECT.md Part 4 Cash mode): omitted stays omitted, and a missing or unknown stored
-// mode reads as gpp, so no existing file is rewritten. A PUT may flip it (PROJECT.md Part 4 Entries, Adam 2026-10-17).
+// mode reads as gpp, so no existing file is rewritten. Adam 2026-10-17: the mode is fixed at save, no crossover (a PUT refuses it).
 export function validateLineupMode(value) {
   if (value === undefined) return { mode: value };
   if (value === "cash" || value === "gpp") return { mode: value };

@@ -101,7 +101,7 @@ const state = {
   saveConfirm: null, // a short "Saved ..." message shown once after a successful save
   renamingId: null, // id of the saved lineup currently showing its inline rename box, or null
   deleteConfirmId: null, // id of the saved lineup currently showing its inline "Delete this lineup?" prompt, or null
-  lineupErrors: {}, // saved lineup id -> the server's message for a refused letter or mode change; cleared by its next good PUT
+  lineupErrors: {}, // saved lineup id -> the server's message for a refused letter change; cleared by its next good PUT
 };
 
 let savedFetchInFlightKey = null; // the season-week key a GET is currently in flight for, else null
@@ -579,12 +579,12 @@ export function afterSave({ data, name, editId, weekChanged, loadedAtStart, load
   return moved ? out : { ...out, loadedId: editId ?? data.lineup?.id ?? null, saveName: shown ?? name };
 }
 
-const lineupBusy = new Set(); // saved lineup ids with a card PUT in flight: their letter, mode and rename Save are disabled
+const lineupBusy = new Set(); // saved lineup ids with a card PUT in flight: their letter and rename Save are disabled
 const lineupPutSeq = new Map(); // saved lineup id -> the number of its newest card PUT (busy and its refusal are per lineup)
 let lineupPutLast = 0; // 🔵/👁 2026-10-17: one counter across all lineups' card PUTs
 let lineupPutApplied = 0; // the newest card PUT whose answer set savedLineups; an older answer never replaces it
 
-/** The one PUT of a saved card (letter, mode, rename; 🔵 2026-10-17): busy until answered, only the newest answer per lineup
+/** The one PUT of a saved card (letter, rename; 🔵 2026-10-17): busy until answered, only the newest answer per lineup
  *  and week counts; a refusal stays on the card until its next good PUT. True when the change held and its list is shown. */
 async function putLineupGuarded(id, body) {
   const mine = ++lineupPutLast;
@@ -621,7 +621,7 @@ async function doRenameLineup(id, name) {
   commit();
 }
 
-/** A saved card's letter or Cash/GPP mark (Adam 2026-10-17, entries fill plan 7a). */
+/** A saved card's letter (Adam 2026-10-17, entries fill plan 7a). */
 async function doLineupPut(id, payload) {
   await putLineupGuarded(id, payload);
   commit();
@@ -863,8 +863,7 @@ function savedLineupCardHtml(lineup, rowById, pick = null, numbers = null) {
   const prefix = lineupPrefix(lineup, numbers);
   const busy = lineupBusy.has(lineup.id) ? " disabled" : ""; // a card PUT is in flight (putLineupGuarded)
   const tagOptions = `<option value=""${lineup.tag ? "" : " selected"}>no letter</option>${TAG_OPTIONS.map((t) => `<option value="${t}"${t === lineup.tag ? " selected" : ""}>${t}</option>`).join("")}`;
-  const tagHtml = `<select class="saved-lineup-tag" data-action="lineup-tag" data-id="${escapeHtml(lineup.id)}" aria-label="Letter for ${escapeHtml(lineup.name)}"${busy}>${tagOptions}</select>
-        <button type="button" class="saved-lineup-btn saved-lineup-mode${isCash ? " active" : ""}" data-action="lineup-mode" data-id="${escapeHtml(lineup.id)}" data-mode="${isCash ? "gpp" : "cash"}" title="Click to make this a ${isCash ? "GPP" : "Cash"} lineup"${busy}>${isCash ? "Cash lineup" : "GPP lineup"}</button>`;
+  const tagHtml = `<select class="saved-lineup-tag" data-action="lineup-tag" data-id="${escapeHtml(lineup.id)}" aria-label="Letter for ${escapeHtml(lineup.name)}"${busy}>${tagOptions}</select>`; // Adam 2026-10-17: a lineup's mode is fixed at save, no crossover, so the card has no mode button
   const overCap = totals.salaryUsed > SALARY_CAP;
   const incomplete = totals.filled < LINEUP_SLOTS.length;
   const isRenaming = state.renamingId === lineup.id;
@@ -1311,9 +1310,6 @@ function wire(container) {
 
   container.querySelectorAll("[data-action='lineup-tag']").forEach((sel) => {
     sel.addEventListener("change", () => doLineupPut(sel.dataset.id, { tag: sel.value || null }));
-  });
-  container.querySelectorAll("[data-action='lineup-mode']").forEach((btn) => {
-    btn.addEventListener("click", () => doLineupPut(btn.dataset.id, { mode: btn.dataset.mode }));
   });
 
   container.querySelectorAll("[data-action='lineup-delete-start']").forEach((btn) => {

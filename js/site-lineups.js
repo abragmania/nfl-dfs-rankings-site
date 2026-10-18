@@ -151,13 +151,13 @@ export function buildDevicePatch(body, board, existing, others = []) {
   body = body ?? {};
   const hasSlots = body.slots !== undefined;
   const hasSlate = body.slate !== undefined && body.slate !== null;
-  if (body.name === undefined && !hasSlots && !hasSlate && body.mode === undefined && body.tag === undefined) return { error: "nothing to change" };
+  // Adam 2026-10-17: a lineup's mode is fixed at save, no crossover; only a new lineup sets it.
+  if (body.mode !== undefined) return { error: "mode is set when a lineup is saved; cash lineups stay cash and GPP lineups stay GPP" };
+  if (body.name === undefined && !hasSlots && !hasSlate && body.tag === undefined) return { error: "nothing to change" };
   const slotsResult = hasSlots ? validateLineupSlots(body.slots) : {};
   if (slotsResult.error) return { error: slotsResult.error };
   const nameResult = validateLineupName(body.name);
   if (nameResult.error) return { error: nameResult.error };
-  const modeResult = validateLineupMode(body.mode);
-  if (modeResult.error) return { error: modeResult.error };
   const tagResult = validateLineupTag(body.tag);
   if (tagResult.error) return { error: tagResult.error };
   const slates = Array.isArray(board?.slates) ? board.slates : [];
@@ -181,7 +181,6 @@ export function buildDevicePatch(body, board, existing, others = []) {
     if (check.error) return { error: check.error };
   }
   if (typeof slateFound.lineupSlate === "string" && slateFound.lineupSlate !== "") patch.slate = slateFound.lineupSlate;
-  if (modeResult.mode !== undefined) patch.mode = modeResult.mode;
   if (tagResult.tag !== undefined) patch.tag = tagResult.tag; // null clears the letter
   return { patch };
 }
@@ -197,7 +196,7 @@ export function updateDeviceLineup(storage, season, week, id, patch) {
     const list = readKey(storage, key);
     const idx = list.findIndex((l) => l.id === id);
     if (idx === -1) continue;
-    const { name, slots, salaryUsed, totalProj, slate, mode, tag } = patch ?? {};
+    const { name, slots, salaryUsed, totalProj, slate, tag } = patch ?? {};
     const entry = { ...list[idx] };
     if (name !== undefined) entry.name = name;
     if (slots !== undefined) {
@@ -207,10 +206,9 @@ export function updateDeviceLineup(storage, season, week, id, patch) {
     if (salaryUsed !== undefined) entry.salaryUsed = salaryUsed;
     if (totalProj !== undefined) entry.totalProj = totalProj;
     if (typeof slate === "string" && slate !== "") entry.slate = slate;
-    if (typeof mode === "string" && mode !== "") entry.mode = mode;
     if (tag === null) delete entry.tag;
     else if (typeof tag === "string" && tag !== "") entry.tag = tag;
-    if ([name, slots, salaryUsed, totalProj, slate, mode, tag].some((v) => v !== undefined)) entry.updatedAt = new Date().toISOString();
+    if ([name, slots, salaryUsed, totalProj, slate, tag].some((v) => v !== undefined)) entry.updatedAt = new Date().toISOString();
     const destKey = typeof entry.slate === "string" && entry.slate !== "" ? storageKey(season, week, entry.slate) : key;
     if (destKey === key) {
       const next = [...list];

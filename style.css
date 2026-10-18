@@ -2071,7 +2071,6 @@ select.opt-input { text-align: left; padding: 3px 4px; }
 .entries-row.proposed .entries-pick { border-style: dashed; }
 .saved-lineup-prefix { font-weight: 700; color: var(--text-muted); font-variant-numeric: tabular-nums; }
 .saved-lineup-tag { background: var(--bg-elevated-2); border: 1px solid var(--border); color: var(--text); border-radius: 4px; padding: 1px 4px; font-size: var(--fs-sm); max-width: 90px; }
-.saved-lineup-mode.active { border-color: var(--accent); color: var(--accent-text); }
 .entries-now { color: var(--text-muted); }
 .entries-now.blank { color: var(--text-dim); font-style: italic; }
 .entries-row.assigned { background: rgba(var(--accent-rgb), 0.08); }
