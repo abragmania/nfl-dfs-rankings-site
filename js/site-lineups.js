@@ -15,6 +15,7 @@
 import {
   validateLineupSlots, validateLineupName, validateLineupMode, validateLineupTag, validateLineupBuild, buildAfterSlotEdit, slotsPlayersDiffer, releaseLineupTag, findLineupSlate, buildLineupSnapshot,
 } from "../server/lineups/validate.js";
+import { DUPLICATE_CODE, findDuplicate, duplicateAfterEdit, duplicateMessage } from "../server/lineups/duplicate.js";
 
 export const STORAGE_PREFIX = "nfldfs-site-lineups:";
 export const DEVICE_ID_PREFIX = "device-";
@@ -128,6 +129,8 @@ export function buildDeviceLineup(body, board, others = []) {
   const rowById = new Map((board?.rows ?? []).map((r) => [String(r.id), r]));
   const snapshot = buildLineupSnapshot(slotsResult.slots, rowById, lineupSecondSlate);
   if (snapshot.error) return { error: snapshot.error };
+  const dup = findDuplicate(snapshot.slots, modeResult.mode, lineupSlate, deviceOnly(others));
+  if (dup) return duplicateRefusal(dup);
   const trimmed = (nameResult.name ?? "").trim();
   const entry = {
     id: makeDeviceId(others),
@@ -182,6 +185,8 @@ export function buildDevicePatch(body, board, existing, others = []) {
   }
   if (typeof slateFound.lineupSlate === "string" && slateFound.lineupSlate !== "") patch.slate = slateFound.lineupSlate;
   if (tagResult.tag !== undefined) patch.tag = tagResult.tag; // null clears the letter
+  const dup = duplicateAfterEdit(existing, patch.slots, patch.slate, deviceOnly(others));
+  if (dup) return duplicateRefusal(dup);
   return { patch };
 }
 
@@ -223,6 +228,10 @@ export function updateDeviceLineup(storage, season, week, id, patch) {
   }
   return { status: "missing" };
 }
+
+// The 409 of POST and PUT /api/lineups (Adam 2026-10-18: "One saved copy only") among this device's lineups, the store here.
+const deviceOnly = (list) => list.filter((l) => typeof l?.id === "string" && l.id.startsWith(DEVICE_ID_PREFIX));
+const duplicateRefusal = (dup) => ({ error: duplicateMessage(dup), code: DUPLICATE_CODE, duplicateOf: dup.id });
 
 /** Adds `entry` to its slate's list (its letter, if any, leaves any other device lineup there in the same write).
  *  Returns true, or false when storage is unavailable or refused the write. */

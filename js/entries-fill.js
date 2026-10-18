@@ -26,7 +26,7 @@ export function assignedInContest(group, assigned) {
  *  that differs from the automatic call); `proposals` { entryId: lineupId } are the unconfirmed rows (D75, plan item 3/6).
  *  `folded` (Adam 2026-10-17): the fold button leads the line, ▸ when the contest's rows are hidden, ▾ when shown; it is
  *  drawn with no `ctx` too. */
-export function contestHeadHtml(file, group, assigned, ctx = null, proposals = null, folded = false) {
+export function contestHeadHtml(file, group, assigned, ctx = null, proposals = null, folded = false, plain = false) {
   const n = group.entries.length;
   const done = assignedInContest(group, assigned);
   const proposedN = group.entries.filter((e) => proposals?.[e.entryId] != null).length;
@@ -42,24 +42,24 @@ export function contestHeadHtml(file, group, assigned, ctx = null, proposals = n
     ? `<input type="checkbox" class="entries-take" data-fill="contest" data-file="${f}" value="${c}"${ctx.ticked ? " checked" : ""} title="Tick: this contest takes part in the fill" aria-label="${escapeHtml(group.displayName)} takes part" />`
     : "";
   const fold = `<button type="button" class="entries-fold" data-action="entries-fold" data-file="${f}" data-contest="${c}" aria-expanded="${!folded}" title="${folded ? "Unfold" : "Fold"} this contest's rows">${folded ? "▸" : "▾"}</button>`;
+  // Adam 2026-10-18: `plain` (no saved lineups for the slate) is the two-column header: name, fee and entry count only.
   return `
       <tr class="entries-contest-head">
-        <td colspan="3"><div class="entries-contest-line">
+        <td colspan="${plain ? 2 : 3}"><div class="entries-contest-line">
           ${fold}${tick}<span class="entries-contest-name">${escapeHtml(group.displayName)}</span>
           ${group.fee ? `<span class="entries-fee">${escapeHtml(group.fee)}</span>` : ""}
           <span class="entries-quiet">${n} entr${n === 1 ? "y" : "ies"}</span>
-          <span class="entries-contest-status${assignedN + proposedN ? " some" : ""}">${status}</span>
+          ${plain ? "" : `<span class="entries-contest-status${assignedN + proposedN ? " some" : ""}">${status}</span>
           ${toggle}
-          <button type="button" class="saved-lineup-btn entries-clear" data-action="entries-clear" data-file="${f}" data-contest="${c}"${done ? "" : " disabled"}>Clear</button>
+          <button type="button" class="saved-lineup-btn entries-clear" data-action="entries-clear" data-file="${f}" data-contest="${c}"${done ? "" : " disabled"}>Clear</button>`}
         </div></td>
       </tr>`;
 }
 
 // `keep`: a Set of entry ids the planner never opens (Adam's hand picks and "(leave as is)" rows); null = none (🔵 2026-10-17).
 // `prior`: the last proposal shown { entryId: lineupId }, planFill's first choice per row; null = none (👁 2026-10-17).
-// `priorLead`: the lead id that proposal was made with; planFill ignores the remembered GPP placements (`prior`) only, when the lead used now differs (rules repo 2026-10-17).
-// Frozen: callers spread it (🔵 2026-10-17).
-export const FILL_DEFAULT = Object.freeze({ lineupIds: null, contestIds: null, lead: null, overwrite: false, dismissed: false, lastLineup: null, keep: null, prior: null, priorLead: null });
+// Frozen: callers spread it (🔵 2026-10-17). Adam 2026-10-18: the lead lineup (`lead`, `priorLead`) is gone with the lead-lineup order.
+export const FILL_DEFAULT = Object.freeze({ lineupIds: null, contestIds: null, overwrite: false, dismissed: false, lastLineup: null, keep: null, prior: null });
 
 /** A hand pick in a row's picker (🔵 2026-10-17): the row's pick is set, or cleared by "(leave as is)", and the row joins
  *  `keep`, so the planner never proposes over it until Re-propose or Clear (Confirm leaves `keep` alone, Adam 2026-10-17).
@@ -74,7 +74,7 @@ export function handPick(assign, keep, entryId, lineupId) {
 /** Re-propose: the proposal comes back in full, kept rows included and planned afresh (🔵 2026-10-17; Discard leaves
  *  `keep` as it is). */
 export function reproposeFill(s) {
-  return { ...FILL_DEFAULT, ...(s ?? {}), keep: null, dismissed: false, prior: null, priorLead: null };
+  return { ...FILL_DEFAULT, ...(s ?? {}), keep: null, dismissed: false, prior: null };
 }
 
 /** 🔵 2026-10-17 (F1): the localStorage key of one uploaded file's kept rows, beside its picks (a newer upload starts open). */
@@ -98,11 +98,12 @@ export function restoreKeep(raw, entries) {
 
 /** 🔵 2026-10-17 (F2): Confirm's whole state change. The proposals join the picks; Replace is one-shot so it goes off; the
  *  proposal is no longer discarded and the plan starts afresh (`prior` null); `keep` is left as it is (Adam 2026-10-17: only
- *  Re-propose, a hand pick or Clear changes it). Returns new { assign, fill }. */
-export function confirmFill(assign, fill, proposals) {
+ *  Re-propose, a hand pick or Clear changes it). `scoped` (🔵 2026-10-18, one tab's Confirm): Replace and `prior` stay as they were,
+ *  so the other tab's rows are not replanned. Returns new { assign, fill }. */
+export function confirmFill(assign, fill, proposals, scoped = false) {
   return {
     assign: { ...(assign ?? {}), ...(proposals ?? {}) },
-    fill: { ...FILL_DEFAULT, ...(fill ?? {}), overwrite: false, dismissed: false, prior: null, priorLead: null },
+    fill: { ...FILL_DEFAULT, ...(fill ?? {}), ...(scoped ? {} : { overwrite: false, prior: null }), dismissed: false },
   };
 }
 
@@ -132,14 +133,27 @@ export function clearContestFill(fill, entries, contestId) {
 
 /** Fill cash / Fill GPP (Adam 2026-10-17): every lineup of the class ticked, the other class's lineup ticks as they were
  *  (null stays null: all ticked already), only that class's contests ticked, the proposal back (dismissed off, prior
- *  dropped). `keep`, `lead`, `overwrite` and `lastLineup` stay: a "(leave as is)" row stays until Re-propose or a hand
- *  pick. `model` is fillModelOf's answer; returns a new fill state. */
-export function fillClassPreset(fill, model, cls) {
+ *  dropped). `keep`, `overwrite` and `lastLineup` stay: a "(leave as is)" row stays until Re-propose or a hand
+ *  pick. `model` is fillModelOf's answer; returns a new fill state. `scoped` (Adam 2026-10-18, the GPP and Cash tabs): the
+ *  other class's contest ticks stay as they were, so a click in one tab never changes the other tab's proposal. */
+export function fillClassPreset(fill, model, cls, scoped = false) {
   const s = { ...FILL_DEFAULT, ...(fill ?? {}) };
   const mine = (model?.[cls] ?? []).map((l) => String(l.id));
   const lineupIds = s.lineupIds == null ? null : [...s.lineupIds.map(String).filter((id) => !mine.includes(id)), ...mine];
-  const contestIds = (model?.groups ?? []).filter((g) => model.classes?.[g.contestId] === cls).map((g) => g.contestId);
-  return { ...s, lineupIds, contestIds, dismissed: false, prior: null, priorLead: null };
+  const groups = model?.groups ?? [];
+  const mineC = groups.filter((g) => model.classes?.[g.contestId] === cls).map((g) => g.contestId);
+  const others = scoped ? (s.contestIds ?? groups.map((g) => g.contestId)).map(String).filter((id) => model.classes?.[id] !== cls) : [];
+  return { ...s, lineupIds, contestIds: [...others, ...mineC], dismissed: false, prior: null };
+}
+
+/** All / None on the contest ticks of one class only (Adam 2026-10-18, the GPP and Cash tabs): the other class keeps its ticks.
+ *  Returns the new `contestIds` (an array of contest ids). */
+export function tickClassContests(contestIds, model, cls, on) {
+  const groups = model?.groups ?? [];
+  const current = (contestIds ?? groups.map((g) => g.contestId)).map(String);
+  const others = current.filter((id) => model.classes?.[id] !== cls);
+  const mine = groups.filter((g) => model.classes?.[g.contestId] === cls).map((g) => g.contestId);
+  return on ? [...others, ...mine] : others;
 }
 
 /** The slate's saved lineups for the Sort choice: their numbers, the sorted list, the ids in that order and the
@@ -160,7 +174,9 @@ export function fillModelOf(entries, slateKey, lineups, eff, slates, view) {
   const lists = fillListsOf(lineups, view?.sortBy);
   const groups = groupByContest(entries);
   const classes = effectiveClasses(groups, view?.classes);
-  const plan = planFill({ entries, lineups, assigned: eff, classes, lead: fill.lead, overwrite: fill.overwrite, keep: fill.keep, prior: fill.prior, priorLead: fill.priorLead, lineupIds: fill.lineupIds, contestIds: fill.contestIds, order: lists.order, slateKey, slates });
+  // 🔵 2026-10-18: the fill follows the Saved tab's number order whatever the Sort toggle shows (it orders the lists and pickers only).
+  const planOrder = (lists.by === "number" ? lists : fillListsOf(lineups, "number")).order;
+  const plan = planFill({ entries, lineups, assigned: eff, classes, overwrite: fill.overwrite, keep: fill.keep, prior: fill.prior, lineupIds: fill.lineupIds, contestIds: fill.contestIds, order: planOrder, slateKey, slates });
   // 🔵 2026-10-17: validProposals sees every pick, Replace and the kept rows, as planFill did and as Confirm will write.
   const valid = validProposals(plan.proposed, entries, lineups, eff, classes, slateKey, slates, { overwrite: fill.overwrite, keep: fill.keep });
   const kept = new Set(Array.from(fill.keep ?? [], String));
@@ -186,34 +202,54 @@ function fillListHtml(file, title, which, list, m, empty) {
         </div>`;
 }
 
-/** The fill strip above a file's contest table (D75 as amended 2026-10-17, entries fill plan items 5 and 6): the Cash
- *  Lineups and GPP lineups lists with All / None and the Sort toggle, the contest buttons, the lead dropdown, the Replace
- *  tick, the proposal's notes and the Confirm / Discard buttons. `m` is fillModelOf's answer. */
-export function fillStripHtml(file, m) {
-  const f = escapeHtml(file);
-  const { fill, numbers } = m;
-  const nProp = Object.keys(m.proposals).length;
+/** The proposals of one class: { entryId: lineupId } cut to the entries of contests in that class (all of them with `cls` null). */
+export function classProposals(m, cls = null) {
+  if (!cls) return m.proposals;
   const classOfEntry = new Map(m.groups.flatMap((g) => g.entries.map((e) => [e.entryId, m.classes[g.contestId]])));
-  const nCash = Object.keys(m.proposals).filter((id) => classOfEntry.get(id) === "cash").length;
-  const labelOf = (id) => {
-    const l = m.lineups.find((x) => String(x.id) === String(id));
-    return l ? lineupLabel(l, numbers) : null;
-  };
-  const sortChip = (by, text) => `<button type="button" class="chip toggle-chip${m.by === by ? " active" : ""}" data-action="entries-sort" data-sort="${by}" aria-pressed="${m.by === by}">${text}</button>`;
-  const cBtn = (set, text) => `<button type="button" class="saved-lineup-btn" data-action="entries-fill-contests" data-file="${f}" data-set="${set}">${text}</button>`;
-  const foldBtn = (set, text) => `<button type="button" class="saved-lineup-btn" data-action="entries-fold-all" data-file="${f}" data-set="${set}">${text}</button>`;
-  const tickedC = fill.contestIds == null ? m.groups.length : m.groups.filter((g) => fill.contestIds.map(String).includes(g.contestId)).length;
-  const leadUsed = m.plan.lead;
-  const leadNote = fill.lead != null && leadUsed != null && String(fill.lead) !== String(leadUsed)
-    ? `Lead changed: ${labelOf(fill.lead) ?? "the chosen lineup"} is unticked or does not fit this file, so ${labelOf(leadUsed)} leads.`
-    : "";
-  // 👁 2026-10-17: with no lead in use (every GPP lineup unticked) the dropdown says so instead of showing an unused lineup.
-  const noLead = leadUsed == null && m.gpp.length ? `<option value="" selected>none ticked</option>` : "";
-  const leadOpts = noLead + m.gpp.map((l) => `<option value="${escapeHtml(l.id)}"${String(l.id) === String(leadUsed) ? " selected" : ""}>${escapeHtml(lineupLabel(l, numbers))}</option>`).join("");
+  return Object.fromEntries(Object.entries(m.proposals).filter(([id]) => classOfEntry.get(id) === cls));
+}
+
+/** A tab's Confirm (🔵 2026-10-18 round 2): confirmFill for that class's proposals. Scoped while the other class still has
+ *  proposals (Replace and `prior` stay for it); the Confirm that clears the last ones is unscoped, so Replace goes off. */
+export function confirmClassFill(assign, fill, m, cls) {
+  const other = cls === "gpp" ? "cash" : "gpp";
+  return confirmFill(assign, fill, classProposals(m, cls), Boolean(cls) && Object.keys(classProposals(m, other)).length > 0);
+}
+
+/** Confirm and the proposal's summary, shown at the top of a file's GPP or Cash tab (Adam 2026-10-18): the Confirm N
+ *  button (only that class's proposals; every proposal with `cls` null), the count, and the planner's notes for that class. */
+export function fillTopHtml(file, m, cls = null) {
+  const f = escapeHtml(file);
+  const mine = classProposals(m, cls);
+  const nProp = Object.keys(mine).length;
+  const classOfEntry = new Map(m.groups.flatMap((g) => g.entries.map((e) => [e.entryId, m.classes[g.contestId]])));
+  const nCash = Object.keys(mine).filter((id) => classOfEntry.get(id) === "cash").length;
   const nameOf = new Map(m.groups.map((g) => [g.contestId, g.displayName]));
   // 👁 2026-10-17: a note names its contest only when it is about one; grouped and general notes carry contestId null.
   const noteText = (n) => (n.contestId != null && nameOf.has(n.contestId) ? `${nameOf.get(n.contestId)}: ${n.text}` : n.text);
-  const notes = fill.dismissed ? "" : m.plan.notes.map((n) => `<div class="entries-quiet">${escapeHtml(noteText(n))}</div>`).join("");
+  const notes = m.fill.dismissed ? "" : m.plan.notes.filter((n) => !cls || n.cls === cls).map((n) => `<div class="entries-quiet">${escapeHtml(noteText(n))}</div>`).join("");
+  const summary = nProp ? (cls ? `${nProp} proposed` : `${nProp} proposed (${nCash} cash, ${nProp - nCash} GPP)`) : "Nothing to propose.";
+  const go = m.fill.dismissed
+    ? `<span class="entries-quiet">Proposal discarded; the rows stay as they are. Re-propose is under Adjust.</span>`
+    : `<button type="button" class="lineup-build-btn" data-action="entries-fill-confirm" data-file="${f}"${cls ? ` data-class="${cls}"` : ""}${nProp ? "" : " disabled"}>Confirm ${nProp}</button>
+          <span class="entries-quiet">${summary}</span>`;
+  return `<div class="entries-fill-go">${go}</div>${notes ? `<div class="entries-fill-notes">${notes}</div>` : ""}`;
+}
+
+/** The fill controls under a file's Adjust fold (D75 as amended 2026-10-17, entries fill plan items 5 and 6): the lineup
+ *  lists with All / None and the Sort toggle, the contest buttons, the Replace tick and the Fill / Discard / Re-propose
+ *  buttons. `cls` (Adam 2026-10-18): a GPP or Cash tab shows only that class's list, buttons and contests; null shows both.
+ *  Confirm and the notes are in fillTopHtml. `m` is fillModelOf's answer. */
+export function fillStripHtml(file, m, cls = null) {
+  const f = escapeHtml(file);
+  const { fill } = m;
+  const sortChip = (by, text) => `<button type="button" class="chip toggle-chip${m.by === by ? " active" : ""}" data-action="entries-sort" data-sort="${by}" aria-pressed="${m.by === by}">${text}</button>`;
+  const scope = cls ? ` data-class="${cls}"` : "";
+  const cBtn = (set, text) => `<button type="button" class="saved-lineup-btn" data-action="entries-fill-contests" data-file="${f}" data-set="${set}"${scope}>${text}</button>`;
+  const foldBtn = (set, text) => `<button type="button" class="saved-lineup-btn" data-action="entries-fold-all" data-file="${f}" data-set="${set}"${scope}>${text}</button>`;
+  const shown = cls ? m.groups.filter((g) => m.classes[g.contestId] === cls) : m.groups;
+  const tickedC = fill.contestIds == null ? shown.length : shown.filter((g) => fill.contestIds.map(String).includes(g.contestId)).length;
+  const nProp = Object.keys(m.proposals).length;
   const reopen = reopenLabel(fill, m.keptOpen);
   // Adam 2026-10-17: Fill cash / Fill GPP tick one whole class and propose it; disabled with no complete lineup of the class.
   const classBtn = (cls, text) => {
@@ -225,28 +261,29 @@ export function fillStripHtml(file, m) {
     const title = noLineups ? `No ${label} lineups saved` : noContests ? `No ${cls === "cash" ? "cash" : "GPP"} contests in this file` : `Tick every ${label} lineup and every ${cls === "cash" ? "cash" : "GPP"} contest, then propose; Confirm writes it`;
     return `<button type="button" class="saved-lineup-btn entries-fill-class" data-action="entries-fill-class" data-file="${f}" data-class="${cls}" title="${title}"${none ? " disabled" : ""}>${text}</button>`;
   };
-  const classBtns = `${classBtn("cash", "Fill cash")}${classBtn("gpp", "Fill GPP")}`;
+  const classBtns = cls ? classBtn(cls, cls === "cash" ? "Fill cash" : "Fill GPP") : `${classBtn("cash", "Fill cash")}${classBtn("gpp", "Fill GPP")}`;
+  // Discard is the file's (both tabs' proposals go); Re-propose brings them back.
   const go = fill.dismissed
     ? `${classBtns}<button type="button" class="lineup-build-btn" data-action="entries-fill-repropose" data-file="${f}">${reopen}</button><span class="entries-quiet">Proposal discarded; the rows stay as they are.</span>`
-    : `${classBtns}<button type="button" class="lineup-build-btn" data-action="entries-fill-confirm" data-file="${f}"${nProp ? "" : " disabled"}>Confirm ${nProp}</button>
-          <button type="button" class="saved-lineup-btn" data-action="entries-fill-discard" data-file="${f}"${nProp ? "" : " disabled"}>Discard</button>
-          ${reopen ? `<button type="button" class="saved-lineup-btn" data-action="entries-fill-repropose" data-file="${f}">${reopen}</button>` : ""}
-          <span class="entries-quiet">${nProp ? `${nProp} proposed (${nCash} cash, ${nProp - nCash} GPP)` : "Nothing to propose."}</span>`;
+    : `${classBtns}<button type="button" class="saved-lineup-btn" data-action="entries-fill-discard" data-file="${f}" title="Discards the proposals of both the GPP and the Cash tab"${nProp ? "" : " disabled"}>Discard</button>
+          ${reopen ? `<button type="button" class="saved-lineup-btn" data-action="entries-fill-repropose" data-file="${f}">${reopen}</button>` : ""}`;
+  const lists = [
+    cls !== "gpp" ? fillListHtml(file, "Cash Lineups", "cash", m.cash, m, "No Cash lineups. Save a lineup in Cash mode and it shows here.") : "",
+    cls !== "cash" ? fillListHtml(file, "GPP lineups", "gpp", m.gpp, m, "No GPP lineups saved.") : ""
+  ].join("");
+  const classChoice = cls ? "" : `${cBtn("cash", "All cash")}${cBtn("gpp", "All GPP")}`;
   return `
       <div class="entries-fill">
         <div class="entries-fill-bar"><span class="entries-fill-title">Fill from saved lineups</span><span class="entries-fill-sort"><span class="entries-quiet">Sort:</span>${sortChip("number", "1 2 3")}${sortChip("letter", "A B C")}</span></div>
         <div class="entries-fill-lists">
-          ${fillListHtml(file, "Cash Lineups", "cash", m.cash, m, "No Cash lineups. Save a lineup in Cash mode and it shows here.")}
-          ${fillListHtml(file, "GPP lineups", "gpp", m.gpp, m, "No GPP lineups saved.")}
+          ${lists}
         </div>
-        <div class="entries-fill-bar"><span class="entries-fill-title">Contests</span>${cBtn("all", "All")}${cBtn("none", "None")}${cBtn("cash", "All cash")}${cBtn("gpp", "All GPP")}${foldBtn("fold", "Fold all")}${foldBtn("unfold", "Unfold all")}<span class="entries-quiet">${tickedC} of ${m.groups.length} take part</span></div>
+        <div class="entries-fill-bar"><span class="entries-fill-title">Contests</span>${cBtn("all", "All")}${cBtn("none", "None")}${classChoice}${foldBtn("fold", "Fold all")}${foldBtn("unfold", "Unfold all")}<span class="entries-quiet">${tickedC} of ${shown.length} take part</span></div>
         <div class="entries-fill-bar">
-          <label class="entries-fill-lead"><span>Lead lineup (first in single-entry contests, last in the others)</span><select class="entries-fill-select" data-action="entries-fill-lead" data-file="${f}"${m.gpp.length ? "" : " disabled"}>${leadOpts || "<option>none</option>"}</select></label>
           <label class="entries-check"><input type="checkbox" data-fill="overwrite" data-file="${f}"${fill.overwrite ? " checked" : ""} /><span>Replace rows already assigned</span></label>
         </div>
         <div class="entries-quiet">A replaced row keeps its own pick when the fill would hand it the same lineup.</div>
-        ${leadNote ? `<div class="entries-quiet">${escapeHtml(leadNote)}</div>` : ""}
+        <div class="entries-quiet">Lineups go in number order, 1 to the number of entries, one per entry.</div>
         <div class="entries-fill-go">${go}</div>
-        ${notes ? `<div class="entries-fill-notes">${notes}</div>` : ""}
       </div>`;
 }

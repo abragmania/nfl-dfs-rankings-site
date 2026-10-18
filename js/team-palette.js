@@ -56,31 +56,70 @@ export function fromLab([L, a, b]) {
   return `#${linearRgb(L, a, b).map((c) => Math.round(fromLinear(c) * 255).toString(16).padStart(2, "0")).join("")}`;
 }
 
-/** The team colour a step richer, for the row wash's left end: CIELAB lightness down 8, chroma up 12% (so it reads deep, not pastel). */
-export function deepen(hex) {
+// The card colour of each theme, dark then light: style.css's --bg-elevated (a test pins them). 🔵 2026-10-18 series review: the wash and its text colours are gone.
+export const WASH_THEMES = [{ card: "#151a22" }, { card: "#ffffff" }];
+const channel = (hex, i) => parseInt(hex.slice(1 + 2 * i, 3 + 2 * i), 16);
+
+const DARK_L = 30; // below this CIELAB lightness a colour is dark: the nudge only lightens it
+/** The colour at lightness L2 with a and b shrunk together (hue held) until it fits the sRGB gamut. */
+const inGamut = (L2, a, b) => {
+  let k = 1;
+  while (k > 0 && linearRgb(L2, a * k, b * k).some((v) => v < -1e-3 || v > 1 + 1e-3)) k = Math.max(0, k - 0.01);
+  return fromLab([L2, a * k, b * k]);
+};
+
+// The dark row's fill shows the team's real colours (Adam 2026-10-18, round-5 render: Dallas, Indianapolis, Houston, the Giants, the Patriots read grey).
+// 👁 2026-10-18 round 6: a band, not just a floor, so every dark row takes white text (Titans #6F89A7 was the one light tile); light rows get a floor so a black stays charcoal.
+export const FILL_MIN_L = 28;
+export const FILL_MAX_L = 42;
+export const LIGHT_FILL_MIN_L = 30;
+/** `hex` with L clamped to [FILL_MIN_L, FILL_MAX_L] at fixed hue (chroma shrunk by inGamut, never shifted); unchanged inside the band. */
+export function fillForDark(hex) {
   const [L, a, b] = toLab(hex);
-  return fromLab([Math.max(0, L - 8), a * 1.12, b * 1.12]);
+  return L >= FILL_MIN_L && L <= FILL_MAX_L ? hex : inGamut(Math.min(FILL_MAX_L, Math.max(FILL_MIN_L, L)), a, b);
+}
+/** The light theme's fill: `hex` with L raised to LIGHT_FILL_MIN_L at fixed hue; unchanged at L 30 or more. */
+export function fillForLight(hex) {
+  const [L, a, b] = toLab(hex);
+  return L >= LIGHT_FILL_MIN_L ? hex : inGamut(LIGHT_FILL_MIN_L, a, b);
 }
 
-// The wash's three stops (deep, colour, alt at 34%, 18%, 10% of full strength) sit over the card; every text colour a row carries (the
-// muted grey, and the accent blue of a chosen name and the stack tag, which starts lower) must stay 4.5:1 or better on every stop in
-// both themes, so a colour that would break that gets the whole wash scaled down (--tcs). Team rows fix, 2026-10-17: all of them listed.
-// The values are style.css's --bg-elevated, --text-muted and --accent-text (a test pins them).
-const WASH_STOPS = [0.34, 0.18, 0.1];
-export const WASH_THEMES = [{ card: "#151a22", text: ["#a3abb8", "#6b9bec"] }, { card: "#ffffff", text: ["#565d68", "#2f5cd6"] }];
-const channel = (hex, i) => parseInt(hex.slice(1 + 2 * i, 3 + 2 * i), 16);
-/** The largest wash scale (1 down to 0 in steps of 0.05) that keeps every text colour at 4.5:1 or better on the row in both themes. */
-export function washScale(deep, colour, alt) {
-  const rgbOf = (h) => [0, 1, 2].map((i) => channel(h, i));
-  for (let i = 20; i > 0; i--) {
-    const k = i / 20;
-    const ok = WASH_THEMES.every((t) => [deep, colour, alt ?? colour].every((h, s) => {
-      const bg = rgbOf(t.card).map((v, c) => v + (rgbOf(h)[c] - v) * WASH_STOPS[s] * k);
-      return t.text.every((x) => contrastRatio(rgbOf(x), bg) >= 4.55); // 4.5 plus a hair for the browser's rounding
-    }));
-    if (ok) return k;
+// Solid rows (Adam 2026-10-18, then "not fully opaque"; flat, one colour per row, after the round-5 render): ROW_FILL is the one fill opacity per theme in %
+// (style.css :root --row-fill-a, a test pins it).
+export const ROW_FILL = { light: 85, dark: 60 };
+// 👁 2026-10-18 round 6: the name and the second line are one colour. 🔵 2026-10-18 series review: `chip` is the role-tag base, darker under white text and lighter under near-black text, so the tag text never loses contrast.
+export const ROW_TEXTS = [{ text: "#f4f5f7", onDark: true, chip: "rgba(0, 0, 0, 0.22)" }, { text: "#0e1116", onDark: false, chip: "rgba(255, 255, 255, 0.35)" }];
+/** The row's text colour for the one flat fill `fill`: whichever of ROW_TEXTS holds 4.5:1 on the fill blended over
+ *  the card at ROW_FILL; else the opacity loses 5 points at a time until one does (`alpha`, a number, then differs from ROW_FILL). */
+export function solidRow(fill, theme) {
+  const card = [0, 1, 2].map((i) => channel(WASH_THEMES[theme === "dark" ? 0 : 1].card, i));
+  const rgbFill = [0, 1, 2].map((i) => channel(fill, i));
+  for (let alpha = ROW_FILL[theme]; alpha >= 0; alpha -= 5) {
+    const bg = rgbFill.map((v, c) => card[c] + (v - card[c]) * alpha / 100);
+    const ok = ROW_TEXTS.map((m) => ({ m, ratio: contrastRatio([0, 1, 2].map((i) => channel(m.text, i)), bg) }));
+    const best = ok.filter((x) => x.ratio >= 4.55).sort((x, y) => y.ratio - x.ratio)[0]; // 4.5 plus a hair for the browser's rounding
+    if (best) return { alpha, text: best.m.text, onDark: best.m.onDark, chip: best.m.chip };
   }
-  return 0;
+  return { alpha: 0, text: ROW_TEXTS[0].text, onDark: true, chip: ROW_TEXTS[0].chip };
+}
+
+const BAR_NEUTRAL = "#c8cdd3"; // 👁 2026-10-18 round 6: the bar's fallback on dark; on light it is the fill 30 L deeper (the fill itself at full strength reads only 1.5:1 on its own 85% blend)
+// 🔵 2026-10-18 series review: the other neutrals, tried in order only when a clashing team's bar must differ from one already placed (#f4f5f7 is 14.6 from
+// #c8cdd3, so white follows it, then greys 15 L apart: a slate can hold six near-identical navies, each needing a bar of its own).
+const greys = (...Ls) => Ls.map((L) => fromLab([L, 0, 0]));
+const BAR_OTHERS = { dark: ["#f4f5f7", "#ffffff", ...greys(68, 53, 38)], light: ["#0e1116", ...greys(22, 37, 52, 67)] };
+/** The row's left bar: `secondary` when it holds 1.8:1 against the fill blended over the card (at `alpha`, default ROW_FILL) and 1.5:1 against the card;
+ *  else a light neutral on dark, the fill deepened by 30 L at its own hue on light. `avoid` (the bars of the placed teams this fill clashes with): the first of
+ *  secondary, that fallback, then BAR_OTHERS that is CLASH_DELTA_E from all of them, else the one farthest from the nearest. */
+export function barColour(fill, secondary, theme, alpha = ROW_FILL[theme], avoid = []) {
+  const card = WASH_THEMES[theme === "dark" ? 0 : 1].card;
+  const blended = [0, 1, 2].map((i) => channel(card, i) + (channel(fill, i) - channel(card, i)) * alpha / 100);
+  const shows = (c) => contrastRatio(c, blended) >= 1.8 && contrastRatio(c, card) >= 1.5;
+  const [L, a, b] = toLab(fill);
+  const fallback = theme === "dark" ? BAR_NEUTRAL : inGamut(Math.max(0, L - 30), a, b);
+  const list = [...(secondary && shows(secondary) ? [secondary] : []), fallback, ...BAR_OTHERS[theme].filter(shows)];
+  const gap = (c) => Math.min(...avoid.map((x) => deltaE(c, x)));
+  return list.find((c) => gap(c) >= CLASH_DELTA_E) ?? list.reduce((best, c) => (gap(c) > gap(best) ? c : best));
 }
 
 /** The smallest lightness-only nudge of `hex` that sits NUDGE_DELTA_E from every colour in `taken`, farther from them than `hex`
@@ -90,11 +129,9 @@ export function nudgeColour(hex, taken) {
   const [L, a, b] = toLab(hex);
   const nearest = (c) => Math.min(...taken.map((t) => deltaE(c, t))); // Infinity when nothing is placed
   const start = nearest(hex);
-  for (const dl of L_STEPS) {
+  for (const dl of L < DARK_L ? L_STEPS.filter((s) => s > 0) : L_STEPS) { // a dark colour is only ever lightened, in BOTH themes (👁 2026-10-18: a darker navy vanished on dark; the light palette moved too: NYG, WAS)
     const L2 = Math.min(100, Math.max(0, L + dl));
-    let k = 1;
-    while (k > 0 && linearRgb(L2, a * k, b * k).some((v) => v < -1e-3 || v > 1 + 1e-3)) k = Math.max(0, k - 0.01);
-    const c = fromLab([L2, a * k, b * k]);
+    const c = inGamut(L2, a, b);
     const d = nearest(c);
     const hueHeld = Math.hypot(a, b) <= 5 || hueGap(toLab(c), [L, a, b]) <= 2; // 8-bit rounding at low L can swing the hue; such a step is skipped
     if (c !== hex && !nearPage(c) && hueHeld && d >= NUDGE_DELTA_E && (d > start || !taken.length)) return c;
@@ -106,9 +143,11 @@ export function nudgeColour(hex, taken) {
  *  order, so the input order never matters: the first keeps its primary; a later team that clashes with a placed
  *  colour, or whose primary sits on the page background, has its primary nudged in lightness (nudgeColour, `fudged: true`,
  *  the colour it was in `original`). If no nudge fits, the primary stays and `clash` names the team it clashes with; only a
- *  primary on the page takes its secondary (primary as `alt`, in `original`). A team with no usable colours gets no entry. */
+ *  primary on the page takes its secondary (primary as `alt`, in `original`). A team with no usable colours gets no entry.
+ *  fillLight / fillDark, rowLight / rowDark, barLight / barDark and clashLight / clashDark are set by paintTheme from the TRUE primary and secondary. */
 export function slatePalette(teamAbbrs, teamsByAbbr = TEAM_BY_ABBR) {
   const out = new Map();
+  const truth = new Map();
   const placed = [];
   for (const abbr of [...new Set(teamAbbrs)].filter((a) => typeof a === "string").sort()) {
     const t = teamsByAbbr[abbr];
@@ -127,12 +166,45 @@ export function slatePalette(teamAbbrs, teamsByAbbr = TEAM_BY_ABBR) {
         if (hit2) entry.clash = hit2.abbr;
       } else if (hit) entry.clash = hit.abbr;
     }
-    entry.deep = deepen(entry.colour);
-    entry.wash = washScale(entry.deep, entry.colour, entry.alt);
     out.set(abbr, entry);
+    truth.set(abbr, { primary, secondary });
     placed.push({ abbr, colour: entry.colour });
   }
+  paintTheme(out, "dark", truth);
+  paintTheme(out, "light", truth);
   return out;
+}
+
+// 🔵 2026-10-18 series review: the fills a theme paints are separated where they are painted. Each team's TRUE primary is clamped into the
+// theme's band first (dark L 28-42, light L 30 and up), then teams in alphabetical order nudge inside that band until 15 apart from every
+// placed fill: lightness steps (both ways), then chroma steps at fixed hue, within the gamut. No fit keeps the clamped colour, `clashLight` /
+// `clashDark` names the nearest placed team, and barColour gives this team a bar 15 from the bars of the teams it clashes with.
+const FILL_BANDS = { dark: [FILL_MIN_L, FILL_MAX_L], light: [LIGHT_FILL_MIN_L, 100] };
+const CHROMA_STEPS = [0.85, 1.15, 0.7, 1.3, 0.55, 1.45, 0.4, 1.6];
+function fillCandidates(start, truth, theme) {
+  const [lo, hi] = FILL_BANDS[theme];
+  const [L, a, b] = toLab(start);
+  const t = toLab(truth);
+  const held = (c) => { const x = toLab(c); return Math.hypot(t[1], t[2]) <= 5 || Math.hypot(x[1], x[2]) <= 5 || hueGap(x, t) <= 2; }; // 8-bit rounding at low chroma can swing the hue
+  const found = L_STEPS.map((dl) => L + dl).filter((L2) => L2 >= lo && L2 <= hi).map((L2) => inGamut(L2, a, b));
+  for (const k of CHROMA_STEPS) if (linearRgb(L, a * k, b * k).every((v) => v >= -1e-3 && v <= 1 + 1e-3)) found.push(fromLab([L, a * k, b * k]));
+  return found.filter((c) => c !== start && held(c));
+}
+function paintTheme(out, theme, truth) {
+  const K = theme === "dark" ? "Dark" : "Light";
+  const placed = [];
+  for (const [abbr, e] of out) {
+    const { primary, secondary } = truth.get(abbr);
+    const start = theme === "dark" ? fillForDark(primary) : fillForLight(primary);
+    const nearest = (c) => Math.min(...placed.map((p) => deltaE(c, p.fill))); // Infinity when nothing is placed
+    const fill = nearest(start) >= CLASH_DELTA_E ? start : fillCandidates(start, primary, theme).find((c) => nearest(c) >= CLASH_DELTA_E) ?? start;
+    const hits = placed.filter((p) => deltaE(fill, p.fill) < CLASH_DELTA_E);
+    const row = solidRow(fill, theme);
+    const bar = barColour(fill, secondary ?? primary, theme, row.alpha, hits.map((p) => p.bar));
+    Object.assign(e, { [`fill${K}`]: fill, [`row${K}`]: row, [`bar${K}`]: bar });
+    if (hits.length) e[`clash${K}`] = hits.reduce((n, p) => (deltaE(fill, p.fill) < deltaE(fill, n.fill) ? p : n)).abbr;
+    placed.push({ abbr, fill, bar });
+  }
 }
 
 const byRows = new WeakMap();

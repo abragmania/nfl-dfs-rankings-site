@@ -19,7 +19,7 @@
 import { escapeHtml, money, dec1, textColourFor } from "./format.js";
 import { store, matchesPosition, filterRows, sortRows, passesProjFloor, FLEX_POS, defaultDirFor, activeSlate, activeSlateRows, activeSlateGames, slateDisplayName, boardHasCeilings, isTwoGunMode } from "./state.js";
 import { sortableHeadHtml } from "./tabs.js";
-import { matchupText, lineupOutTagHtml, lineupRevivedTagHtml, statusTagsHtml, gradedCellHtml, rowIsOut, twoGunOutReason, STATUS_INFO } from "./table.js"; // D43: the one copy of "vs DAL" / "@ DET"; the red OUT tag (Adam 2026-10-15)
+import { matchupText, lineupOutTagHtml, statusTagsHtml, gradedCellHtml, rowIsOut, twoGunOutReason, STATUS_INFO } from "./table.js"; // D43: the one copy of "vs DAL" / "@ DET"; the red OUT tag (Adam 2026-10-15)
 import { shownTotal, lineupCeilTotal } from "./totals.js";
 import { newBuildId, batchBuild, handBuild, buildTypeText, groupByBuild, groupHeaderText } from "./lineup-builds.js";
 import { lineupFigures, geoOwn, geoText, medianText, sortKeysFor, sortLineups, nextSort, cleanSortState, effectiveSort, sortRowHtml } from "./lineup-sort.js"; // Adam 2026-10-17: sort options; geo own = geometric mean of ownership, his multiplicative uniqueness
@@ -32,10 +32,11 @@ import { lineupRoles, roleTagsHtml } from "./lineup-marks.js";
 import { paletteForRows } from "./team-palette.js";
 import { poolSearchChipHtml, wirePoolSearchChip } from "./lineup-search.js";
 import { settingRowHtml, settingGroupHtml, settingChipsRowHtml, settingSubtitleHtml, activeRulesSummary, switchButtonHtml, switchCheckboxHtml, numberBoxHtml } from "./lineup-settings.js";
-import { newQbState, listedQbs, pruneEntries, cleanSavedEntries, qbStacksPayload, qbListHtml, qbPanelsHtml, wireQbStacks, SPREAD_HINT } from "./lineup-qb-stacks.js";
+import { newQbState, listedQbs, pruneEntries, cleanSavedEntries, qbStacksPayload, qbListHtml, qbPanelsHtml, wireQbStacks, defaultsApply, SPREAD_HINT } from "./lineup-qb-stacks.js";
 import { TEAM_BY_ABBR } from "./teams-data.js";
 import { postLineupGenerate, getLineups, postLineup, putLineup, deleteLineup } from "./api.js";
-import { renderEntriesSection, wireEntries, slateLineups } from "./entries.js";
+import { slateLineups } from "./entries.js";
+import { renderEntriesSection, wireEntries } from "./entries-wire.js";
 import { TAG_OPTIONS, numberLineups, lineupPrefix } from "./lineup-tags.js";
 import { phoneMinHeight, panelMinHeight } from "./expand.js";
 import {
@@ -766,7 +767,7 @@ function slotPlayerHtml(row, tags = []) {
           <span class="lineup-slot-name">${escapeHtml(row.name)}</span>${lineupOutTagHtml(row)}
           <span class="lineup-slot-matchup">${escapeHtml(matchupText(row))}</span>
         </span>
-        <span class="lineup-slot-detail">${money(row.salary)} &middot; ${projText} proj${escapeHtml(ownParen(row.own))}${roleTagsHtml(tags)}${lineupRevivedTagHtml(row, true)}</span>
+        <span class="lineup-slot-detail">${money(row.salary)} &middot; ${projText} proj${escapeHtml(ownParen(row.own))}${roleTagsHtml(tags)}</span>
       </span>
     </span>`;
 }
@@ -844,20 +845,20 @@ export function savedLineupSlotHtml(slotName, entry, pick = null, palette = null
     <div class="saved-lineup-slot saved-lineup-slot-tc${missingCls}" style="${teamColourStyle(teamColours(palette, src.team))}">
       <span class="saved-lineup-slot-pos">${escapeHtml(slotName)}</span>
       ${teamLogoHtml(src.team, "saved-lineup-slot-logo", 16) || `<span class="saved-lineup-slot-team">${escapeHtml(src.team ?? "")}</span>`}
-      <span class="saved-lineup-slot-name">${nameHtml}</span>${entry.row ? lineupOutTagHtml(entry.row) : ""}${entry.row ? lineupRevivedTagHtml(entry.row, true) : ""}
+      <span class="saved-lineup-slot-name">${nameHtml}</span>${entry.row ? lineupOutTagHtml(entry.row) : ""}
       <span class="saved-lineup-slot-salary">${money(src.salary)}</span>
       ${noteHtml}
     </div>`;
 }
 
-/** The ceiling total of a saved lineup's build record (ChatGPT wish g): "· 181.4 ceil" as it was when built; a dash when a
+/** The ceiling total of a saved lineup's build record (ChatGPT wish g): "181.4 ceil" as it was when built; a dash when a
  *  player had no TwoGun ceiling or the players were changed by hand since; "" for a hand build or a current-mode batch. */
 export function savedCeilHtml(build) {
   if (!build || build.kind !== "batch") return "";
-  if (build.edited) return `<span title="The players were changed by hand after this build, so its ceiling total no longer applies">&middot; — ceil</span>`;
+  if (build.edited) return `<span title="The players were changed by hand after this build, so its ceiling total no longer applies">— ceil</span>`; // the "·" between totals groups is CSS (.saved-lineup-totals, 👁 2026-10-18)
   if (build.totalCeil === undefined) return "";
-  if (build.totalCeil === null) return `<span title="A player in this lineup had no TwoGun ceiling">&middot; — ceil</span>`;
-  return `<span title="TwoGun's ceilings summed, as built">&middot; ${dec1(build.totalCeil)} ceil</span>`;
+  if (build.totalCeil === null) return `<span title="A player in this lineup had no TwoGun ceiling">— ceil</span>`;
+  return `<span title="TwoGun's ceilings summed, as built">${dec1(build.totalCeil)} ceil</span>`;
 }
 
 function savedLineupCardHtml(lineup, rowById, pick = null, numbers = null) {
@@ -928,8 +929,8 @@ function savedLineupCardHtml(lineup, rowById, pick = null, numbers = null) {
       <div class="saved-lineup-slots">${rowsHtml}</div>
       <div class="saved-lineup-totals">
         <span class="${overCap ? "saved-lineup-totals-over" : ""}">${salaryText}</span>
-        <span>&middot; ${dec1(totals.totalProj)} proj</span>${medianPart ? `<span>&middot; ${medianPart}</span>` : ""}${ceilHtml}
-        <span>&middot; ${escapeHtml(ownText)}${isCash ? "" : ` &middot; ${geoText(savedLineupFigures(lineup, rowById).geo, "a player has no ownership figure or is no longer on the slate")}`}</span>
+        <span>${dec1(totals.totalProj)} proj</span>${medianPart ? `<span>${medianPart}</span>` : ""}${ceilHtml}
+        <span>${escapeHtml(ownText)}${isCash ? "" : ` &middot; ${geoText(savedLineupFigures(lineup, rowById).geo, "a player has no ownership figure or is no longer on the slate")}`}</span>
       </div>
       <div class="saved-lineup-actions">
         <button type="button" class="saved-lineup-btn" data-action="lineup-load" data-id="${escapeHtml(lineup.id)}">Load</button>
@@ -2060,6 +2061,17 @@ export function starredQbQualifiers(rows, pool) {
   return (rows ?? []).filter((r) => upperOf(r?.pos) === "QB" && !minRowOut(r, r.id, { ...pool, starredQbOnly: true })).length;
 }
 
+/** Adam 2026-10-18 1:50 AM: the ids of the QBs a build can pick, for "do the Default stack rows still apply". A locked QB is
+ *  the only usable one; otherwise every slate QB the same minRowOut test leaves in the pool, with "starred QBs only" as the rule is set.
+ *  Per-lineup bends are ignored here: a bent lineup names its bend on its card (D73), so the grey state need not track them (🔵 2026-10-18). */
+export function usableQbIds(rows, pool, starredOnly, lockedIdList) {
+  const locked = new Set((lockedIdList ?? []).map(String));
+  const qbs = (rows ?? []).filter((r) => upperOf(r?.pos) === "QB");
+  const lockedQbs = qbs.filter((r) => locked.has(String(r.id)));
+  if (lockedQbs.length) return lockedQbs.map((r) => String(r.id));
+  return qbs.filter((r) => !minRowOut(r, r.id, { ...pool, starredQbOnly: Boolean(starredOnly) })).map((r) => String(r.id));
+}
+
 /** The line under the "starred QBs only" rule: "3 starred QBs qualify". At 0 it warns (nothing can be built) unless a QB is
  *  locked, which the build uses instead. */
 export function starredQbNote(count, lockedQb) {
@@ -2108,19 +2120,19 @@ export function optLineupCardHtml(lineup, index, busy, { saved = false, fresh = 
     decor.rolesFor = (p) => (cash.strip.wantIn.has(String(p.id)) ? `<span class="role-tag role-want" title="On your Want list">WANT</span>` : "");
   }
   const rows = (lineup.players ?? []).map((p, i) => cardPlayerRowHtml(p, LINEUP_SLOTS[i] ?? p.pos ?? "", Boolean(fresh?.has(String(p.id))), pick, decor)).join("");
-  const ownText = totals.own == null ? " &middot; — own" : ` &middot; ${Math.round(totals.own)}% own`;
-  const geoHtml = ` &middot; ${geoText(geoOwn((lineup.players ?? []).map((p) => p.own)))}`; // Adam 2026-10-17: geo own on the GPP card only
+  const ownBody = totals.own == null ? "— own" : `${Math.round(totals.own)}% own`;
+  const geoBody = geoText(geoOwn((lineup.players ?? []).map((p) => p.own))); // Adam 2026-10-17: geo own on the GPP card only
   // TwoGun mode: the lineup's total of TwoGun's ceilings, as the server summed it (absent in current mode; a dash
   // when a player has none, never a partial sum).
   const ceil = lineupCeilTotal(lineup); // ChatGPT wish d: the shown sum, totals.js
-  const ceilText = ceil === undefined ? "" : ` &middot; ${ceil == null ? `<span title="A player in this lineup has no TwoGun ceiling">—</span>` : dec1(ceil)} ceil`;
+  const ceilBody = ceil === undefined ? "" : `${ceil == null ? `<span title="A player in this lineup has no TwoGun ceiling">—</span>` : dec1(ceil)} ceil`;
   // Adam 2026-10-18: the median total beside proj, off the sort's own figure; only on a TwoGun board with medians or a batch carrying them.
   const plist = lineup.players ?? [];
   const medianPart = !cash && (boardMediansForSort() || plist.some((p) => "median" in p)) ? medianText(newLineupFigures(lineup, rowById).median, plist.some((p) => newPlayerMedian(p, rowById) != null)) : "";
   const nw = (s) => (s ? ` <span class="opt-nowrap">${s}</span>` : ""); // with a median the line is long: breaks fall between figures, not inside one
-  const gppTotals = medianPart
-    ? `${nw(`&middot; ${dec1(totals.proj) ?? "—"} proj &middot; ${medianPart}`)}${nw(ceilText.trim())}${nw(`${ownText.trim()}${geoHtml}`)}`
-    : ` &middot; ${dec1(totals.proj) ?? "—"} proj${ceilText}${ownText}${geoHtml}`;
+  const gppTotals = medianPart // the "·" between no-wrap groups is CSS (.opt-nowrap::after, 👁 2026-10-18), so a wrapped line never starts with it; the salary span is the first group
+    ? `${nw(`${dec1(totals.proj) ?? "—"} proj &middot; ${medianPart}`)}${nw(ceilBody)}${nw(`${ownBody} &middot; ${geoBody}`)}`
+    : ` &middot; ${dec1(totals.proj) ?? "—"} proj${ceilBody ? ` &middot; ${ceilBody}` : ""} &middot; ${ownBody} &middot; ${geoBody}`;
   const uid = escapeHtml(lineup.uid ?? "");
   const saveBtn = saved
     ? `<button type="button" class="saved-lineup-btn opt-saved-btn" disabled>Saved ✓</button>`
@@ -2137,7 +2149,7 @@ export function optLineupCardHtml(lineup, index, busy, { saved = false, fresh = 
       <div class="opt-card-players">${rows}</div>
       ${cash
         ? `<div class="opt-card-totals"><span class="${overCap ? "saved-lineup-totals-over" : ""}">${escapeHtml(cashTotalsText(lineup, cash.basis))}</span>${unusedCapText(totals.salary) ? ` <span class="cash-unused-chip" title="Salary left under the $50,000 cap">${escapeHtml(unusedCapText(totals.salary))}</span>` : ""}</div>${cash.strip.html}`
-        : `<div class="opt-card-totals"><span class="${overCap ? "saved-lineup-totals-over" : ""}">${money(totals.salary)}</span>${gppTotals}</div>`}
+        : `<div class="opt-card-totals"><span class="${[overCap ? "saved-lineup-totals-over" : "", medianPart ? "opt-nowrap" : ""].filter(Boolean).join(" ")}">${money(totals.salary)}</span>${gppTotals}</div>`}
     </div>`;
 }
 
@@ -2181,6 +2193,15 @@ function lockedNames(rowById) {
 function starredQbPool(board) {
   return { excludes: state.excludes, avoid: new Set([...opt.avoid].map((g) => String(g).toUpperCase())), objective: effectiveObjective(opt.objective, boardHasCeilings(activeSlateRows(board))) };
 }
+
+const STACK_INERT_TITLE = "Every QB in play has his own numbers, so these do not apply";
+// 🔵 2026-10-18: only the entries the build sends count (listed QBs, as qbStacksPayload); an unstarred QB keeps his saved entry but is built under the defaults.
+const stackDefaultsApply = (board) => {
+  const rows = activeSlateRows(board);
+  const listed = listedQbIds(rows);
+  const sent = Object.fromEntries(Object.entries(opt.qb.entries).filter(([id]) => listed.has(id)));
+  return defaultsApply(usableQbIds(rows, starredQbPool(board), opt.rules.starredQbOnly !== false, lockedIds(state.slots, state.locks)), sent);
+};
 
 /** ChatGPT wish i, Adam 2026-10-17: the footer's one-line summary of the settings in effect, from the same `opt` the
  *  controls edit; count and unique as the request parses them, the objective as the build will use it. */
@@ -2231,9 +2252,15 @@ function optimizerControlsHtml(rowById) {
     expRows,
     ruleRowsHtml(opt.rules, RULE_GROUPS.build),
   ].join("");
+  // Adam 2026-10-18 1:35 AM ("does this override them or what?"), then no explanatory sentence: the structure says it, group "Default stack", then the sub-heading "Per-QB overrides" over the QB list (D73).
+  // Adam 2026-10-18 1:50 AM: when every QB in play has his own numbers the two rows are greyed (still editable), with a tooltip saying why.
+  const defaultsLive = stackDefaultsApply(board);
   const stacking = [
+    `<div class="opt-stack-rows${defaultsLive ? "" : " opt-row-inert"}"${defaultsLive ? "" : ` title="${STACK_INERT_TITLE}" aria-label="${STACK_INERT_TITLE}"`}>`,
     settingRowHtml("Teammates", `${select("opt-stack-own", "Teammates to stack with the quarterback", upTo(OPT_STACK_OWN_MAX), opt.stackOwn)}${switchCheckboxHtml("opt-stack-own-more", opt.stackOwnOrMore, "or more", "exactly")}`),
     settingRowHtml("Opponents", `${select("opt-stack-opp", "Opponents to stack with the quarterback", upTo(OPT_STACK_OPP_MAX), opt.stackOpp)}${switchCheckboxHtml("opt-stack-opp-more", opt.stackOppOrMore, "or more", "exactly")}`),
+    `</div>`,
+    settingSubtitleHtml("Per-QB overrides"),
     qbListHtml(qbRows, opt.qb, lockedList),
   ].join("");
   // 👁 2026-10-17: the open QBs' panels are full-width cards after the three groups (inside Stacks they grew to 822px).
@@ -2254,7 +2281,7 @@ function optimizerControlsHtml(rowById) {
       ${formError}
       <div class="opt-groups">
         ${settingGroupHtml("Pool", pool)}
-        ${settingGroupHtml("Stacks", stacking)}
+        ${settingGroupHtml("Default stack", stacking)}
         ${settingGroupHtml("Build", build)}
         ${qbPanels}
       </div>
@@ -2585,6 +2612,8 @@ async function saveGenerated(uids) {
   const slateKey = results.slateKey ?? "main"; // the slate these lineups were made for, not the one on screen now
   const rowById = new Map((store.get().board?.rows ?? []).map((r) => [String(r.id), r]));
   const mode = results.mode === "cash" ? "cash" : "gpp"; // Cash mode job 3b, 2026-10-17: a card saves in the mode it was built in
+  const skipped = [];
+  let savedCount = 0;
   for (const uid of uids) {
     const lineup = results.lineups.find((l) => l.uid === uid);
     if (!lineup || cardIsSaved(lineup, savedSetKeys(savedOfActiveSlate(mode), rowById), rowById)) continue;
@@ -2593,8 +2622,13 @@ async function saveGenerated(uids) {
       // picks lineups by name, so names stay unique per slate, across both modes).
       const taken = savedOfActiveSlate(null).map((l) => l.name);
       const stem = mode === "cash" ? "Cash" : "Lineup";
-      const name = uniqueSavedName(`${stem} ${results.lineups.indexOf(lineup) + 1}`, taken, stem);
+      const cardName = `${stem} ${results.lineups.indexOf(lineup) + 1}`;
+      const name = uniqueSavedName(cardName, taken, stem);
       const data = await postLineup({ name, slots: slotsForSave(lineup.players), slate: slateKey, ...(mode === "cash" ? { mode } : {}), build: batchBuild(results, lineup) }); // Cash 3b fix round, 2026-10-17: GPP sends no mode
+      if (data?.error?.code === "DUPLICATE_LINEUP") {
+        skipped.push({ name: cardName, message: data.error.message });
+        continue;
+      }
       if (!data || data.ok === false) {
         opt.saveError = data?.error?.message ?? "Could not save the lineup.";
         break;
@@ -2603,13 +2637,24 @@ async function saveGenerated(uids) {
       // save answer that carried no list to match against.
       if (Array.isArray(data.lineups)) state.savedLineups = data.lineups;
       else lineup.saved = true;
+      savedCount++;
     } catch (e) {
       opt.saveError = `Could not reach the server: ${e.message}`;
       break;
     }
   }
+  if (skipped.length) {
+    const status = duplicateSaveStatus(uids.length, savedCount, skipped);
+    opt.saveError = opt.saveError ? `${status}. ${opt.saveError}` : status;
+  }
   opt.saving = false;
   commit();
+}
+
+/** Cards refused as copies (Adam 2026-10-18): one card's own sentence, or for Save all "N saved, M already saved (names)". */
+export function duplicateSaveStatus(asked, savedCount, skipped) {
+  if (asked === 1 && skipped.length === 1) return skipped[0].message;
+  return `${savedCount} saved, ${skipped.length} already saved (${skipped.map((s) => s.name).join(", ")})`;
 }
 
 function discardGenerated(uid) {
@@ -2752,7 +2797,18 @@ function wireOptimizer(container) {
     wireQbStacks(settingsEl, { qbs: opt.qb, globals: qbGlobals, ownMax: OPT_STACK_OWN_MAX, oppMax: OPT_STACK_OPP_MAX, commit, save: savePersisted });
     // 🔵 2026-10-17: wireQbStacks saves a QB's own stack boxes without a re-render; this listener (added after its own,
     // so it runs after the edit) keeps the footer's "custom stacks on N QBs" current.
-    settingsEl.addEventListener("change", refreshSummary);
+    settingsEl.addEventListener("change", () => {
+      refreshSummary();
+      // Adam 2026-10-18 1:50 AM: a QB's own boxes change whether the Default stack rows still apply, with no re-render.
+      const rowsEl = settingsEl.querySelector(".opt-stack-rows");
+      if (!rowsEl) return;
+      const live = stackDefaultsApply(store.get().board);
+      rowsEl.classList.toggle("opt-row-inert", !live);
+      for (const attr of ["title", "aria-label"]) {
+        if (live) rowsEl.removeAttribute(attr);
+        else rowsEl.setAttribute(attr, STACK_INERT_TITLE);
+      }
+    });
   }
   container.querySelectorAll("[data-action='opt-avoid']").forEach((btn) => {
     btn.addEventListener("click", () => {

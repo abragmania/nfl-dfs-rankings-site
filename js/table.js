@@ -79,17 +79,6 @@ export function lineupOutTagHtml(row) {
   return `<span class="out-tag" title="${escapeHtml(title)}">OUT</span>`;
 }
 
-/** ChatGPT wish r, Adam 2026-10-17: a player listed out but brought back by a typed projection (flag "revived") carries a
- *  small "OUT, manually included" mark on lineup cards, in the OUT tag's red family; "" for anyone else. `short` (the Saved
- *  cards and the builder slots, where the full text wrapped to a line of its own, 👁 2026-10-17) shows "OUT, incl." with the
- *  full words as the hover. */
-export function lineupRevivedTagHtml(row, short = false) {
-  if (!(row?.flags ?? []).includes("revived")) return "";
-  const title = revivedStatusTitle(row, row.status ? (STATUS_INFO[String(row.status).trim().toLowerCase()]?.label ?? row.status) : "out");
-  if (short) return `<span class="out-tag out-tag-manual" title="${escapeHtml(`OUT, manually included: brought back by a typed projection. ${title}`)}">OUT, incl.</span>`;
-  return `<span class="out-tag out-tag-manual" title="${escapeHtml(title)}">OUT, manually included</span>`;
-}
-
 // TwoGun-mode markers: the same small amber dot as the A1 marker, its sentences on hover. Nothing shows in current mode
 // (rows there carry no tg or src). A figure TwoGun does not cover is the current sources' and says so (row.src).
 function markerHtml(texts) {

@@ -67,6 +67,8 @@ function siteError(code, message) {
   return { ok: false, generatedAt: new Date().toISOString(), stale: [], error: { code, message } };
 }
 
+const builtRefusal = (built) => (built.code ? { ...siteError(built.code, built.error), duplicateOf: built.duplicateOf } : siteError("VALIDATION_ERROR", built.error));
+
 /** The published week, or null when the baked slate cannot say. */
 async function publishedWeek() {
   const pub = await publishedSlate();
@@ -279,7 +281,7 @@ export async function postLineup(payload) {
   const storage = pageStorage();
   const others = [...app, ...readDeviceLineups(storage, wk.season, wk.week)];
   const built = buildDeviceLineup(payload, board, others);
-  if (built.error) return siteError("VALIDATION_ERROR", built.error);
+  if (built.error) return builtRefusal(built);
   if (!saveDeviceLineup(storage, wk.season, wk.week, built.slateKey, built.entry)) {
     return siteError("DEVICE_STORAGE_UNAVAILABLE", STORAGE_UNAVAILABLE_MESSAGE);
   }
@@ -313,7 +315,7 @@ export async function putLineup(id, payload) {
       : siteError("NOT_FOUND", "No saved lineup with that id.");
   }
   const built = buildDevicePatch(payload, board, existing, [...app, ...device]);
-  if (built.error) return siteError("VALIDATION_ERROR", built.error);
+  if (built.error) return builtRefusal(built);
   const result = updateDeviceLineup(storage, wk.season, wk.week, id, built.patch);
   if (result.status === "refused") return unavailable();
   if (result.status === "missing") return siteError("NOT_FOUND", "No saved lineup with that id.");

@@ -39,6 +39,7 @@ const TABS = [
   { key: "favorites", label: "Favorites" },
   { key: "projections", label: "Projections" },
   { key: "ownership", label: "Projected Ownership" },
+  { key: "teams", label: "Teams (sample)" }, // Temporary (Adam 2026-10-18): remove when he has seen the colours
 ];
 
 // Rules repo 2026-10-17: the public site marks the page `is-site` (tools/publish.mjs injectSite marks the html tag at publish time; site-src/site.js adds it too), the same signal filterbar.js reads;
@@ -47,9 +48,9 @@ export function onSitePage() {
   return typeof document !== "undefined" && document.documentElement.classList.contains("is-site");
 }
 
-/** The tabs to draw: all of them in the app, all but Entries on the public site. */
+/** The tabs to draw: all of them in the app, all but Entries and the temporary Teams (sample) on the public site (🔵 2026-10-18 series review). */
 export function visibleTabs(onSite = onSitePage()) {
-  return TABS.filter((t) => !(onSite && t.key === "entries"));
+  return TABS.filter((t) => !(onSite && (t.key === "entries" || t.key === "teams")));
 }
 
 /** The tab to show: the stored one when it is drawn, else Rankings (an Entries tab left over on the site; rules repo 2026-10-17). */

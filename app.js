@@ -24,7 +24,8 @@ import {
   postProjectionsPaste,
   postMode,
 } from "./js/api.js";
-import { renderPills, renderSlateLine, wireUpload, wireRefresh, renderModeRow, wireThemeToggle, secondSlateSavedText, renderModeBox } from "./js/header.js";
+import { renderPills, renderSlateLine, wireUpload, wireRefresh, renderModeRow, wireThemeToggle, secondSlateSavedText, renderModeBox, uploadStatusSetter, entriesUploadedHandler } from "./js/header.js";
+import { uploadEntriesText, setUploadRouter } from "./js/entries-wire.js"; // Adam 2026-10-18: one upload for every DraftKings export
 import { getShowdowns, postShowdownUpload } from "./js/showdown/api.js";
 import { renderShowdownView, showdownKeyFromHash, forceReloadShowdown, showUploadPills } from "./js/showdown/view.js";
 import { normalizeBoard } from "./js/normalize.js";
@@ -34,6 +35,7 @@ import { renderFilterBar, updateFilterSummary } from "./js/filterbar.js";
 import { renderTableHead, renderTableBody, updateRow } from "./js/table.js";
 import { renderTabs, shownTab, onSitePage, renderProjectionsPanel, renderOwnershipPanel, renderLineupPanel, renderEntriesPanel } from "./js/tabs.js";
 import { renderShowdownTab } from "./js/showdown-tab.js";
+import { teamsSampleHtml } from "./js/teams-sample.js"; // Temporary (Adam 2026-10-18)
 import { renderFavoritesPanel, favoriteRows } from "./js/favorites.js";
 import { initExpand, syncExpandUi, phoneMinHeight, panelMinHeight } from "./js/expand.js";
 
@@ -64,6 +66,7 @@ const el = {
   },
   ownBanner: document.getElementById("own-banner"),
   ownershipPanel: document.getElementById("ownership-panel"),
+  teamsPanel: document.getElementById("teams-panel"), // Temporary (Adam 2026-10-18): the Teams (sample) tab
   lineupPanel: document.getElementById("lineup-panel"),
   showdownPanel: document.getElementById("showdown-panel"), // ChatGPT wish t, Adam 2026-10-17
   entriesPanel: document.getElementById("entries-panel"), // rules repo 2026-10-17: Entries is its own tab
@@ -82,6 +85,8 @@ function setStatusMessage(text, isError) {
   el.status.textContent = text;
   el.status.className = isError ? "status error" : "status";
 }
+
+const setUploadStatus = uploadStatusSetter({ statusEl: el.status, sdStatusEl: () => document.getElementById("sd-status"), showdownOn: () => Boolean(showdownKeyFromHash()) });
 
 // Every write path (star, reset, edit, reset-all, source change, paste, refresh) shares this: on
 // success the whole board is reloaded as usual; on failure (a thrown network error, or a response that
@@ -320,23 +325,18 @@ function mainSlateLabel() {
   return games != null ? `Main slate · ${games} game${games === 1 ? "" : "s"}` : "Main slate";
 }
 
-// The one showdown-CSV upload, used by the mode row's tile and the Showdown tab's button (ChatGPT wish t, Adam 2026-10-17).
+// The showdown buttons take any DraftKings export (Adam 2026-10-18): the file goes through the header's routing, which
+// calls uploadShowdownText below for a showdown file. Set when wireUpload runs.
+let routeDkFile = null;
 async function uploadShowdownCsv(file) {
-  // A showdown upload's own failure or success must show wherever Adam is actually looking: the
-  // classic #status is hidden while a showdown is on screen, so this writes to #sd-status instead
-  // whenever one is active (🔵 review item 8).
-  const showdownActive = Boolean(showdownKeyFromHash());
-  const sdStatusEl = document.getElementById("sd-status");
-  const setUploadStatus = (text, isError) => {
-    if (showdownActive && sdStatusEl) {
-      sdStatusEl.textContent = text;
-      sdStatusEl.className = isError ? "status error" : "status";
-    } else {
-      setStatusMessage(text, isError);
-    }
-  };
+  await routeDkFile?.(file);
+}
+
+// The one showdown-CSV upload, used by the mode row's tile and the Showdown tab's button (ChatGPT wish t, Adam 2026-10-17).
+// Answers { ok: true } when the showdown was saved, else { ok: false, message }; the header's handleFile writes the status line
+// (setUploadStatus, 🔵 2026-10-18: one copy of the rule that puts it where Adam is looking).
+async function uploadShowdownText(text) {
   try {
-    const text = await file.text();
     const data = await postShowdownUpload(text);
     if (data?.ok) {
       await loadShowdownList();
@@ -349,11 +349,11 @@ async function uploadShowdownCsv(file) {
       } else {
         window.location.hash = `sd=${encodeURIComponent(data.key)}`;
       }
-    } else {
-      setUploadStatus(`Showdown upload failed: ${data?.error?.message ?? "unknown error"}`, true);
+      return { ok: true };
     }
+    return { ok: false, message: `Showdown upload failed: ${data?.error?.message ?? "unknown error"}` };
   } catch (e) {
-    setUploadStatus(`Showdown upload failed: ${e.message}`, true);
+    return { ok: false, message: `Showdown upload failed: ${e.message}` };
   }
 }
 
@@ -544,6 +544,7 @@ function renderDynamic() {
     el.favoritesPanel.hidden = true;
     el.projectionsPanel.hidden = true;
     el.ownershipPanel.hidden = true;
+    el.teamsPanel.hidden = true;
     el.lineupPanel.hidden = true;
     el.entriesPanel.hidden = true;
     // ChatGPT wish t, Adam 2026-10-17: the Showdown tab needs no main-slate board, so it stands in for the message.
@@ -563,6 +564,7 @@ function renderDynamic() {
   el.favoritesPanel.hidden = activeTab !== "favorites";
   el.projectionsPanel.hidden = activeTab !== "projections";
   el.ownershipPanel.hidden = activeTab !== "ownership";
+  el.teamsPanel.hidden = activeTab !== "teams";
   el.lineupPanel.hidden = activeTab !== "lineup";
   el.showdownPanel.hidden = activeTab !== "showdown";
   el.entriesPanel.hidden = activeTab !== "entries";
@@ -595,6 +597,8 @@ function renderDynamic() {
     renderProjectionsPanel(el.projectionsPanel, board, sourceCallbacks);
   } else if (activeTab === "ownership") {
     renderOwnershipPanel(el.ownershipPanel, board, sourceCallbacks);
+  } else if (activeTab === "teams") {
+    el.teamsPanel.innerHTML = teamsSampleHtml(); // Temporary (Adam 2026-10-18)
   } else if (activeTab === "lineup") {
     renderLineupPanel(el.lineupPanel, tableCallbacks);
   } else if (activeTab === "showdown") {
@@ -609,9 +613,18 @@ function renderDynamic() {
 
 store.subscribe(renderDynamic);
 
-wireUpload(
-  { csvInput: el.csvInput, uploadInfo: el.uploadInfo, statusEl: el.status, slateLine: el.slateLine, pillsRow: el.pillsRow },
+const { handleFile } = wireUpload(
+  { csvInput: el.csvInput, uploadInfo: el.uploadInfo, slateLine: el.slateLine, pillsRow: el.pillsRow },
   {
+    setStatus: setUploadStatus,
+    onShowdownText: uploadShowdownText,
+    // Adam 2026-10-18: an entries file loaded from any button shows the Entries tab (🔵: from a showdown screen, the main page first).
+    onEntriesText: entriesUploadedHandler({
+      upload: uploadEntriesText,
+      showdownOn: () => Boolean(showdownKeyFromHash()),
+      clearHash: () => { window.location.hash = ""; },
+      showEntriesTab: () => onTabClick("entries"),
+    }),
     onUploaded: async (data) => {
       try {
         const board = await getBoard();
@@ -628,6 +641,9 @@ wireUpload(
     },
   }
 );
+
+routeDkFile = handleFile;
+setUploadRouter(handleFile);
 
 wireThemeToggle(el.themeToggleBtn);
 

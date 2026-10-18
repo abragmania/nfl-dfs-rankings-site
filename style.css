@@ -25,6 +25,8 @@
   --fs-md: 16px;
   --fs-lg: 22px;
 
+  --row-fill-a: 85%; /* Team rows round 6: the lineup rows' one flat fill opacity (team-palette.js ROW_FILL pins it) */
+
   --bg: #f4f5f7;
   --bg-elevated: #ffffff;
   --bg-elevated-2: #eef0f3;
@@ -87,6 +89,7 @@
 }
 
 :root[data-theme="dark"] {
+  --row-fill-a: 60%;
   --bg: #0e1116;
   --bg-elevated: #151a22;
   --bg-elevated-2: #1b212b;
@@ -979,19 +982,6 @@ tr:last-child .cell-edit-hint { top: auto; bottom: 100%; margin-top: 0; margin-b
   cursor: default;
 }
 
-/* ChatGPT wish r, Adam 2026-10-17: "OUT, manually included" on a lineup card, for a listed-out player brought back by a typed
-   projection (table.js lineupRevivedTagHtml): the OUT tag's red, as a quieter tint and smaller, so it never outshouts the name. */
-.out-tag.out-tag-manual {
-  background: rgba(var(--danger-rgb), 0.18);
-  color: color-mix(in srgb, var(--danger) 80%, var(--text)); /* toward the text colour: lighter on the dark theme, darker on the light one (👁 contrast finding 2026-10-17) */
-  border: 1px solid rgba(var(--danger-rgb), 0.5);
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.02em;
-  line-height: 13px;
-  white-space: nowrap;
-}
-
 /* TwoGun mode's six Rankings columns (Med, Ceil, Ceil/$, Nuke, 3x%, 4x%; table.js TG_COLUMNS) sit after Lev; the <table>
    carries "tg-on". Widths are re-shared so the table stays inside D54's 1250px box: Player, Tags and Status (usually
    empty) give up the most, Team, Salary, Own% and Lev a little, Ceil/$ takes 60px (Nuke 56px, the other four 50px each),
@@ -1477,6 +1467,8 @@ tr:last-child .cell-edit-hint { top: auto; bottom: 100%; margin-top: 0; margin-b
 
 .saved-lineup-totals { font-size: var(--fs-sm); color: var(--text-muted); display: flex; flex-wrap: wrap; gap: 4px; }
 .saved-lineup-totals-over { color: var(--danger); font-weight: 700; }
+.saved-lineup-totals > span:not(:last-child)::after { content: " \00b7"; } /* 👁 2026-10-18: the separator ends the group before it, so a wrapped line never starts with a dot */
+.saved-lineup-totals > .saved-lineup-totals-over::after { color: var(--text-muted); font-weight: 400; }
 
 .saved-lineup-actions { display: flex; gap: var(--sp-2); align-items: center; }
 .saved-lineup-btn {
@@ -1793,6 +1785,7 @@ select.opt-input { text-align: left; padding: 3px 4px; }
 .opt-set-hint { margin-top: 1px; font-size: var(--fs-sm); color: var(--text-dim); }
 .opt-set-hint.opt-warn { color: var(--amber); }
 .opt-group-note { margin: -2px 0 var(--sp-1); }
+.opt-row-inert { opacity: 0.45; } /* Adam 2026-10-18 1:50 AM: the Default stack rows when every QB in play has his own numbers; the controls stay enabled */
 .opt-settings .opt-input { font-size: var(--fs-sm); padding: 2px 6px; }
 .opt-settings .opt-input-num, .opt-settings .opt-input-pct { text-align: right; font-variant-numeric: tabular-nums; }
 .opt-numbox { display: inline-flex; align-items: center; gap: 4px; }
@@ -1902,22 +1895,41 @@ select.opt-input { text-align: left; padding: 3px 4px; }
 .role-mini-1 { --c: var(--info); }
 .role-mini-2 { --c: var(--pos-dst); }
 .opt-p-line2 .role-tag { margin-left: 0; }
+:root[data-theme="dark"] .role-tag { background: color-mix(in srgb, var(--c) 16%, var(--bg-elevated)); } /* opaque on dark: a tint over the wash could drop the tag text under 4.5:1; all six read 4.85 or better on it (a test) */
 .opt-card-totals { font-size: var(--fs-sm); color: var(--text-muted); border-top: 1px solid var(--border); padding-top: var(--sp-1); }
 .opt-nowrap { white-space: nowrap; } /* Adam 2026-10-18: a New card's totals line breaks between figures */
-/* Team rows round 2, Adam 2026-10-17: each row wears its team's colours (--tc, --tc2 alt, --tcd deepened, from team-palette.js) as a
-   two-colour edge (3px colour over 1px alt) and a 135deg wash, deep 34% to colour 18% to alt 10%, over the card, all times --tcs
-   (1, or less where muted text would fall under 4.5:1; washScale in team-palette.js); a player new since
-   the card before (Adam 2026-10-11) is marked by the green dot alone. Every row keeps the dot's room. Also the Saved slot rows. */
-.opt-p, .saved-lineup-slot-tc:not(.saved-lineup-slot-empty) { border-radius: 3px; box-shadow: inset 3px 0 0 var(--tc), inset 4px 0 0 var(--tc2); background: linear-gradient(135deg, color-mix(in srgb, var(--tcd) calc(34% * var(--tcs)), transparent), color-mix(in srgb, var(--tc) calc(18% * var(--tcs)), transparent) 50%, color-mix(in srgb, var(--tc2) calc(10% * var(--tcs)), transparent)); }
-.opt-p { padding: 2px 0 2px 6px; }
-.saved-lineup-slot-tc { padding: 0 4px 0 8px; } /* the edge's 4px and 4px of air; the empty rows keep the air so the labels line up */
+.opt-nowrap:not(:last-child)::after { content: " \00b7"; } /* the separator ends the group before it, so a wrapped line never starts with a dot (as .saved-lineup-totals) */
+.opt-card-totals > .saved-lineup-totals-over::after { color: var(--text-muted); font-weight: 400; }
+/* Team rows round 2, Adam 2026-10-17: each row wears its team's colours (--tc, --tc2 alt, from team-palette.js) over the card; a player new since
+   the card before (Adam 2026-10-11) is marked by the green dot alone. Every row keeps the dot's room. Also the Saved slot rows.
+   Round 6, Adam 2026-10-18 ("looks like 2012"): flat, one colour at --row-fill-a (:root; a team whose text could not hold 4.5:1 has its own --tca / --tcb),
+   the left bar 4px (--tcbl / --tcbd, barColour: the secondary when it shows, else a fallback); the row's text is --tct, picked per row and theme from --tctl / --tctd (solidRow). */
+.opt-p, .saved-lineup-slot-tc:not(.saved-lineup-slot-empty) { --tct: var(--tctl); --tcchip: var(--tcchipl); color: var(--tct); border: 1px solid rgba(0, 0, 0, 0.06); border-radius: 4px; box-shadow: inset 4px 0 0 var(--tcbl, var(--tc2)); background: color-mix(in srgb, var(--tclp, var(--tc)) var(--tca, var(--row-fill-a)), transparent); }
+.saved-lineup-slot-tc:not(.saved-lineup-slot-empty) { border-radius: 3px; }
+/* Dark theme: the fill --tcfp (L 28 to 42, so every row takes white text) at --tcb, the bar --tcbd (👁 2026-10-18 round 6). */
+:root[data-theme="dark"] .opt-p, :root[data-theme="dark"] .saved-lineup-slot-tc:not(.saved-lineup-slot-empty) { --tct: var(--tctd); --tcchip: var(--tcchipd); border-color: rgba(255, 255, 255, 0.08); box-shadow: inset 4px 0 0 var(--tcbd, var(--tc2)); background: color-mix(in srgb, var(--tcfp, var(--tc)) var(--tcb, var(--row-fill-a)), transparent); }
+/* Every child of a row reads in the row's full text colour (the second line is set apart by size and weight 400 only, 👁 2026-10-18 round 6); the role tags are neutral translucent chips; no logo halo (flat). */
+.opt-p-slot, .opt-p-line2, .opt-p-nums, .opt-p-proj, .saved-lineup-slot-tc:not(.saved-lineup-slot-empty) :is(.saved-lineup-slot-pos, .saved-lineup-slot-team, .saved-lineup-slot-salary) { color: var(--tct); }
+.opt-p-line2, .opt-p-proj { font-weight: 400; }
+.opt-p-slot, .opt-p-sal, .saved-lineup-slot-tc .saved-lineup-slot-pos { font-weight: 600; }
+.opt-p .role-tag, .saved-lineup-slot-tc .role-tag { border: 0; border-radius: 3px; background: var(--tcchip); color: var(--tct); padding: 2px 7px; font-size: 12px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; line-height: 14px; } /* --tcchip: the row's solidRow choice per theme (🔵 2026-10-18 series review) */
+.opt-p .out-tag, .saved-lineup-slot-tc .out-tag { font-weight: 600; border-radius: 3px; }
+.opt-p .opt-pick:hover, .opt-p .opt-pick.opt-pick-on { color: var(--tct); text-decoration: underline; }
+.opt-p .opt-pick.opt-pick-on { font-weight: 600; text-decoration-thickness: 2px; }
+.opt-p .opt-pick:focus-visible { outline-color: var(--tct); }
+.opt-p > img, .saved-lineup-slot-tc > img { filter: none; }
+.opt-p { padding: 2px 0 2px 8px; }
+.saved-lineup-slot-tc { padding: 0 4px 0 8px; border: 1px solid transparent; } /* the bar's 4px and air; the empty rows keep the air and the 1px so the labels line up */
 /* Team rows round 3, Adam 2026-10-17: the team logo fills the badge's 38px box (same size, so the fixed-parts figure above holds); a Saved row's is 16px, the row's text height. */
 .opt-p-logo { flex: 0 0 38px; width: 38px; height: 38px; box-sizing: border-box; padding: 2px; object-fit: contain; display: block; }
 .saved-lineup-slot-logo { flex: 0 0 16px; width: 16px; height: 16px; object-fit: contain; align-self: center; }
 /* Layout round 2, 2026-10-17: a dark mark (the Panthers') vanishes on a dark tint, so in dark theme only the 16px logo gets a light edge halo on the mark itself (a disc behind it read as grey coins); the 16px box unchanged. */
-:root[data-theme="dark"] .saved-lineup-slot-logo { filter: drop-shadow(0 0 1px rgba(255, 255, 255, 0.75)) drop-shadow(0 0 1px rgba(255, 255, 255, 0.5)); }
+:root[data-theme="dark"] .saved-lineup-slot-logo { filter: none; } /* round 6: no halo */
+/* 👁 2026-10-18 round 6: on light every team-row logo sits on a white round plate (none on dark); the Saved row's 16px logo keeps its size, the plate hangs 2px around it. */
+:root:not([data-theme="dark"]) :is(.opt-p-logo, .saved-lineup-slot-logo) { background: rgba(255, 255, 255, 0.9); border-radius: 50%; padding: 2px; }
+:root:not([data-theme="dark"]) .saved-lineup-slot-logo { box-sizing: content-box; margin: -2px; }
 .opt-p-dot { flex: 0 0 6px; width: 6px; height: 6px; border-radius: 50%; }
-.opt-p-new .opt-p-dot { background: var(--success); }
+.opt-p-new .opt-p-dot { background: var(--success); box-shadow: 0 0 0 1.5px var(--tct); } /* the ring keeps the dot on a green team's row */
 /* Saved (or the same nine players as a saved lineup): the Save button becomes a disabled "Saved ✓". */
 .opt-card.opt-card-saved { border-color: rgba(var(--success-rgb), 0.6); }
 .saved-lineup-btn.opt-saved-btn:disabled { border-color: var(--success); color: var(--success); background: rgba(var(--success-rgb), 0.12); opacity: 1; cursor: default; font-weight: 600; }
@@ -1952,8 +1964,8 @@ select.opt-input { text-align: left; padding: 3px 4px; }
 /* Phone: the fixed columns give back a little room so the player name keeps more than a few letters. */
 @media (max-width: 700px) {
   .opt-card { padding: var(--sp-2); }
-  /* Phone: no dot, and the edge's own 4px plus 2px of air before the slot label, so names keep their letters. */
-  .opt-p { gap: 4px; padding-left: 6px; }
+  /* Phone: no dot, and the bar's 4px plus 1px border and 3px of air before the slot label, so names keep their letters. */
+  .opt-p { gap: 4px; padding-left: 8px; }
   .opt-p-dot { display: none; }
   .opt-p-slot { width: 28px; flex-basis: 28px; }
 }
@@ -2006,7 +2018,7 @@ select.opt-input { text-align: left; padding: 3px 4px; }
 .lineup-slot-body { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; }
 /* D54: the nine slots are 50px at least. */
 .lineup-slot-tall { min-height: 50px; padding-top: 4px; padding-bottom: 4px; }
-.lineup-slot-filled { border-left: 4px solid var(--tc); background: linear-gradient(90deg, color-mix(in srgb, var(--tc) 22%, var(--bg-elevated)), var(--bg-elevated) 75%); }
+.lineup-slot-filled { border-left: 4px solid var(--tc); background: color-mix(in srgb, var(--tc) 22%, var(--bg-elevated)); } /* flat, no gradient (🔵 2026-10-18 series review); this slot's text stays the page text colour, so the tint stays at the old gradient's start strength */
 .lineup-slot-top { display: flex; align-items: center; gap: var(--sp-2); min-width: 0; max-width: 100%; }
 .lineup-slot-player-2 .lineup-slot-name { white-space: normal; overflow: visible; text-overflow: clip; }
 .lineup-slot-matchup { color: var(--text-muted); font-size: var(--fs-sm); white-space: nowrap; }
@@ -2155,3 +2167,7 @@ select.opt-input { text-align: left; padding: 3px 4px; }
   /* The sticky Build bar keeps its summary to one line so it never takes a third of a phone screen (🔵 d842f0b). */
   .opt-summary { flex: 1 1 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 }
+
+/* Temporary (Adam 2026-10-18): the Teams (sample) tab, one card-width box per team; remove with public/js/teams-sample.js. */
+.teams-sample-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 8px; }
+.teams-sample-box { gap: var(--sp-1); }

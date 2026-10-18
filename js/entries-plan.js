@@ -110,9 +110,9 @@ export function isCashLineup(lineup) {
   return lineupModeOf(lineup) === "cash";
 }
 
-/** D75: a contest is cash only by these whole words in its name; anything unclear is GPP. */
+/** D75: a contest is cash only by these whole words in its name (Adam 2026-10-18: head to heads, double ups, 50/50s; anything else is GPP). */
 export function classifyContest(contestName) {
-  return /\b(double[ -]up|50\/50|head[ -]to[ -]head|h2h)\b/i.test(String(contestName ?? "")) ? "cash" : "gpp";
+  return /\b(double[ -]up|50[/-]50|head[ -]to[ -]head|h2h)\b/i.test(String(contestName ?? "")) ? "cash" : "gpp";
 }
 
 function classFor(classes, contestId, contestName) {
@@ -186,12 +186,12 @@ function plural(n, one, many) {
   return `${n} ${n === 1 ? one : many}`;
 }
 
-/** D75 fill (PROJECT.md Part 4 Entries): cash to cash contests wrapping, the lead first in GPP singles and last in the other GPP contests.
+/** D75 fill (PROJECT.md Part 4 Entries). Adam 2026-10-18 (replaces the lead-lineup order): every contest of a class takes that
+ *  class's lineups in the screen's number order, 1..k, one per entry top to bottom; a contest never holds one lineup twice.
  *  `keep`: entry ids never opened, even with Replace; a kept row with no pick holds its file lineup (🔵 2026-10-17).
- *  `prior`: the last proposal { entryId: lineupId }; a row takes its prior lineup first when still a candidate and not
- *  blocked, so one hand change never reshuffles the untouched rows (👁 2026-10-17).
- *  `priorLead`: the lead id `prior` was made with (null = unknown); set and different from the lead used (rules repo 2026-10-17), the remembered GPP placements are ignored. */
-export function planFill({ entries, lineups, assigned, classes, lead = null, overwrite = false, keep = null, prior: priorIn = null, priorLead = null, lineupIds = null, contestIds = null, order = null, slateKey = "main", slates = [] } = {}) {
+ *  `prior`: the last proposal { entryId: lineupId }; a row of a multi-entry contest takes its prior lineup first when still a
+ *  candidate and not blocked, so one hand change never reshuffles the untouched rows (👁 2026-10-17). */
+export function planFill({ entries, lineups, assigned, classes, overwrite = false, keep = null, prior: priorIn = null, lineupIds = null, contestIds = null, order = null, slateKey = "main", slates = [] } = {}) {
   const list = Array.isArray(entries) ? entries : [];
   const all = (Array.isArray(lineups) ? lineups : []).filter((l) => l && l.id != null);
   const byId = new Map(all.map((l) => [String(l.id), l]));
@@ -216,47 +216,28 @@ export function planFill({ entries, lineups, assigned, classes, lead = null, ove
     }
     merged[e.entryId] = l.id;
   };
-  // Rules repo 2026-10-17: a changed lead drops the remembered GPP placements only; cash rows never hold the lead.
-  const leadL = (lead != null && pool.gpp.find((l) => String(l.id) === String(lead))) || pool.gpp[0];
-  const leadSame = !(priorLead != null && (!leadL || String(leadL.id) !== String(priorLead)));
-  const place = (e, cls, candidates, start, usePrior = true) => {
+  const place = (e, cls, candidates, usePrior) => {
     const was = usePrior ? priorIn?.[e.entryId] : null;
     const p = was == null ? -1 : candidates.findIndex((l) => String(l.id) === String(was));
     if (p >= 0 && !fillBlocked(list, merged, e, candidates[p], byId, slateKey, slates)) {
       take(e, cls, candidates[p]);
-      return p;
+      return;
     }
-    for (let k = 0; k < candidates.length; k++) {
-      const i = (start + k) % candidates.length;
-      const l = candidates[i];
+    for (const l of candidates) {
       if (fillBlocked(list, merged, e, l, byId, slateKey, slates)) continue;
       take(e, cls, l);
-      return i;
+      return;
     }
     left.set(contestKey(e), (left.get(contestKey(e)) ?? 0) + 1);
-    return -1;
   };
-  if (pool.cash.length) {
-    let cursor = 0;
-    for (const e of list) {
-      if (classOf.get(contestKey(e)) !== "cash" || !open(e)) continue;
-      const i = place(e, "cash", pool.cash, cursor);
-      if (i >= 0) cursor = (i + 1) % pool.cash.length;
-    }
+  // Adam 2026-10-18: each contest starts again at its class's lineup 1 (a single-entry contest never uses `prior`, so it always gets lineup 1).
+  for (const g of groups) {
+    const cls = classOf.get(g.contestId);
+    if (!pool[cls].length) continue;
+    for (const e of g.entries) if (open(e)) place(e, cls, pool[cls], g.entries.length > 1);
   }
-  const others = pool.gpp.filter((l) => l !== leadL);
-  if (pool.gpp.length) {
-    for (const g of groups) {
-      if (classOf.get(g.contestId) !== "gpp") continue;
-      const single = g.entries.length === 1;
-      // 🔵 2026-10-17, D75: prior is never honoured in a single-entry contest, so the lead (which can change without the dropdown) always goes there.
-      // Adam 2026-10-17: the lead also fills the multi-entry contests, last, so 20 GPP lineups fill a 20-entry contest.
-      for (const e of g.entries) if (open(e)) place(e, "gpp", single ? [leadL, ...others] : [...others, leadL], 0, !single && leadSame);
-    }
-  }
-  // D75: `lead` is the lineup actually used (null with no GPP lineup), so the screen can show it when Adam's pick did not hold.
   const existing = orderedFillLineups(all, order);
-  return { proposed, notes: fillNotes(groups, classOf, existing, saved, pool, left), counts, lead: leadL?.id ?? null };
+  return { proposed, notes: fillNotes(groups, classOf, existing, saved, pool, left), counts };
 }
 
 // D75: one note per ticked contest left short. 👁 2026-10-17: a note naming no contest shows once (contestId null); contests
@@ -269,7 +250,7 @@ function fillNotes(groups, classOf, existing, saved, pool, left) {
     if (!pool[cls].length) {
       const why = saved[cls].length ? "are ticked" : existing[cls].length ? "fit this slate's file" : "are saved";
       const text = `No ${label} lineups ${why}, so the ${label} entries are left as they are.`;
-      if (!lines.has(text)) lines.set(text, { text });
+      if (!lines.has(text)) lines.set(text, { text, cls });
       continue;
     }
     const n = left.get(g.contestId) ?? 0;
@@ -277,15 +258,16 @@ function fillNotes(groups, classOf, existing, saved, pool, left) {
     const m = pool[cls].length;
     const why = `${plural(m, `${label} lineup`, `${label} lineups`)} ${m === 1 ? "is" : "are"} ticked, and a contest never takes one twice.`;
     const key = `${n}|${why}`;
-    if (!lines.has(key)) lines.set(key, { n, why, groups: [] });
+    if (!lines.has(key)) lines.set(key, { n, why, cls, groups: [] });
     lines.get(key).groups.push(g);
   }
-  return [...lines.values()].map(({ text, n, why, groups: gs }) => {
-    if (text) return { contestId: null, text };
+  // 🔵 2026-10-18: each note carries its class (`cls`), so the GPP and Cash tabs filter on it, not on the text.
+  return [...lines.values()].map(({ text, n, why, cls, groups: gs }) => {
+    if (text) return { contestId: null, text, cls };
     const each = gs.length > 1 ? " each" : "";
     const count = n === 1 ? `1 entry${each} left as it is` : `${n} entries${each} left as they are`;
-    if (gs.length === 1) return { contestId: gs[0].contestId, text: `${count}: ${why}` };
-    return { contestId: null, text: `${gs.length} contests (${gs.map((g) => g.displayName).join(", ")}): ${count}: ${why}` };
+    if (gs.length === 1) return { contestId: gs[0].contestId, text: `${count}: ${why}`, cls };
+    return { contestId: null, text: `${gs.length} contests (${gs.map((g) => g.displayName).join(", ")}): ${count}: ${why}`, cls };
   });
 }
 

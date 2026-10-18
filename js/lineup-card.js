@@ -1,8 +1,8 @@
 // Pieces of the Optimizer's lineup slots and new-lineup cards (lineup.js).
 import { escapeHtml, money, dec1, textColourFor, logoFor } from "./format.js";
-import { deepen, washScale } from "./team-palette.js";
+import { fillForDark, fillForLight, solidRow, barColour, ROW_FILL } from "./team-palette.js";
 import { TEAM_BY_ABBR } from "./teams-data.js";
-import { lineupOutTagHtml, lineupRevivedTagHtml } from "./table.js";
+import { lineupOutTagHtml } from "./table.js";
 import { pickButtonHtml } from "./lineup-filter.js";
 import { lineupRoles, roleTagsHtml, stackLabel } from "./lineup-marks.js";
 
@@ -43,18 +43,33 @@ export function cardNameHtml(p, pick) {
   return inner ? `<span title="${escapeHtml(name)}">${inner}</span>` : escapeHtml(name);
 }
 
-// Team rows round 2, Adam 2026-10-17: a row's { colour, alt, deep } from the slate palette (or the team's own colours), and the
-// style that sets --tc / --tc2 / --tcd for the two-colour bar (3px colour, 1px alt) and the 135deg wash (style.css .opt-p, .saved-lineup-slot-tc).
+// Team rows round 2, Adam 2026-10-17: a row's { colour, alt, fillLight, fillDark, rowLight, rowDark, barLight, barDark } from the slate palette (or the team's own colours),
+// and the style that sets --tc / --tc2 (the fallbacks), the two fills --tclp / --tcfp (style.css .opt-p; the dark one is L 28 to 42, Adam 2026-10-18 round-5 render) and the bars --tcbl / --tcbd.
 export function teamColours(palette, team) {
   const t = TEAM_BY_ABBR[team];
   const e = palette?.get(team);
   const colour = e?.colour ?? t?.colourPrimary ?? "#333333";
   const alt = (e ? e.alt : t?.colourSecondary) ?? colour;
-  const deep = e?.deep ?? deepen(colour);
-  return { colour, alt, deep, wash: e?.wash ?? washScale(deep, colour, alt) };
+  const fillDark = e?.fillDark ?? fillForDark(colour);
+  const fillLight = e?.fillLight ?? fillForLight(colour);
+  const rowLight = e?.rowLight ?? solidRow(fillLight, "light");
+  const rowDark = e?.rowDark ?? solidRow(fillDark, "dark");
+  return { colour, alt, fillDark, fillLight, rowLight, rowDark,
+    barLight: e?.barLight ?? barColour(fillLight, alt, "light", rowLight.alpha), barDark: e?.barDark ?? barColour(fillDark, alt, "dark", rowDark.alpha) };
 }
-export function teamColourStyle({ colour, alt, deep, wash }) {
-  return `--tc:${escapeHtml(colour)};--tc2:${escapeHtml(alt)};--tcd:${escapeHtml(deep)};--tcs:${Number(wash)}`;
+// Solid rows (Adam 2026-10-18): per theme (l / d) the row text and the role-tag chip; --tca / --tcb only where the fill opacity was pulled down.
+// 👁 2026-10-18 round 6: --tclp the light fill, --tcbl / --tcbd the left bar per theme. 🔵 2026-10-18 series review: the unread variables are no longer emitted.
+export function teamColourStyle({ colour, alt, fillDark, fillLight, rowLight, rowDark, barLight, barDark }) {
+  const tcfp = fillDark ?? fillForDark(colour);
+  const tclp = fillLight ?? fillForLight(colour);
+  const L = rowLight ?? solidRow(tclp, "light");
+  const D = rowDark ?? solidRow(tcfp, "dark");
+  const pulled = (row, theme, p) => (row.alpha === ROW_FILL[theme] ? "" : `;--tc${p}:${row.alpha}%`);
+  const theme = (row, s) => `;--tct${s}:${row.text};--tcchip${s}:${row.chip}`;
+  const tcbl = barLight ?? barColour(tclp, alt, "light", L.alpha);
+  const tcbd = barDark ?? barColour(tcfp, alt, "dark", D.alpha);
+  return `--tc:${escapeHtml(colour)};--tc2:${escapeHtml(alt)};--tcfp:${escapeHtml(tcfp)};--tclp:${escapeHtml(tclp)};--tcbd:${escapeHtml(tcbd)};--tcbl:${escapeHtml(tcbl)}`
+    + theme(L, "l") + pulled(L, "light", "a") + theme(D, "d") + pulled(D, "dark", "b");
 }
 // Team rows round 3, Adam 2026-10-17: the team logo (theme variant) at `size` px, with the abbr as its alt; "" for a team with no logo,
 // so the caller keeps its badge (card row) or its abbr text (Saved row).
@@ -72,7 +87,7 @@ export function cardDecor(lineup, rowById, palette = null) {
   return {
     stack: stack ? `<span class="opt-card-stack" title="${escapeHtml(stack.title)}">${escapeHtml(stack.text)}</span>` : "",
     tagsFor: (p) => {
-      const out = rowOf(p) ? lineupOutTagHtml(rowOf(p)) + lineupRevivedTagHtml(rowOf(p)) : ""; // ChatGPT wish r: "OUT, manually included"
+      const out = rowOf(p) ? lineupOutTagHtml(rowOf(p)) : "";
       return out ? `<span class="opt-p-tags">${out}</span>` : "";
     },
     rolesFor: (p) => roleTagsHtml(roles.get(String(p.id))),

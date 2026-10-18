@@ -3,6 +3,7 @@
 // notes are never header pills; the few that exist are shown as a quiet line inside their own tab (tabs.js).
 import { escapeHtml, localStamp, collapseWarnings, kickoffClockPart } from "./format.js";
 import { uploadCsv, isSampleMode } from "./api.js";
+import { routeDkUpload } from "./dk-csv-kind.js";
 import { slateTileText } from "./state.js";
 
 // Builds one amber pill per stale-or-failed source id. `sources` may be null/empty (right after an
@@ -211,42 +212,102 @@ export function renderModeBox(headerEl, mode, { onSwitch } = {}) {
   });
 }
 
-// Wires the existing upload flow (unchanged network behaviour: raw CSV text to POST /api/slate/upload).
+/** 🔵 2026-10-18: the upload status writer: #sd-status while a showdown is on screen (the classic #status is hidden then), else #status. */
+export function uploadStatusSetter({ statusEl, sdStatusEl, showdownOn }) {
+  let last = null; // this writer's own previous { node, text }; only that is blanked, never another notice
+  return (text, isError) => {
+    const sd = showdownOn() ? sdStatusEl() : null;
+    const node = sd ?? statusEl;
+    if (last && last.node !== node && last.node.textContent === last.text) last.node.textContent = "";
+    node.textContent = text;
+    node.className = isError ? "status error" : "status";
+    last = { node, text };
+  };
+}
+
+/** Entries-upload glue (app.js passes the real functions): on ok from a showdown screen the hash is cleared first, then the Entries tab shows. */
+export function entriesUploadedHandler({ upload, showdownOn, clearHash, showEntriesTab }) {
+  return async (text) => {
+    const r = await upload(text);
+    if (r.ok) {
+      if (showdownOn()) clearHash();
+      showEntriesTab();
+    }
+    return r;
+  };
+}
+
+// Wires the upload flow (a salary file is still raw CSV text to POST /api/slate/upload).
 // `onUploaded(data)` fires with the raw response so the caller can reload the board and re-render pills
 // with real source labels once it lands.
-export function wireUpload({ csvInput, uploadInfo, statusEl, slateLine, pillsRow }, { onUploaded }) {
-  csvInput.addEventListener("change", async () => {
-    const file = csvInput.files?.[0];
-    if (!file) return;
-    statusEl.textContent = `Uploading ${file.name}...`;
-    statusEl.className = "status";
+// Adam 2026-10-18: one button for every DraftKings export; routeDkUpload (dk-csv-kind.js) tells the kind from the column
+// headers. `onShowdownText(text)` ({ ok, message }) and `onEntriesText(text)` ({ ok, entries, contests } or { ok: false, message })
+// come from app.js, as does `setStatus(text, isError)`, the one place a status line is written (🔵 2026-10-18: #sd-status while
+// a showdown is on screen, else #status; see uploadStatusSetter). Returns { handleFile }, the same routing for the Entries and
+// Showdown buttons; handleFile answers { ok, kind, message }.
+export function wireUpload({ csvInput, uploadInfo, slateLine, pillsRow }, { onUploaded, onShowdownText, onEntriesText, setStatus }) {
+  const fail = (kind, message) => {
+    setStatus(`Upload failed: ${message}`, true);
+    return { ok: false, kind, message };
+  };
+  const classic = async (file, text) => {
+    const data = await uploadCsv(text);
+    if (data.ok && data.secondSlate) {
+      // D57: the file was a second slate (its games are part of the loaded main slate's). The main slate, its
+      // upload line and its pills are untouched; the caller reloads the board and switches to the new tile.
+      const message = secondSlateSavedText(data.secondSlate);
+      setStatus(message, false);
+      onUploaded?.(data);
+      return { ok: true, kind: "classic", message };
+    } else if (data.ok) {
+      const message = `Uploaded ${file.name}.`;
+      setStatus(message, false);
+      uploadInfo.textContent = `${data.savedAs ?? file.name} · uploaded ${localStamp(data.uploadedAt)?.clock ?? data.uploadedAt}`;
+      renderSlateLine(slateLine, data);
+      // Show pills for this response's own stale list immediately, before the board reloads;
+      // board.sources isn't known yet so the id itself is the label (🔵 review requirement).
+      renderPills(pillsRow, { staleIds: data.stale, sources: null, warnings: data.warnings });
+      onUploaded?.(data);
+      return { ok: true, kind: "classic", message };
+    }
+    return fail("classic", data.error?.message ?? "unknown error");
+  };
+  const handleFile = async (file) => {
+    setStatus(`Uploading ${file.name}...`, false);
     try {
-      const text = await file.text();
-      const data = await uploadCsv(text);
-      if (data.ok && data.secondSlate) {
-        // D57: the file was a second slate (its games are part of the loaded main slate's). The main slate, its
-        // upload line and its pills are untouched; the caller reloads the board and switches to the new tile.
-        statusEl.textContent = secondSlateSavedText(data.secondSlate);
-        onUploaded?.(data);
-      } else if (data.ok) {
-        statusEl.textContent = `Uploaded ${file.name}.`;
-        uploadInfo.textContent = `${data.savedAs ?? file.name} · uploaded ${localStamp(data.uploadedAt)?.clock ?? data.uploadedAt}`;
-        renderSlateLine(slateLine, data);
-        // Show pills for this response's own stale list immediately, before the board reloads;
-        // board.sources isn't known yet so the id itself is the label (🔵 review requirement).
-        renderPills(pillsRow, { staleIds: data.stale, sources: null, warnings: data.warnings });
-        onUploaded?.(data);
-      } else {
-        statusEl.textContent = `Upload failed: ${data.error?.message ?? "unknown error"}`;
-        statusEl.className = "status error";
-      }
+      return await routeDkUpload(file, {
+        classic: (text) => classic(file, text),
+        showdown: async (text) => {
+          const r = await onShowdownText?.(text);
+          if (!r?.ok) {
+            const message = r?.message ?? "Showdown upload failed: unknown error";
+            setStatus(message, true);
+            return { ok: false, kind: "showdown", message };
+          }
+          const message = `Uploaded showdown ${file.name}.`;
+          setStatus(message, false);
+          return { ok: true, kind: "showdown", message };
+        },
+        entries: async (text) => {
+          const r = await onEntriesText?.(text);
+          if (!r?.ok) return fail("entries", r?.message ?? "unknown error");
+          const message = `Entries file loaded: ${r.entries} entr${r.entries === 1 ? "y" : "ies"} in ${r.contests} contest${r.contests === 1 ? "" : "s"} · see the Entries tab`;
+          setStatus(message, false);
+          return { ok: true, kind: "entries", message };
+        },
+        unknown: (firstLine) => fail("unknown", `This is not a DraftKings salary, showdown or entries export (first line: ${firstLine.slice(0, 80)})`),
+      });
     } catch (e) {
-      statusEl.textContent = `Upload failed: ${e.message}`;
-      statusEl.className = "status error";
+      return fail(null, e.message);
     } finally {
       csvInput.value = "";
     }
+  };
+  csvInput.addEventListener("change", () => {
+    const file = csvInput.files?.[0];
+    if (file) handleFile(file);
   });
+  return { handleFile };
 }
 
 // Mode row (Showdown, D39/D40): sits above the classic game strip, one tile per loaded showdown plus the

@@ -47,6 +47,16 @@ export function editEntry(entries, qbId, edit) {
 
 const sideIsSet = (e, side) => (side === "own" ? isNum(e?.min) || isNum(e?.max) : isNum(e?.oppMin) || isNum(e?.oppMax));
 
+/** Adam 2026-10-18 1:50 AM: do the Default stack rows still decide anything? True when at least one usable QB has no own
+ *  number on a side (no entry, or both of that side's boxes blank, which follows the default, D73); false when every usable
+ *  QB carries his own teammate and opponent numbers. No usable QB at all: true (nothing to claim, the rows look as usual).
+ *  `entries` = only the ones the build sends (listed QBs, qbStacksPayload); a saved entry of an unstarred QB must not be passed (🔵 2026-10-18). */
+export function defaultsApply(usableQbIds, entries) {
+  const ids = [...(usableQbIds ?? [])].map(String);
+  if (!ids.length) return true;
+  return ids.some((id) => !sideIsSet(entries?.[id], "own") || !sideIsSet(entries?.[id], "opp"));
+}
+
 const sideWords =(n, orMore) => (orMore === false ? `exactly ${n}` : `${n} or more`);
 
 /** RULES.md D73 (amended 2026-10-17): blank-box placeholders and hint; side "own"/"opp", set = the QB has his own number there. */
