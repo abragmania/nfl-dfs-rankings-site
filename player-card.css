@@ -1,0 +1,73 @@
+/* The player card popup (public/js/player-card.js). Its own file: style.css is over the size ceiling. Both themes come
+   from the variables style.css defines. z-index 1100 sits above the expanded tables' 1000 (expand.js). */
+
+/* A player's name is the click target on every list that has the card (the exposure tables keep the name as the filter);
+   player-card.js marks each such name with tabindex 0 and aria-haspopup, which is what these rules select. */
+[aria-haspopup="dialog"][tabindex] { cursor: pointer; }
+[aria-haspopup="dialog"][tabindex]:hover { text-decoration: underline dotted; text-underline-offset: 3px; }
+[aria-haspopup="dialog"][tabindex]:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 3px; }
+
+body.pc-open { overflow: hidden; }
+.pc-backdrop { position: fixed; inset: 0; z-index: 1100; display: flex; align-items: center; justify-content: center; background: rgba(0, 0, 0, 0.55); padding: 12px; }
+.pc-backdrop[hidden] { display: none; }
+.pc-dialog { position: relative; box-sizing: border-box; width: min(720px, 92vw); max-height: 85vh; overflow-y: auto; background: var(--bg-elevated); color: var(--text); border: 1px solid var(--border); border-radius: 10px; padding: var(--sp-4) var(--sp-4) var(--sp-3); box-shadow: 0 12px 40px rgba(0, 0, 0, 0.45); }
+.pc-dialog:focus { outline: none; }
+.pc-close { position: absolute; top: 6px; right: 8px; width: 30px; height: 30px; border: 0; border-radius: 6px; background: transparent; color: var(--text-muted); font-size: 24px; line-height: 1; cursor: pointer; }
+.pc-close:hover { background: var(--bg-elevated-2); color: var(--text); }
+.pc-close:focus-visible, .pc-link:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+.pc-head { display: flex; align-items: center; gap: var(--sp-3); padding-right: 30px; }
+.pc-shot { flex: none; width: 72px; height: 72px; border-radius: 50%; object-fit: cover; background: var(--bg-elevated-2); }
+.pc-shot-initials { display: flex; align-items: center; justify-content: center; font-size: 24px; font-weight: 700; }
+.pc-id { flex: 1; min-width: 0; }
+.pc-name-title { margin: 0; font-size: var(--fs-lg); line-height: 1.2; font-weight: 700; }
+.pc-num { color: var(--text-muted); font-weight: 500; font-size: var(--fs-md); }
+.pc-sub { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin-top: 4px; color: var(--text-muted); font-size: var(--fs-sm); }
+.pc-logo { width: 18px; height: 18px; vertical-align: -4px; margin-right: 4px; }
+.pc-dot { opacity: 0.6; }
+.pc-tier { padding: 0 6px; border: 1px solid var(--border); border-radius: 4px; font-size: 11px; color: var(--text-dim); }
+
+.pc-grade { flex: none; min-width: 92px; padding: 6px 10px; text-align: center; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-elevated-2); }
+.pc-grade-num { font-size: 30px; font-weight: 700; line-height: 1.05; }
+.pc-grade-rank { font-size: 12px; color: var(--text-muted); white-space: nowrap; }
+.pc-grade-label { font-size: 11px; color: var(--text-muted); }
+.pc-grade.tier-elite { background: var(--grade-v1-bg); border-color: var(--grade-v1); }
+.pc-grade.tier-strong { background: var(--grade-v2-bg); border-color: var(--grade-v2); }
+.pc-grade.tier-weak { background: var(--grade-v4-bg); border-color: var(--grade-v4); }
+
+.pc-strip { display: flex; flex-wrap: wrap; align-items: stretch; gap: var(--sp-2) var(--sp-4); margin-top: var(--sp-3); padding: 8px 10px; background: var(--bg-elevated-2); border-radius: 8px; }
+.pc-fig { display: flex; flex-direction: column; }
+.pc-fig-label { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.03em; }
+.pc-fig-value { font-size: var(--fs-md); font-weight: 600; }
+.pc-fig-tag { justify-content: center; }
+.pc-strip-source { margin: 3px 2px 0; font-size: 11px; color: var(--text-dim); }
+.pc-bio { display: flex; flex-wrap: wrap; gap: 4px 16px; margin-top: var(--sp-3); font-size: var(--fs-sm); color: var(--text-muted); }
+
+.pc-log { margin-top: var(--sp-3); }
+.pc-log-title { margin: 0 0 4px; font-size: var(--fs-md); font-weight: 600; }
+.pc-src { margin-left: 6px; font-size: 11px; font-weight: 500; color: var(--text-dim); }
+.pc-log-wrap { overflow-x: auto; }
+.pc-log-table { width: 100%; border-collapse: collapse; font-size: 12.5px; font-variant-numeric: tabular-nums; }
+.pc-log-table th, .pc-log-table td { padding: 3px 6px; text-align: right; white-space: nowrap; }
+.pc-log-table th:nth-child(-n+2), .pc-log-table td:nth-child(-n+2) { text-align: left; }
+.pc-log-table thead th { color: var(--text-muted); font-weight: 600; border-bottom: 1px solid var(--border); }
+.pc-log-table tbody tr:nth-child(even) { background: color-mix(in srgb, var(--bg-elevated-2) 55%, transparent); }
+.pc-log-table .pc-log-dnp td { color: var(--text-dim); font-style: italic; text-align: left; }
+.pc-log-table .pc-log-dnp td:nth-child(-n+2) { font-style: normal; }
+.pc-log-table .pc-log-trade td { text-align: center; color: var(--text-muted); font-size: 11px; }
+.pc-log-table .pc-log-dk { font-weight: 700; }
+.pc-log-table tfoot td { border-top: 1px solid var(--border); font-weight: 600; }
+.pc-log-wide { font-size: 12px; }
+.pc-log-wide th, .pc-log-wide td { padding-left: 4px; padding-right: 4px; }
+
+.pc-note { margin-top: var(--sp-3); padding: 10px 12px; background: var(--bg-elevated-2); border-radius: 8px; color: var(--text-muted); font-size: var(--fs-sm); }
+.pc-note-error { border: 1px solid var(--danger); color: var(--text); }
+.pc-empty { padding: 8px 2px; color: var(--text-muted); font-size: var(--fs-sm); }
+.pc-source { margin-top: var(--sp-3); padding-top: var(--sp-2); border-top: 1px solid var(--border); font-size: 12px; color: var(--text-muted); }
+.pc-stale { display: inline-block; padding: 0 6px; border-radius: 4px; background: rgba(var(--amber-rgb), 0.18); color: var(--amber); font-weight: 600; }
+.pc-link { color: var(--accent-text); margin-left: 6px; }
+
+@media (max-width: 700px) {
+  .pc-head { flex-wrap: wrap; }
+  .pc-grade { order: 3; }
+}

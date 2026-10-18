@@ -37,7 +37,7 @@ export function teamsSampleHtml() {
     coloursFor: (team) => teamColours(palette, team),
   };
   const boxes = players.map((p) => {
-    const cardRow = cardPlayerRowHtml(p, p.pos, null, decor);
+    const cardRow = cardPlayerRowHtml(p, p.pos, decor);
     // Copies savedLineupSlotHtml's markup (lineup.js); this page is temporary (🔵 2026-10-18 series review).
     const savedRow = `
       <div class="saved-lineup-slot saved-lineup-slot-tc" style="${teamColourStyle(teamColours(palette, p.team))}">

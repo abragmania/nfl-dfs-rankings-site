@@ -149,7 +149,7 @@ function kindLabel(kind) {
 // (🔵 review item 4).
 function ownershipRowHtml(r) {
   return `<tr>
-    <td>${escapeHtml(r.name)}</td>
+    <td class="pc-name" data-card-id="${escapeHtml(String(r.id))}">${escapeHtml(r.name)}</td>
     <td>${escapeHtml(r.team ?? "")}</td>
     <td>${r.ownFlex == null ? "—" : `${dec1(r.ownFlex)}%`}</td>
     <td>${escapeHtml(kindLabel(r.ownKindFlex))}</td>

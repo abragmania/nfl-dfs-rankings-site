@@ -213,7 +213,7 @@ function playerColumnHtml(title, team, list, e, qbId) {
       const out = rowIsOut(r);
       const choice = e.players[String(r.id)] ?? "avail";
       const control = out ? outControlHtml(choice) : segHtml(`data-qbs="pl" data-qb="${qbId}" data-pid="${escapeHtml(String(r.id))}"`, PLAYER_CHOICES, choice);
-      return `<div class="qbs-pl${out ? " qbs-out" : ""}"><span class="qbs-pos">${escapeHtml(upper(r.pos))}</span><span class="qbs-pname" title="${escapeHtml(r.name)}">${escapeHtml(r.name)}</span>${lineupOutTagHtml(r)}<span class="qbs-sal">${money(r.salary)}</span><span class="qbs-proj">${dec1(r.proj) ?? "—"}</span>${control}</div>`;
+      return `<div class="qbs-pl${out ? " qbs-out" : ""}"><span class="qbs-pos">${escapeHtml(upper(r.pos))}</span><span class="qbs-pname" title="${escapeHtml(r.name)}" data-card-id="${escapeHtml(String(r.id))}">${escapeHtml(r.name)}</span>${lineupOutTagHtml(r)}<span class="qbs-sal">${money(r.salary)}</span><span class="qbs-proj">${dec1(r.proj) ?? "—"}</span>${control}</div>`;
     })
     .join("");
   const empty = list.all.length ? "None with a projection." : "None on the board.";
@@ -249,7 +249,7 @@ export function qbPanelsHtml(qbRows, qbs, g, rows, ownMax, oppMax, lockedIdList)
         return `<span class="qbs-opt qbs-opt-side"><span class="qbs-opt"><span class="opt-set-label">${title}</span>${box(minKey, e[minField], view.minPh, "Minimum")}<span class="opt-unit">to</span>${box(maxKey, e[maxField], view.maxPh, "Maximum")}</span><span class="opt-set-hint qbs-side-hint" data-qb="${id}" data-side="${side}">${escapeHtml(view.hint)}</span></span>`;
       };
       return `<section class="opt-group opt-group-wide qbs-panel" data-qb="${id}">
-        <div class="qbs-head"><span class="qbs-head-name">${escapeHtml(qb.name)}</span>${teamChipHtml(team)}<span class="qbs-vs">${escapeHtml(matchupText(qb))}</span>${sumHtml(idRaw, qbs.entries[idRaw])}<span class="qbs-grow"></span>${more}<button type="button" class="qbs-link qbs-reset" data-qbs="reset" data-qb="${id}"${qbs.entries[idRaw] ? "" : " hidden"}>Reset</button><button type="button" class="qbs-link qbs-close" data-qbs="toggle" data-qb="${id}">Close ▾</button></div>
+        <div class="qbs-head"><span class="qbs-head-name" data-card-id="${escapeHtml(String(qb.id))}">${escapeHtml(qb.name)}</span>${teamChipHtml(team)}<span class="qbs-vs">${escapeHtml(matchupText(qb))}</span>${sumHtml(idRaw, qbs.entries[idRaw])}<span class="qbs-grow"></span>${more}<button type="button" class="qbs-link qbs-reset" data-qbs="reset" data-qb="${id}"${qbs.entries[idRaw] ? "" : " hidden"}>Reset</button><button type="button" class="qbs-link qbs-close" data-qbs="toggle" data-qb="${id}">Close ▾</button></div>
         <div class="qbs-opts">
           ${sideHtml("own", "Teammates", "min", "max", ownMax)}
           ${sideHtml("opp", "Opponents", "omin", "omax", oppMax)}

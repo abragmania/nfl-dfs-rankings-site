@@ -300,7 +300,7 @@ export function swapDecisionHtml(decision, index = 0, { button = true, disabled 
         const figure = score === null ? "—" : `${dec1(score)} ${scoreWord(decision.basis)}`;
         // 👁 fix round, 2026-10-17: each player is a fixed two-line block, the name and position over the price and the figure.
         // Layout round 2, 2026-10-17: the title carries all of it, since a narrow side can cut either line with an ellipsis.
-        return `<li class="cash-swap-player" title="${escapeHtml(`${p.name ?? ""} ${p.pos ?? ""} · ${money(p.salary)} · ${figure}`)}"><span class="cash-swap-line1"><span class="cash-swap-name">${escapeHtml(p.name ?? "")}</span> <span class="pos-mini">${escapeHtml(p.pos ?? "")}</span></span> <span class="cash-swap-line2"><span class="cash-swap-salary">${money(p.salary)}</span> · <span class="cash-swap-score">${figure}</span></span></li>`;
+        return `<li class="cash-swap-player" title="${escapeHtml(`${p.name ?? ""} ${p.pos ?? ""} · ${money(p.salary)} · ${figure}`)}"${p.id != null ? ` data-card-id="${escapeHtml(String(p.id))}"` : ""}><span class="cash-swap-line1"><span class="cash-swap-name">${escapeHtml(p.name ?? "")}</span> <span class="pos-mini">${escapeHtml(p.pos ?? "")}</span></span> <span class="cash-swap-line2"><span class="cash-swap-salary">${money(p.salary)}</span> · <span class="cash-swap-score">${figure}</span></span></li>`;
       })
       .join("")}</ul></div>`;
   if (decision.kind === "none") {

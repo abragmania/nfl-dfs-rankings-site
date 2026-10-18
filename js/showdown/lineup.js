@@ -301,7 +301,7 @@ function slotPlayerHtml(row, isCpt) {
   const own = isCpt ? row.ownCpt : row.ownFlex;
   const projText = proj == null ? "no proj" : dec1(proj);
   return `
-    <span class="lineup-slot-player lineup-slot-player-2">
+    <span class="lineup-slot-player lineup-slot-player-2" data-card-id="${escapeHtml(String(row.id))}">
       <span class="lineup-slot-body">
         <span class="lineup-slot-top">
           <span class="lineup-slot-name">${escapeHtml(row.name)}</span>
@@ -444,7 +444,7 @@ function savedLineupSlotHtml(entry) {
   const missingCls = row ? "" : " saved-lineup-slot-missing";
   const noteHtml = row ? "" : `<span class="saved-lineup-slot-note">not on board</span>`;
   return `
-    <div class="saved-lineup-slot${missingCls}">
+    <div class="saved-lineup-slot${missingCls}" data-card-id="${escapeHtml(String(row?.id ?? snap?.playerId ?? ""))}">
       <span class="saved-lineup-slot-pos">${escapeHtml(slot)}</span>
       <span class="saved-lineup-slot-name">${escapeHtml(src.name ?? "")}</span>
       <span class="saved-lineup-slot-team">${escapeHtml(src.team ?? "")}</span>

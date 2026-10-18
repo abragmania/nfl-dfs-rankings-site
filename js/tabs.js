@@ -334,7 +334,7 @@ function sortableBodyHtml(rows, cols, sort, valueOf, covMark = () => "") {
           const v = valueOf(r, c.key);
           if (c.key === "opp") return `<td class="opp-col">${escapeHtml(v ?? "")}</td>`; // D43, left-aligned (style.css)
           // The red OUT tag (Adam 2026-10-15, TwoGun merge adjustment 1) beside the name, as on Rankings.
-          if (c.key === "player") return `<td>${escapeHtml(v ?? "")}${outTagHtml(r)}</td>`;
+          if (c.key === "player") return `<td class="pc-name" data-card-id="${escapeHtml(String(r.id))}">${escapeHtml(v ?? "")}${outTagHtml(r)}</td>`;
           if (c.key === "team") return `<td>${escapeHtml(v ?? "")}</td>`;
           if (c.key === "cov") return `<td>${v == null ? "—" : `${Math.round(v * 100)}%`}${covMark(r)}</td>`;
           return `<td>${v == null ? "—" : dec1(v)}</td>`;

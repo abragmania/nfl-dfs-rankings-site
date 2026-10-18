@@ -25,7 +25,7 @@ import { newBuildId, batchBuild, handBuild, buildTypeText, groupByBuild } from "
 import { lineupFigures, geoOwn, geoText, medianText, sortKeysFor, sortLineups, nextSort, cleanSortState, effectiveSort, sortRowHtml } from "./lineup-sort.js"; // Adam 2026-10-17: sort options; geo own = geometric mean of ownership, his multiplicative uniqueness
 import { rowsGradedForView } from "./grade.js";
 import { posChipsHtml, showAllToggleHtml, wireShowAllButtons } from "./filterbar.js";
-import { filterLineups, bulkUids, bulkLabel, toggleMustHave, pickButtonHtml, filterBarHtml } from "./lineup-filter.js";
+import { filterLineups, bulkUids, bulkLabel, toggleMustHave, filterBarHtml } from "./lineup-filter.js";
 import { OPT_POSITIONS, optExposureHtml, sortExposure, exposureLimit, minLimit, exposureMark, zeroMinRows } from "./lineup-exposure.js";
 import { cardPlayerRowHtml, cardDecor, badgeHtml, teamLogoHtml, ownParen, teamColours, teamColourStyle } from "./lineup-card.js";
 import { lineupRoles, roleTagsHtml } from "./lineup-marks.js";
@@ -764,7 +764,7 @@ function slotPlayerHtml(row, tags = []) {
   const textColour = textColourFor(primary, secondary);
   const projText = row.proj == null ? "no proj" : dec1(row.proj);
   return `
-    <span class="lineup-slot-player lineup-slot-player-2">
+    <span class="lineup-slot-player lineup-slot-player-2" data-card-id="${escapeHtml(String(row.id))}">
       ${badgeHtml(row.name, row.pos, row.team)}
       <span class="lineup-slot-body">
         <span class="lineup-slot-top">
@@ -834,9 +834,9 @@ function computeLiveTotals(lineup, rowById) {
   return { slotEntries, filled, salaryUsed, totalProj: shownTotal(projs) ?? 0, totalOwn, ownPublished }; // ChatGPT wish d: the shown sum (totals.js)
 }
 
-/** `pick` ({isChosen(id)}, see pickOptions) turns the player's name into the "only lineups with" button. `palette`: the slate's
- *  team colours (paletteForRows on the active slate's rows), so a Saved row wears the same colours as the new-lineup card's. */
-export function savedLineupSlotHtml(slotName, entry, pick = null, palette = null) {
+/** `palette`: the slate's team colours (paletteForRows on the active slate's rows), so a Saved row wears the same colours as the
+ *  new-lineup card's. The name opens the player card (Adam 2026-10-18). */
+export function savedLineupSlotHtml(slotName, entry, palette = null) {
   if (!entry) {
     return `<div class="saved-lineup-slot saved-lineup-slot-tc saved-lineup-slot-empty"><span class="saved-lineup-slot-pos">${escapeHtml(slotName)}</span><span class="saved-lineup-slot-empty-text">Empty</span></div>`;
   }
@@ -845,9 +845,9 @@ export function savedLineupSlotHtml(slotName, entry, pick = null, palette = null
   const missingCls = entry.row ? "" : " saved-lineup-slot-missing";
   const noteHtml = entry.row ? "" : `<span class="saved-lineup-slot-note">not on slate</span>`;
   const pickId = entry.row?.id ?? entry.snap?.playerId;
-  const nameHtml = pick && pickId != null ? pickButtonHtml({ id: pickId, name: src.name ?? "", chosen: pick.isChosen(pickId) }) : escapeHtml(src.name ?? "");
+  const nameHtml = escapeHtml(src.name ?? "");
   return `
-    <div class="saved-lineup-slot saved-lineup-slot-tc${missingCls}" style="${teamColourStyle(teamColours(palette, src.team))}">
+    <div class="saved-lineup-slot saved-lineup-slot-tc${missingCls}" style="${teamColourStyle(teamColours(palette, src.team))}"${pickId != null ? ` data-card-id="${escapeHtml(String(pickId))}"` : ""}>
       <span class="saved-lineup-slot-pos">${escapeHtml(slotName)}</span>
       ${teamLogoHtml(src.team, "saved-lineup-slot-logo", 16) || `<span class="saved-lineup-slot-team">${escapeHtml(src.team ?? "")}</span>`}
       <span class="saved-lineup-slot-name">${nameHtml}</span>${entry.row ? lineupOutTagHtml(entry.row) : ""}
@@ -866,7 +866,7 @@ export function savedCeilHtml(build) {
   return `<span title="TwoGun's ceilings summed, as built">${dec1(build.totalCeil)} ceil</span>`;
 }
 
-export function savedLineupCardHtml(lineup, rowById, pick = null, numbers = null) {
+export function savedLineupCardHtml(lineup, rowById, numbers = null) {
   const totals = computeLiveTotals(lineup, rowById);
   const isCash = lineup.mode === "cash";
   const prefix = lineupPrefix(lineup, numbers);
@@ -902,7 +902,7 @@ export function savedLineupCardHtml(lineup, rowById, pick = null, numbers = null
     : `<button type="button" class="saved-lineup-name-btn" data-action="lineup-rename-start" data-id="${escapeHtml(lineup.id)}" title="Click to rename">${escapeHtml(lineup.name)}</button>`;
 
   const palette = paletteForRows(rowById); // Team rows round 2, Adam 2026-10-17: the Saved rows wear the new-lineup rows' colours
-  const rowsHtml = totals.slotEntries.map((entry, i) => savedLineupSlotHtml(LINEUP_SLOTS[i], entry, pick, palette)).join("");
+  const rowsHtml = totals.slotEntries.map((entry, i) => savedLineupSlotHtml(LINEUP_SLOTS[i], entry, palette)).join("");
 
   const salaryLeft = SALARY_CAP - totals.salaryUsed;
   const salaryText = overCap
@@ -986,7 +986,7 @@ function savedLineupsSectionHtml(rowById, savedHere) {
       const items = shown.map((e) => e.item);
       const keys = sortKeysFor(opt.mode, boardMediansForSort());
       const sort = effectiveSort(opt.sort.saved, keys);
-      const cardOf = (l) => savedLineupCardHtml(l, rowById, pick, numbers);
+      const cardOf = (l) => savedLineupCardHtml(l, rowById, numbers);
       const cards = sort.key === "built"
         ? savedGroupsHtml(items, cardOf)
         : `<div class="saved-lineups-list">${sortLineups(items, sort.key, sort.dir, (l) => savedLineupFigures(l, rowById)).map(cardOf).join("")}</div>`;
@@ -2085,9 +2085,9 @@ export function avoidChipsHtml(games, avoid) {
 
 /** One "new lineup" card: the nine players in DK slot order (name, matchup D43, salary, projection, own% D32),
  *  the totals, and Save / Discard. `busy` disables both while a save is in flight. `saved`: the card is saved, or
- *  its nine players equal a saved lineup's, so Save shows a disabled "Saved ✓" (Adam 2026-10-11). `pick`
- *  ({isChosen(id)}): each name is the "only lineups with" button (Adam 2026-10-11). */
-export function optLineupCardHtml(lineup, index, busy, { saved = false, pick = null, rowById = null, cash = null } = {}) {
+ *  its nine players equal a saved lineup's, so Save shows a disabled "Saved ✓" (Adam 2026-10-11). Each name opens the
+ *  player card (Adam 2026-10-18). */
+export function optLineupCardHtml(lineup, index, busy, { saved = false, rowById = null, cash = null } = {}) {
   const totals = lineupTotalsOf(lineup);
   const overCap = totals.salary > SALARY_CAP;
   const decor = cardDecor(lineup, rowById, paletteForRows(rowById)); // Team rows, Adam 2026-10-17: one palette per render (cached on rowById)
@@ -2097,7 +2097,7 @@ export function optLineupCardHtml(lineup, index, busy, { saved = false, pick = n
     decor.stack = "";
     decor.rolesFor = (p) => (cash.strip.wantIn.has(String(p.id)) ? `<span class="role-tag role-want" title="On your Want list">WANT</span>` : "");
   }
-  const rows = (lineup.players ?? []).map((p, i) => cardPlayerRowHtml(p, LINEUP_SLOTS[i] ?? p.pos ?? "", pick, decor)).join("");
+  const rows = (lineup.players ?? []).map((p, i) => cardPlayerRowHtml(p, LINEUP_SLOTS[i] ?? p.pos ?? "", decor)).join("");
   const ownBody = totals.own == null ? "— own" : `${Math.round(totals.own)}% own`;
   const geoBody = geoText(geoOwn((lineup.players ?? []).map((p) => p.own))); // Adam 2026-10-17: geo own on the GPP card only
   // TwoGun mode: the lineup's total of TwoGun's ceilings, as the server summed it (absent in current mode; a dash
@@ -2427,7 +2427,7 @@ function newLineupsTabHtml(rowById, savedHere) {
     const ordered = sortLineups(shown, sort.key, sort.dir, (e) => newLineupFigures(e.item, rowById));
     if (ordered.length >= 2) parts.push(sortRowHtml("new", keys, sort));
     const cardCash = (lineup) => (isCash ? { basis: r.basis, strip: cashStrip(lineup, r, rowById, busy) } : null);
-    parts.push(`<div class="opt-cards">${ordered.map((e) => optLineupCardHtml(e.item, e.index, busy, { saved: savedFlags[e.index], pick, rowById, cash: cardCash(e.item) })).join("")}</div>`);
+    parts.push(`<div class="opt-cards">${ordered.map((e) => optLineupCardHtml(e.item, e.index, busy, { saved: savedFlags[e.index], rowById, cash: cardCash(e.item) })).join("")}</div>`);
     if (whole) parts.push(bendsLineHtml(r.bends, r.made));
   } else {
     lastExposure = { exposure: {}, subtitle: "" };
@@ -2665,8 +2665,8 @@ function currentRowById() {
   return new Map((store.get().board?.rows ?? []).map((r) => [String(r.id), r]));
 }
 
-/** Adam 2026-10-11: a player's name (exposure row or lineup card, new or saved) adds him to the "only lineups with"
- *  list or takes him out; a chip's × takes him out; Clear empties it. Page-only; nothing is saved or deleted. */
+/** Adam 2026-10-11: a player's name in the exposure tables adds him to the "only lineups with" list or takes him out
+ *  (everywhere else the name opens his card, 2026-10-18); a chip's × takes him out; Clear empties it. Page-only. */
 function wirePickButtons(container) {
   container.querySelectorAll("[data-action='opt-pick']").forEach((btn) => {
     btn.addEventListener("click", () => {

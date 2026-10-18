@@ -27,7 +27,7 @@ import {
 import { renderPills, renderSlateLine, wireUpload, wireRefresh, renderModeRow, wireThemeToggle, secondSlateSavedText, renderModeBox, uploadStatusSetter, entriesUploadedHandler, paintSourcesLink, wireSourcesLink } from "./js/header.js";
 import { uploadEntriesText, setUploadRouter } from "./js/entries-wire.js"; // Adam 2026-10-18: one upload for every DraftKings export
 import { getShowdowns, postShowdownUpload } from "./js/showdown/api.js";
-import { renderShowdownView, showdownKeyFromHash, forceReloadShowdown, showUploadPills } from "./js/showdown/view.js";
+import { renderShowdownView, showdownKeyFromHash, forceReloadShowdown, showUploadPills, showdownRowById, showdownBoardAsOf } from "./js/showdown/view.js";
 import { normalizeBoard } from "./js/normalize.js";
 import { applyGrades, rowsGradedForView } from "./js/grade.js";
 import { renderGameStrip, getGamestripCollapsed, setGamestripCollapsed } from "./js/gamestrip.js";
@@ -38,6 +38,7 @@ import { renderShowdownTab } from "./js/showdown-tab.js";
 import { teamsSampleHtml } from "./js/teams-sample.js"; // Temporary (Adam 2026-10-18)
 import { renderFavoritesPanel, favoriteRows } from "./js/favorites.js";
 import { initExpand, syncExpandUi, phoneMinHeight, panelMinHeight } from "./js/expand.js";
+import { initPlayerCard } from "./js/player-card.js";
 
 const el = {
   modeRow: document.getElementById("mode-row"),
@@ -534,6 +535,8 @@ function adjustScrollPanels() {
 window.addEventListener("resize", adjustScrollPanels);
 // Expand / Minimize on the four player tables (public/js/expand.js); minimizing re-sizes the table for its place.
 initExpand({ onLayout: adjustScrollPanels });
+// The player card: a click on any player's name opens his page (public/js/player-card.js); a showdown name reads the showdown board's row.
+initPlayerCard({ findRow: (id, sd) => (sd ? showdownRowById(id) : findRow(id)), sdKey: showdownKeyFromHash, boardAsOf: (sd) => (sd ? showdownBoardAsOf() : store.get().board?.generatedAt) });
 
 function renderDynamic() {
   const { board, filters, sort, loading, boardError } = store.get();

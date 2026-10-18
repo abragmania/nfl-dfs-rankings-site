@@ -11,6 +11,8 @@ import {
   STORAGE_UNAVAILABLE_MESSAGE,
 } from "./site-lineups.js";
 import { boardWithEdits, putEdits, resetPlayerEdits, resetAllEdits } from "./site-overrides.js";
+import { buildCard, precheck, identityOf } from "../server/playercard/build.js";
+import { ndcAbbr, teamFileUrl, gamelogUrl, teamFileProblem, gamelogProblem } from "../server/playercard/ndc-files.js";
 import { boardWithWeights, readWeights, putWeights } from "./site-weights.js";
 
 export const READ_ONLY_MESSAGE = "Read-only on the live site. Do this in the app on your computer.";
@@ -70,6 +72,44 @@ export async function getBoard() {
 
 export async function getSlate() {
   return getJson("baked/slate.json");
+}
+
+// The player card (D6): the app's own builder, run in the browser on his baked row and his club's two NFLDepthCharts files.
+const ndcFiles = new Map();
+function ndcFile(url, problem, check) {
+  if (!ndcFiles.has(url)) {
+    const p = getJson(url).then((data) => {
+      const bad = problem(data, check);
+      if (bad) throw new Error(bad);
+      return { data, fetchedAt: new Date().toISOString(), stale: false };
+    });
+    p.catch(() => ndcFiles.delete(url));
+    ndcFiles.set(url, p);
+  }
+  return ndcFiles.get(url);
+}
+
+export async function getPlayerCard(id, sd = null) {
+  const board = await baked(sd ? `baked/showdown/${encodeURIComponent(sd)}/board.json` : "baked/board.json");
+  const found = Array.isArray(board?.rows) ? board.rows.find((r) => String(r.id) === String(id) || (r.cptId != null && String(r.cptId) === String(id))) : null;
+  if (!found) return siteError("UNKNOWN_PLAYER", "That player is not on the published slate.");
+  const season = board.slate?.season;
+  if (!Number.isInteger(season)) return siteError("NO_SLATE", "The published slate carries no season.");
+  const row = identityOf(found);
+  const done = (body) => ({ ok: true, generatedAt: new Date().toISOString(), stale: [], ...body });
+  const early = precheck(row);
+  if (early) return done({ ...early, source: null });
+  const abbr = ndcAbbr(row.team);
+  const [team, gamelog] = await Promise.allSettled([
+    ndcFile(teamFileUrl(abbr), teamFileProblem, { abbr, season }),
+    ndcFile(gamelogUrl(abbr), gamelogProblem, { abbr, season }),
+  ]);
+  if (team.status === "rejected") return siteError("SOURCE_UNAVAILABLE", `NFLDepthCharts' team file for ${abbr} could not be read: ${team.reason.message}`);
+  return done(buildCard(row, {
+    team: team.value,
+    gamelog: gamelog.status === "fulfilled" ? gamelog.value : null,
+    gamelogError: gamelog.status === "rejected" ? `NFLDepthCharts' game-log file for ${abbr} could not be read: ${gamelog.reason.message}` : null,
+  }));
 }
 
 // The baked board and slate for the Optimizer and device saves, fetched once per page and kept apart from what

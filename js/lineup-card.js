@@ -3,7 +3,6 @@ import { escapeHtml, money, dec1, textColourFor, logoFor } from "./format.js";
 import { fillForDark, fillForLight, solidRow, barColour, ROW_FILL } from "./team-palette.js";
 import { TEAM_BY_ABBR } from "./teams-data.js";
 import { lineupOutTagHtml } from "./table.js";
-import { pickButtonHtml } from "./lineup-filter.js";
 import { lineupRoles, roleTagsHtml, stackLabel } from "./lineup-marks.js";
 
 // D32: any list of players carries ownership as "(NN% own)", but only when the player has a real number.
@@ -35,11 +34,10 @@ export function shortName(name, pos) {
   return `${parts[0][0]}. ${parts.slice(1).join(" ")}`;
 }
 
-export function cardNameHtml(p, pick) {
+export function cardNameHtml(p) {
   const name = String(p.name ?? "");
   const short = shortName(name, p.pos);
   const inner = short === name ? null : `<span class="nm-full">${escapeHtml(name)}</span><span class="nm-short" aria-hidden="true">${escapeHtml(short)}</span>`;
-  if (pick && p.id != null) return pickButtonHtml({ id: p.id, name, chosen: pick.isChosen(p.id), innerHtml: inner });
   return inner ? `<span title="${escapeHtml(name)}">${inner}</span>` : escapeHtml(name);
 }
 
@@ -96,13 +94,13 @@ export function cardDecor(lineup, rowById, palette = null) {
 }
 
 // D54: a card row is 50px.
-export function cardPlayerRowHtml(p, slotName, pick, decor) {
+export function cardPlayerRowHtml(p, slotName, decor) {
   return `
-      <div class="opt-p" style="${teamColourStyle(decor ? decor.coloursFor(p.team) : teamColours(null, p.team))}">
+      <div class="opt-p" style="${teamColourStyle(decor ? decor.coloursFor(p.team) : teamColours(null, p.team))}"${p.id != null ? ` data-card-id="${escapeHtml(String(p.id))}"` : ""}>
         <span class="opt-p-slot">${escapeHtml(slotName)}</span>
         ${teamLogoHtml(p.team, "opt-p-logo", 38) || badgeHtml(p.name, p.pos, p.team)}
         <span class="opt-p-body">
-          <span class="opt-p-line1"><span class="opt-p-name">${cardNameHtml(p, pick)}</span>${decor ? decor.tagsFor(p) : ""}</span>
+          <span class="opt-p-line1"><span class="opt-p-name">${cardNameHtml(p)}</span>${decor ? decor.tagsFor(p) : ""}</span>
           <span class="opt-p-line2"><span class="opt-p-opp">${escapeHtml(p.opp ?? "")}</span><span class="opt-p-own">${escapeHtml(ownParen(p.own).trim())}</span>${decor ? decor.rolesFor(p) : ""}</span>
         </span>
         <span class="opt-p-nums"><span class="opt-p-sal">${money(p.salary)}</span><span class="opt-p-proj">${p.proj == null ? "—" : dec1(p.proj)}</span></span>

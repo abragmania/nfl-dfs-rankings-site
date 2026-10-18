@@ -53,6 +53,15 @@ export function showdownKeyFromHash() {
   }
 }
 
+// The player card's two reads of the loaded showdown board: a row (given the game's key when the row has none, so the card can say vs or @) and its time.
+export function showdownRowById(id) {
+  const row = state.board?.rows?.find((r) => String(r.id) === String(id) || (r.cptId != null && String(r.cptId) === String(id)));
+  const g = state.board?.game;
+  if (!row) return null;
+  return row.gameId || !g?.away || !g?.home ? row : { ...row, gameId: `${g.away}@${g.home}` };
+}
+export const showdownBoardAsOf = () => state.board?.generatedAt ?? null;
+
 const els = {
   status: document.getElementById("sd-status"),
   tabs: document.getElementById("sd-tabs"),
