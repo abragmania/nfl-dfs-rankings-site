@@ -12,6 +12,7 @@ import { postShowdownLineupOptimize, getShowdownLineups, postShowdownLineup, del
 import { posPillHtml, shownRows } from "./table.js";
 import { showAllToggleHtml, wireShowAllButtons } from "../filterbar.js";
 import { store } from "../state.js";
+import { showdownPerSpotText } from "../totals.js";
 
 const SALARY_CAP = 50000;
 const FLEX_COUNT = 5;
@@ -536,9 +537,13 @@ function panelHtml(board) {
   const salaryKnown = totals.salaryUsed !== null;
   const overCap = salaryKnown && totals.salaryUsed > SALARY_CAP;
   const fillPct = salaryKnown ? Math.max(0, Math.min(100, (totals.salaryUsed / SALARY_CAP) * 100)) : 0;
+  // Adam 2026-10-18: salary per open spot, the Captain's 1.5x weighed in (totals.js); null when full or over.
+  const perSpot = salaryKnown ? showdownPerSpotText(totals.salaryLeft, !state.cpt, FLEX_COUNT - state.flex.filter(Boolean).length) : null;
   const salaryText = !salaryKnown
     ? "Salary unknown: a placed player is no longer on the board"
-    : totals.salaryLeft < 0 ? `${money(totals.salaryUsed)} used · ${money(-totals.salaryLeft)} over` : `${money(totals.salaryUsed)} used · ${money(totals.salaryLeft)} left`;
+    : totals.salaryLeft < 0
+      ? `${money(totals.salaryUsed)} used · ${money(-totals.salaryLeft)} over`
+      : `${money(totals.salaryUsed)} used · ${money(totals.salaryLeft)} left${perSpot ? ` · ${perSpot}` : ""}`;
   return `
     <div class="lineup-layout">
       <div class="lineup-left">
