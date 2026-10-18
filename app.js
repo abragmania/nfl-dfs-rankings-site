@@ -24,7 +24,7 @@ import {
   postProjectionsPaste,
   postMode,
 } from "./js/api.js";
-import { renderPills, renderSlateLine, wireUpload, wireRefresh, renderModeRow, wireThemeToggle, secondSlateSavedText, renderModeBox, uploadStatusSetter, entriesUploadedHandler } from "./js/header.js";
+import { renderPills, renderSlateLine, wireUpload, wireRefresh, renderModeRow, wireThemeToggle, secondSlateSavedText, renderModeBox, uploadStatusSetter, entriesUploadedHandler, paintSourcesLink, wireSourcesLink } from "./js/header.js";
 import { uploadEntriesText, setUploadRouter } from "./js/entries-wire.js"; // Adam 2026-10-18: one upload for every DraftKings export
 import { getShowdowns, postShowdownUpload } from "./js/showdown/api.js";
 import { renderShowdownView, showdownKeyFromHash, forceReloadShowdown, showUploadPills } from "./js/showdown/view.js";
@@ -33,7 +33,7 @@ import { applyGrades, rowsGradedForView } from "./js/grade.js";
 import { renderGameStrip, getGamestripCollapsed, setGamestripCollapsed } from "./js/gamestrip.js";
 import { renderFilterBar, updateFilterSummary } from "./js/filterbar.js";
 import { renderTableHead, renderTableBody, updateRow } from "./js/table.js";
-import { renderTabs, shownTab, onSitePage, renderProjectionsPanel, renderOwnershipPanel, renderLineupPanel, renderEntriesPanel } from "./js/tabs.js";
+import { renderTabs, renderSourcesTabs, isSourcesTab, sourcesTabToOpen, shownTab, onSitePage, renderProjectionsPanel, renderOwnershipPanel, renderLineupPanel, renderEntriesPanel } from "./js/tabs.js";
 import { renderShowdownTab } from "./js/showdown-tab.js";
 import { teamsSampleHtml } from "./js/teams-sample.js"; // Temporary (Adam 2026-10-18)
 import { renderFavoritesPanel, favoriteRows } from "./js/favorites.js";
@@ -53,6 +53,8 @@ const el = {
   themeToggleBtn: document.getElementById("theme-toggle-btn"),
   status: document.getElementById("status"),
   tabs: document.getElementById("tabs"),
+  sourcesBtn: document.getElementById("sources-btn"), // Adam 2026-10-18: the header link to the Sources view
+  sourcesTabs: document.getElementById("sources-tabs"),
   slateNote: document.getElementById("slate-note"),
   rankingsPanel: document.getElementById("rankings-panel"),
   projectionsPanel: document.getElementById("projections-panel"),
@@ -261,6 +263,12 @@ const sourceCallbacks = {
 
 function onTabClick(tabKey) {
   store.set({ activeTab: tabKey });
+}
+
+// The header's Sources link opens the Sources view on the sub-tab last shown (Projections the first time).
+let lastSourcesTab = null;
+function onSourcesOpen() {
+  store.set({ activeTab: sourcesTabToOpen(store.get().activeTab, lastSourcesTab) });
 }
 
 function onToggleGamestripCollapse() {
@@ -534,6 +542,9 @@ function renderDynamic() {
   // Every list below reads the slate on screen's rows (D57): the whole board, or the active second slate's.
   const slateRows = activeSlateRows(board);
   renderTabs(el.tabs, activeTab, onTabClick, favoriteRows(slateRows).length);
+  if (isSourcesTab(activeTab)) lastSourcesTab = activeTab;
+  renderSourcesTabs(el.sourcesTabs, activeTab, onTabClick);
+  paintSourcesLink(el.sourcesBtn, isSourcesTab(activeTab));
 
   if (!board) {
     // #empty-state lives as a sibling of the five tab panels (not nested inside #rankings-panel), so a
@@ -646,6 +657,7 @@ routeDkFile = handleFile;
 setUploadRouter(handleFile);
 
 wireThemeToggle(el.themeToggleBtn);
+wireSourcesLink(el.sourcesBtn, { onOpen: onSourcesOpen });
 
 wireRefresh({ refreshBtn: el.refreshBtn, statusEl: el.status }, {
   onRefresh: async () => {

@@ -2077,20 +2077,6 @@ export function starredQbNote(count, lockedQb) {
   return lockedQb ? { text: `${words}; the locked QB is used`, warn: false } : { text: `${words}: star one or lock one`, warn: true };
 }
 
-// The roster rules in plain words, for the "Nothing locked" warning (ChatGPT wish k); keys as OPT_RULES.
-const RULE_WORDS = {
-  starredQbOnly: "starred QBs only",
-  noSameTeamRbs: "no two RBs from one team",
-  noSameGameRbs: "no two RBs from one game",
-  noDstVsOwnPlayers: "no defense facing a player in the lineup",
-};
-
-/** The warning when nothing is locked, naming the roster rules that are on. */
-export function nothingLockedText(rules) {
-  const on = OPT_RULES.filter((r) => rules?.[r.key] !== false).map((r) => RULE_WORDS[r.key]);
-  return `Nothing locked: plain optimal lineups ${on.length ? `under ${on.join(", ")}` : "with no roster rules"}; rarely right for tournaments.`;
-}
-
 export function avoidChipsHtml(games, avoid) {
   return (games ?? [])
     .map((g) => {
@@ -2226,7 +2212,7 @@ function optimizerControlsHtml(rowById) {
   const games = activeSlateGames(board);
   const info = locked.length
     ? `<span class="opt-lockinfo">${locked.length} locked: ${escapeHtml(locked.map((r) => r.name).join(", "))}</span>`
-    : `<span class="opt-warn">${escapeHtml(nothingLockedText(opt.rules))}</span>`;
+    : ""; // Adam 2026-10-18 (Q8): no amber rules line when nothing is locked
   // 🔵 2026-10-17 (👁 render): the five position caps are one row of five small boxes, not five rows.
   const expRows = `<div class="opt-cap-row">${OPT_POSITIONS.map((pos) =>
     `<label class="opt-cap"><span class="opt-cap-pos">${pos}</span>${numberBoxHtml(`type="text" inputmode="decimal" class="opt-input opt-input-pct" data-opt-exp="${pos}" value="${escapeHtml(opt.maxExp[pos])}" placeholder="no cap" aria-label="${pos} maximum exposure percent"`, "%")}</label>`

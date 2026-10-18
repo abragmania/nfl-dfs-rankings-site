@@ -48,11 +48,16 @@
           <input id="csv-input" type="file" accept=".csv,text/csv" hidden />
         </label>
         <span id="upload-info" class="upload-info"></span>
+        <button id="sources-btn" class="sources-btn" type="button" title="The projection and ownership sources: cards, weights and tables">Sources</button>
         <button id="refresh-btn" class="refresh-btn" type="button">Refresh</button>
         <button id="theme-toggle-btn" class="theme-toggle-btn" type="button" title="Switch theme"></button>
       </div>
     </div>
-    <div id="pills-row" class="pills-row"></div>
+    <!-- The row under the title: the source pills and, beside them, the TwoGun status pill (header.js renderModeBox puts it in #tg-pill). -->
+    <div class="header-sub">
+      <div id="pills-row" class="pills-row"></div>
+      <div id="tg-pill" class="tg-pill" hidden></div>
+    </div>
   </header>
 
   <!-- Showdown header (D39/D40): hidden while the classic slate is showing; public/js/showdown/view.js
@@ -72,6 +77,8 @@
     <div id="status" class="status"></div>
 
     <nav id="tabs" class="tabs"></nav>
+    <!-- Sources view (Adam 2026-10-18): the Projections and Projected Ownership sub-tabs, shown only while the header's Sources link is on. -->
+    <nav id="sources-tabs" class="sources-tabs" aria-label="Sources" hidden></nav>
     <!-- Second slates (D57): one plain line while a second slate (the afternoon-only slate, say) is on screen;
          hidden on the main slate. Filled by app.js's renderSlateChrome. -->
     <p id="slate-note" class="tab-note" hidden></p>
@@ -186,7 +193,9 @@
           // location.hash's "#sd=" prefix picks the one actually on screen instead of always matching
           // #tabs first in document order.
           var scope = window.location.hash.indexOf("#sd=") === 0 ? "#sd-tabs" : "#tabs";
-          var btn = document.querySelector(scope + ' [data-tab="' + wantTab + '"]');
+          // "?tab=projections" and "?tab=ownership" are the Sources view's sub-tabs now (#sources-tabs).
+          // Only on the classic page (scope "#tabs"): on a showdown the classic row is hidden and must not be clicked while #sd-tabs is not drawn yet.
+          var btn = document.querySelector(scope + ' [data-tab="' + wantTab + '"]') || (scope === "#tabs" ? document.querySelector('#sources-tabs [data-tab="' + wantTab + '"]') : null);
           if (btn) {
             btn.click();
             tabClicked = true;

@@ -220,10 +220,13 @@ html, body {
   padding: var(--sp-3) max(var(--sp-5), calc((100% - 1560px) / 2 + var(--sp-5)));
 }
 
+/* Wraps (👁 Sources fix 1): where the Sources button makes the row too wide, the action buttons drop to their own line as a group,
+   pushed right as they were (margin-left: auto on .header-actions). */
 .header-top {
   display: flex;
   align-items: center;
-  gap: var(--sp-5);
+  flex-wrap: wrap;
+  gap: var(--sp-2) var(--sp-5);
   width: 100%;
 }
 
@@ -258,6 +261,7 @@ html, body {
   align-items: center;
   gap: var(--sp-3);
 }
+#classic-header .header-actions { margin-left: auto; } /* stays right when the row wraps; the showdown header keeps Refresh beside its band */
 
 .upload-btn {
   cursor: pointer;
@@ -277,7 +281,8 @@ html, body {
   white-space: nowrap;
 }
 
-.refresh-btn {
+.refresh-btn,
+.sources-btn {
   cursor: pointer;
   background: var(--bg-elevated-2);
   color: var(--text);
@@ -288,7 +293,10 @@ html, body {
   font-weight: 600;
   white-space: nowrap;
 }
-.refresh-btn:hover { border-color: var(--accent); }
+.refresh-btn:hover,
+.sources-btn:hover,
+.sources-btn.active { border-color: var(--accent); }
+.sources-btn.active { color: var(--accent); }
 
 /* Dark/Light toggle (header, both themes): same shape as .refresh-btn but a fixed width so flipping
    between the sun and moon glyph never shifts anything else in .header-actions. */
@@ -306,6 +314,11 @@ html, body {
 .theme-toggle-btn:hover { border-color: var(--accent); }
 
 .pills-row { margin-top: var(--sp-2); }
+/* The row under the main-slate title: the source pills and the TwoGun status pill side by side (Sources fix round 3), the pill
+   wrapping below only when the two do not fit; each child carries its own top margin so a hidden one leaves no gap. */
+.header-sub { display: flex; flex-wrap: wrap; align-items: flex-start; column-gap: var(--sp-3); }
+.tg-pill { margin-top: var(--sp-2); white-space: nowrap; }
+.tg-pill[hidden] { display: none; }
 .pills-list {
   list-style: none;
   margin: 0;
@@ -332,8 +345,8 @@ html, body {
 .pills-toggle[aria-expanded="true"]::after { content: " \25BE"; }
 .pills-list:not(.open) > .pill:not(.pills-summary) { display: none; }
 
-/* TwoGun mode box (header.js renderModeBox, merge plan 2026-10-15): the Current / TwoGun switch and the board-stamp
-   pill, after the slate line. Same pill shape as the source pills; the stamp pill is neutral, a stale or missing
+/* TwoGun mode box (header.js renderModeBox, merge plan 2026-10-15): the Current / TwoGun switch after the slate line;
+   the board-stamp pill sits in #tg-pill in .header-sub. Same pill shape as the source pills; the stamp pill is neutral, a stale or missing
    TwoGun board uses the amber .pill-warning. */
 .tg-mode { display: flex; align-items: center; gap: var(--sp-2); white-space: nowrap; }
 .tg-mode[hidden] { display: none; }
@@ -393,6 +406,10 @@ html, body {
   border-bottom-color: var(--accent);
 }
 .tab-btn:hover { color: var(--text); }
+/* The Sources view's sub-tab row (Projections, Projected Ownership), under the main tabs while the header's Sources link is on. */
+.sources-tabs { display: flex; align-items: center; gap: var(--sp-2); border-bottom: 1px solid var(--border); margin-bottom: var(--sp-4); }
+.sources-tabs[hidden] { display: none; }
+.sources-tabs-label { color: var(--text-muted); font-size: var(--fs-sm); font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; margin-right: var(--sp-2); padding-bottom: 6px; /* the tab buttons carry 4px more padding below the text than above, plus a 2px border: lifts the label to the tab text */ }
 
 .panel { width: 100%; }
 
@@ -480,10 +497,11 @@ body.table-expanded { overflow: hidden; }
   .header-top { flex-wrap: wrap; gap: var(--sp-2) var(--sp-3); }
   .slate-line { flex: 1 1 100%; order: 3; white-space: normal; }
   .tg-mode { flex: 1 1 100%; order: 3; flex-wrap: wrap; white-space: normal; }
+  .tg-pill { white-space: normal; }
   .header-actions { order: 4; flex: 1 1 100%; flex-wrap: wrap; gap: var(--sp-2); }
   .upload-info { white-space: normal; }
   .main { padding-left: var(--sp-3); padding-right: var(--sp-3); }
-  .tabs { flex-wrap: wrap; }
+  .tabs, .sources-tabs { flex-wrap: wrap; }
 }
 
 /* ---------- Game strip (D26) ---------- */
@@ -1488,7 +1506,8 @@ tr:last-child .cell-edit-hint { top: auto; bottom: 100%; margin-top: 0; margin-b
 @media (max-height: 820px) {
   .header { padding: var(--sp-1) var(--sp-5); }
   .main { padding: var(--sp-1) var(--sp-5); }
-  .tabs { margin-bottom: var(--sp-1); }
+  .tabs, .sources-tabs { margin-bottom: var(--sp-1); }
+  .sources-tabs-label { padding-bottom: var(--sp-1); } /* the tabs here have 2px above and 4px below, so the label lifts 2px less */
   .tab-btn { padding: 2px var(--sp-3) var(--sp-1); }
   .gamestrip { margin-bottom: var(--sp-1); }
   .gamestrip-toggle-row { margin-bottom: 2px; }

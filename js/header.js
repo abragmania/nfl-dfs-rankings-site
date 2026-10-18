@@ -131,8 +131,8 @@ export function secondSlateSavedText(secondSlate) {
   return `Saved as a second slate: ${name}. The main slate is unchanged.${extras.length ? ` ${extras.join("; ")}.` : ""}`;
 }
 
-// TwoGun mode (merge plan 2026-10-15): a two-way switch, Current or TwoGun, and the board-stamp pill, placed after the
-// slate line. `mode` is board.mode {active, appliesTo, twogun: {status, boardUpdated, ageAtLockH, stale, covered,
+// TwoGun mode (merge plan 2026-10-15): a two-way switch, Current or TwoGun, after the slate line, and the board-stamp
+// pill in #tg-pill under the title (rules repo 2026-10-18, so the header's top line fits at 1366). `mode` is board.mode {active, appliesTo, twogun: {status, boardUpdated, ageAtLockH, stale, covered,
 // fallback, note}}; a board without it (an older server) shows nothing. The mode applies to the classic slates (main
 // and second slates, D57); showdown keeps the current sources (D39). One pill only: the board stamp when TwoGun's board
 // is fresh; one amber stale pill instead when it is stale for any reason (D30 as amended: stamped after lock, over 36
@@ -156,9 +156,11 @@ export function staleTwoGun(tg) {
   return { text: "Older TwoGun file in use", sentence: "An older TwoGun file is in use: the newest one could not be read." };
 }
 
-export function modeBoxHtml(mode) {
+/** The mode box in two parts, { switchHtml, pillHtml }, or null for a board with no mode: the switch stays on the header's
+ *  top line, the status pill goes in the row under the title beside the source pills (#tg-pill; Sources fix round 3). */
+function modeParts(mode) {
   const active = mode?.active;
-  if (active !== "current" && active !== "twogun") return "";
+  if (active !== "current" && active !== "twogun") return null;
   const tg = mode.twogun ?? {};
   const scope = typeof mode.appliesTo === "string" && mode.appliesTo ? mode.appliesTo : "classic slates";
   const btn = (value, label) =>
@@ -177,14 +179,26 @@ export function modeBoxHtml(mode) {
   } else {
     pill = modePillHtml("pill-warning", "No TwoGun board · current numbers shown", `${tg.note || "TwoGun mode is on but no TwoGun board could be read, so the current sources show."} ${SHOWDOWN_STAYS}`);
   }
-  return `${switchHtml}${pill}`;
+  return { switchHtml, pillHtml: pill };
+}
+
+export function modeBoxHtml(mode) {
+  const parts = modeParts(mode);
+  return parts ? `${parts.switchHtml}${parts.pillHtml}` : "";
 }
 
 /** Draws the mode box into `headerEl` (the classic header), creating it after #slate-line the first time.
  *  `onSwitch(mode)` runs on a click of the mode not showing; both buttons stay off until it settles. */
 export function renderModeBox(headerEl, mode, { onSwitch } = {}) {
   if (!headerEl) return;
-  const html = modeBoxHtml(mode);
+  const parts = modeParts(mode);
+  // The pill goes to #tg-pill when the header has one; a header without it keeps the pill in the box, as before.
+  const pillEl = headerEl.querySelector("#tg-pill");
+  const html = parts ? (pillEl ? parts.switchHtml : `${parts.switchHtml}${parts.pillHtml}`) : "";
+  if (pillEl) {
+    pillEl.innerHTML = parts && parts.pillHtml ? parts.pillHtml : "";
+    pillEl.hidden = !pillEl.innerHTML;
+  }
   let box = headerEl.querySelector("#tg-mode");
   if (!box) {
     if (!html) return;
@@ -400,6 +414,18 @@ export function wireThemeToggle(btn) {
     }
     paintThemeToggle(btn);
   });
+}
+
+// The header's Sources link (Adam 2026-10-18): opens the Sources view (tabs.js SOURCE_TABS); `active` marks it while that view shows.
+export function paintSourcesLink(btn, active) {
+  if (!btn) return;
+  btn.classList.toggle("active", Boolean(active));
+  if (active) btn.setAttribute("aria-current", "page");
+  else btn.removeAttribute("aria-current");
+}
+
+export function wireSourcesLink(btn, { onOpen }) {
+  btn?.addEventListener("click", () => onOpen());
 }
 
 export function wireRefresh({ refreshBtn, statusEl }, { onRefresh }) {

@@ -1,6 +1,7 @@
 // Tabs above the table: Rankings (rendered by table.js/gamestrip.js/filterbar.js, default),
-// Favorites (starred players, favorites.js), Projections, Projected Ownership, Optimizer (the main-slate tab, second after Rankings; DECISIONS.md D70),
-// Entries (right after the Optimizer, app only).
+// Favorites (starred players, favorites.js), Optimizer (the main-slate tab, second after Rankings; DECISIONS.md D70),
+// Entries (right after the Optimizer, app only). Projections and Projected Ownership are not tabs here any more: they are the two
+// sub-tabs of the Sources view the header's Sources link opens (Adam 2026-10-18; SOURCE_TABS, renderSourcesTabs).
 import { escapeHtml, dec1, localStamp } from "./format.js";
 import { store, passesProjFloor, CLASSIC_PROJ_FLOOR, activeSlateRows, sortRows } from "./state.js";
 import { favoritesTabLabel } from "./favorites.js";
@@ -37,10 +38,21 @@ const TABS = [
   { key: "showdown", label: "Showdown" }, // ChatGPT wish t, Adam 2026-10-17: a second door to the Showdown boards, in the app and on the site
   { key: "entries", label: "Entries" }, // rules repo 2026-10-17: Entries is its own tab (was a section under the Optimizer); app-only, see visibleTabs
   { key: "favorites", label: "Favorites" },
-  { key: "projections", label: "Projections" },
-  { key: "ownership", label: "Projected Ownership" },
   { key: "teams", label: "Teams (sample)" }, // Temporary (Adam 2026-10-18): remove when he has seen the colours
 ];
+
+// The Sources view's two sub-tabs; their keys stay the old tab keys, so "?tab=projections" and "?tab=ownership" still land here.
+export const SOURCE_TABS = Object.freeze([
+  Object.freeze({ key: "projections", label: "Projections" }),
+  Object.freeze({ key: "ownership", label: "Projected Ownership" }),
+]);
+export const isSourcesTab = (key) => SOURCE_TABS.some((t) => t.key === key);
+
+/** Which sub-tab the header's Sources link opens: the one already showing, else the one last shown, else Projections. */
+export function sourcesTabToOpen(current, last) {
+  if (isSourcesTab(current)) return current;
+  return isSourcesTab(last) ? last : SOURCE_TABS[0].key;
+}
 
 // Rules repo 2026-10-17: the public site marks the page `is-site` (tools/publish.mjs injectSite marks the html tag at publish time; site-src/site.js adds it too), the same signal filterbar.js reads;
 // Entries holds Adam's private entries files (site.css hides .entries-section there), so the site gets no Entries tab.
@@ -55,7 +67,18 @@ export function visibleTabs(onSite = onSitePage()) {
 
 /** The tab to show: the stored one when it is drawn, else Rankings (an Entries tab left over on the site; rules repo 2026-10-17). */
 export function shownTab(activeTab, tabs = visibleTabs()) {
-  return tabs.some((t) => t.key === activeTab) ? activeTab : "rankings";
+  return tabs.some((t) => t.key === activeTab) || isSourcesTab(activeTab) ? activeTab : "rankings";
+}
+
+/** The Sources view's sub-tab row: always drawn (so a "?tab=projections" link can click it), shown only while a source tab is on screen. */
+export function renderSourcesTabs(container, activeTab, onTabClick) {
+  const on = isSourcesTab(activeTab);
+  container.hidden = !on;
+  container.innerHTML = `<span class="sources-tabs-label">Sources</span>${SOURCE_TABS.map((t) =>
+    `<button type="button" class="tab-btn${t.key === activeTab ? " active" : ""}"${t.key === activeTab ? ' aria-current="true"' : ""} data-tab="${t.key}">${escapeHtml(t.label)}</button>`).join("")}`;
+  container.querySelectorAll(".tab-btn").forEach((el) => {
+    el.addEventListener("click", () => onTabClick(el.dataset.tab));
+  });
 }
 
 // `favoritesCount`: how many starred players are on the slate; the Favorites tab shows it as "Favorites (3)".
