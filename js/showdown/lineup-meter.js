@@ -255,11 +255,14 @@ function switchHtml(mode, modesInfo) {
   return `<div class="sd-meter-switch" role="group" aria-label="Where projections and ownership come from"><span class="sd-meter-switch-label">Source</span>${opts}</div>`;
 }
 
+/** The words for a man TwoGun's board has no row for (Q8), shared by the meter's note and the swaps; the slots' own line (lineup.js) says the same. */
+export const NOT_ON_BOARD_WORDS = "not on TwoGun's board, 0%";
+
 /** "A Smith, B Jones: not on TwoGun's board, 0%" for the lineup men TwoGun's board has no row for (Q8); null when none or not TwoGun mode. */
 export function notOnBoardText(d, asked = "twogun") {
   if (answerMode(d, asked) !== "twogun") return null;
   const names = Array.isArray(d?.ownership?.notOnBoard) ? d.ownership.notOnBoard.filter(Boolean) : [];
-  return names.length ? `${names.join(", ")}: not on TwoGun's board, 0%` : null;
+  return names.length ? `${names.join(", ")}: ${NOT_ON_BOARD_WORDS}` : null;
 }
 
 /** What the chosen source has not posted, from the modes answer (no lineup needed): the ownership line, then the projection line; "" when both are posted. */
@@ -526,6 +529,17 @@ export function wireMeter(container) {
 }
 
 /**
+ * What a measurement of this lineup depends on: the showdown, the board build, the request body and the six placed men's
+ * projection and ownership as the board row shows them (a typed number can change those without a new build time). The
+ * meter and the swaps panel both ask with this one signature, so they re-ask together.
+ */
+export function lineupSig(key, board, body, cpt, flex) {
+  const six = [findRow(board, cpt.id), ...flex.map((s) => findRow(board, s.id))];
+  const figures = six.map((r, i) => [i === 0 ? r?.cptProj : r?.proj, r?.ownCpt ?? null, r?.ownFlex ?? null]);
+  return JSON.stringify([key, board?.generatedAt ?? null, body, figures]);
+}
+
+/**
  * Called before every panel draw with the panel element (`container`). Incomplete lineup: the strip goes away.
  * Complete lineup whose ids, projections, ownership, board or mode differ from the one last asked about: strip shows
  * "measuring", one request goes out after a short pause, and an answer for a lineup that has since changed is
@@ -574,9 +588,7 @@ export function syncMeter({ board, key, cpt, flex, container = null, post = post
     if (wantModes) askModes();
     return;
   }
-  const six = [findRow(board, cpt.id), ...flex.map((s) => findRow(board, s.id))];
-  const figures = six.map((r, i) => [i === 0 ? r?.cptProj : r?.proj, r?.ownCpt ?? null, r?.ownFlex ?? null]);
-  const sig = JSON.stringify([key, board?.generatedAt ?? null, body, figures]);
+  const sig = lineupSig(key, board, body, cpt, flex);
   if (sig === m.sig) {
     if (wantModes && !m.timer) askModes(); // a pending timer reads them anyway
     return;

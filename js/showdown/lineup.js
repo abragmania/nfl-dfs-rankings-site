@@ -10,6 +10,9 @@ import { matchupPillHtml } from "../player-row.js";
 import { postShowdownLineupOptimize, getShowdownLineups, postShowdownLineup, deleteShowdownLineup, putShowdownLineupName } from "./api.js";
 import { sdLine, SD_PILL } from "./table.js";
 import { listsHtml, paintLists, wireLists } from "./lineup-lists.js"; // the Captain list and the FLEX list, each sortable (Adam 2026-10-18)
+import { showdownPalette, slotLook, slotLogoHtml, controlsHtml as controlsMarkup } from "./lineup-look.js"; // the classic team rows on the slots and saved rows, the two-row controls (Adam 2026-10-18 9:09 PM)
+import { teamColours, teamColourStyle } from "../lineup-card.js";
+import { syncSwaps, swapsPanelHtml, wireSwaps } from "./lineup-swaps.js"; // the uniqueness swaps, full width below both columns (Adam 2026-10-18)
 import { showAllToggleHtml, wireShowAllButtons } from "../filterbar.js";
 import { store } from "../state.js";
 import { showdownPerSpotText } from "../totals.js";
@@ -339,8 +342,9 @@ onFiguresChange(repaintSlotFigures);
 export function slotPlayerHtml(row, isCpt) {
   return `
     <span class="lineup-slot-player lineup-slot-player-2" data-card-id="${escapeHtml(String(row.id))}">
+      ${slotLogoHtml(row)}
       <span class="lineup-slot-body">
-        <span class="lineup-slot-top">${sdLine(row, { nameCls: "lineup-slot-name", pill: false, tag: "out" })}</span>
+        <span class="lineup-slot-top">${sdLine(row, { nameCls: "lineup-slot-name", pill: false, tag: "out", logo: false })}</span>
         ${SD_PILL ? matchupPillHtml(row) : ""}
         <span class="lineup-slot-detail">${slotDetailHtml(row, isCpt)}</span>
       </span>
@@ -354,8 +358,9 @@ function slotsHtml(board) {
     : cptRow
       ? slotPlayerHtml(cptRow, true)
       : `<span class="lineup-slot-player lineup-slot-missing">Not on this board</span>`;
+  const cptLook = slotLook(cptRow);
   const cptHtml = `
-    <div class="lineup-slot lineup-slot-tall sd-cpt-slot">
+    <div class="lineup-slot lineup-slot-tall sd-cpt-slot${cptLook.cls}"${cptLook.attr}>
       <span class="lineup-slot-label">CPT</span>
       ${cptBody}
       <button type="button" class="lineup-slot-clear" data-action="clear-cpt"${state.cpt ? "" : " disabled"}>Clear</button>
@@ -368,8 +373,9 @@ function slotsHtml(board) {
         : row
           ? slotPlayerHtml(row, false)
           : `<span class="lineup-slot-player lineup-slot-missing">Not on this board</span>`;
+      const look = slotLook(row);
       return `
-        <div class="lineup-slot lineup-slot-tall" data-flex-index="${i}">
+        <div class="lineup-slot lineup-slot-tall${look.cls}"${look.attr} data-flex-index="${i}">
           <span class="lineup-slot-label">FLEX</span>
           ${body}
           <button type="button" class="lineup-slot-clear" data-action="clear-flex" data-flex="${i}"${s ? "" : " disabled"}>Clear</button>
@@ -380,22 +386,8 @@ function slotsHtml(board) {
 }
 
 function controlsHtml() {
-  const objectiveOptions = OBJECTIVES.map(
-    (o) => `<option value="${o.value}"${state.objective === o.value ? " selected" : ""}>${escapeHtml(o.label)}</option>`
-  ).join("");
   const hasAnySlot = Boolean(state.cpt) || state.flex.some(Boolean);
-  return `
-    <div class="lineup-controls">
-      <label class="lineup-control">Objective
-        <select id="sd-lineup-objective">${objectiveOptions}</select>
-      </label>
-      <button type="button" id="sd-lineup-build-btn" class="lineup-build-btn"${state.building ? " disabled" : ""}>${state.building ? "Building…" : "Build"}</button>
-      <button type="button" id="sd-lineup-clear-all-btn" class="lineup-clear-all-btn">Clear all</button>
-      <label class="lineup-control">Save as
-        <input type="text" id="sd-lineup-save-name" class="lineup-save-name-input" placeholder="Name (optional)" value="${escapeHtml(state.saveName)}" />
-      </label>
-      <button type="button" id="sd-lineup-save-btn" class="lineup-build-btn"${!hasAnySlot || state.saving ? " disabled" : ""}>${state.saving ? "Saving…" : "Save lineup"}</button>
-    </div>`;
+  return controlsMarkup({ objectives: OBJECTIVES, objective: state.objective, building: state.building, saving: state.saving, saveName: state.saveName, hasAnySlot });
 }
 
 function buildStatusHtml(board) {
@@ -437,17 +429,19 @@ function formatSavedAt(iso) {
   return d.toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
 }
 
-export function savedLineupSlotHtml(entry) {
+// `palette`: the Showdown's team colours (lineup-look.js showdownPalette), so a saved row wears the slots' colours as classic's saved rows wear the cards'.
+export function savedLineupSlotHtml(entry, palette = null) {
   if (!entry) return "";
   const { slot, row, snap } = entry;
   const src = row ?? snap;
-  if (!src) return `<div class="saved-lineup-slot saved-lineup-slot-empty"><span class="saved-lineup-slot-pos">${escapeHtml(slot)}</span><span class="saved-lineup-slot-empty-text">Empty</span></div>`;
+  const cptCls = slot === "CPT" ? " sd-saved-cpt" : "";
+  if (!src) return `<div class="saved-lineup-slot saved-lineup-slot-tc saved-lineup-slot-empty${cptCls}"><span class="saved-lineup-slot-pos">${escapeHtml(slot)}</span><span class="saved-lineup-slot-empty-text">Empty</span></div>`;
   const missingCls = row ? "" : " saved-lineup-slot-missing";
   const noteHtml = row ? "" : `<span class="saved-lineup-slot-note">not on board</span>`;
   return `
-    <div class="saved-lineup-slot${missingCls}" data-card-id="${escapeHtml(String(row?.id ?? snap?.playerId ?? ""))}">
+    <div class="saved-lineup-slot saved-lineup-slot-tc${missingCls}${cptCls}" style="${teamColourStyle(teamColours(palette, src.team))}" data-card-id="${escapeHtml(String(row?.id ?? snap?.playerId ?? ""))}">
       <span class="saved-lineup-slot-pos">${escapeHtml(slot)}</span>
-      ${sdLine(src, { nameCls: "saved-lineup-slot-name", tag: row ? "out" : false })}
+      ${sdLine(src, { nameCls: "saved-lineup-slot-name", tag: row ? "out" : false, chipPlain: true })}
       <span class="saved-lineup-slot-salary">${money(slot === "CPT" ? row?.cptSalary ?? snap?.salary : row?.salary ?? snap?.salary)}</span>
       ${noteHtml}
     </div>`;
@@ -462,7 +456,7 @@ function savedProjHtml(lineup, board, figures = playerFigures) {
     const proj = row ? figures(row, s.slot === "CPT").proj : null;
     total = total !== null && Number.isFinite(proj) ? total + proj : null;
   }
-  return `&middot; ${total === null ? "proj unknown (a player has no projection)" : `${dec1(total)} proj`}`;
+  return total === null ? "proj unknown (a player has no projection)" : `${dec1(total)} proj`; // the "·" before it is CSS (.saved-lineup-totals), as on classic's card
 }
 
 export function savedLineupCardHtml(lineup, board, figures = playerFigures) {
@@ -493,7 +487,8 @@ export function savedLineupCardHtml(lineup, board, figures = playerFigures) {
         <button type="button" class="saved-lineup-mini-btn" data-action="sd-rename-cancel">Cancel</button>
       </span>`
     : `<button type="button" class="saved-lineup-name-btn" data-action="sd-rename-start" data-id="${escapeHtml(lineup.id)}" title="Click to rename">${escapeHtml(lineup.name)}</button>`;
-  const rowsHtml = entries.map(savedLineupSlotHtml).join("");
+  const palette = showdownPalette(board);
+  const rowsHtml = entries.map((e) => savedLineupSlotHtml(e, palette)).join("");
   const salaryLeft = SALARY_CAP - salaryUsed;
   const salaryText = overCap ? `${money(salaryUsed)} used &middot; ${money(-salaryLeft)} over` : `${money(salaryUsed)} used &middot; ${money(salaryLeft)} left`;
   const deleteHtml = isConfirmingDelete
@@ -570,6 +565,7 @@ function panelHtml(board) {
         ${listsHtml(board, listPlacement())}
       </div>
     </div>
+    ${swapsPanelHtml()}
     ${savedLineupsSectionHtml(board)}`;
 }
 
@@ -592,6 +588,7 @@ function wireRowButtons(container, board) {
 function wire(container, board, key) {
   wireShowAllButtons(container);
   wireMeter(container);
+  wireSwaps(container);
   container.querySelector("#sd-lineup-objective")?.addEventListener("change", (e) => {
     state.objective = e.target.value;
     state.lastResult = null;
@@ -679,6 +676,7 @@ export function renderShowdownLineupPanel(container, board, key) {
     if (key) loadSavedLineups(key);
   }
   syncMeter({ board, key, cpt: state.cpt, flex: state.flex, container }); // the meter repaints only its own strip
+  syncSwaps({ board, key, cpt: state.cpt, flex: state.flex, container }); // after the meter: the swaps exist while it has a complete live lineup
   container.innerHTML = panelHtml(board);
   wire(container, board, key);
 }

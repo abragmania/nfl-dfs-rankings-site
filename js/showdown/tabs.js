@@ -14,9 +14,10 @@
 // instead of reusing the classic one.
 import { escapeHtml, dec1, localStamp } from "../format.js";
 import { unmatchedPartsHtml, slateTeamSet } from "../unmatched.js";
-import { shownRows } from "./table.js";
+import { shownRows, ownTitleText } from "./table.js";
 import { showAllToggleHtml, wireShowAllButtons } from "../filterbar.js";
-import { store } from "../state.js";
+import { store, sortRows, defaultDirFor } from "../state.js";
+import { sortableHeadHtml } from "../tabs.js"; // the classic sortable header (also imported by lineup-lists.js)
 
 export const SHOWDOWN_TABS = Object.freeze([
   Object.freeze({ key: "rankings", label: "Rankings" }),
@@ -139,9 +140,16 @@ export function setAsideText(s, board) {
   return `not used (R85): lists ${mine.covered} of ${cov.main} main players${points}`;
 }
 
+/** A source's notes as a list: the file's `notes` (array) and its `note` (string, which most ownership files use). */
+export function sourceNoteList(s) {
+  const list = Array.isArray(s?.notes) ? s.notes : [];
+  const one = typeof s?.note === "string" ? [s.note] : [];
+  return [...list, ...one].map((n) => String(n).trim()).filter(Boolean);
+}
+
 function ownershipSourceCardHtml(s, board) {
   const rowCount = Array.isArray(s.rows) ? s.rows.length : 0;
-  const noteLines = Array.isArray(s.notes) ? s.notes.map(escapeHtml).join("<br>") : "";
+  const noteLines = sourceNoteList(s).map(escapeHtml).join("<br>");
   const aside = setAsideText(s, board);
   const asideTitle = board?.ownershipCoverage?.rule ? ` title="${escapeHtml(board.ownershipCoverage.rule)}"` : "";
   return `
@@ -164,37 +172,167 @@ function kindLabel(kind) {
   return "—";
 }
 
-// FLEX and Captain each carry their own kind (ownKindFlex/ownKindCpt) — a player can be published at one
-// side and missing at the other, so each cell is labelled from its own kind, not a single row-level flag
-// (🔵 review item 4).
-function ownershipRowHtml(r) {
+// ---- Projected Ownership table (Adam 2026-10-18 9:13 PM: sortable, no per-row recipe column, no repeated sentence) ----
+// Columns: Player, Team, Own FLEX, Own CPT, and the two Kind columns only when the figures on the table are not all one kind
+// (published / our estimate / your override); when every figure is one kind, the line above the table says so once (D29 as amended).
+// Headers are the classic sortable ones (public/js/tabs.js sortableHeadHtml, state.js sortRows: a blank last either way). The method
+// of a figure (D41) is its hover, and only where it says more than the cell does.
+
+// The table's sort, kept here so it survives the re-render a board refresh or "Show all players" causes. Own FLEX, high to low, first.
+let sdOwnSort = { col: "ownFlex", dir: "desc" };
+const OWN_FIGURE_COLS = new Set(["ownFlex", "ownCpt"]);
+// A figure starts high to low (classic's Own% does); the text columns start A to Z through state.js defaultDirFor.
+const ownDefaultDir = (col) => (OWN_FIGURE_COLS.has(col) ? "desc" : defaultDirFor(col));
+
+// The kinds present on any figure the table shows (a missing figure has none).
+function ownKindsPresent(rows) {
+  const kinds = new Set();
+  for (const r of rows) {
+    if (r.ownFlex != null && r.ownKindFlex) kinds.add(r.ownKindFlex);
+    if (r.ownCpt != null && r.ownKindCpt) kinds.add(r.ownKindCpt);
+  }
+  return kinds;
+}
+
+function ownershipColumns(withKinds) {
+  return [
+    { key: "player", label: "Player" },
+    { key: "team", label: "Team" },
+    { key: "ownFlex", label: "Own FLEX", cls: "sd-own-num" },
+    ...(withKinds ? [{ key: "kindFlex", label: "Kind (FLEX)" }] : []),
+    { key: "ownCpt", label: "Own CPT", cls: "sd-own-num" },
+    ...(withKinds ? [{ key: "kindCpt", label: "Kind (CPT)" }] : []),
+  ];
+}
+
+function ownershipValueOf(r, col) {
+  if (col === "player") return r.name ?? null;
+  if (col === "team") return r.team ?? null;
+  if (col === "ownFlex") return r.ownFlex ?? null;
+  if (col === "ownCpt") return r.ownCpt ?? null;
+  if (col === "kindFlex") return r.ownKindFlex ? kindLabel(r.ownKindFlex) : null;
+  if (col === "kindCpt") return r.ownKindCpt ? kindLabel(r.ownKindCpt) : null;
+  return null;
+}
+
+// What a source did, said only when the single "FLEX: Name 12.3% (published)." sentence would just restate the cell, and only when
+// exactly one ownership source is in use: with two or more, that sentence is the only thing saying which source the figure came
+// from (D40).
+const RESTATES_THE_CELL = /^(?:FLEX|Captain): [^%]*? \d+(?:\.\d+)?% \((?:our estimate|published)\)\.$/;
+// Adam's own typed number restates the cell whatever the sources; the "replaces ..." form does not.
+const RESTATES_THE_OVERRIDE = /^(?:FLEX|Captain): Adam's override \d+(?:\.\d+)?%\.$/;
+const SIM_SOURCE_ID = "sim"; // server/showdown/ownership.js SIM_ID; the client cannot import the server module
+
+/**
+ * What the hover needs from the board, once per draw: how many ownership sources are in use, and the sim source's own note and
+ * label (for the hover of a 0 it gave). usedCount is the board's ownershipUsedIds, else the sources that have rows.
+ */
+export function ownTitleContext(board) {
+  const sources = board?.ownershipSources ?? [];
+  const usedIds = board?.ownershipUsedIds;
+  const usedCount = Array.isArray(usedIds) ? usedIds.length : sources.filter((s) => (s.rows ?? []).length).length;
+  const sim = sources.find((s) => s?.id === SIM_SOURCE_ID);
+  return { usedCount, simNote: sim ? sourceNoteList(sim).join(" ") : "", simLabel: sim ? String(sim.label ?? sim.id).replace(/\s*\(our estimate\)\s*$/, "") : "Sim own" };
+}
+
+/**
+ * The hover of one figure cell, or "" when it would only repeat the cell (D41: the method is on hover, but a sentence that just
+ * restates the number adds nothing). `side` is "FLEX" or "Captain"; `how` is the board's ownHow. A blank cell always says why.
+ * A 0 from the sim says what a sim 0 can mean in the sim source's own note (ctx.simNote, the board does not mark an out or
+ * outside-the-pool player), else points to its card. ctx is ownTitleContext(board); without ctx the single-source sentence is kept.
+ */
+export function ownFigureTitle(value, how, side, kind, ctx = {}) {
+  const text = ownTitleText(value, how, side);
+  if (value == null) return text;
+  const zero = value === 0 && kind === "estimate" ? (ctx.simNote ? `The sim gave 0. ${ctx.simNote}` : `The sim gave 0; see the ${ctx.simLabel ?? "Sim own"} card.`) : "";
+  const t = text.trim();
+  const restated = RESTATES_THE_OVERRIDE.test(t) || (ctx.usedCount === 1 && RESTATES_THE_CELL.test(t));
+  return [restated ? "" : t, zero].filter(Boolean).join(" ");
+}
+
+function ownFigureCellHtml(value, how, side, kind, ctx) {
+  const title = ownFigureTitle(value, how, side, kind, ctx);
+  return `<td class="sd-own-num"${title ? ` title="${escapeHtml(title)}"` : ""}>${value == null ? "—" : `${dec1(value)}%`}</td>`;
+}
+
+// FLEX and Captain each carry their own kind (ownKindFlex/ownKindCpt): a player can be published at one side and missing at the
+// other, so each cell is labelled from its own kind, not a single row-level flag (🔵 review item 4).
+function ownershipRowHtml(r, withKinds, ctx) {
   return `<tr>
     <td class="pc-name" data-card-id="${escapeHtml(String(r.id))}">${escapeHtml(r.name)}</td>
     <td>${escapeHtml(r.team ?? "")}</td>
-    <td>${r.ownFlex == null ? "—" : `${dec1(r.ownFlex)}%`}</td>
-    <td>${escapeHtml(kindLabel(r.ownKindFlex))}</td>
-    <td>${r.ownCpt == null ? "—" : `${dec1(r.ownCpt)}%`}</td>
-    <td>${escapeHtml(kindLabel(r.ownKindCpt))}</td>
-    <td class="sd-recipe-cell" title="${escapeHtml(r.ownHow ?? "")}">${escapeHtml(r.ownHow ?? "")}</td>
+    ${ownFigureCellHtml(r.ownFlex, r.ownHow, "FLEX", r.ownKindFlex, ctx)}
+    ${withKinds ? `<td>${escapeHtml(kindLabel(r.ownKindFlex))}</td>` : ""}
+    ${ownFigureCellHtml(r.ownCpt, r.ownHow, "Captain", r.ownKindCpt, ctx)}
+    ${withKinds ? `<td>${escapeHtml(kindLabel(r.ownKindCpt))}</td>` : ""}
   </tr>`;
 }
 
-// Projected Ownership tab (brief): a table of each player's published sources (board.ownershipSources),
-// the consolidated number per side, published vs override vs missing, and the recipe text (row.ownHow).
+/** The table's thead and tbody HTML for a sort (pure; the click handler and the first draw both use it). `ctx` is ownTitleContext(board). */
+export function ownershipTableParts(rows, sort, withKinds, ctx = {}) {
+  const cols = ownershipColumns(withKinds);
+  const sorted = sortRows(rows, sort.col, sort.dir, ownershipValueOf);
+  return { cols, head: sortableHeadHtml(cols, sort, true), body: sorted.map((r) => ownershipRowHtml(r, withKinds, ctx)).join("") };
+}
+
+/**
+ * The one line above the table that says what every figure is: the sources in use and their kind, once, plus when the board was
+ * built (the figures' as-of). Said only when every figure is one kind; with a mix the Kind columns carry it. `rows` are the rows the
+ * table shows: only a source that gave a figure of that kind on one of them is named (the sim for "our estimate", never for
+ * "published", D29), and an override names none (it is Adam's typed numbers, not a source).
+ */
+export function ownershipBasisText(board, kinds, rows = []) {
+  const stamp = localStamp(board.generatedAt);
+  const asOf = stamp ? `Figures from the board built ${stamp.monthDay} ${stamp.clock}.` : "Figures: as-of time not recorded.";
+  if (kinds.size !== 1) return asOf;
+  const [kind] = kinds;
+  const tail = `for every FLEX and Captain figure below (D29). ${asOf}`;
+  if (kind === "override") return `Your typed numbers, ${tail}`;
+  const usedIds = Array.isArray(board.ownershipUsedIds) ? board.ownershipUsedIds : null;
+  const used = (board.ownershipSources ?? []).filter((s) => (s.rows ?? []).length && (!usedIds || usedIds.includes(s.id)));
+  // The server's own label for a source (ownership.js label()): Stokastic by name, the rest without a trailing "(our estimate)"; it is what a row's ownHow says.
+  const nameOf = (s) => (s.id === "stokastic" ? "Stokastic" : String(s.label ?? s.id).replace(/\s*\(our estimate\)\s*$/, ""));
+  const gave = (s) => rows.some((r) => [["FLEX", r.ownFlex, r.ownKindFlex], ["Captain", r.ownCpt, r.ownKindCpt]].some(([side, value, k]) =>
+    value != null && k === kind && (kind === "estimate") === (s.id === SIM_SOURCE_ID) && ownTitleText(value, r.ownHow, side).includes(nameOf(s))));
+  const names = used.filter(gave).map(nameOf).join(" and ");
+  return `${names ? `${names} — ` : ""}${kindLabel(kind)}, ${tail}`;
+}
+
+// Projected Ownership tab (brief): a table of each player's consolidated number per side (the sources behind it are the cards
+// above). Only the table's head and body are redrawn on a sort click, so the wrapper keeps its height and scroll position.
 export function renderShowdownOwnershipPanel(container, board) {
   const sources = board.ownershipSources ?? [];
   const cards = sources.map((s) => ownershipSourceCardHtml(s, board)).join("");
-  const rows = shownRows(board.rows ?? []).map(ownershipRowHtml).join("");
+  const rows = shownRows(board.rows ?? []);
+  const kinds = ownKindsPresent(rows);
+  const withKinds = kinds.size > 1;
+  if (!ownershipColumns(withKinds).some((c) => c.key === sdOwnSort.col)) sdOwnSort = { col: "ownFlex", dir: "desc" }; // a Kind sort left over from a mixed table
+  const ctx = ownTitleContext(board);
+  const parts = ownershipTableParts(rows, sdOwnSort, withKinds, ctx);
   container.innerHTML = `
-    <p class="tab-note">${showAllToggleHtml(store.get().filters.showAllPlayers, `data-action="show-all"`)} Own FLEX/CPT is consolidated from the sources below that are in use (D40); a source marked "not used (R85)" covers too little of the main players' projected points and is left out. A player nobody published a number for shows a dash until a source publishes one. A number Adam typed in shows as "your override". Hover the Recipe column, or any Own cell on the Rankings tab, for exactly how each number was made.</p>
+    <p class="tab-note">${showAllToggleHtml(store.get().filters.showAllPlayers, `data-action="show-all"`)} Own FLEX/CPT is consolidated from the sources below that are in use (D40); a source marked "not used (R85)" covers too little of the main players' projected points and is left out. A player nobody published a number for shows a dash until a source publishes one. A number Adam typed in shows as "your override". Hover a figure for how it was made when that is more than the number itself; every column sorts.</p>
+    <p class="tab-note sd-own-basis">${escapeHtml(ownershipBasisText(board, kinds, rows))}</p>
     <div class="source-card-grid">${cards}</div>
     <div class="tab-table-wrap scroll-panel">
       <table class="source-value-table">
-        <thead><tr><th>Player</th><th>Team</th><th>Own FLEX</th><th>Kind (FLEX)</th><th>Own CPT</th><th>Kind (CPT)</th><th>Recipe</th></tr></thead>
-        <tbody>${rows}</tbody>
+        <thead>${parts.head}</thead>
+        <tbody>${parts.body}</tbody>
       </table>
     </div>`;
   wireShowAllButtons(container);
+  const wireHeads = () => {
+    container.querySelectorAll("th[data-col]").forEach((th) => {
+      th.addEventListener("click", () => {
+        const col = th.dataset.col;
+        sdOwnSort = sdOwnSort.col === col ? { col, dir: sdOwnSort.dir === "asc" ? "desc" : "asc" } : { col, dir: ownDefaultDir(col) };
+        const next = ownershipTableParts(rows, sdOwnSort, withKinds, ctx);
+        container.querySelector(".source-value-table thead").innerHTML = next.head;
+        container.querySelector(".source-value-table tbody").innerHTML = next.body;
+        wireHeads();
+      });
+    });
+  };
+  wireHeads();
 }
 
 export { renderShowdownLineupPanel } from "./lineup.js";

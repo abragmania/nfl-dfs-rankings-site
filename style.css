@@ -1347,7 +1347,7 @@ tr:last-child .cell-edit-hint { top: auto; bottom: 100%; margin-top: 0; margin-b
    the lineup's copies; the chance no one else has it is the fact line below), the projection against the best possible second, in neutral grey. Lives in the fixed-width
    left column, so nothing here sets a width of its own; a source line stays on one line (full source on hover),
    anything else wraps instead of widening the panel. */
-.sd-meter {
+.sd-meter, .sd-swaps { /* the swaps panel (below) wears the same box; it has its own class so the meter's repaint never finds it */
   margin-bottom: var(--sp-3);
   padding: var(--sp-2) var(--sp-3);
   background: var(--bg-elevated);
@@ -1858,10 +1858,8 @@ th.sd-cpt-col.sorted { color: var(--amber); }
 .sd-gameline-value { font-weight: 700; font-size: var(--fs-md); color: var(--text); }
 
 /* ---------- Showdown Projected Ownership tab ---------- */
-/* 👁 visual-qa: ".source-value-table td { white-space: nowrap }" (classic) outranks a class-only selector
-   by specificity regardless of source order; matching its class+element weight here is what actually lets
-   white-space:normal win, and the column needs its own width once wrapping is allowed. */
-.source-value-table td.sd-recipe-cell { white-space: normal; max-width: 420px; color: var(--text-muted); }
+/* The two figure columns (Own FLEX, Own CPT): right-aligned whether or not a Kind column follows; the shared numeric rule above spares the last column. */
+.source-value-table th.sd-own-num, .source-value-table td.sd-own-num { text-align: right; font-variant-numeric: tabular-nums; }
 .sd-kicker-paste { margin-top: var(--sp-3); }
 
 /* ---------- Showdown Lineup Builder ---------- */
@@ -2073,11 +2071,12 @@ select.opt-input { text-align: left; padding: 3px 4px; }
 .saved-lineup-slot { flex-wrap: wrap; }
 .saved-lineup-slot .meta-pill { order: 9; flex: 0 0 calc(100% - 42px); margin-left: 42px; padding: 0; border: 0; background: none; font-size: 11px; line-height: 13px; color: inherit; opacity: 0.8; overflow: hidden; text-overflow: ellipsis; }
 .opt-p .meta-pill { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; background: none; color: var(--tct); border-color: var(--tcchip); }
-/* Layout round 2, 2026-10-17: a dark mark (the Panthers') vanishes on a dark tint, so in dark theme only the 16px logo gets a light edge halo on the mark itself (a disc behind it read as grey coins); the 16px box unchanged. */
-:root[data-theme="dark"] .saved-lineup-slot .player-logo { filter: none; } /* round 6: no halo */
-/* 👁 2026-10-18 round 6: on light every team-row logo sits on a white round plate (none on dark); the Saved row's 16px logo keeps its size, the plate hangs 2px around it. */
-:root:not([data-theme="dark"]) :is(.opt-p-logo, .saved-lineup-slot .player-logo) { background: rgba(255, 255, 255, 0.9); border-radius: 50%; padding: 2px; }
-:root:not([data-theme="dark"]) .saved-lineup-slot .player-logo { box-sizing: content-box; margin: -2px; }
+/* Dark theme: the Saved row's 16px logo carries no filter; the pale plate set below (both themes) is what lifts a dark mark. */
+:root[data-theme="dark"] .saved-lineup-slot .player-logo { filter: none; }
+/* 👁 2026-10-18 round 6, Adam 2026-10-18 9:41 PM: in both themes every team-row logo sits on a pale round plate, so a mark the colour of its row (Dallas's navy star on the navy row) still reads; the Saved row's 16px logo keeps its size, the plate hangs 2px around it.
+   Covers .opt-p-logo (the card rows and the classic and Showdown slots) and .saved-lineup-slot .player-logo (the classic and Showdown saved rows). */
+:is(.opt-p-logo, .saved-lineup-slot .player-logo) { background: rgba(255, 255, 255, 0.9); border-radius: 50%; padding: 2px; }
+.saved-lineup-slot .player-logo { box-sizing: content-box; margin: -2px; }
 /* Saved (or the same nine players as a saved lineup): the Save button becomes a disabled "Saved ✓". */
 .opt-card.opt-card-saved { border-color: rgba(var(--success-rgb), 0.6); }
 .saved-lineup-btn.opt-saved-btn:disabled { border-color: var(--success); color: var(--success); background: rgba(var(--success-rgb), 0.12); opacity: 1; cursor: default; font-weight: 600; }
@@ -2171,6 +2170,62 @@ select.opt-input { text-align: left; padding: 3px 4px; }
 .lineup-slot-top { display: flex; align-items: center; gap: var(--sp-2); min-width: 0; max-width: 100%; }
 .lineup-slot-player-2 .lineup-slot-name { white-space: normal; overflow: visible; text-overflow: clip; }
 .lineup-slot-player-2 .lineup-slot-detail { white-space: normal; overflow: visible; text-overflow: clip; }
+
+/* ---------- Showdown Optimizer rows (Adam 2026-10-18 9:09 PM: "does not use the team colors that we decided on") ----------
+   The six slots are classic's own slots (lineup.js slotsHtml): .lineup-slot-filled with --tc the team's colour (lineup-look.js slotLook), so in
+   both themes they look as classic's nine do (a team tint over the card, the page's text colour, the coloured team chip, the 38px team logo)
+   and none of the rules below restyle them. The saved rows are classic's .saved-lineup-slot-tc as is, in the palette of the game's two teams.
+   The Captain keeps its gold: the CPT label is a gold tag (and the slot a gold edge, .sd-cpt-slot above) on the team colour. */
+.sd-cpt-slot.lineup-slot-filled .lineup-slot-label, .saved-lineup-slot.saved-lineup-slot-tc.sd-saved-cpt .saved-lineup-slot-pos { background: var(--amber); color: var(--bg-elevated); border-radius: 3px; text-align: center; font-weight: 700; letter-spacing: 0.04em; }
+.sd-cpt-slot.lineup-slot-filled .lineup-slot-label { padding: 1px 0; font-size: var(--fs-sm); }
+.saved-lineup-slot-tc .sd-pos { background: var(--tcchip); color: var(--tct); text-shadow: none; }
+
+/* The Showdown controls in two rows of the column's width: Objective, Build, Clear all, then Save as and Save lineup; every control 32px tall, the buttons 96px so their right edges line up. */
+.lineup-controls.sd-controls { flex-direction: column; align-items: stretch; gap: var(--sp-2); }
+.sd-controls-row { display: flex; align-items: flex-end; gap: var(--sp-3); }
+.sd-controls-row .lineup-control { flex: 1 1 auto; min-width: 0; }
+.sd-controls-row :is(select, input, button) { box-sizing: border-box; height: 32px; }
+.sd-controls-row .lineup-control :is(select, input) { width: 100%; }
+.sd-controls-row button { flex: 0 0 96px; padding-left: 0; padding-right: 0; white-space: nowrap; }
+
+/* ---------- Showdown swaps panel (Adam 2026-10-18 9:09 PM: "make it ... good like the classic one at least"; public/js/showdown/lineup-swaps.js) ----------
+   Round 2 (Adam 2026-10-18): a full-width section below both columns, so the salary bar and totals stay under the meter. The seats sit in a grid of cards
+   (two across, three from 2200px, one on a narrow window); a card is a head (its slot, CPT in gold as on the slot, the man being replaced with his position
+   and team chips, his projection and ownership at the right) and one line per swap on the card's own column tracks (subgrid, so every row of a card
+   lines up): man in, how many times more unique, copies before and after, points, salary, chips. Only a name ever truncates. The chips are the slots'
+   and lists' own (.sd-pos, .team-chip-mini). */
+.sd-swaps { margin-top: var(--sp-4); font-size: var(--fs-sm); }
+.sd-swaps-title { margin-bottom: var(--sp-2); }
+.sd-swaps-title b { font-size: var(--fs-base); }
+.sd-swaps-sub { margin-left: var(--sp-2); font-size: 11px; color: var(--text-dim); }
+.sd-swaps-line { margin-bottom: var(--sp-2); font-size: 11px; color: var(--text-dim); } /* the game-script and not-offered lines: whole sentences, no ellipsis */
+.sd-swaps-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--sp-3); align-items: start; }
+@media (max-width: 1100px) { .sd-swaps-grid { grid-template-columns: minmax(0, 1fr); } }
+.sd-swaps-seat { display: grid; grid-template-columns: minmax(0, 1fr) 118px 100px 62px 56px max-content; column-gap: 8px; padding: 6px; border: 1px solid var(--border); border-radius: 6px; }
+.sd-swaps-seat > * { grid-column: 1 / -1; }
+.sd-swaps-seat-head { display: flex; align-items: center; gap: 6px; min-width: 0; padding: 3px 6px; background: var(--bg-elevated-2); border-radius: 4px; }
+.sd-swaps-best { white-space: nowrap; }
+.sd-swaps-slot { flex: 0 0 auto; box-sizing: border-box; min-width: 38px; padding: 0 5px; text-align: center; font-size: 11px; font-weight: 700; letter-spacing: 0.04em; line-height: 16px; border: 1px solid var(--border); border-radius: 3px; background: var(--bg-elevated); color: var(--text-muted); }
+.sd-swaps-slot-cpt { background: var(--amber); border-color: var(--amber); color: var(--bg-elevated); }
+.sd-swaps-in { display: flex; align-items: center; gap: 6px; min-width: 0; white-space: nowrap; }
+.sd-swaps-seat-head .sd-swaps-in { flex: 0 1 auto; }
+.sd-swaps-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; font-weight: 600; color: var(--text); }
+.sd-swaps-arrow { flex: 0 0 auto; color: var(--text-dim); }
+.sd-swaps-state { flex: 0 0 auto; font-size: 11px; font-weight: 700; color: var(--danger); }
+.sd-swaps .sd-pos { flex: 0 0 auto; box-sizing: border-box; min-width: 30px; margin-right: 0; padding: 0 4px; font-size: 11px; line-height: 16px; }
+.sd-swaps .team-chip-mini { flex: 0 0 auto; box-sizing: border-box; min-width: 36px; padding: 0 5px; text-align: center; font-size: 11px; line-height: 16px; }
+.sd-swaps-seat-figs { flex: 0 100 auto; min-width: 0; margin-left: auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; color: var(--text-muted); }
+.sd-swaps-row { grid-column: 1 / -1; display: grid; grid-template-columns: subgrid; align-items: center; padding: 3px 6px; border-bottom: 1px solid color-mix(in srgb, var(--border) 60%, transparent); }
+.sd-swaps-fold, .sd-swaps-copies, .sd-swaps-pts, .sd-swaps-sal { text-align: right; white-space: nowrap; }
+.sd-swaps-fold { font-weight: 700; color: var(--text); }
+.sd-swaps-copies { font-size: 11px; color: var(--text-dim); }
+.sd-swaps-pts, .sd-swaps-sal { font-size: 12px; color: var(--text-muted); }
+.sd-swaps-pts.sd-swaps-gain { color: var(--cash); font-weight: 600; }
+.sd-swaps-tags { display: flex; gap: 4px; white-space: nowrap; }
+.sd-swaps-tag { box-sizing: border-box; padding: 0 8px; font-size: 11px; line-height: 16px; color: var(--text-muted); background: var(--bg-elevated-2); border: 1px solid var(--border); border-radius: 10px; }
+.sd-swaps-empty { padding: 3px 6px; }
+.sd-swaps-more { display: block; margin: 3px 6px 0 auto; padding: 0 8px; font-size: 11px; line-height: 18px; color: var(--accent-text); background: none; border: 1px solid var(--border); border-radius: 4px; cursor: pointer; }
+.sd-swaps-more:hover { background: var(--bg-elevated-2); }
 
 /* ---------- Entries (its own tab, rules repo 2026-10-17): Adam's DraftKings entries file, one picker per entry ---------- */
 .entries-section { width: 100%; display: flex; flex-direction: column; gap: var(--sp-2); } /* 👁 2026-10-17: no top rule or gap now that it opens a tab */
