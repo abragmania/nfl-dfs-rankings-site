@@ -520,6 +520,7 @@ function snapPanelMaxHeight(panelEl, top, reserve) {
 // Ownership tabs' tables) gets the same treatment.
 function adjustScrollPanels() {
   document.querySelectorAll(".scroll-panel").forEach((panelEl) => {
+    if (panelEl.closest(".sd-list")) return; // the Showdown Captain | FLEX list box is sized by public/js/showdown/lineup-lists.js, not here
     const top = panelEl.getBoundingClientRect().top;
     // The rankings table's legend line sits right below .table-wrap; if its height isn't reserved here
     // the table claims that room too, slicing the legend and forcing a second page-level scrollbar (👁

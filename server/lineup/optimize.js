@@ -112,7 +112,8 @@ function scoreOf(row) {
   return num(row.proj) ?? 0;
 }
 
-function failure(message, cap) {
+/** The optimiser's infeasible answer (exported so a caller with no lineup to build answers in the same shape). */
+export function failure(message, cap) {
   return {
     lineup: [],
     salaryUsed: 0,

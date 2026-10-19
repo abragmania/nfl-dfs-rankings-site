@@ -77,23 +77,35 @@ export function ratingBoxHtml(rating) {
   </div>`;
 }
 
+/**
+ * A showdown board row carrying TwoGun's figures in place of the board's (Q16: the Lineup screen's card follows its
+ * TwoGun / Our sources switch). `flex` and `cpt` are the screen's figures for him ({proj, own}); a blank stays blank,
+ * never the board's number (D29). `figuresFrom` makes stripHtml label them as TwoGun's.
+ */
+export function twogunCardRow(row, flex, cpt) {
+  return { ...row, proj: flex.proj, ownFlex: flex.own, ownCpt: cpt.own, figuresFrom: "TwoGun", projNote: flex.projNote ?? null };
+}
+
 /** This week's figures from the clicked row (this app's board, as of `asOf`): salary, projection, ownership, with the injury tag. */
 export function stripHtml(row, asOf = null) {
   if (!row) return "";
   const showdown = row.cptSalary !== undefined && row.ownFlex !== undefined;
   const own = showdown ? row.ownFlex : row.own;
+  const tg = row.figuresFrom === "TwoGun";
+  const src = tg ? "TwoGun" : "this app";
+  const pre = tg ? "TwoGun " : "";
   const cell = (label, value, title = "") => `<div class="pc-fig"${title ? ` title="${escapeHtml(title)}"` : ""}><span class="pc-fig-label">${label}</span><span class="pc-fig-value">${value}</span></div>`;
   const figs = [
     cell(showdown ? "FLEX $" : "Salary", money(row.salary), "DraftKings salary file"),
     showdown ? cell("CPT $", money(row.cptSalary), "DraftKings salary file") : "",
-    cell("Proj", row.proj == null ? "no proj" : dec1(row.proj), "This app's blended projection (the Projections tab lists its sources)"),
-    cell(showdown ? "FLEX own" : "Own", own == null ? dash : `${dec1(own)}%`, own == null ? "No source has published ownership for him" : "Ownership as this app shows it"),
-    showdown && row.ownCpt != null ? cell("CPT own", `${dec1(row.ownCpt)}%`, "Captain ownership as this app shows it") : "",
+    cell(tg ? "TwoGun proj" : "Proj", row.proj == null ? "no proj" : dec1(row.proj), tg ? (row.projNote || "TwoGun's projection, as the Lineup screen's switch shows it") : "This app's blended projection (the Projections tab lists its sources)"),
+    cell(`${pre}${showdown ? "FLEX own" : "Own"}`, own == null ? dash : `${dec1(own)}%`, own == null ? `${tg ? "TwoGun has" : "No source has"} published ownership for him` : `Ownership as ${src} shows it`),
+    showdown && row.ownCpt != null ? cell(`${pre}CPT own`, `${dec1(row.ownCpt)}%`, `Captain ownership as ${src} shows it`) : "",
   ].join("");
   const tag = lineupOutTagHtml(row) || statusTagsHtml(row);
   const status = tag ? `<div class="pc-fig pc-fig-tag" title="Injury tag from this app's own injury report"><span class="pc-fig-label">Status</span><span class="pc-fig-value">${tag}</span></div>` : "";
   return `<div class="pc-strip">${figs}${status}</div>
-    <div class="pc-strip-source">Salary, projection and ownership: this app's board, as of ${escapeHtml(stampText(asOf))}.</div>`;
+    <div class="pc-strip-source">${tg ? "Salary: this app's board" : "Salary, projection and ownership: this app's board"}, as of ${escapeHtml(stampText(asOf))}.${tg ? " Projection and ownership: TwoGun's, as the Lineup screen shows them." : ""}</div>`;
 }
 
 function stampText(iso) {

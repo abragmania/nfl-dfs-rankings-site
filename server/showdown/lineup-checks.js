@@ -17,6 +17,15 @@ export const RETIRED_OBJECTIVES = Object.freeze({
   projMinusOwn: "\"Projection minus ownership\" has been removed, so this lineup was built by projection.",
   lev: "Leverage has no measure yet, so this lineup was built by projection."
 });
+// Whose projections (and ownership) the Lineup screen's switch, Build and the meter use (Adam 2026-10-18, Q16). The one list.
+export const METER_MODES = Object.freeze(["twogun", "current"]);
+
+/** The Build body's mode: absent is "current" (every older caller unchanged), anything else must be a known mode. */
+export function buildMode(body) {
+  const mode = body?.mode ?? "current";
+  return METER_MODES.includes(mode) ? { mode } : { error: 'mode must be "twogun" or "current".' };
+}
+
 const SHOWDOWN_SLOT_NAMES = new Set(["CPT", "FLEX"]);
 const MAX_FLEX = 5;
 

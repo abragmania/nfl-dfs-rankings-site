@@ -124,22 +124,42 @@ export function renderShowdownProjectionsPanel(container, board, callbacks) {
   });
 }
 
-function ownershipSourceCardHtml(s) {
+/**
+ * R85: for a source the board set aside, "not used (R85): lists N of M main players" (the counts and the rule are the
+ * board's ownershipCoverage); null for a source in use, a source with no rows, or a board that does not say who was used.
+ */
+export function setAsideText(s, board) {
+  const usedIds = board?.ownershipUsedIds;
+  if (!Array.isArray(usedIds) || usedIds.includes(s?.id) || !(Array.isArray(s?.rows) && s.rows.length)) return null;
+  const cov = board.ownershipCoverage;
+  const mine = cov?.bySource?.[s.id];
+  if (!mine || !Number.isFinite(cov.main)) return "not used (R85)";
+  // Rounded DOWN to one decimal (the 1e-9 absorbs float noise on an exact share): a source just under 80% must never read "80%" beside "not used".
+  const points = cov.basis === "points" && Number.isFinite(mine.share) ? `, ${Math.floor(mine.share * 1000 + 1e-9) / 10}% of their projected points` : "";
+  return `not used (R85): lists ${mine.covered} of ${cov.main} main players${points}`;
+}
+
+function ownershipSourceCardHtml(s, board) {
   const rowCount = Array.isArray(s.rows) ? s.rows.length : 0;
   const noteLines = Array.isArray(s.notes) ? s.notes.map(escapeHtml).join("<br>") : "";
+  const aside = setAsideText(s, board);
+  const asideTitle = board?.ownershipCoverage?.rule ? ` title="${escapeHtml(board.ownershipCoverage.rule)}"` : "";
   return `
     <div class="source-card">
       <div class="source-card-head"><span class="source-label">${escapeHtml(s.label ?? s.id ?? "")}</span></div>
       ${s.kind ? `<div class="source-card-row muted"><span>${escapeHtml(s.kind)}</span></div>` : ""}
       <div class="source-card-row muted"><span>${rowCount} row${rowCount === 1 ? "" : "s"}</span>${s.url ? `<span title="${escapeHtml(s.url)}">link</span>` : ""}</div>
+      ${aside ? `<div class="source-card-row muted"><span${asideTitle}>${escapeHtml(aside)}</span></div>` : ""}
       ${noteLines ? `<div class="source-card-row muted"><span>${noteLines}</span></div>` : ""}
     </div>`;
 }
 
-// "published" | "override" | null, labelled plainly (🔵 review item 4: override reads "your override", not the
-// internal token; a name a named source published reads "published", never "quoted"); null is missing (D29).
+// "published" | "estimate" | "override" | null, labelled plainly (🔵 review item 4: override reads "your override", not the
+// internal token; a name a named source published reads "published", never "quoted"; the sim's figure reads
+// "our estimate", D29 as amended); null is missing (D29).
 function kindLabel(kind) {
   if (kind === "published") return "published";
+  if (kind === "estimate") return "our estimate";
   if (kind === "override") return "your override";
   return "—";
 }
@@ -163,10 +183,10 @@ function ownershipRowHtml(r) {
 // the consolidated number per side, published vs override vs missing, and the recipe text (row.ownHow).
 export function renderShowdownOwnershipPanel(container, board) {
   const sources = board.ownershipSources ?? [];
-  const cards = sources.map(ownershipSourceCardHtml).join("");
+  const cards = sources.map((s) => ownershipSourceCardHtml(s, board)).join("");
   const rows = shownRows(board.rows ?? []).map(ownershipRowHtml).join("");
   container.innerHTML = `
-    <p class="tab-note">${showAllToggleHtml(store.get().filters.showAllPlayers, `data-action="show-all"`)} Own FLEX/CPT is consolidated from the published sources below (D40). A player nobody published a number for shows a dash until a source publishes one. A number Adam typed in shows as "your override". Hover the Recipe column, or any Own cell on the Rankings tab, for exactly how each number was made.</p>
+    <p class="tab-note">${showAllToggleHtml(store.get().filters.showAllPlayers, `data-action="show-all"`)} Own FLEX/CPT is consolidated from the sources below that are in use (D40); a source marked "not used (R85)" covers too little of the main players' projected points and is left out. A player nobody published a number for shows a dash until a source publishes one. A number Adam typed in shows as "your override". Hover the Recipe column, or any Own cell on the Rankings tab, for exactly how each number was made.</p>
     <div class="source-card-grid">${cards}</div>
     <div class="tab-table-wrap scroll-panel">
       <table class="source-value-table">

@@ -39,8 +39,10 @@ export function posPillHtml(pos) {
 
 export const SD_POS_FILTER = "FLEX";
 export const SD_PILL = false; // D80: a Showdown row has no home/away or totals, only a bare opponent code, so no pill
+// The one Showdown player line (the pool, the Captain and FLEX lists, the slots and the saved rows all draw it). tag "main": the O, D, IR and Q badges as on classic Rankings (Adam 2026-10-18); a caller's own tag wins.
+export const sdLine = (row, opts = {}) => playerLineHtml(row, { pos: showPos(SD_POS_FILTER), posHtml: posPillHtml, pill: SD_PILL, tag: "main", ...opts });
 function playerCellHtml(row) {
-  return `<div class="player-cell">${playerLineHtml(row, { pos: showPos(SD_POS_FILTER), posHtml: posPillHtml, pill: SD_PILL, tag: "main" })}</div>`; // tag "main": the O, D, IR and Q badges as on classic Rankings (Adam 2026-10-18)
+  return `<div class="player-cell">${sdLine(row)}</div>`;
 }
 
 function gradedValueHtml(row) {
@@ -58,20 +60,35 @@ function levCellHtml() {
 // Every Own cell carries a title explaining exactly how the number was made (brief); a missing number is a dash
 // (D29) whose title says no source has published one; a genuinely empty row.ownHow falls back to a plain sentence
 // instead of an empty tooltip (👁 visual-qa item E).
+// The hover text of an Own / Proj cell on our sources' figures (also read by the Lineup tab's lists, lineup-lists.js).
+// The server's ownHow holds a "FLEX: ..." sentence and a "Captain: ..." sentence (and notes that belong to both). A list that
+// shows one side passes it as `side` and reads only that side's sentence and the shared notes (Adam 2026-10-18). The text is cut
+// at the "FLEX: " / "Captain: " markers, never at sentence ends, so a name like "A.J. Brown" cannot misfile a piece of it; inside
+// the other side's piece only its own first sentence (ending at a period after a non-capital, before a space) is dropped.
+function ownSideText(how, side) {
+  if (!how || !side) return how;
+  const other = side === "FLEX" ? "Captain: " : "FLEX: ";
+  return String(how).split(/\s+(?=(?:FLEX|Captain): )/).map((piece) => {
+    if (!piece.startsWith(other)) return piece;
+    const end = piece.search(/[^A-Z\s.]\.(?=\s|$)/);
+    return end === -1 ? "" : piece.slice(end + 2).trim(); // the shared notes written after that side's sentence stay
+  }).filter(Boolean).join(" ");
+}
+export function ownTitleText(value, how, side = null) {
+  const text = ownSideText(how, side) ?? "";
+  return value == null ? text || "No source has published ownership for this player yet." : text;
+}
+export function projTitleText(value, row, extraTitlePrefix = "") {
+  const how = row.projHow || "";
+  return value == null ? how || "No source projects this player." : `${extraTitlePrefix}${how}`;
+}
+
 function ownCellHtml(value, how) {
-  if (value == null) {
-    return `<span title="${escapeHtml(how || "No source has published ownership for this player yet.")}">—</span>`;
-  }
-  return `<span title="${escapeHtml(how ?? "")}">${dec1(value)}%</span>`;
+  return `<span title="${escapeHtml(ownTitleText(value, how))}">${value == null ? "—" : `${dec1(value)}%`}</span>`;
 }
 
 function projCellHtml(value, row, extraTitlePrefix = "") {
-  if (value == null) {
-    const title = row.projHow || "No source projects this player.";
-    return `<span title="${escapeHtml(title)}">no proj</span>`;
-  }
-  const title = `${extraTitlePrefix}${row.projHow || ""}`;
-  return `<span title="${escapeHtml(title)}">${dec1(value)}</span>`;
+  return `<span title="${escapeHtml(projTitleText(value, row, extraTitlePrefix))}">${value == null ? "no proj" : dec1(value)}</span>`;
 }
 
 function noteCellHtml(row) {

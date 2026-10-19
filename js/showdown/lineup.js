@@ -6,12 +6,14 @@
 // UI, since the brief's Lineup Builder description for Showdown does not ask for one — Build always runs
 // a fresh optimize with empty locks/excludes and replaces whatever is currently placed with the result).
 import { escapeHtml, money, dec1 } from "../format.js";
-import { playerLineHtml, matchupPillHtml, showPos } from "../player-row.js";
+import { matchupPillHtml } from "../player-row.js";
 import { postShowdownLineupOptimize, getShowdownLineups, postShowdownLineup, deleteShowdownLineup, putShowdownLineupName } from "./api.js";
-import { posPillHtml, shownRows, SD_POS_FILTER, SD_PILL } from "./table.js";
+import { sdLine, SD_PILL } from "./table.js";
+import { listsHtml, paintLists, wireLists } from "./lineup-lists.js"; // the Captain list and the FLEX list, each sortable (Adam 2026-10-18)
 import { showAllToggleHtml, wireShowAllButtons } from "../filterbar.js";
 import { store } from "../state.js";
 import { showdownPerSpotText } from "../totals.js";
+import { syncMeter, meterStripHtml, wireMeter, playerFigures, onFiguresChange, figuresMode, builtOnText, readingFiguresText, reasonHtml } from "./lineup-meter.js"; // uniqueness / projection strip under the slots; every figure on the screen follows its TwoGun / Our sources switch (Q16)
 
 const SALARY_CAP = 50000;
 const FLEX_COUNT = 5;
@@ -81,10 +83,12 @@ function isPlacedFlex(id) {
 
 /**
  * Salary used, salary left and total projection of the placed players (`picked` = {cpt, flex}, the panel's state by
- * default; exported for the tests). Missing is missing: a placed player who is no longer on the board makes both
- * the salary and the projection unknown (null), and one with no projection makes the projection unknown.
+ * default; exported for the tests). The projection is the sum of the figures the slots show (`figures`, the meter's
+ * playerFigures by default: it follows the TwoGun / Our sources switch); salary is the board's in both modes. Missing
+ * is missing: a placed player who is no longer on the board makes both the salary and the projection unknown (null),
+ * and one with no projection makes the projection unknown.
  */
-export function computeTotals(board, picked = state) {
+export function computeTotals(board, picked = state, figures = playerFigures) {
   const entries = [];
   if (picked.cpt) entries.push({ id: picked.cpt.id, cpt: true });
   for (const s of picked.flex ?? []) if (s) entries.push({ id: s.id, cpt: false });
@@ -99,10 +103,15 @@ export function computeTotals(board, picked = state) {
     }
     if (salaryUsed !== null) salaryUsed += (cpt ? row.cptSalary : row.salary) ?? 0;
     // Missing is missing: a placed player with no projection makes the total unknown, never a sum counting him as 0.
-    const proj = cpt ? row.cptProj : row.proj;
+    const proj = figures(row, cpt).proj;
     totalProj = totalProj !== null && Number.isFinite(proj) ? totalProj + proj : null;
   }
   return { salaryUsed, salaryLeft: salaryUsed === null ? null : SALARY_CAP - salaryUsed, totalProj, filled: entries.length };
+}
+
+/** The "Total projection ... · N of 6 slots filled" line's contents. */
+function totalsLineHtml(totals) {
+  return `Total projection ${totals.totalProj === null ? escapeHtml(readingFiguresText() ?? "unknown (a player has no projection)") : dec1(totals.totalProj)} &middot; ${totals.filled} of 6 slots filled`;
 }
 
 // D39: both teams required. Reports which of the game's two teams are (not yet) represented among the
@@ -184,7 +193,8 @@ async function doBuild(key) {
   state.addError = null;
   commit();
   try {
-    const data = await postShowdownLineupOptimize(key, { objective: state.objective, locks: [], excludes: [] });
+    const sent = figuresMode(); // Q16: Build uses the projections the screen shows
+    const data = await postShowdownLineupOptimize(key, { objective: state.objective, locks: [], excludes: [], mode: sent });
     if (!data || data.ok === false) {
       state.lastResult = { feasible: false, message: data?.error?.message ?? "Could not build a lineup." };
     } else if (data.feasible) {
@@ -200,7 +210,7 @@ async function doBuild(key) {
       state.cpt = cptEntry ? { id: personIdOf(cptEntry) } : null;
       state.flex = new Array(FLEX_COUNT).fill(null).map((_, i) => (flexEntries[i] ? { id: personIdOf(flexEntries[i]) } : null));
       const message = [data.objectiveNote, data.message].filter(Boolean).join(" ");
-      state.lastResult = { feasible: true, message, salaryUsed: data.salaryUsed, totalProj: data.totalProj };
+      state.lastResult = { feasible: true, message, builtOn: builtOnText(data.mode ?? "current"), salaryUsed: data.salaryUsed, totalProj: data.totalProj };
     } else {
       const message = [data.objectiveNote, data.message ?? "No legal lineup fits the salary cap and both-teams rule."].filter(Boolean).join(" ");
       state.lastResult = { feasible: false, message };
@@ -290,19 +300,49 @@ function ownParen(own) {
   return own == null ? "" : ` (${Math.round(own)}% own)`;
 }
 
-const sdLine = (row, opts = {}) => playerLineHtml(row, { pos: showPos(SD_POS_FILTER), posHtml: posPillHtml, pill: SD_PILL, tag: "main", ...opts }); // tag "main": the O, D, IR and Q badges as on classic Rankings (Adam 2026-10-18); a caller's own tag wins
+// The slot's "$ · proj · (own)" line. Projection and ownership follow the meter's TwoGun / Our sources switch
+// (playerFigures); salary is the board's in both. A missing figure reads "no proj" / no "% own", never zero (D29);
+// a man not on TwoGun's board reads "(not on TwoGun's board, 0%)" (Q8).
+function slotDetailHtml(row, isCpt) {
+  const salary = isCpt ? row.cptSalary : row.salary;
+  const { proj, own, notOnBoard, missingReason, projNote } = playerFigures(row, isCpt);
+  const reading = readingFiguresText();
+  if (reading) return `${money(salary)} &middot; ${escapeHtml(reading)}`; // first TwoGun read still out: not "no proj"
+  const projText = proj == null ? "no proj" : `${dec1(proj)} proj`;
+  const projHtml = projNote ? `<span title="${escapeHtml(projNote)}">${projText}</span>` : projText; // listed Out: TwoGun's own figure on hover
+  const ownText = notOnBoard ? " (not on TwoGun's board, 0%)" : ownParen(own);
+  return `${money(salary)} &middot; ${projHtml}${escapeHtml(ownText)}${missingReason ? ` &middot; ${reasonHtml(missingReason)}` : ""}`;
+}
+
+// Repaints only the six slots' figure lines and the total projection line under them (the panel is not redrawn, so a
+// typed lineup name survives); the meter calls it when the mode flips or its modes answer lands.
+function repaintSlotFigures() {
+  if (!lastContainer || !lastBoard) return;
+  const paint = (slotEl, placed, isCpt) => {
+    const row = placed ? findRow(lastBoard, placed.id) : null;
+    const el = slotEl?.querySelector?.(".lineup-slot-detail");
+    if (row && el) el.innerHTML = slotDetailHtml(row, isCpt);
+  };
+  paint(lastContainer.querySelector(".sd-cpt-slot"), state.cpt, true);
+  lastContainer.querySelectorAll("[data-flex-index]").forEach((el) => paint(el, state.flex[Number(el.dataset.flexIndex)], false));
+  const totalsEl = lastContainer.querySelector(".lineup-totals");
+  if (totalsEl) totalsEl.innerHTML = totalsLineHtml(computeTotals(lastBoard));
+  // Q16: both player lists (Captain and FLEX) and the saved cards' projection totals follow the switch too, repainted in place.
+  paintLists(lastContainer, listCtx(lastBoard));
+  lastContainer.querySelectorAll(".saved-lineup-proj").forEach((el) => {
+    const lineup = state.savedLineups.find((l) => l.id === el.dataset.lineupId);
+    if (lineup) el.innerHTML = savedProjHtml(lineup, lastBoard);
+  });
+}
+onFiguresChange(repaintSlotFigures);
 
 export function slotPlayerHtml(row, isCpt) {
-  const salary = isCpt ? row.cptSalary : row.salary;
-  const proj = isCpt ? row.cptProj : row.proj;
-  const own = isCpt ? row.ownCpt : row.ownFlex;
-  const projText = proj == null ? "no proj" : dec1(proj);
   return `
     <span class="lineup-slot-player lineup-slot-player-2" data-card-id="${escapeHtml(String(row.id))}">
       <span class="lineup-slot-body">
         <span class="lineup-slot-top">${sdLine(row, { nameCls: "lineup-slot-name", pill: false, tag: "out" })}</span>
         ${SD_PILL ? matchupPillHtml(row) : ""}
-        <span class="lineup-slot-detail">${money(salary)} &middot; ${projText} proj${escapeHtml(ownParen(own))}</span>
+        <span class="lineup-slot-detail">${slotDetailHtml(row, isCpt)}</span>
       </span>
     </span>`;
 }
@@ -366,50 +406,29 @@ function buildStatusHtml(board) {
   const r = state.lastResult;
   if (r) {
     if (!r.feasible) parts.push(`<div class="lineup-status lineup-status-error">${escapeHtml(r.message || "No legal lineup could be built.")}</div>`);
-    else if (r.message) parts.push(`<div class="lineup-status">${escapeHtml(r.message)}</div>`);
+    else parts.push(...[r.builtOn, r.message].filter(Boolean).map((t) => `<div class="lineup-status">${escapeHtml(t)}</div>`));
   }
   return parts.join("");
 }
 
-function placedIdSet() {
-  const set = new Set();
-  if (state.cpt) set.add(String(state.cpt.id));
-  for (const s of state.flex) if (s) set.add(String(s.id));
-  return set;
+// What the two player lists need from the lineup: who is placed (a placed man's row is tinted in both lists, and his Add FLEX
+// is disabled) and what a click does. A row click is the Add button's click (the Captain list's puts him in the Captain
+// slot, the FLEX list's in the next open FLEX slot); the rules stay in addCaptain and addFlex.
+function listPlacement() {
+  return { cptId: state.cpt ? String(state.cpt.id) : null, flexIds: new Set(state.flex.filter(Boolean).map((s) => String(s.id))) };
 }
 
-export function rightRowHtml(row, placed) {
-  const isPlaced = placed.has(String(row.id));
-  const isCpt = state.cpt && String(state.cpt.id) === String(row.id);
-  return `
-    <tr class="lineup-row${isPlaced ? " lineup-row-locked" : ""}" data-id="${escapeHtml(String(row.id))}">
-      <td>
-        <span class="player-cell">${sdLine(row)}</span>
-      </td>
-      <td>${money(row.salary)}</td>
-      <td>${money(row.cptSalary)}</td>
-      <td>${row.proj == null ? "no proj" : dec1(row.proj)}</td>
-      <td>${row.ownFlex == null ? "—" : `${dec1(row.ownFlex)}%`}</td>
-      <td class="lineup-row-actions">
-        <button type="button" class="lineup-row-btn${isCpt ? " active" : ""}" data-action="add-cpt" data-id="${escapeHtml(String(row.id))}">${isCpt ? "Captain" : "Add CPT"}</button>
-        <button type="button" class="lineup-row-btn" data-action="add-flex" data-id="${escapeHtml(String(row.id))}"${isPlaced ? " disabled" : ""}>Add FLEX</button>
-      </td>
-    </tr>`;
-}
-
-function rightColumnHtml(board) {
-  // Default sort is Proj descending, matching the Rankings tab (coordinator fix); a null projection
-  // always sorts last.
-  const rows = [...shownRows(board?.rows ?? [])].sort((a, b) => (b.proj ?? -Infinity) - (a.proj ?? -Infinity));
-  const placed = placedIdSet();
-  const bodyRows = rows.map((r) => rightRowHtml(r, placed)).join("");
-  return `
-    <div class="lineup-rows-wrap scroll-panel">
-      <table class="lineup-rows-table">
-        <thead><tr><th>Player</th><th>FLEX $</th><th>CPT $</th><th>Proj</th><th>Own FLEX</th><th></th></tr></thead>
-        <tbody>${bodyRows}</tbody>
-      </table>
-    </div>`;
+function listCtx(board) {
+  return {
+    board,
+    placement: listPlacement,
+    onPick: (kind, id) => {
+      if (kind === "cpt") addCaptain(findRow(board, id));
+      else addFlex(findRow(board, id));
+      commit();
+    },
+    onRepaint: (listEl) => wireRowButtons(listEl, board), // a repainted list's buttons are new
+  };
 }
 
 function formatSavedAt(iso) {
@@ -434,23 +453,30 @@ export function savedLineupSlotHtml(entry) {
     </div>`;
 }
 
-export function savedLineupCardHtml(lineup, board) {
+// The saved card's projection total (Q16: the figures the switch shows, `figures` = playerFigures by default): null when
+// a man is off the board or has no figure. The salary total is the board's in both modes.
+function savedProjHtml(lineup, board, figures = playerFigures) {
+  let total = 0;
+  for (const s of lineup.slots ?? []) {
+    const row = findRow(board, s.playerId);
+    const proj = row ? figures(row, s.slot === "CPT").proj : null;
+    total = total !== null && Number.isFinite(proj) ? total + proj : null;
+  }
+  return `&middot; ${total === null ? "proj unknown (a player has no projection)" : `${dec1(total)} proj`}`;
+}
+
+export function savedLineupCardHtml(lineup, board, figures = playerFigures) {
   const entries = (lineup.slots ?? []).map((s) => ({ slot: s.slot, row: findRow(board, s.playerId), snap: s }));
   let salaryUsed = 0;
-  let totalProj = 0;
   for (const e of entries) {
     const row = e.row;
     if (!row) {
       // The snapshot's own "salary" field is already the right one for its slot (CPT or FLEX) — routes.js
       // resolves that at save time (~line 559); there is no separate snap.cptSalary (🔵 review item 11).
       salaryUsed += e.snap.salary ?? 0;
-      // A player no longer on the board has no current projection: the total is unknown.
-      totalProj = null;
       continue;
     }
     salaryUsed += (e.slot === "CPT" ? row.cptSalary : row.salary) ?? 0;
-    const proj = e.slot === "CPT" ? row.cptProj : row.proj;
-    totalProj = totalProj !== null && Number.isFinite(proj) ? totalProj + proj : null;
   }
   const overCap = salaryUsed > SALARY_CAP;
   const incomplete = entries.length < FLEX_COUNT + 1;
@@ -486,7 +512,7 @@ export function savedLineupCardHtml(lineup, board) {
       <div class="saved-lineup-slots">${rowsHtml}</div>
       <div class="saved-lineup-totals">
         <span class="${overCap ? "saved-lineup-totals-over" : ""}">${salaryText}</span>
-        <span>&middot; ${totalProj === null ? "proj unknown (a player has no projection)" : `${dec1(totalProj)} proj`}</span>
+        <span class="saved-lineup-proj" data-lineup-id="${escapeHtml(lineup.id)}">${savedProjHtml(lineup, board, figures)}</span>
       </div>
       <div class="saved-lineup-actions">
         <button type="button" class="saved-lineup-btn" data-action="sd-load" data-id="${escapeHtml(lineup.id)}">Load</button>
@@ -530,24 +556,42 @@ function panelHtml(board) {
       <div class="lineup-left">
         ${controlsHtml()}
         <div class="lineup-slots">${slotsHtml(board)}</div>
+        ${meterStripHtml()}
         <div class="salary-bar">
           <div class="salary-bar-track"><div class="salary-bar-fill${overCap ? " over" : ""}" style="width:${fillPct}%"></div></div>
           <span class="salary-bar-label${overCap ? " over" : ""}">${escapeHtml(salaryText)}</span>
         </div>
-        <div class="lineup-totals">Total projection ${totals.totalProj === null ? "unknown (a player has no projection)" : dec1(totals.totalProj)} &middot; ${totals.filled} of 6 slots filled</div>
+        <div class="lineup-totals">${totalsLineHtml(totals)}</div>
         ${buildStatusHtml(board)}
       </div>
       <div class="lineup-right">
-        <h3 class="lineup-right-title">Showdown players (sorted by Proj)</h3>
+        <h3 class="lineup-right-title">Showdown players (click a column to sort)</h3>
         <div class="chip-group lineup-pos-chips">${showAllToggleHtml(store.get().filters.showAllPlayers, `data-action="show-all"`)}</div>
-        ${rightColumnHtml(board)}
+        ${listsHtml(board, listPlacement())}
       </div>
     </div>
     ${savedLineupsSectionHtml(board)}`;
 }
 
+// `container`: the whole panel, or one list's element when only that list was repainted.
+function wireRowButtons(container, board) {
+  container.querySelectorAll("[data-action='add-cpt']").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      addCaptain(findRow(board, btn.dataset.id));
+      commit();
+    });
+  });
+  container.querySelectorAll("[data-action='add-flex']").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      addFlex(findRow(board, btn.dataset.id));
+      commit();
+    });
+  });
+}
+
 function wire(container, board, key) {
   wireShowAllButtons(container);
+  wireMeter(container);
   container.querySelector("#sd-lineup-objective")?.addEventListener("change", (e) => {
     state.objective = e.target.value;
     state.lastResult = null;
@@ -568,18 +612,8 @@ function wire(container, board, key) {
       commit();
     });
   });
-  container.querySelectorAll("[data-action='add-cpt']").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      addCaptain(findRow(board, btn.dataset.id));
-      commit();
-    });
-  });
-  container.querySelectorAll("[data-action='add-flex']").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      addFlex(findRow(board, btn.dataset.id));
-      commit();
-    });
-  });
+  wireRowButtons(container, board);
+  wireLists(container, listCtx(board));
   container.querySelector("#sd-lineup-save-btn")?.addEventListener("click", () => {
     const nameInput = container.querySelector("#sd-lineup-save-name");
     doSaveLineup(key, nameInput ? nameInput.value : "");
@@ -644,6 +678,7 @@ export function renderShowdownLineupPanel(container, board, key) {
     state.deleteConfirmId = null;
     if (key) loadSavedLineups(key);
   }
+  syncMeter({ board, key, cpt: state.cpt, flex: state.flex, container }); // the meter repaints only its own strip
   container.innerHTML = panelHtml(board);
   wire(container, board, key);
 }

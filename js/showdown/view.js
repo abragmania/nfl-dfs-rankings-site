@@ -14,6 +14,8 @@ import { showAllToggleHtml, wireShowAllButtons } from "../filterbar.js";
 import { store } from "../state.js";
 import { renderShowdownTableHead, renderShowdownTableBody, shownRows } from "./table.js";
 import { renderShowdownTabs, renderShowdownProjectionsPanel, renderShowdownOwnershipPanel, renderShowdownLineupPanel } from "./tabs.js";
+import { playerFigures, figuresMode } from "./lineup-meter.js";
+import { twogunCardRow } from "../player-card-body.js";
 
 const state = {
   activeTab: "rankings",
@@ -62,7 +64,9 @@ export function showdownRowById(id) {
   const row = state.board?.rows?.find((r) => String(r.id) === String(id) || (r.cptId != null && String(r.cptId) === String(id)));
   const g = state.board?.game;
   if (!row) return null;
-  return row.gameId || !g?.away || !g?.home ? row : { ...row, gameId: `${g.away}@${g.home}` };
+  const withGame = row.gameId || !g?.away || !g?.home ? row : { ...row, gameId: `${g.away}@${g.home}` };
+  // Q16: on the Lineup tab in TwoGun mode the card shows TwoGun's projection and ownership, as the slots do; other tabs unchanged.
+  return state.activeTab === "lineup" && figuresMode() === "twogun" ? twogunCardRow(withGame, playerFigures(row, false), playerFigures(row, true)) : withGame;
 }
 export const showdownBoardAsOf = () => state.board?.generatedAt ?? null;
 
@@ -115,7 +119,7 @@ function normalizeRow(r) {
     projHow: r.projHow ?? "",
     ownFlex: r.ownFlex ?? null,
     ownCpt: r.ownCpt ?? null,
-    // Real per-side kinds (🔵 finding): "published" | "override" | null (missing, D29), independently for FLEX
+    // Real per-side kinds (🔵 finding): "published" | "estimate" (the sim, D29 as amended) | "override" | null (missing, D29), independently for FLEX
     // and Captain — a player can be published at FLEX and missing at Captain, or vice versa.
     ownKindFlex: r.ownKindFlex ?? null,
     ownKindCpt: r.ownKindCpt ?? null,
@@ -295,9 +299,15 @@ function renderLegend() {
   const sources = state.board?.sources ?? [];
   const projLabels = joinWords(sources.filter((s) => s.kind === "projection").map((s) => s.label));
   const hasKickerCard = sources.some((s) => s.kind === "kicker");
-  const ownLabels = joinWords((state.board?.ownershipSources ?? []).map((s) => s.label));
+  // R85: only the sources in board.ownershipUsedIds fed the numbers (a set-aside source is not named); an older board without the list names them all.
+  const ownSources = state.board?.ownershipSources ?? [];
+  const usedIds = state.board?.ownershipUsedIds;
+  const usedOwn = Array.isArray(usedIds) ? ownSources.filter((s) => usedIds.includes(s.id)) : ownSources;
+  const ownLabels = joinWords(usedOwn.map((s) => s.label));
   const projText = projLabels ? `Proj from ${projLabels}${hasKickerCard ? " (kickers as consolidated)" : ""}` : "";
-  const ownText = ownLabels ? `Own from ${ownLabels}; a dash where nobody has published one` : "Own: no source has published showdown ownership yet";
+  const ownText = ownLabels
+    ? `Own from ${ownLabels}; a dash where nobody has published one`
+    : ownSources.some((s) => (s.rows ?? []).length) ? "Own: no source in use names enough of the main players (R85)" : "Own: no source has published showdown ownership yet";
   const sourceSentence = [projText, ownText].filter(Boolean).join("; ");
   const legendText = [
     sourceSentence,

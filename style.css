@@ -1342,6 +1342,58 @@ tr:last-child .cell-edit-hint { top: auto; bottom: 100%; margin-top: 0; margin-b
 }
 .lineup-slot-clear:disabled { opacity: 0.4; cursor: default; }
 
+/* ---------- Showdown meter strip (Adam 2026-10-18; public/js/showdown/lineup-meter.js) ----------
+   Under the six slots: uniqueness first and big (expected copies, with a red-amber-green log scale and a marker at
+   the lineup's copies; the chance no one else has it is the fact line below), the projection against the best possible second, in neutral grey. Lives in the fixed-width
+   left column, so nothing here sets a width of its own; a source line stays on one line (full source on hover),
+   anything else wraps instead of widening the panel. */
+.sd-meter {
+  margin-bottom: var(--sp-3);
+  padding: var(--sp-2) var(--sp-3);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  min-width: 0;
+  font-variant-numeric: tabular-nums;
+}
+.sd-meter-switch { display: flex; align-items: flex-start; justify-content: flex-end; gap: var(--sp-2); margin-bottom: var(--sp-2); font-size: var(--fs-sm); }
+.sd-meter-switch-label { margin-right: auto; color: var(--text-dim); line-height: 24px; }
+.sd-meter-opt-wrap { display: flex; flex-direction: column; align-items: center; }
+.sd-meter-opt {
+  cursor: pointer;
+  background: var(--bg-elevated-2);
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  border-radius: 4px;
+  padding: 2px 10px;
+  font-size: var(--fs-sm);
+  white-space: nowrap;
+}
+.sd-meter-opt.active { background: var(--accent); border-color: var(--accent); color: #ffffff; font-weight: 600; }
+.sd-meter-opt-note { font-size: 11px; color: var(--text-dim); line-height: 14px; }
+.sd-meter-head { display: flex; align-items: baseline; justify-content: space-between; gap: var(--sp-3); }
+.sd-meter-label { color: var(--text); font-weight: 600; min-width: 0; }
+.sd-meter-big { font-size: 28px; font-weight: 700; line-height: 1.1; white-space: nowrap; flex: none; }
+.sd-meter-scale { margin: var(--sp-2) 0; }
+.sd-meter-track { position: relative; height: 12px; border-radius: 999px; border: 1px solid var(--border); }
+.sd-meter-marker {
+  position: absolute;
+  top: -5px;
+  width: 6px;
+  height: 20px;
+  margin-left: -3px;
+  border-radius: 3px;
+  border: 2px solid var(--bg-elevated);
+  box-shadow: 0 0 0 1px var(--text-muted);
+  box-sizing: border-box;
+}
+.sd-meter-ends { display: flex; justify-content: space-between; margin-top: 3px; font-size: 11px; color: var(--text-dim); }
+.sd-meter-facts { display: flex; flex-direction: column; gap: 2px; color: var(--text); }
+.sd-meter-src { margin-top: var(--sp-1); font-size: 11px; color: var(--text-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sd-meter-proj { margin-top: var(--sp-2); padding-top: var(--sp-2); border-top: 1px solid var(--border); font-size: var(--fs-sm); color: var(--text-muted); }
+.sd-meter-none { color: var(--text-dim); font-size: var(--fs-sm); }
+.sd-meter-error { color: var(--danger); font-size: var(--fs-sm); font-weight: 600; }
+
 .salary-bar-track {
   height: 14px;
   background: var(--bg-elevated-2);
@@ -1429,6 +1481,27 @@ tr:last-child .cell-edit-hint { top: auto; bottom: 100%; margin-top: 0; margin-b
    the pool reuses the Rankings rows read-only (🔵 finding 8). */
 .lineup-rows-table tbody tr.row-dimmed { color: var(--row-dim-text); }
 .lineup-rows-table tbody tr.row-dimmed .team-chip-mini { opacity: 0.6; }
+/* The Showdown Lineup tab's player lists (Adam 2026-10-18): a Captain | FLEX toggle over ONE list box with one inner scroll (the
+   classic pool's box height); the chosen list shows, the other is drawn but [hidden] so both repaint when the source switch
+   flips. Columns: Player (the shared D80 cell, which already carries team and position), then four numbers (.sd-num: $, proj,
+   own%, Proj/$) and the Add button. The position-based rules above (written for the old five-column list) are reset here and
+   the numbers right-align by class instead. */
+.sd-lists-bar { display: flex; align-items: center; gap: var(--sp-3); margin-bottom: var(--sp-2); }
+.sd-kind-switch { display: flex; gap: var(--sp-2); }
+.sd-lists-note { font-size: var(--fs-sm); color: var(--text-dim); }
+.sd-list { min-width: 0; }
+.sd-list[hidden] { display: none; }
+.sd-list-sub { margin-bottom: var(--sp-1); font-size: var(--fs-sm); color: var(--text-muted); }
+/* The shown list's box height is set inline by lineup-lists.js sizeShownList from its real top edge (on draw, toggle and resize); a hidden list reads no height. */
+.lineup-rows-table.sd-list-table td:nth-child(n) { text-align: left; font-size: inherit; font-weight: 400; color: inherit; font-variant-numeric: normal; }
+.lineup-rows-table.sd-list-table th:nth-child(n) { text-align: left; font-variant-numeric: normal; }
+.lineup-rows-table.sd-list-table th.sd-num, .lineup-rows-table.sd-list-table td.sd-num { text-align: right; font-variant-numeric: tabular-nums; }
+.lineup-rows-table.sd-list-table td.sd-num:nth-child(-n + 4) { font-size: 13px; font-weight: 700; } /* $, proj and own% read bold like the classic pool's Sal, Proj, Own%; Proj/$ stays plain */
+.sd-list-table .team-chip-mini { min-width: 40px; box-sizing: border-box; text-align: center; }
+.sd-list-table .player-cell { display: inline-flex; gap: var(--sp-2); min-width: 0; }
+.sd-list-table th:first-child { width: 100%; } /* Player takes the spare width, as the classic pool's names do; the number columns and the button hug their content */
+.sd-list-table td.lineup-row-actions { display: table-cell; width: 1%; text-align: right; }
+.sd-list-table tbody tr[data-id] { cursor: pointer; }
 .lineup-row-actions { display: flex; gap: 4px; }
 .lineup-row-btn {
   cursor: pointer;
