@@ -66,28 +66,53 @@ const RETIRED_BUILD_OBJECTIVES = Object.freeze(["lev", "projMinusOwn"]);
 const BUILD_OBJECTIVES = new Set([...OBJECTIVES, ...RETIRED_BUILD_OBJECTIVES]);
 const BUILD_ID = /^[A-Za-z0-9_-]{1,40}$/;
 const CEIL_TOTAL_MAX = 1000; // nine players cannot score more
-export function validateLineupBuild(value) {
+// Showdown's saved lineups (PROJECT.md Part 4 "Showdown Optimizer port", step 2) pass `options`: `objectives` is the Showdown
+// engine's own list (proj, ceil, median: server/showdown/lineup-checks.js BUILD_OPTIONS; the retired names are always accepted too) and
+// `projection: true` admits build.projection, the TwoGun projection file's provenance {source, asOf, asOfFrom} that a TwoGun-mode
+// generate answer carries (every figure carries its source and as-of date). Classic passes neither, so its record is unchanged.
+const PROJECTION_KEYS = ["source", "asOf", "asOfFrom"];
+const PROJECTION_AS_OF_FROM = new Set(["meta", "file time"]); // server/showdown/twogun-projections.js loadTwoGunProjections
+const PROJECTION_TEXT_MAX = 200;
+export function validateLineupBuild(value, { objectives = OBJECTIVES, projection: allowProjection = false } = {}) {
   if (value === undefined || value === null) return { build: undefined };
   if (typeof value !== "object" || Array.isArray(value)) return { error: "build must be an object" };
-  for (const key of Object.keys(value)) if (!BUILD_KEYS.has(key)) return { error: `build has an unknown field ${JSON.stringify(key)}` };
+  for (const key of Object.keys(value)) if (!BUILD_KEYS.has(key) && !(allowProjection && key === "projection")) return { error: `build has an unknown field ${JSON.stringify(key)}` };
   const { kind, id, boardMode, objective, totalCeil, edited } = value;
+  const allowedObjectives = objectives === OBJECTIVES ? BUILD_OBJECTIVES : new Set([...objectives, ...RETIRED_BUILD_OBJECTIVES]);
   if (kind !== "batch" && kind !== "hand") return { error: "build.kind must be batch or hand" };
   if (kind === "batch" && !(typeof id === "string" && BUILD_ID.test(id))) return { error: "build.id must be 1 to 40 letters, digits, - or _" };
   if (kind === "hand" && (id !== undefined || objective !== undefined || totalCeil !== undefined || edited !== undefined)) return { error: "a build by hand has no id, objective, ceiling total or edited flag" };
   if (edited !== undefined && totalCeil !== undefined) return { error: "build.edited and build.totalCeil cannot both be set" };
   if (boardMode !== undefined && !BUILD_MODES.has(boardMode)) return { error: "build.boardMode must be current or twogun" };
-  if (objective !== undefined && !BUILD_OBJECTIVES.has(objective)) return { error: `build.objective must be one of ${[...BUILD_OBJECTIVES].join(", ")}` };
+  if (objective !== undefined && !allowedObjectives.has(objective)) return { error: `build.objective must be one of ${[...allowedObjectives].join(", ")}` };
   if (edited !== undefined && edited !== true) return { error: "build.edited must be true" };
   if (totalCeil !== undefined && totalCeil !== null && !(typeof totalCeil === "number" && Number.isFinite(totalCeil) && totalCeil >= 0 && totalCeil <= CEIL_TOTAL_MAX)) {
     return { error: `build.totalCeil must be a number from 0 to ${CEIL_TOTAL_MAX}, or null` };
   }
+  const projection = allowProjection ? buildProjection(value.projection, boardMode) : {};
+  if (projection.error) return { error: projection.error };
   const build = { kind };
   if (kind === "batch") build.id = id;
   if (boardMode !== undefined) build.boardMode = boardMode;
   if (objective !== undefined) build.objective = objective;
   if (totalCeil !== undefined) build.totalCeil = totalCeil;
   if (edited === true) build.edited = true;
+  if (projection.projection) build.projection = projection.projection;
   return { build };
+}
+
+/** build.projection (Showdown only, see validateLineupBuild): absent or null stays absent; otherwise exactly {source, asOf,
+ *  asOfFrom} as the generate answer gives them, and only on a TwoGun-mode build (the provenance names TwoGun's file). */
+function buildProjection(value, boardMode) {
+  if (value === undefined || value === null) return {};
+  if (typeof value !== "object" || Array.isArray(value)) return { error: "build.projection must be an object" };
+  for (const key of Object.keys(value)) if (!PROJECTION_KEYS.includes(key)) return { error: `build.projection has an unknown field ${JSON.stringify(key)}` };
+  if (boardMode !== "twogun") return { error: "build.projection names TwoGun's projection file, so it goes only with boardMode twogun" };
+  const text = (v) => typeof v === "string" && v.trim() !== "" && v.length <= PROJECTION_TEXT_MAX;
+  if (!text(value.source)) return { error: `build.projection.source must be a non-empty string of at most ${PROJECTION_TEXT_MAX} characters` };
+  if (!text(value.asOf)) return { error: `build.projection.asOf must be a non-empty string of at most ${PROJECTION_TEXT_MAX} characters` };
+  if (!PROJECTION_AS_OF_FROM.has(value.asOfFrom)) return { error: `build.projection.asOfFrom must be one of ${[...PROJECTION_AS_OF_FROM].join(", ")}` };
+  return { projection: { source: value.source, asOf: value.asOf, asOfFrom: value.asOfFrom } };
 }
 
 /** Pure: a lineup's `build` after its players were replaced by hand. A build that had a ceiling total (totalCeil defined,

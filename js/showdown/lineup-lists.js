@@ -14,6 +14,7 @@ import { sortableHeadHtml } from "../tabs.js";
 import { shownRows, sdLine, projTitleText, ownTitleText } from "./table.js";
 import { playerFigures, figuresMode, readingFiguresText, figuresProblemText, twogunNotPostedText } from "./lineup-meter.js";
 import { snapPanelMaxHeight } from "../lineup.js";
+import { shortName } from "../lineup-card.js"; // the cards' one name shortener (👁 V-N1: a tagged row's name)
 
 export const LIST_KINDS = ["cpt", "flex"];
 const TITLES = { cpt: "Captain", flex: "FLEX" };
@@ -22,6 +23,14 @@ const KIND_KEY = "nfldfs-sd-list-kind";
 
 // One sort per list, kept for the page view (module state, like lineup.js's lineup).
 const sorts = { cpt: { ...START_SORT }, flex: { ...START_SORT } };
+
+// The Showdown Optimizer's additions to each row (optimizer.js listControls, Adam 2026-10-19): {headCells(kind), cells(row, kind),
+// actions(row, kind), rowClass(row, kind), rows(all, shown), addLabel()}, each optional (an answer of null or undefined keeps the
+// list's own); none set leaves the lists exactly as they were.
+let controls = null;
+export function setListControls(next) {
+  controls = next && typeof next === "object" ? next : null;
+}
 
 export function listSort(kind) {
   return sorts[kind];
@@ -174,8 +183,8 @@ export function listRowHtml(row, kind, placement, figures = playerFigures, view 
   const placed = isPlacedAnywhere(placement, id);
   const isCaptain = String(placement.cptId ?? "") === id;
   const button = isCpt
-    ? `<button type="button" class="lineup-row-btn${isCaptain ? " active" : ""}" data-action="add-cpt" data-id="${escapeHtml(id)}">${isCaptain ? "Captain" : "Add CPT"}</button>`
-    : `<button type="button" class="lineup-row-btn" data-action="add-flex" data-id="${escapeHtml(id)}"${placed ? " disabled" : ""}>Add FLEX</button>`;
+    ? `<button type="button" class="lineup-row-btn${isCaptain ? " active" : ""}" data-action="add-cpt" data-id="${escapeHtml(id)}">${isCaptain ? "Captain" : controls?.addLabel?.() ?? "Add CPT"}</button>`
+    : `<button type="button" class="lineup-row-btn" data-action="add-flex" data-id="${escapeHtml(id)}"${placed ? " disabled" : ""}>${controls?.addLabel?.() ?? "Add FLEX"}</button>`; // the Optimizer's rows say "Add" (the list's toggle names the slot) so its boxes fit
   // Hovers (D41): in Our sources the board's projHow / ownHow, as the Showdown Rankings cells carry (a list reads only its own side
   // of ownHow). In TwoGun mode a figure says "TwoGun's projection" (with TwoGun's note for an Out man) and a blank says why:
   // the failed first read, else the modes answer's "not posted" reason, else the man's own reason.
@@ -194,25 +203,30 @@ export function listRowHtml(row, kind, placement, figures = playerFigures, view 
   const figureCells = reading
     ? [num(reading, "…"), num(reading, "…"), num(reading, "…")] // the first TwoGun read is out: not "no proj"
     : [num(projTitle, f.proj == null ? "no proj" : dec1(f.proj)), num(ownTitle, f.own == null ? "—" : `${dec1(f.own)}%`), `<td class="sd-num">${gradedCellHtml(f.value, grade)}</td>`];
+  // The Optimizer's row look (excluded, locked) beside the builder's placed tint, each class once.
+  const classes = [...new Set([placed ? "lineup-row-locked" : "", ...String(controls?.rowClass?.(row, kind) ?? "").trim().split(/\s+/)].filter(Boolean))];
   return `
-    <tr class="lineup-row${placed ? " lineup-row-locked" : ""}" data-id="${escapeHtml(id)}">
+    <tr class="lineup-row${classes.map((c) => ` ${c}`).join("")}" data-id="${escapeHtml(id)}">
       <td><span class="player-cell">${sdLine(row)}</span></td>
       <td class="sd-num">${f.salary == null ? "—" : money(f.salary)}</td>
-      ${figureCells.join("")}
-      <td class="lineup-row-actions">${button}</td>
+      ${figureCells.join("")}${controls?.cells?.(row, kind) ?? ""}
+      <td class="lineup-row-actions">${controls?.actions?.(row, kind) ?? ""}${button}</td>
     </tr>`;
 }
 
-/** The head row of one list (the classic pool's header markup). */
+/** The head row of one list (the classic pool's header markup), with the Optimizer's Min % / Max % heads when it adds them. */
 export function listHeadHtml(kind, sort = sorts[kind]) {
-  return sortableHeadHtml(listColumns(kind), sort).replace(/<\/tr>$/, "<th></th></tr>"); // the last, plain cell is the Add button's column
+  return sortableHeadHtml(listColumns(kind), sort).replace(/<\/tr>$/, `${controls?.headCells?.(kind) ?? ""}<th></th></tr>`); // the last, plain cell is the buttons' column
 }
 
-/** The body rows of one list in its sort order; `rows` are the board's rows (Out players are left out unless Show all players is on). `view` = { mode, reading }. */
+/** The body rows of one list in its sort order; `rows` are the board's rows (Out players are left out unless Show all players is on;
+ *  the Optimizer's position chip and its locked / included / excluded men through controls.rows). `view` = { mode, reading }. */
 export function listBodyHtml(board, kind, placement, sort = sorts[kind], figures = playerFigures, view = {}) {
   const v = viewOf(view);
   const grades = gradesFor(board, kind, figures, v.mode);
-  const rows = sortListRows(shownRows(board?.rows ?? []), kind, sort, figures);
+  const all = board?.rows ?? [];
+  const shown = shownRows(all);
+  const rows = sortListRows(controls?.rows ? controls.rows(all, shown) : shown, kind, sort, figures);
   return rows.map((r) => listRowHtml(r, kind, placement, figures, v, grades ? grades.get(String(r.id)) ?? null : r.valueGrade ?? null)).join("");
 }
 
@@ -230,8 +244,10 @@ function listHtml(board, kind, placement, shown) {
     </div>`;
 }
 
-/** The Captain | FLEX toggle, the source note and both lists (only the chosen one shown); style.css .sd-lists-bar, .sd-list. */
-export function listsHtml(board, placement) {
+/** The Captain | FLEX toggle, the source note and both lists (only the chosen one shown); style.css .sd-lists-bar, .sd-list.
+ *  `chipsHtml`: a row drawn between the toggle and the lists (the Optimizer's position chips), none by default; none adds not even
+ *  a blank line, so the markup is byte-for-byte the pre-Optimizer lists' (🔵 866b0ce B12). */
+export function listsHtml(board, placement, chipsHtml = "") {
   const shown = shownListKind();
   const toggle = LIST_KINDS.map((k) => `<button type="button" class="sd-meter-opt${k === shown ? " active" : ""}" data-list-kind="${k}" aria-pressed="${k === shown}">${TITLES[k]}</button>`).join("");
   return `
@@ -239,7 +255,7 @@ export function listsHtml(board, placement) {
       <div class="sd-lists-bar">
         <div class="sd-kind-switch" role="group" aria-label="Which player list">${toggle}</div>
         <span class="sd-lists-note">${escapeHtml(listsNoteText())}</span>
-      </div>
+      </div>${chipsHtml}
       ${LIST_KINDS.map((k) => listHtml(board, k, placement, k === shown)).join("")}
     </div>`;
 }
@@ -259,9 +275,19 @@ export function wireList(listEl, ctx) {
       paintList(listEl, ctx); // only this list's head and body are redrawn: the scroll box and the other list stay
     });
   });
+  // 👁 V-N1: each name's hover carries it whole; a row with an injury tag shows the cards' short name ("D. Samuel Sr.",
+  // lineup-card.js shortName), so the ellipsis (style.css .sd-list-table) is the last resort, not the first.
+  const rowOf = (id) => (ctx.board?.rows ?? []).find((r) => String(r.id) === String(id));
+  listEl.querySelectorAll("tr[data-id]").forEach((tr) => {
+    const n = tr.querySelector(".player-name");
+    if (!n) return;
+    const full = n.title || n.textContent;
+    n.title = full;
+    if (tr.querySelector(".out-tag, .status-badge")) n.textContent = shortName(full, rowOf(tr.dataset.id)?.pos);
+  });
   listEl.querySelectorAll("tr[data-id]").forEach((tr) => {
     tr.addEventListener("click", (e) => {
-      if (e?.target?.closest?.("button, .player-name")) return;
+      if (e?.target?.closest?.("button, input, .player-name")) return; // the Optimizer's Min % / Max % boxes take their own clicks
       ctx.onPick(kind, tr.dataset.id);
     });
   });

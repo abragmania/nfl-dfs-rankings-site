@@ -126,6 +126,19 @@ function idsOfExisting(item) {
   return [];
 }
 
+/** The note for a man the board lists out who is kept because he is locked ("Locked"; the showdown Optimizer says it of an
+ *  included man too, word "Included"). One copy: showdown-pool.js keptNotes (Generate and Build) uses it. `status`: his listed status. */
+export function keptSidelinedNote(name, status, word = "Locked") {
+  return `${word} ${name} is listed ${status ?? "injured"}; he is kept because he is ${word.toLowerCase()}.`;
+}
+
+/** The note for a man kept because he is locked ("Locked"; the showdown Optimizer says it of an included man too, word
+ *  "Included") who has no projection from any source: `proj` is the board's stand-in figure, or null when there is none.
+ *  One copy: showdown-pool.js keptNotes uses it. */
+export function noSourceProjectionNote(name, proj, word = "Locked") {
+  return `${word} ${name} has no projection from any source and counts as ${proj === null ? "0" : `his stand-in ${round2(proj)}`}.`;
+}
+
 /** The key that decides "the same DraftKings player" (optimize.js dkKeyOf): two board rows can share a DK id. */
 export function dkKeyOf(row, id) {
   const raw = row.dkId === null || row.dkId === undefined ? "" : String(row.dkId).trim();
@@ -1003,8 +1016,8 @@ function prepare(rows, opts, notes) {
     if (locked) {
       // A late-out row also carries "injured", so the late-out note is checked first.
       if (lateOut) notes.push(`Locked ${name} was ruled out after TwoGun's board was made; he is kept because he is locked.`);
-      else if (sidelined) notes.push(`Locked ${name} is listed ${row.status ?? "injured"}; he is kept because he is locked.`);
-      if (noProjection) notes.push(`Locked ${name} has no projection from any source and counts as ${proj === null ? "0" : `his stand-in ${round2(proj)}`}.`);
+      else if (sidelined) notes.push(keptSidelinedNote(name, row.status));
+      if (noProjection) notes.push(noSourceProjectionNote(name, proj));
       if (noCeiling) notes.push(`Locked ${name} has no TwoGun ${figureWord} and counts as 0 in this ${figureWord} build.`);
       if (avoided) notes.push(`Locked ${name} plays in ${game}, a game set to avoid; he is kept because he is locked.`);
       if (unstarredQb) notes.push(`Locked ${name} is not starred; he is used because he is locked.`);

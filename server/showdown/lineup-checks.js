@@ -20,6 +20,12 @@ export const RETIRED_OBJECTIVES = Object.freeze({
 // Whose projections (and ownership) the Lineup screen's switch, Build and the meter use (Adam 2026-10-18, Q16). The one list.
 export const METER_MODES = Object.freeze(["twogun", "current"]);
 
+// The build record a Showdown lineup may carry (server/lineups/validate.js validateLineupBuild): classic's, with the Showdown
+// engine's objectives (Projection plus the figure builds ceil and median, the list generate-request.js accepts) and TwoGun's
+// projection provenance. The figure builds are named here, not read from ../lineup/objective.js FIGURE_BUILDS, so this file
+// keeps no import (the public site copies it unchanged); tests/showdown-lineups-routes.test.mjs pins the two lists equal.
+export const BUILD_OPTIONS = Object.freeze({ objectives: Object.freeze(["proj", "ceil", "median"]), projection: true });
+
 /** The Build body's mode: absent is "current" (every older caller unchanged), anything else must be a known mode. */
 export function buildMode(body) {
   const mode = body?.mode ?? "current";
@@ -39,9 +45,11 @@ function validateIdArray(value, name) {
 }
 
 /**
- * The body of POST .../lineup/optimize ({objective, locks, excludes}, all optional) -> {objective, locks, excludes,
- * objectiveNote} or {error}. A retired objective becomes "proj" with objectiveNote saying so; objectiveNote is null
- * otherwise.
+ * The body of POST .../lineup/optimize ({objective, locks, excludes, includes}, all optional) -> {objective, locks,
+ * excludes, objectiveNote, includes?} or {error}. A retired objective becomes "proj" with objectiveNote saying so;
+ * objectiveNote is null otherwise. includes (Adam 2026-10-19: men in the lineup at Captain or FLEX, the search's pick) is
+ * checked for shape here and against the board in the route (server/lineup/showdown-includes.js readIncludes); it is in
+ * the answer only when it names someone, so a body without it reads exactly as before.
  */
 export function validateOptimizeBody(body) {
   body = body ?? {};
@@ -58,7 +66,9 @@ export function validateOptimizeBody(body) {
   if (locks.error) return { error: locks.error };
   const excludes = validateIdArray(body.excludes, "excludes");
   if (excludes.error) return { error: excludes.error };
-  return { objective, locks: locks.ids, excludes: excludes.ids, objectiveNote };
+  const includes = validateIdArray(body.includes, "includes");
+  if (includes.error) return { error: includes.error };
+  return { objective, locks: locks.ids, excludes: excludes.ids, objectiveNote, ...(includes.ids.length ? { includes: includes.ids } : {}) };
 }
 
 /** {slots}: a non-empty array of {slot: CPT|FLEX, playerId}, at most one Captain and five FLEX, no player twice. */
@@ -126,4 +136,33 @@ export function buildShowdownSnapshot(slots, rows) {
   // sum that quietly counts him as 0.
   const totalProj = snapshotSlots.every((s) => isNum(s.proj)) ? snapshotSlots.reduce((sum, s) => sum + s.proj, 0) : null;
   return { slots: snapshotSlots, salaryUsed, totalProj };
+}
+
+/** Every board row's FLEX id and Captain id -> the row's person id (his FLEX id), for showdownLineupKey. */
+export function showdownPersonIndex(rows) {
+  const personOf = new Map();
+  for (const r of rows ?? []) {
+    if (r?.id === undefined || r.id === null) continue;
+    personOf.set(String(r.id), String(r.id));
+    if (r.cptId !== undefined && r.cptId !== null) personOf.set(String(r.cptId), String(r.id));
+  }
+  return personOf;
+}
+
+/**
+ * One saved copy only, Captain-aware (Adam 2026-10-18; Part 4 "Showdown Optimizer port" hard rule: the same six men under
+ * another Captain are distinct lineups): the Captain's id, then the sorted FLEX ids. A saved slot names its man by his FLEX
+ * id or his Captain id (buildShowdownSnapshot keeps the id sent), so `personOf` (optional, showdownPersonIndex of the board)
+ * turns either into his person id; an id it does not hold keys as itself. Pure; ../lineups/duplicate.js takes it as keyOf.
+ */
+export function showdownLineupKey(slots, personOf) {
+  const list = Array.isArray(slots) ? slots : [];
+  const person = (s) => {
+    const id = String(s?.playerId);
+    return personOf?.get(id) ?? id;
+  };
+  const isCpt = (s) => String(s?.slot ?? "").trim().toUpperCase() === "CPT";
+  const cpt = list.filter(isCpt).map(person);
+  const flex = list.filter((s) => !isCpt(s)).map(person).sort();
+  return `CPT:${cpt.join(",")}|FLEX:${flex.join("|")}`;
 }

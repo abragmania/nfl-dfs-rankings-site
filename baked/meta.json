@@ -1,14 +1,12 @@
 {
-  "publishedAt": "2026-10-20T02:56:32.268Z",
+  "publishedAt": "2026-10-20T12:48:03.186Z",
   "season": 2026,
   "week": 6,
-  "boardGeneratedAt": "2026-10-20T01:35:40.051Z",
+  "boardGeneratedAt": "2026-10-20T12:48:00.541Z",
   "defaultMode": "current",
-  "showdowns": [
-    "2026-w06-WASSF"
-  ],
-  "sourceCommit": "1321956dc58021ccd3a279d0d3bb0f2a0321302b",
-  "appCommit": "4ed20c54ebeca3aa5fcecd66f275956014bed2bd",
+  "showdowns": [],
+  "sourceCommit": "5fe38735e4c53729b1a2426be89783251e445b04",
+  "appCommit": "5fe38735e4c53729b1a2426be89783251e445b04",
   "machine": "this machine",
   "matchups": false
 }

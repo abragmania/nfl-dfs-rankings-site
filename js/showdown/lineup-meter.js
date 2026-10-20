@@ -6,8 +6,10 @@
 // tests; lineup.js only calls syncMeter (before a draw), meterStripHtml (inside the draw) and wireMeter (after it).
 import { escapeHtml, dec1 } from "../format.js";
 import { isSampleMode } from "../api.js";
+import { readJson, requestFailureText, notJsonText, NOT_JSON } from "./read-json.js"; // the one JSON reader (🔵 866b0ce B4)
 
 const MINUS = "−";
+const lowerFirst = (s) => s.charAt(0).toLowerCase() + s.slice(1); // a shared sentence placed after a colon
 const DELAY_MS = 150; // double clicks and quick slot swaps collapse into one request
 const MODE_KEY = "nfldfs-sd-meter-mode";
 const MODES = [
@@ -172,10 +174,12 @@ function findRow(board, id) {
 }
 
 /**
- * The meter request body {cpt, flex:[5], excludes:[], mode} from the placed ids (the panel's person ids): the Captain
+ * The meter request body {cpt, flex:[5], excludes, mode} from the placed ids (the panel's person ids): the Captain
  * goes as his Captain candidate id (row.cptId), each FLEX as row.id. Null until all six are placed and on the board.
+ * `excludes`: the Optimizer's excludes for the mode on screen (optimizer.js optimizerExcludes; 🔵 866b0ce B1), so the
+ * "best possible" this lineup is measured against is the one the batch cards are, and the two gaps agree; none by default.
  */
-export function meterRequestBody(board, cpt, flex, mode = "twogun") {
+export function meterRequestBody(board, cpt, flex, mode = "twogun", excludes = []) {
   if (!cpt || !Array.isArray(flex) || flex.length !== 5 || !flex.every(Boolean)) return null;
   const cptRow = findRow(board, cpt.id);
   if (!cptRow || cptRow.cptId === null || cptRow.cptId === undefined) return null;
@@ -185,7 +189,7 @@ export function meterRequestBody(board, cpt, flex, mode = "twogun") {
     if (!row) return null;
     flexIds.push(String(row.id));
   }
-  return { cpt: String(cptRow.cptId), flex: flexIds, excludes: [], mode };
+  return { cpt: String(cptRow.cptId), flex: flexIds, excludes: Array.isArray(excludes) ? excludes.map(String) : [], mode };
 }
 
 /**
@@ -335,33 +339,22 @@ export function meterHtml(m, mode = "twogun", modesInfo = null, modesNote = null
 
 // ---------- the fetches, kept here (not in api.js: the public site's stand-in must export api.js's names exactly) ----------
 
-async function readJson(res, url) {
-  try {
-    return await res.json();
-  } catch (e) {
-    const err = new Error(`${url} did not return JSON (status ${res.status})`);
-    err.code = "NOT_JSON";
-    err.status = res.status;
-    throw err;
-  }
-}
-
 /** POST /api/showdown/<key>/lineup/meter; resolves to the parsed answer, never throws for a server-side refusal. */
 export async function postLineupMeter(key, body, fetchImpl = fetch) {
   const url = `/api/showdown/${encodeURIComponent(key)}/lineup/meter`;
   const res = await fetchImpl(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-  return readJson(res, url);
+  return readJson(res);
 }
 
 /** GET /api/showdown/<key>/modes: what each mode has posted. */
 export async function getLineupModes(key, fetchImpl = fetch) {
   const url = `/api/showdown/${encodeURIComponent(key)}/modes`;
-  return readJson(await fetchImpl(url), url);
+  return readJson(await fetchImpl(url));
 }
 
 // ---------- state and trigger ----------
 
-const m = { sig: null, status: null, data: null, message: null, timer: null };
+const m = { sig: null, status: null, data: null, message: null, timer: null, modesDue: false }; // modesDue: the pending timer reads the modes too
 let mode = null; // read from storage on first use
 let modesInfo = null; // last good GET .../modes answer for modesKey: the "not posted yet" notes and each man's TwoGun figures
 let modesKey = null; // the showdown modesInfo is for
@@ -497,6 +490,11 @@ let last = null; // the last syncMeter arguments, so a flip of the switch asks a
  */
 function repaint() {
   if (figuresListener) figuresListener(); // the slots' figures follow the mode; they exist with or without a strip
+  repaintStrip();
+}
+
+/** The strip alone (repaint's second half): an exclude toggle re-asks without touching the slots or the lists. */
+function repaintStrip() {
   const host = last?.container;
   const el = host?.querySelector?.(".sd-meter");
   if (!el) {
@@ -529,9 +527,20 @@ export function wireMeter(container) {
 }
 
 /**
+ * The Optimizer's excludes changed (a pool row's exclude, 🔵 866b0ce B1): the meter asks again with them, as the last draw's
+ * lineup, and only its strip is repainted (the panel is not redrawn, so focus and scroll stay). Nothing before a first draw.
+ */
+export function resyncMeterExcludes(excludes) {
+  if (!last) return;
+  syncMeter({ ...last, excludes, readModes: false }); // only the excludes changed: the modes answer is the same, so it is not read again
+  repaintStrip();
+}
+
+/**
  * What a measurement of this lineup depends on: the showdown, the board build, the request body and the six placed men's
  * projection and ownership as the board row shows them (a typed number can change those without a new build time). The
- * meter and the swaps panel both ask with this one signature, so they re-ask together.
+ * meter and the swaps panel both ask with this one signature over the same body (the Optimizer's excludes included), so
+ * they re-ask together.
  */
 export function lineupSig(key, board, body, cpt, flex) {
   const six = [findRow(board, cpt.id), ...flex.map((s) => findRow(board, s.id))];
@@ -543,10 +552,12 @@ export function lineupSig(key, board, body, cpt, flex) {
  * Called before every panel draw with the panel element (`container`). Incomplete lineup: the strip goes away.
  * Complete lineup whose ids, projections, ownership, board or mode differ from the one last asked about: strip shows
  * "measuring", one request goes out after a short pause, and an answer for a lineup that has since changed is
- * dropped. When an answer lands only the strip is repainted.
+ * dropped. When an answer lands only the strip is repainted. `excludes`: the Optimizer's for the mode on screen, sent in the
+ * body (so they are part of the signature: a changed exclude asks again); none by default (🔵 866b0ce B1). `readModes`
+ * false (an exclude toggle) skips the modes re-read the new measurement would send, unless one still waiting is replaced.
  */
-export function syncMeter({ board, key, cpt, flex, container = null, post = postLineupMeter, getModes = getLineupModes, delayMs = DELAY_MS, enabled = liveMeterAllowed() }) {
-  last = { board, key, cpt, flex, container, post, getModes, delayMs, enabled };
+export function syncMeter({ board, key, cpt, flex, container = null, post = postLineupMeter, getModes = getLineupModes, delayMs = DELAY_MS, enabled = liveMeterAllowed(), excludes = [], readModes = true }) {
+  last = { board, key, cpt, flex, container, post, getModes, delayMs, enabled, excludes };
   const asked = currentMode();
   const live = Boolean(enabled && key);
   if (live && key !== modesKey) {
@@ -580,9 +591,9 @@ export function syncMeter({ board, key, cpt, flex, container = null, post = post
         modesError = null;
         repaint();
       })
-      .catch((e) => fail(e?.code === "NOT_JSON" ? `the server's answer could not be read (status ${e.status}).` : `the server could not be reached (${e?.message ?? e}).`));
+      .catch((e) => fail(e?.code === NOT_JSON ? lowerFirst(notJsonText(e.status)) : `the server could not be reached (${e?.message ?? e}).`)); // it follows a colon, as the other reasons do
   };
-  const body = live ? meterRequestBody(board, cpt, flex, asked) : null;
+  const body = live ? meterRequestBody(board, cpt, flex, asked, excludes) : null;
   if (!body) {
     if (m.sig !== null) reset();
     if (wantModes) askModes();
@@ -593,14 +604,16 @@ export function syncMeter({ board, key, cpt, flex, container = null, post = post
     if (wantModes && !m.timer) askModes(); // a pending timer reads them anyway
     return;
   }
+  const modesDue = readModes || wantModes || Boolean(m.timer && m.modesDue); // a read that is due, or a replaced wait's, still happens
   reset();
   m.sig = sig;
+  m.modesDue = modesDue;
   m.status = "loading";
   m.timer = setTimeout(async () => {
     m.timer = null;
     // A new complete lineup reads the modes afresh too (a TwoGun file saved meanwhile), behind the same pause as the
     // POST, so quick swaps send one GET.
-    askModes();
+    if (modesDue) askModes();
     let next;
     try {
       const data = await post(key, body);
@@ -609,7 +622,7 @@ export function syncMeter({ board, key, cpt, flex, container = null, post = post
       else if (!data.ownership || typeof data.ownership !== "object") next = { status: "error", message: "The server's answer was missing its ownership section." };
       else next = { status: "ok", data };
     } catch (e) {
-      next = { status: "error", message: `Could not reach the server: ${e.message}` };
+      next = { status: "error", message: requestFailureText(e) };
     }
     if (m.sig !== sig) return; // the lineup (or the mode) changed while this was out
     m.status = next.status;

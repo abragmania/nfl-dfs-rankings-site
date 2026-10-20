@@ -1501,6 +1501,17 @@ tr:last-child .cell-edit-hint { top: auto; bottom: 100%; margin-top: 0; margin-b
 .sd-list-table .player-cell { display: inline-flex; gap: var(--sp-2); min-width: 0; }
 .sd-list-table th:first-child { width: 100%; } /* Player takes the spare width, as the classic pool's names do; the number columns and the button hug their content */
 .sd-list-table td.lineup-row-actions { display: table-cell; width: 1%; text-align: right; }
+/* 👁 V-N1: Player takes only the room the other columns leave (max-width 0 drops its content from the column sizing), so the
+   table never grows past its box; only a long name gives way, with an ellipsis (lineup-lists.js puts the full name in its
+   hover), and the status tag, team chip and position chip stay whole. */
+.sd-list-table td:first-child { max-width: 0; }
+.sd-list-table td:first-child > .player-cell { display: flex; }
+.sd-list-table .player-cell > * { flex-shrink: 0; }
+.sd-list-table .player-cell > .player-name { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* A tagged row (red OUT or a status badge) packs its items 4px apart, as .player-cell:has(.out-tag) does elsewhere, so the longest
+   tagged name fits whole (nothing cut outranks the logo sitting 4px nearer); scoped to the Showdown pool so the classic pool and
+   the Rankings keep theirs. */
+.sd-list-table .player-cell:has(.out-tag, .status-badge) { gap: 4px; }
 .sd-list-table tbody tr[data-id] { cursor: pointer; }
 .lineup-row-actions { display: flex; gap: 4px; }
 .lineup-row-btn {
@@ -2138,7 +2149,7 @@ select.opt-input { text-align: left; padding: 3px 4px; }
 .opt-exp-table th:last-child, .opt-exp-table td:last-child { padding-right: 0; }
 .opt-exp-table tr.exp-off td.opt-exp-pct { color: rgba(var(--amber-rgb), 0.7); }
 .opt-exp-name { font-weight: 600; }
-.opt-exp-opp { color: var(--text-muted); }
+td.opt-exp-opp { color: var(--text-muted); } /* the cells only: the Matchup head keeps the header colour */
 .opt-exp-table .opt-exp-own { text-align: right; color: var(--text-muted); font-variant-numeric: tabular-nums; }
 .opt-exp-table .opt-exp-pct { text-align: right; font-weight: 600; font-variant-numeric: tabular-nums; }
 .opt-exp-table th.opt-exp-pct { font-weight: 600; }
@@ -2349,6 +2360,43 @@ select.opt-input { text-align: left; padding: 3px 4px; }
 }
 .cash-undo { display: flex; align-items: center; gap: var(--sp-2); font-size: var(--fs-sm); color: var(--text-muted); }
 .saved-lineups-other { margin-top: var(--sp-2); font-size: var(--fs-sm); color: var(--text-dim); }
+
+/* The Showdown Optimizer (Adam 2026-10-19, sketch A; public/js/showdown/optimizer-view.js): its band and the six-slot builder share
+   the left column, so the column takes about half the page (classic's 460px holds the slots alone); its Make row ends the column
+   with classic's sticky footer (.opt-footer, 👁 V3), so it stays at the window's bottom while the builder is on screen; it spans the
+   left column only, so it never covers the pool list's rows. The batch is full width below both columns (Adam 2026-10-19 11:17 PM:
+   "generated lineups should go 4 across"): the cards in one flat grid of four, stepping down as the saved grid does, and the
+   Captain and FLEX exposure tables side by side above them, each as tall as its rows (👁 V2: a fixed height sliced the last row). */
+.lineup-left.sd-opt-left { flex: 0 0 52%; max-width: 52%; min-width: 0; }
+.sd-opt-results .opt-cards { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+@media (max-width: 1279px) { .sd-opt-results .opt-cards { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (max-width: 959px) { .sd-opt-results .opt-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.sd-opt-results .opt-exp-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.sd-opt-results .opt-exp-list { max-height: none; overflow: visible; }
+.sd-opt-results .opt-exp-table th { position: static; } /* no inner scroll box now, so the head stays with its table */
+/* One game: every row's matchup is "vs" or "@" the other team, which the team chip already says, so the column goes (🔵 866b0ce B10: by class, not position). */
+.sd-opt-results .opt-exp-table .opt-exp-opp { display: none; }
+/* A GPP card's meter strip: copies, alone chance, gap to best; the dot ends the group before it, as .opt-nowrap's. The not-on-TwoGun's-board names may wrap. */
+.sd-card-meter { display: flex; flex-wrap: wrap; gap: 0 var(--sp-1); font-size: var(--fs-sm); color: var(--text-muted); }
+.sd-card-meter > span { white-space: nowrap; }
+.sd-card-meter > span.sd-card-offboard { white-space: normal; }
+.sd-card-meter > span:not(:last-child)::after { content: " \00b7"; }
+/* The pool rows' lock, In and exclude: small square buttons, so the rows keep their Min % and Max % boxes and Add at 1920. */
+.lineup-row-btn.sd-row-ico { min-width: 23px; width: 23px; padding: 3px 0; margin-right: 2px; display: inline-flex; align-items: center; justify-content: center; font-size: 15px; line-height: 1; vertical-align: middle; }
+.lineup-row-btn.sd-row-in { font-size: 12px; font-weight: 700; }
+.lineup-row-btn.sd-row-in.active { background: var(--amber); border-color: var(--amber); color: #1b1b1b; }
+.sd-list-table:has(.sd-row-ico) :is(th, td) { padding-left: 3px; padding-right: 3px; }
+/* 👁 V-N1: Proj/$ (the fifth column of both lists, head and cells alike) gives up 1px a side so the longest tagged name fits whole at 1920. */
+.sd-list-table:has(.sd-row-ico) :is(th, td):nth-child(5) { padding-left: 2px; padding-right: 2px; }
+.sd-list-table td.lineup-row-actions { white-space: nowrap; }
+.sd-list-table .opt-input.lineup-min-input, .sd-list-table .opt-input.lineup-max-input { width: 2.5em; }
+/* 👁 V5: the Showdown saved list mixes GPP and Cash cards, and the "$ Cash" badge (13px text plus 1px padding, 19px) is 2px taller
+   than the name (17px), so cards in one row sat 2px apart; every head is at least the badge's height. */
+#sd-saved-lineups .saved-lineup-card-head { min-height: 20px; }
+@media (max-width: 700px) {
+  .lineup-left.sd-opt-left { flex: 0 0 auto; max-width: 100%; width: 100%; }
+  .sd-opt-results .opt-cards, .sd-opt-results .opt-exp-grid { grid-template-columns: minmax(0, 1fr); }
+}
 
 /* Phone (Adam 2026-10-10): the Lineup Builder stacks (lineup above the player table) and its controls wrap, so the
    page stays exactly the screen wide. Placed last so it wins at equal specificity. */

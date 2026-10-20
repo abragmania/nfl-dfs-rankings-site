@@ -2,20 +2,27 @@
 // kicker and defence, both teams required), salary remaining, an objective selector posting to
 // POST /api/showdown/<key>/lineup/optimize, Save lineup and the saved-lineups list against
 // /api/showdown/<key>/lineups (same request/response shapes as classic's lineup routes — see
-// public/js/lineup.js, which this module mirrors in structure but keeps leaner: no per-row lock/exclude
-// UI, since the brief's Lineup Builder description for Showdown does not ask for one — Build always runs
-// a fresh optimize with empty locks/excludes and replaces whatever is currently placed with the result).
+// public/js/lineup.js, which this module mirrors in structure). The pool rows' lock / In / exclude buttons belong to
+// the Showdown Optimizer (./optimizer.js, Adam 2026-10-19) and drive its Make only: the one-lineup Build always runs a
+// fresh optimize with empty locks/excludes and replaces whatever is currently placed with the result (D70: Adam's ruling
+// keeps Build unchanged). The Optimizer's band heads the left column, its Make row ends it, and its batch is drawn full
+// width below both columns, above the swaps and the saved lineups.
 import { escapeHtml, money, dec1 } from "../format.js";
 import { matchupPillHtml } from "../player-row.js";
 import { postShowdownLineupOptimize, getShowdownLineups, postShowdownLineup, deleteShowdownLineup, putShowdownLineupName } from "./api.js";
 import { sdLine, SD_PILL } from "./table.js";
-import { listsHtml, paintLists, wireLists } from "./lineup-lists.js"; // the Captain list and the FLEX list, each sortable (Adam 2026-10-18)
+import { listsHtml, paintLists, wireLists, setListControls } from "./lineup-lists.js"; // the Captain list and the FLEX list, each sortable (Adam 2026-10-18)
+// The Showdown Optimizer (Adam 2026-10-19, sketch A): its band over the builder, its Make row under it, its batch full width below, its controls on the pool rows.
+import { syncOptimizer, optimizerLive, optimizerBandHtml, optimizerGoRowHtml, optimizerResultsBlockHtml, optimizerExcludes, poolChipsRowHtml, listControls, wirePoolControls, wireOptimizer, repaintBandIfFiguresMoved } from "./optimizer.js";
+import { handBuild } from "../lineup-builds.js";
+import { requestFailureText } from "./read-json.js";
+import { lineupModeOf, cashBadgeHtml } from "../lineup-cash.js";
 import { showdownPalette, slotLook, slotLogoHtml, controlsHtml as controlsMarkup } from "./lineup-look.js"; // the classic team rows on the slots and saved rows, the two-row controls (Adam 2026-10-18 9:09 PM)
 import { teamColours, teamColourStyle } from "../lineup-card.js";
 import { syncSwaps, swapsPanelHtml, wireSwaps } from "./lineup-swaps.js"; // the uniqueness swaps, full width below both columns (Adam 2026-10-18)
 import { showAllToggleHtml, wireShowAllButtons } from "../filterbar.js";
 import { store } from "../state.js";
-import { showdownPerSpotText } from "../totals.js";
+import { showdownPerSpotText, shownTotal } from "../totals.js";
 import { syncMeter, meterStripHtml, wireMeter, playerFigures, onFiguresChange, figuresMode, builtOnText, readingFiguresText, reasonHtml } from "./lineup-meter.js"; // uniqueness / projection strip under the slots; every figure on the screen follows its TwoGun / Our sources switch (Q16)
 
 const SALARY_CAP = 50000;
@@ -49,6 +56,8 @@ let lastBoard = null;
 let lastKey = null;
 let savedFetchInFlightKey = null;
 
+setListControls(listControls); // the pool rows' Min % / Max % boxes and lock / In / exclude buttons (live app only)
+
 function loadSavedLineups(key) {
   if (savedFetchInFlightKey === key) return;
   savedFetchInFlightKey = key;
@@ -66,7 +75,7 @@ function loadSavedLineups(key) {
     })
     .catch((e) => {
       state.savedLineups = [];
-      state.savedError = `Could not reach the server: ${e.message}`;
+      state.savedError = requestFailureText(e);
       state.savedLoaded = true;
       commit();
     });
@@ -89,26 +98,28 @@ function isPlacedFlex(id) {
  * default; exported for the tests). The projection is the sum of the figures the slots show (`figures`, the meter's
  * playerFigures by default: it follows the TwoGun / Our sources switch); salary is the board's in both modes. Missing
  * is missing: a placed player who is no longer on the board makes both the salary and the projection unknown (null),
- * and one with no projection makes the projection unknown.
+ * and one with no projection makes the projection unknown. The projection is shownTotal's (each slot rounded as it is
+ * shown, then summed; Adam 2026-10-17), as the results cards, the cash totals and the saved card add it.
  */
 export function computeTotals(board, picked = state, figures = playerFigures) {
   const entries = [];
   if (picked.cpt) entries.push({ id: picked.cpt.id, cpt: true });
   for (const s of picked.flex ?? []) if (s) entries.push({ id: s.id, cpt: false });
   let salaryUsed = 0;
-  let totalProj = 0;
+  let projs = [];
   for (const { id, cpt } of entries) {
     const row = findRow(board, id);
     if (!row) {
       salaryUsed = null;
-      totalProj = null;
+      projs = null;
       continue;
     }
     if (salaryUsed !== null) salaryUsed += (cpt ? row.cptSalary : row.salary) ?? 0;
     // Missing is missing: a placed player with no projection makes the total unknown, never a sum counting him as 0.
     const proj = figures(row, cpt).proj;
-    totalProj = totalProj !== null && Number.isFinite(proj) ? totalProj + proj : null;
+    projs = projs !== null && Number.isFinite(proj) ? [...projs, proj] : null;
   }
+  const totalProj = projs === null ? null : projs.length ? shownTotal(projs) : 0;
   return { salaryUsed, salaryLeft: salaryUsed === null ? null : SALARY_CAP - salaryUsed, totalProj, filled: entries.length };
 }
 
@@ -219,19 +230,29 @@ async function doBuild(key) {
       state.lastResult = { feasible: false, message };
     }
   } catch (e) {
-    state.lastResult = { feasible: false, message: `Could not reach the server: ${e.message}` };
+    state.lastResult = { feasible: false, message: requestFailureText(e) };
   }
   state.building = false;
   commit();
 }
 
+/**
+ * The POST .../lineups body for the lineup built by hand: {name, slots, build}. build is classic's hand record with the figures
+ * switch's mode (lineup-builds.js handBuild, as classic's hand save sends it), because the server learns whose figures to
+ * snapshot only from build.boardMode (🔵 re-check of the saved routes, V8): without it a TwoGun-mode lineup was saved on our
+ * board's figures. Pure; `picked` = {cpt, flex} (the panel's state), `boardMode` = figuresMode().
+ */
+export function handSaveBody(name, picked, boardMode) {
+  const slots = [];
+  if (picked.cpt) slots.push({ slot: "CPT", playerId: String(picked.cpt.id) });
+  for (const s of picked.flex ?? []) if (s) slots.push({ slot: "FLEX", playerId: String(s.id) });
+  return { name, slots, build: handBuild(boardMode) };
+}
+
 async function doSaveLineup(key, name) {
   if (state.saving) return;
-  const slotsPayload = [];
-  if (state.cpt) slotsPayload.push({ slot: "CPT", playerId: String(state.cpt.id) });
-  state.flex.forEach((s) => {
-    if (s) slotsPayload.push({ slot: "FLEX", playerId: String(s.id) });
-  });
+  const body = handSaveBody(name, state, figuresMode());
+  const slotsPayload = body.slots;
   if (slotsPayload.length === 0) {
     state.saveError = "Add at least one player to the lineup before saving.";
     state.saveConfirm = null;
@@ -244,7 +265,7 @@ async function doSaveLineup(key, name) {
   state.saveName = name;
   commit();
   try {
-    const data = await postShowdownLineup(key, { name, slots: slotsPayload });
+    const data = await postShowdownLineup(key, body);
     if (!data || data.ok === false) {
       state.saveError = data?.error?.message ?? "Could not save the lineup.";
     } else {
@@ -253,7 +274,7 @@ async function doSaveLineup(key, name) {
       state.saveConfirm = `Saved "${data.lineup?.name ?? ""}".`;
     }
   } catch (e) {
-    state.saveError = `Could not reach the server: ${e.message}`;
+    state.saveError = requestFailureText(e);
   }
   state.saving = false;
   commit();
@@ -336,6 +357,7 @@ function repaintSlotFigures() {
     const lineup = state.savedLineups.find((l) => l.id === el.dataset.lineupId);
     if (lineup) el.innerHTML = savedProjHtml(lineup, lastBoard);
   });
+  repaintBandIfFiguresMoved(optCtx(lastBoard, lastKey)); // Median / Ceiling and the cash basis follow the switch too
 }
 onFiguresChange(repaintSlotFigures);
 
@@ -448,14 +470,23 @@ export function savedLineupSlotHtml(entry, palette = null) {
 }
 
 // The saved card's projection total (Q16: the figures the switch shows, `figures` = playerFigures by default): null when
-// a man is off the board or has no figure. The salary total is the board's in both modes.
-function savedProjHtml(lineup, board, figures = playerFigures) {
-  let total = 0;
+// a man is off the board or has no figure. The salary total is the board's in both modes. The total is the sum of the six
+// figures each rounded to one decimal as a card row prints them (totals.js shownTotal, ChatGPT wish d, Adam 2026-10-17), as a
+// generated card's total is (optimizer-view.js gppTotalsText): 👁 V4 found this card summing the unrounded figures, so the
+// same six men read 105.0 here and 105.1 on their results card.
+export function savedProjTotal(lineup, board, figures = playerFigures) {
+  const projs = [];
   for (const s of lineup.slots ?? []) {
     const row = findRow(board, s.playerId);
-    const proj = row ? figures(row, s.slot === "CPT").proj : null;
-    total = total !== null && Number.isFinite(proj) ? total + proj : null;
+    const proj = row ? figures(row, String(s.slot ?? "").toUpperCase() === "CPT").proj : null;
+    if (!Number.isFinite(proj)) return null;
+    projs.push(proj);
   }
+  return projs.length ? shownTotal(projs) : 0; // no slots at all: 0, as before
+}
+
+function savedProjHtml(lineup, board, figures = playerFigures) {
+  const total = savedProjTotal(lineup, board, figures);
   return total === null ? "proj unknown (a player has no projection)" : `${dec1(total)} proj`; // the "·" before it is CSS (.saved-lineup-totals), as on classic's card
 }
 
@@ -477,6 +508,7 @@ export function savedLineupCardHtml(lineup, board, figures = playerFigures) {
   const isRenaming = state.renamingId === lineup.id;
   const isConfirmingDelete = state.deleteConfirmId === lineup.id;
   const badges = [
+    lineupModeOf(lineup) === "cash" ? cashBadgeHtml() : "", // a lineup saved from a Cash batch says so, as classic's Saved card does
     incomplete ? `<span class="saved-lineup-badge saved-lineup-badge-warning">Incomplete</span>` : "",
     overCap ? `<span class="saved-lineup-badge saved-lineup-badge-danger">Over cap</span>` : "",
   ].join("");
@@ -546,9 +578,13 @@ function panelHtml(board) {
     : totals.salaryLeft < 0
       ? `${money(totals.salaryUsed)} used · ${money(-totals.salaryLeft)} over`
       : `${money(totals.salaryUsed)} used · ${money(totals.salaryLeft)} left${perSpot ? ` · ${perSpot}` : ""}`;
+  // The Optimizer (sketch A, Adam 2026-10-19): its band heads the left column (wider then, .sd-opt-left), the builder sits under it
+  // unchanged and the Make row (sticky, as classic's footer) ends it; the batch is full width below both columns, its cards four
+  // across (Adam 2026-10-19 11:17 PM: "generated lineups should go 4 across"). Off the live app the pieces are empty, as before.
   return `
     <div class="lineup-layout">
-      <div class="lineup-left">
+      <div class="lineup-left${optimizerLive() ? " sd-opt-left" : ""}">
+        ${optimizerBandHtml(board)}
         ${controlsHtml()}
         <div class="lineup-slots">${slotsHtml(board)}</div>
         ${meterStripHtml()}
@@ -558,19 +594,35 @@ function panelHtml(board) {
         </div>
         <div class="lineup-totals">${totalsLineHtml(totals)}</div>
         ${buildStatusHtml(board)}
+        ${optimizerGoRowHtml()}
       </div>
       <div class="lineup-right">
         <h3 class="lineup-right-title">Showdown players (click a column to sort)</h3>
-        <div class="chip-group lineup-pos-chips">${showAllToggleHtml(store.get().filters.showAllPlayers, `data-action="show-all"`)}</div>
-        ${listsHtml(board, listPlacement())}
+        ${optimizerLive() ? "" : `<div class="chip-group lineup-pos-chips">${showAllToggleHtml(store.get().filters.showAllPlayers, `data-action="show-all"`)}</div>`}
+        ${listsHtml(board, listPlacement(), poolChipsRowHtml())}
       </div>
     </div>
+    ${optimizerResultsBlockHtml(board, state.savedLineups)}
     ${swapsPanelHtml()}
     ${savedLineupsSectionHtml(board)}`;
 }
 
+// The Optimizer's hands into this panel: the redraw, the saved list (its Saved ✓ marks and its saves), and a repaint of both pool lists in place.
+function optCtx(board, key) {
+  return {
+    container: lastContainer,
+    board,
+    key,
+    commit,
+    getSaved: () => state.savedLineups,
+    setSaved: (list) => { state.savedLineups = list; },
+    repaintPool: () => { if (lastContainer) paintLists(lastContainer, listCtx(board)); },
+  };
+}
+
 // `container`: the whole panel, or one list's element when only that list was repainted.
 function wireRowButtons(container, board) {
+  wirePoolControls(container, optCtx(board, lastKey));
   container.querySelectorAll("[data-action='add-cpt']").forEach((btn) => {
     btn.addEventListener("click", () => {
       addCaptain(findRow(board, btn.dataset.id));
@@ -653,6 +705,7 @@ function wire(container, board, key) {
   container.querySelectorAll("[data-action='sd-load']").forEach((btn) => {
     btn.addEventListener("click", () => doLoadLineup(btn.dataset.id));
   });
+  wireOptimizer(optCtx(board, key));
 }
 
 let lastValidatedKey = null;
@@ -675,8 +728,9 @@ export function renderShowdownLineupPanel(container, board, key) {
     state.deleteConfirmId = null;
     if (key) loadSavedLineups(key);
   }
-  syncMeter({ board, key, cpt: state.cpt, flex: state.flex, container }); // the meter repaints only its own strip
-  syncSwaps({ board, key, cpt: state.cpt, flex: state.flex, container }); // after the meter: the swaps exist while it has a complete live lineup
+  syncOptimizer(key, board); // this showdown's Optimizer settings; another showdown's batch is dropped (first: the meter reads its excludes)
+  syncMeter({ board, key, cpt: state.cpt, flex: state.flex, container, excludes: optimizerExcludes() }); // the meter repaints only its own strip; the on-screen mode's excludes, as a batch card's meter has them (🔵 866b0ce B1)
+  syncSwaps({ board, key, cpt: state.cpt, flex: state.flex, container, excludes: optimizerExcludes() }); // after the meter: the swaps exist while it has a complete live lineup; the meter's excludes, so no excluded man is offered
   container.innerHTML = panelHtml(board);
   wire(container, board, key);
 }

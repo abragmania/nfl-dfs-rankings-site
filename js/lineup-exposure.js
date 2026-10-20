@@ -41,9 +41,10 @@ export function minLimit(pct, asked) {
 
 /** {kind: "under" | "over", title} for a new-batch row outside his Min % / Max %, else null; `marks` = {asked, min: {id: pct},
  *  max: {id: pct}} from the Go that made the batch (PROJECT.md Part 4 Optimizer (Min % and soft rules, Adam 2026-10-17)). */
-export function exposureMark(row, marks) {
+export function exposureMark(row, marks, keyOf = null) {
   if (!marks || row?.id == null) return null;
-  const id = String(row.id);
+  // keyOf (Showdown): a role-aware key, e.g. "cpt:<id>" / "flex:<id>", so one man as Captain and as FLEX are two marks; none = the id, as classic.
+  const id = String(keyOf ? keyOf(row) : row.id);
   const count = row.count ?? 0;
   const min = marks.min?.[id] === undefined ? null : minLimit(marks.min[id], marks.asked);
   const max = marks.max?.[id] === undefined ? null : exposureLimit(marks.max[id], marks.asked);
@@ -65,16 +66,18 @@ export function zeroMinRows(exposure, marks, playerOf, inBatch) {
 }
 
 // D55: exposure by position, columns Exposure, Player (the D80 shared cell, so no Team column), Matchup (the pill), Own% (D32); D74: over the new batch or the saved lineups.
-export function optExposureHtml(exposure, subtitle = "", sortDir = "desc", pick = null, marks = null) {
+// `custom` (Showdown, optional): {title, groups: [{title, rows, keyOf}]} replaces the position boxes and the heading; each group is its own table, never summed with another.
+export function optExposureHtml(exposure, subtitle = "", sortDir = "desc", pick = null, marks = null, custom = null) {
   const dir = sortDir === "asc" ? "asc" : "desc";
   const arrow = dir === "asc" ? " ▲" : " ▼";
-  const head = `<tr><th class="sortable sorted opt-exp-pct" data-action="opt-exp-sort" aria-sort="${dir === "asc" ? "ascending" : "descending"}">Exposure${arrow}</th><th>Player</th><th>Matchup</th><th class="opt-exp-own">Own%</th></tr>`;
-  const boxes = OPT_POSITIONS.map((pos) => {
-    const list = Array.isArray(exposure?.[pos]) ? exposure[pos] : [];
+  const head = `<tr><th class="sortable sorted opt-exp-pct" data-action="opt-exp-sort" aria-sort="${dir === "asc" ? "ascending" : "descending"}">Exposure${arrow}</th><th>Player</th><th class="opt-exp-opp">Matchup</th><th class="opt-exp-own">Own%</th></tr>`;
+  const groups = custom?.groups ?? OPT_POSITIONS.map((pos) => ({ title: pos, rows: exposure?.[pos] }));
+  const boxes = groups.map(({ title: pos, rows, keyOf }) => {
+    const list = Array.isArray(rows) ? rows : [];
     const body = list.length
       ? `<table class="opt-exp-table"><thead>${head}</thead><tbody>${sortExposure(list, dir)
           .map((e) => {
-            const mark = exposureMark(e, marks);
+            const mark = exposureMark(e, marks, keyOf);
             const live = liveRowFor(e);
             const nameHtml = pick && e.id != null ? pickButtonHtml({ id: e.id, name: e.name ?? "", chosen: pick.isChosen(e.id) }) : undefined;
             return `
@@ -92,7 +95,7 @@ export function optExposureHtml(exposure, subtitle = "", sortDir = "desc", pick 
   const sub = subtitle ? ` <span class="opt-sub">${escapeHtml(String(subtitle))}</span>` : "";
   return `
     <div class="opt-exposure">
-      <h3 class="opt-title">Exposure by position${sub}</h3>
+      <h3 class="opt-title">${escapeHtml(custom?.title ?? "Exposure by position")}${sub}</h3>
       <div class="opt-exp-grid">${boxes}</div>
     </div>`;
 }

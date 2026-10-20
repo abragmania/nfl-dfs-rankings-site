@@ -46,9 +46,9 @@ export function sortKeysFor(mode, hasMedian) {
 }
 
 /** A stable copy of `items` ordered by figure `key`; `figuresOf(item)` gives the figures. A null figure goes last either way. */
-export function sortLineups(items, key, dir, figuresOf) {
+export function sortLineups(items, key, dir, figuresOf, keys = SORT_KEYS) {
   const list = [...(items ?? [])];
-  if (key === "built" || !SORT_KEYS.some((k) => k.key === key)) return list;
+  if (key === "built" || !keys.some((k) => k.key === key)) return list;
   const sign = dir === "desc" ? -1 : 1;
   const decorated = list.map((item, at) => ({ item, at, v: finite(figuresOf(item)?.[key]) }));
   decorated.sort((a, b) => (a.v === null) - (b.v === null) || (a.v === null ? 0 : sign * (a.v - b.v)) || a.at - b.at);
@@ -56,22 +56,23 @@ export function sortLineups(items, key, dir, figuresOf) {
 }
 
 /** The state a click leaves: the active key flips its direction, another key starts in its own natural direction. */
-export function nextSort(current, key) {
-  const k = SORT_KEYS.find((s) => s.key === key);
+export function nextSort(current, key, keys = SORT_KEYS) {
+  const k = keys.find((s) => s.key === key);
   if (!k) return current;
   if (key === "built") return { key, dir: "asc" };
   if (current?.key === key) return { key, dir: current.dir === "asc" ? "desc" : "asc" };
   return { key, dir: k.dir };
 }
 
-const cleanOne = (raw) => {
-  const k = SORT_KEYS.find((s) => s.key === raw?.key);
+// `keys` (Showdown, optional): the caller's own sort keys, with their own titles (the nine-player titles above are classic's); default SORT_KEYS.
+const cleanOne = (raw, keys) => {
+  const k = keys.find((s) => s.key === raw?.key);
   return k ? { key: k.key, dir: raw.dir === "asc" || raw.dir === "desc" ? raw.dir : k.dir } : { key: "built", dir: "asc" };
 };
 
 /** The persisted `{new, saved}` sort state as storage gives it back; anything unreadable is "As built". */
-export function cleanSortState(raw) {
-  return { new: cleanOne(raw?.new), saved: cleanOne(raw?.saved) };
+export function cleanSortState(raw, keys = SORT_KEYS) {
+  return { new: cleanOne(raw?.new, keys), saved: cleanOne(raw?.saved, keys) };
 }
 
 /** The sort in force for the keys on offer: the chosen one, or As built when it is not on offer here (Geo own in cash,

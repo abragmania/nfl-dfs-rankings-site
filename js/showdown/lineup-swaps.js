@@ -11,6 +11,7 @@ import { escapeHtml, money, dec1 } from "../format.js";
 import { sigFig2, copiesText, meterRequestBody, meterState, lineupSig, NOT_ON_BOARD_WORDS } from "./lineup-meter.js";
 import { posPillHtml } from "./table.js";
 import { teamChipHtml } from "../player-row.js"; // the coloured team chip the six slots and both lists wear
+import { readJson, requestFailureText } from "./read-json.js"; // the one JSON reader (🔵 866b0ce B3, B4)
 
 const MINUS = "−";
 const DELAY_MS = 250; // after the meter's own pause, so a quick run of clicks asks once
@@ -182,22 +183,20 @@ export function swapsHtml(st, opts = {}) {
   return `<div class="sd-swaps" aria-live="polite">${head}${body}</div>`; // not .sd-meter: the meter's repaint looks that class up, and the box look is shared in the stylesheet
 }
 
-/** The request body: the meter's, for the same lineup and mode. Null until all six are placed and on the board. */
-export function swapsRequestBody(board, cpt, flex, mode = "twogun") {
-  return meterRequestBody(board, cpt, flex, mode);
+/** The request body: the meter's, for the same lineup, mode and Optimizer excludes (so an excluded man is never offered as
+ *  the man in). Null until all six are placed and on the board. */
+export function swapsRequestBody(board, cpt, flex, mode = "twogun", excludes = []) {
+  return meterRequestBody(board, cpt, flex, mode, excludes);
 }
 
 // ---------- the fetch, kept here beside the panel (api.js's names are the public site's stand-in contract) ----------
 
-/** POST /api/showdown/<key>/lineup/swaps; resolves to the parsed answer, never throws for a server-side refusal. */
+/** POST /api/showdown/<key>/lineup/swaps; resolves to the parsed answer, never throws for a server-side refusal; a non-JSON
+ *  answer throws read-json.js's NOT_JSON error. */
 export async function postLineupSwaps(key, body, fetchImpl = fetch) {
   const url = `/api/showdown/${encodeURIComponent(key)}/lineup/swaps`;
   const res = await fetchImpl(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-  try {
-    return await res.json();
-  } catch (e) {
-    throw new Error(`${url} did not return JSON (status ${res.status})`);
-  }
+  return readJson(res);
 }
 
 // ---------- state and trigger ----------
@@ -236,11 +235,12 @@ function repaint() {
  * Called before every panel draw (after syncMeter). The swaps follow the meter: they exist only while it has a complete
  * live lineup (`enabled`, which is false on the published site and in sample mode, where the meter itself is off). A lineup,
  * board or mode that differs from the one last asked about shows "working out" and sends one request after a short pause;
- * an answer for a lineup that has since changed is dropped.
+ * an answer for a lineup that has since changed is dropped. `excludes`: the Optimizer's for the mode on screen, as the meter
+ * gets them (optimizer.js optimizerExcludes); none by default.
  */
-export function syncSwaps({ board, key, cpt, flex, container = null, post = postLineupSwaps, delayMs = DELAY_MS, enabled = meterState().sig !== null, mode = meterState().mode }) {
-  last = { board, key, cpt, flex, container, post, delayMs, enabled, mode };
-  const body = enabled && key ? swapsRequestBody(board, cpt, flex, mode) : null;
+export function syncSwaps({ board, key, cpt, flex, container = null, post = postLineupSwaps, delayMs = DELAY_MS, enabled = meterState().sig !== null, mode = meterState().mode, excludes = [] }) {
+  last = { board, key, cpt, flex, container, post, delayMs, enabled, mode, excludes };
+  const body = enabled && key ? swapsRequestBody(board, cpt, flex, mode, excludes) : null;
   if (!body) {
     if (st.sig !== null || st.status !== null) reset();
     return;
@@ -259,7 +259,7 @@ export function syncSwaps({ board, key, cpt, flex, container = null, post = post
       else if (data.error) next = { status: "error", message: data.error.message || "Could not work out the swaps." };
       else next = { status: "ok", data };
     } catch (e) {
-      next = { status: "error", message: `Could not reach the server: ${e.message}` };
+      next = { status: "error", message: requestFailureText(e) };
     }
     if (st.sig !== sig) return; // the lineup (or the mode) changed while this was out
     st.status = next.status;
@@ -267,6 +267,14 @@ export function syncSwaps({ board, key, cpt, flex, container = null, post = post
     st.message = next.message ?? null;
     repaint();
   }, delayMs);
+}
+
+/** The Optimizer's excludes changed (a pool row's exclude): the swaps ask again with them for the last draw's lineup, after
+ *  the meter has (lineup-meter.js resyncMeterExcludes), and only the swaps panel is repainted. Nothing before a first draw. */
+export function resyncSwapsExcludes(excludes) {
+  if (!last) return;
+  syncSwaps({ ...last, excludes, mode: meterState().mode, enabled: meterState().sig !== null });
+  repaint();
 }
 
 /**

@@ -112,6 +112,10 @@ function scoreOf(row) {
   return num(row.proj) ?? 0;
 }
 
+/** The note for a locked man with no projection, who counts as 0. One copy: the showdown Build's TwoGun notes
+ *  (server/showdown/uniqueness-routes.js twoGunBuildNotes) swap exactly this sentence for TwoGun's own. */
+export const lockedNoProjectionNote = (name) => `Locked ${name} has no projection and counts as 0.`;
+
 /** The optimiser's infeasible answer (exported so a caller with no lineup to build answers in the same shape). */
 export function failure(message, cap) {
   return {
@@ -250,7 +254,7 @@ function run(rows, options, cap) {
       continue;
     }
     if (locked && proj === null) {
-      notes.push(`Locked ${row.name ?? key} has no projection and counts as 0.`);
+      notes.push(lockedNoProjectionNote(row.name ?? key));
     } else if (locked && noProjection) {
       notes.push(`Locked ${row.name ?? key} has no projection from any source; his average points per game stands in for one.`);
     }

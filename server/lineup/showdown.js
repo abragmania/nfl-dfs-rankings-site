@@ -13,7 +13,10 @@
 // The lineups maximise projection: the "lev" and "projMinusOwn" objectives are retired (Adam 2026-10-15, Lev
 // measure to be redesigned; projection minus ownership removed), and a request naming one is built on projection
 // with the classic optimiser's note (optimize.js retiredObjectiveNote).
-import { optimizeLineup, retiredObjectiveNote } from "./optimize.js";
+import { optimizeLineup, retiredObjectiveNote, failure } from "./optimize.js";
+import { objectiveScore, figureOf, FIGURE_BUILDS } from "./objective.js"; // pure; the classic Optimizer's ceiling and median scoring
+import { rowIsOut } from "../rank/sidelined.js"; // pure
+import { listNames } from "./soft.js"; // pure; "A, B and C"
 
 export const SHOWDOWN_SLOTS = Object.freeze(["CPT", "FLEX", "FLEX", "FLEX", "FLEX", "FLEX"]);
 export const SHOWDOWN_FLEX = Object.freeze(["QB", "RB", "WR", "TE", "K", "DST"]);
@@ -22,6 +25,23 @@ export const CPT_MULTIPLIER = 1.5;
 
 const num = (v) => (typeof v === "number" && Number.isFinite(v) ? v : null);
 const hasId = (v) => v !== null && v !== undefined && String(v) !== "";
+
+/** The sentence when no lineup can hold every included man (`names`; Adam 2026-10-19, showdown-includes.js), without its
+ *  capital or full stop: the Optimizer's engine (showdown-multi.js) and Build (optimizeShowdown below) say it alike. */
+export function noIncludeFitSentence(names, cap, { rules = false } = {}) {
+  return `no lineup holds every included man (${listNames(names)}) under the locks, the excludes, Max per team, the $${cap.toLocaleString("en-US")} cap and the DraftKings rules${rules ? " and the lineup rules" : ""}`;
+}
+
+/** An includes-failure answer: the optimiser's infeasible shape with its totals missing, never 0 (D29; the same as Build's
+ *  no-rows answer in server/showdown/optimizer-routes.js). */
+const noTotals = (failed) => ({ ...failed, totalProj: null, totalOwn: null });
+
+/** The included people (`included`, a Set of person ids) no entry of `lineup` carries: empty when the lineup holds them all.
+ *  optimizeShowdown checks it before serving a lineup built with includes. Pure. */
+export function includedMissing(lineup, included) {
+  const seated = new Set((lineup ?? []).map((e) => e.personId));
+  return [...(included ?? [])].filter((p) => !seated.has(p));
+}
 
 function idList(value) {
   if (value === null || value === undefined) return [];
@@ -99,6 +119,25 @@ export function rosterable(c) {
   return true;
 }
 
+/** The score one candidate adds in a build (the classic objectiveScore, objective.js): his projection, or for "ceil" or
+ *  "median" the TwoGun figure on his board `row`, the Captain's at 1.5x of whichever (D39). A figure build counts a
+ *  locked man with no figure as 0, never an estimate (classic's rule). "proj" is scoreOf, so its output is unchanged. */
+export function scoreFor(c, row, objective = "proj") {
+  if (!Object.hasOwn(FIGURE_BUILDS, objective)) return scoreOf(c);
+  return objectiveScore(row, 0, objective) * (c.pos === "CPT" ? CPT_MULTIPLIER : 1);
+}
+
+/** Why the search may not auto-roster this candidate in this build: null when it may, "figure" when only his missing
+ *  TwoGun ceiling or median keeps him out (classic counts these in its note), else "other". "proj" is rosterable().
+ *  Ceiling: rosterable() and a ceiling; median: priced, not out, a median, whatever his projection (classic
+ *  rowFlags: medianOf alone decides); a revived man whom TwoGun calls OUT stays out of either (classic revivedOut). */
+export function rosterReason(c, row, objective = "proj") {
+  if (!Object.hasOwn(FIGURE_BUILDS, objective)) return rosterable(c) ? null : "other";
+  if (num(c.salary) === null || (objective === "ceil" ? !rosterable(c) : rowIsOut(row))) return "other";
+  if (figureOf(row, objective) === null) return "figure";
+  return (c.flags ?? []).includes("revived") && row?.tg?.call === "OUT" ? "other" : null;
+}
+
 /** cheapest[i][k] for k = 0..5: the sum of the k lowest salaries among flex[i..] (Infinity when fewer than k are
  *  left), the least k more men can cost. One backward pass keeping the five lowest seen, O(5n). */
 export function cheapestTable(flex) {
@@ -130,10 +169,13 @@ export function cheapestTable(flex) {
  *            out the best lineup found so far is returned (or null), and stats.aborted says it was not proven best;
  *   ruleGate (capt, lockedFlex, flex) -> {open(start, left), leaf(), add(c), remove(c)}: hard lineup rules (D81,
  *            showdown-rules.js searchGate), cutting every branch that breaks one or can no longer meet one.
+ *   includePeople  Set of person ids every lineup must hold at Captain or FLEX (Adam 2026-10-19, showdown-includes.js):
+ *            under each Captain, every included man who is not that Captain is held as a FLEX, so the role each one
+ *            gets is the one the best lineup gives him. Empty or absent, the search is exactly as before.
  * Forced men are `lockIds`. A branch whose cheapest possible completion already breaks the cap is cut (sound, so the
  * lineup found never changes).
  */
-export function exactSearch(pool, { lockIds, cap, maxFromTeam, floor, overlap = null, maxSteps = Infinity, stats = null, ruleGate = null }) {
+export function exactSearch(pool, { lockIds, cap, maxFromTeam, floor, overlap = null, maxSteps = Infinity, stats = null, ruleGate = null, includePeople = null }) {
   const locks = new Set(lockIds);
   // Every lock must be rosterable, and at most one of them can be the Captain.
   if (![...locks].every((id) => pool.some((c) => c.id === id))) return null;
@@ -171,25 +213,45 @@ export function exactSearch(pool, { lockIds, cap, maxFromTeam, floor, overlap = 
   let bestScore = Number.isFinite(floor) ? floor - 1e-9 : -Infinity;
   let steps = 0;
   let aborted = false;
+  // Includes: each included man's FLEX candidate in the pool (a man with none can only be the Captain).
+  const included = includePeople && includePeople.size ? includePeople : null;
+  const flexOf = new Map();
+  if (included) for (const c of pool) if (c.pos !== "CPT" && included.has(c.personId) && !flexOf.has(c.personId)) flexOf.set(c.personId, c);
   for (const c of lockedFlex) shift(c, 1);
   for (const capt of captains) {
     if (aborted) break;
     if (lockedFlex.some((c) => c.personId === capt.personId)) continue;
-    const baseSalary = capt.salary + lockedFlex.reduce((a, c) => a + c.salary, 0);
+    // The FLEX this Captain's lineups must hold: the locked FLEX, plus every included man who is not this Captain and
+    // not already locked (his FLEX candidate is held for this Captain only). With no includes these are the locked FLEX.
+    let held = lockedFlex;
+    let flexOpen = flexAll;
+    if (included) {
+      const owed = [...included].filter((p) => p !== capt.personId && !lockedPeople.has(p));
+      const men = owed.map((p) => flexOf.get(p));
+      if (men.some((c) => !c)) continue;
+      held = [...lockedFlex, ...men.sort(byScore)];
+      const owedSet = new Set(owed);
+      flexOpen = flexAll.filter((c) => !owedSet.has(c.personId));
+    }
+    const needHere = 5 - held.length;
+    if (needHere < 0) continue;
+    const baseSalary = capt.salary + held.reduce((a, c) => a + c.salary, 0);
     if (baseSalary > cap) continue;
-    const baseScore = capt.score + lockedFlex.reduce((a, c) => a + c.score, 0);
+    const baseScore = capt.score + held.reduce((a, c) => a + c.score, 0);
     const teams = new Map();
-    for (const c of [capt, ...lockedFlex]) teams.set(c.team, (teams.get(c.team) ?? 0) + 1);
+    for (const c of [capt, ...held]) teams.set(c.team, (teams.get(c.team) ?? 0) + 1);
     if ([...teams.values()].some((n) => n > maxFromTeam)) continue;
-    const flex = flexAll.filter((c) => c.personId !== capt.personId);
-    if (flex.length < need) continue;
-    // Upper bound for this Captain: the best `need` remaining scores.
-    const top = flex.slice(0, need).reduce((a, c) => a + c.score, 0);
+    const flex = flexOpen.filter((c) => c.personId !== capt.personId);
+    if (flex.length < needHere) continue;
+    // Upper bound for this Captain: the best `needHere` remaining scores.
+    const top = flex.slice(0, needHere).reduce((a, c) => a + c.score, 0);
     if (baseScore + top <= bestScore + 1e-9) continue;
     const cheapest = cheapestTable(flex);
-    if (baseSalary + cheapest[0][need] > cap) continue;
-    const gate = ruleGate ? ruleGate(capt, lockedFlex, flex) : null;
+    if (baseSalary + cheapest[0][needHere] > cap) continue;
+    const gate = ruleGate ? ruleGate(capt, held, flex) : null;
 
+    const heldExtra = held.slice(lockedFlex.length); // the included men held for this Captain (none without includes)
+    for (const c of heldExtra) shift(c, 1);
     shift(capt, 1);
     const pick = [];
     const dfs = (start, score, salary) => {
@@ -198,12 +260,12 @@ export function exactSearch(pool, { lockIds, cap, maxFromTeam, floor, overlap = 
         aborted = true;
         return;
       }
-      const left = need - pick.length;
+      const left = needHere - pick.length;
       if (gate && !gate.open(start, left)) return;
       if (left === 0) {
         if (violations === 0 && score > bestScore + 1e-9 && (!gate || gate.leaf())) {
           bestScore = score;
-          best = [capt, ...lockedFlex, ...pick];
+          best = [capt, ...held, ...pick];
         }
         return;
       }
@@ -231,6 +293,7 @@ export function exactSearch(pool, { lockIds, cap, maxFromTeam, floor, overlap = 
     };
     if (violations === 0) dfs(0, baseScore, baseSalary);
     shift(capt, -1);
+    for (const c of heldExtra) shift(c, -1);
   }
   if (stats) {
     stats.steps = steps;
@@ -250,10 +313,12 @@ export function exactSearch(pool, { lockIds, cap, maxFromTeam, floor, overlap = 
  * (exactSearch above) then finds the provably best lineup. That lineup is handed back to the classic optimiser with
  * all six locked, so the result is checked for legality and presented exactly as classic presents a lineup.
  */
-export function optimizeShowdown(rows, { objective = "proj", locks, excludes, cap = 50000 } = {}) {
+export function optimizeShowdown(rows, { objective = "proj", locks, excludes, cap = 50000, maxPerTeam: maxPerTeamGiven, includes } = {}) {
+  const maxPerTeam = maxPerTeamGiven ?? SHOWDOWN_MAX_FROM_TEAM; // null (not only undefined) means DraftKings' five
   const list = Array.isArray(rows) ? rows : [];
   const excludeIds = new Set(idList(excludes));
   const lockIds = idList(locks);
+  const includeIds = idList(includes);
   // Excluding a person's FLEX id excludes the person: his Captain candidate goes too.
   const personExcluded = new Set(list.filter((r) => excludeIds.has(String(r.id))).map((r) => String(r.id)));
   const candidates = [];
@@ -268,12 +333,29 @@ export function optimizeShowdown(rows, { objective = "proj", locks, excludes, ca
   const allExcludes = [...excludeIds];
   for (const c of candidates) if (personExcluded.has(c.personId) && !allExcludes.includes(c.id)) allExcludes.push(c.id);
   const excluded = new Set(allExcludes);
+  const lockSet = new Set(lockIds);
+  // Includes (Adam 2026-10-19; the route refuses a bad set first with showdown-includes.js readIncludes): the persons
+  // named by FLEX or Captain id, a locked man dropped (the lock already puts him in). An id not on the board builds nothing.
+  const included = new Set();
+  const namesOf = (people) => [...people].map((p) => list.find((r) => r && String(r.id) === p)?.name ?? p);
+  if (includeIds.length) {
+    const personOf = new Map();
+    for (const row of list) {
+      if (!row || !hasId(row.id)) continue;
+      personOf.set(String(row.id), String(row.id));
+      if (hasId(row.cptId)) personOf.set(String(row.cptId), String(row.id));
+    }
+    const offBoard = includeIds.filter((id) => !personOf.has(id));
+    if (offBoard.length) return { ...noTotals(failure(`includes names a player who is not on the board: ${offBoard.join(", ")}`, cap)), captain: null };
+    const lockedPersons = new Set(lockIds.map((id) => byCandId.get(id)?.personId).filter(hasId));
+    for (const id of includeIds) if (!lockedPersons.has(personOf.get(id))) included.add(personOf.get(id));
+  }
   // The classic run must not auto-roster a man the exact search refuses (rosterable: a projection of 0 or less, Adam
   // 2026-10-18 and D45), or its lineup would stand whenever the exact search cannot beat it. Unlocked only, so no
-  // lock is ever also an exclude; these are left out of `excluded`, which holds Adam's own excludes.
-  const lockSet = new Set(lockIds);
+  // lock is ever also an exclude; these are left out of `excluded`, which holds Adam's own excludes. An included man
+  // is not among them, so the classic check of the exact lineup below may hold him.
   const classicExcludes = [...allExcludes];
-  for (const c of candidates) if (!lockSet.has(c.id) && !rosterable(c) && !excluded.has(c.id)) classicExcludes.push(c.id);
+  for (const c of candidates) if (!lockSet.has(c.id) && !rosterable(c) && !excluded.has(c.id) && !included.has(c.personId)) classicExcludes.push(c.id);
 
   // The asked objective goes to the classic optimiser as asked, so a retired one gets its note there and is built
   // on projection.
@@ -283,7 +365,7 @@ export function optimizeShowdown(rows, { objective = "proj", locks, excludes, ca
     cap,
     slots: [...SHOWDOWN_SLOTS],
     flexPositions: [...SHOWDOWN_FLEX],
-    maxFromTeam: SHOWDOWN_MAX_FROM_TEAM,
+    maxFromTeam: maxPerTeam,
     stackQbWith: 0
   };
 
@@ -297,14 +379,22 @@ export function optimizeShowdown(rows, { objective = "proj", locks, excludes, ca
     && Number.isFinite(cap) && cap > 0);
   if (validRequest) {
     const locked = new Set(lockIds);
+    // An included man's priced rows are in the pool whatever his projection, as a lock is (Adam 2026-10-19).
     const pool = candidates
-      .filter((c) => !excluded.has(c.id) && (locked.has(c.id) || rosterable(c)))
+      .filter((c) => !excluded.has(c.id) && (locked.has(c.id) || rosterable(c) || (included.has(c.personId) && num(c.salary) !== null)))
       .map((c) => ({ ...c, salary: num(c.salary) ?? 0, score: scoreOf(c) }));
-    const plainScore = plain.feasible ? plain.lineup.reduce((a, e) => a + scoreOf(byCandId.get(String(e.id))), 0) : -Infinity;
-    const best = exactSearch(pool, { lockIds, cap, maxFromTeam: SHOWDOWN_MAX_FROM_TEAM, floor: plainScore });
+    // The classic run knows no includes, so its score is no floor when there are any.
+    const plainScore = plain.feasible && !included.size ? plain.lineup.reduce((a, e) => a + scoreOf(byCandId.get(String(e.id))), 0) : -Infinity;
+    const best = exactSearch(pool, { lockIds, cap, maxFromTeam: maxPerTeam, floor: plainScore, includePeople: included.size ? included : null });
     if (best) {
       const exact = optimizeLineup(candidates, { ...options, locks: best.map((c) => c.id) });
-      if (exact.feasible) result = { ...exact, notes: plain.feasible ? plain.notes : exact.notes };
+      // With includes the exact run locks all six, so its notes would call the included men locked: the classic run's stand.
+      if (exact.feasible) result = { ...exact, notes: plain.feasible ? plain.notes : included.size ? plain.notes ?? [] : exact.notes };
+    }
+    // The classic lineup never stands in for one that holds the includes: none was found, so none is built.
+    if (included.size && result === plain) {
+      const sentence = noIncludeFitSentence(namesOf(included), cap);
+      result = noTotals(failure(`${sentence[0].toUpperCase()}${sentence.slice(1)}.`, cap));
     }
   }
 
@@ -312,5 +402,13 @@ export function optimizeShowdown(rows, { objective = "proj", locks, excludes, ca
     const c = byCandId.get(String(entry.id));
     return { ...entry, personId: c?.personId ?? String(entry.id), realPos: c?.realPos ?? entry.pos };
   });
+  // A lineup built with includes is served only if it holds every included man; a failure with a sentence, never a throw.
+  if (included.size && result.feasible) {
+    const missing = includedMissing(lineup, included);
+    if (missing.length) {
+      const sentence = `Could not build a lineup that holds ${listNames(namesOf(missing))}, who ${missing.length > 1 ? "are" : "is"} included, so no lineup was made.`;
+      return { ...noTotals(failure(sentence, cap)), captain: null };
+    }
+  }
   return { ...result, lineup, captain: lineup.find((e) => e.slot === "CPT") ?? null, salaryUsed: result.salaryUsed };
 }

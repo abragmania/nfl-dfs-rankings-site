@@ -40,8 +40,8 @@ export function cashBasis(rows, boardMode) {
   return Array.isArray(rows) && rows.some((row) => medianOf(row) !== null) ? { basis: "median" } : { fatal: NO_MEDIAN_SENTENCE };
 }
 
-/** Sent: not absent, null, or an empty object or list. */
-function carried(value) {
+/** Sent: not absent, null, or an empty object or list. Exported for showdown-cash.js (one copy). */
+export function carried(value) {
   if (value === undefined || value === null) return false;
   if (Array.isArray(value)) return value.length > 0;
   if (typeof value === "object") return Object.values(value).some((v) => v !== undefined);

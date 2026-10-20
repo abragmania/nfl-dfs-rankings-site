@@ -8,6 +8,9 @@ const num = (v) => (typeof v === "number" && Number.isFinite(v) ? v : null);
 /** The refusal when a ceiling build is asked of a board with no TwoGun ceiling on any row. */
 export const NO_CEILING_SENTENCE = "This board has no TwoGun ceilings (current mode, or no TwoGun board could be read), so lineups cannot be built by ceiling; build by projection.";
 
+/** The refusal when a median build is asked of a GPP board with no TwoGun median on any row (the cash twin is cash.js NO_MEDIAN_SENTENCE). */
+export const NO_MEDIAN_GPP_SENTENCE = "This board has no TwoGun medians, so lineups cannot be built by median; build by projection.";
+
 /** The score one candidate adds: his projection, or for "ceil" TwoGun's published ceiling (D25 as amended
  *  2026-10-15), 0 for a locked player without one, never an estimate; a typed projection never moves a ceiling. */
 export function objectiveScore(row, proj, objective) {
