@@ -1,60 +1,68 @@
 // The Tracked DFS players page's view, pure (no DOM), so tests import it directly (Adam 2026-10-20: "make it something I can
 // sort and click through that isn't ugly"). public/js/tracked-players.js draws what these functions return.
 //
-// The page's rows are every username in lists.json (the contest entrants, from tools/tracked_lists.mjs) plus every name in the
-// registry (the RotoGrinders top 100 and Adam's marks) that entered none of the contests. Each row sits on "lists": the top 100,
-// each contest it entered, and Adam's marks. The list chooser's rules use the marks as they were when the page loaded, so ticking
-// a name never moves it out of the list being worked through; its Marked badge, the Hide marked filter and the counts use the
-// live marks. Crossover is the rule Adam worked from on 2026-10-19 (65 names): two or more of the top 100, the high-dollar
-// games, the double-up and his marks; the GPP (DAL@GB) does not count toward it (code review, 2026-10-20).
+// Adam 2026-10-20 2:10 PM: "I do NOT care about contest results! have columns for top 100, the high stakes entries, and then the
+// lower stakes / larger field one that I uploaded." The page is about the WAS@SF contests only: its rows are every username that
+// entered one of the high-dollar games or the double-up, plus every RotoGrinders top-100 account (whether or not he entered); the
+// DAL@GB entrants who are in neither drop out. Its columns are the mark, the name, the top-100 rank and one YES column per
+// contest. Each row sits on "lists": the top 100, each contest it entered, and Adam's marks. The list chooser's rules use the marks
+// as they were when the page loaded, so ticking a name never moves it out of the list being worked through; the Hide marked filter
+// and the counts use the live marks. Crossover is the rule Adam worked from on 2026-10-19 (65 names): two or more of the top 100,
+// the high-dollar games, the double-up and his marks.
 
 export const PAGE_SIZE = 300;
 
-// The Double-up and DAL@GB pills are labelled from lists.json's contests (listLabels), so a new week's contests name themselves.
+// The list chips, in order. High $ is either high-dollar game; the others read their column.
 export const LIST_CHOICES = [
-  { id: "crossover", label: "Crossover" },
-  { id: "doubleup", label: "Double-up", kind: "doubleUp" },
-  { id: "dalgb", label: "DAL@GB", kind: "gpp" },
   { id: "all", label: "All" },
+  { id: "top100", label: "Top 100" },
+  { id: "highdollar", label: "High $" },
+  { id: "doubleup", label: "Double-up" },
+  { id: "crossover", label: "Crossover" },
 ];
 
-/** Each pill's label: { crossover, doubleup, dalgb, all }; a contest list takes the short label of its contest kind's first contest. */
-export function listLabels(contests) {
-  return Object.fromEntries(LIST_CHOICES.map((l) => [l.id, (l.kind && contests.find((c) => c.kind === l.kind)?.short) || l.label]));
-}
+// The default order is not one column: top-100 men first by rank, then YES in both high-dollar games, then in one, then YES in the
+// double-up, then name. Any header click replaces it with that column alone. Adam 2:19 PM: "I just need a YES if they were in it;
+// don't need any more details", so a contest column shows YES or blank and no entry counts are shown or sorted.
+export const DEFAULT_SORT = { col: "default", dir: "desc" };
 
-// Each column's sort, its first-click direction (lower is better for the ranks, so they open ascending) and its header.
-export const COLUMNS = [
-  { id: "mark", label: "Mark", dir: "desc" },
-  { id: "name", label: "Name", dir: "asc" },
-  { id: "on", label: "On", dir: "desc" },
-  { id: "entries", label: "Entries", dir: "desc" },
-  { id: "best", label: "Best rank", dir: "asc" },
-  { id: "avg", label: "Avg points", dir: "desc" },
-  { id: "rg", label: "RG rank", dir: "asc" },
-];
-export const DEFAULT_SORT = { col: "entries", dir: "desc" };
-
-// Badge order: Top 100, the high-dollar games, the double-up, the GPP, then Marked (contests of a kind keep lists.json's order).
-const KIND_ORDER = { highDollar: 0, doubleUp: 1, gpp: 2 };
+// The contests the page is about, in column order: the high-dollar games, then the double-up (contests of a kind keep lists.json's order).
+const KIND_ORDER = { highDollar: 0, doubleUp: 1 };
 
 const lower = (s) => String(s).trim().toLowerCase();
 
-/** The contests in badge order, each with its badge slot (1..n, which colour style.css gives it). */
+/** The page's contests in column order (the high-dollar games, then the double-up); any other kind, the DAL@GB GPP included, is left out. */
 export function orderedContests(contests) {
   return contests
     .map((c, i) => ({ c, i }))
-    .sort((a, b) => (KIND_ORDER[a.c.kind] ?? 9) - (KIND_ORDER[b.c.kind] ?? 9) || a.i - b.i)
-    .map(({ c }, slot) => ({ ...c, slot: slot + 1 }));
+    .filter(({ c }) => c.kind in KIND_ORDER)
+    .sort((a, b) => KIND_ORDER[a.c.kind] - KIND_ORDER[b.c.kind] || a.i - b.i)
+    .map(({ c }) => ({ ...c }));
+}
+
+/**
+ * The table's columns: mark, name, top 100 (the RotoGrinders rank), then one YES column per contest (id = the contest's id, label
+ * = its short name, a contest column opens YES first, the rank opens lowest first). On the public site, where marking runs
+ * in the app, no Mark column.
+ */
+export function columnsFor(site, contests) {
+  const cols = [
+    { id: "mark", label: "Mark", dir: "desc" },
+    { id: "name", label: "Name", dir: "asc" },
+    { id: "top100", label: "Top 100", dir: "asc", title: "RotoGrinders overall rank (blank when not in the top 100)" },
+    ...contests.map((c) => ({ id: c.id, label: c.short ?? c.id, dir: "desc", title: `${c.label}: YES when he entered it, blank when not` })),
+  ];
+  return site ? cols.filter((c) => c.id !== "mark") : cols;
 }
 
 /**
  * { contests, rows, marked: Set(lowerName) } from GET /api/tracked-players' registry and lists. Rows are ordered by name
  * (case-insensitive), which is the order ties keep under every sort. A row: { key, name, contests, rgRank, rgName, top100,
- * onLoad: Set(listKey) } where listKey is "top100", a contest id or "marked".
+ * onLoad: Set(listKey) } where contests holds only the page's contests and listKey is "top100", a contest id or "marked".
  */
 export function buildModel(registry, lists) {
   const contests = orderedContests(lists.contests);
+  const ids = new Set(contests.map((c) => c.id));
   const top = new Map(registry.rotogrindersTop100.map((p) => [lower(p.dk), p]));
   const marked = new Set(registry.adam.map(lower));
   const byKey = new Map();
@@ -62,12 +70,13 @@ export function buildModel(registry, lists) {
     const key = lower(name);
     if (byKey.has(key) || key === "") return;
     const t = top.get(key);
-    byKey.set(key, { key, name: String(name).trim(), contests: contestsOf, rgRank: rgRank ?? t?.rank ?? null, rgName: t?.rgName ?? null, top100: Boolean(t) || rgRank !== null });
+    const mine = Object.fromEntries(Object.entries(contestsOf).filter(([id]) => ids.has(id)));
+    const top100 = Boolean(t) || rgRank !== null;
+    if (!top100 && Object.keys(mine).length === 0) return; // in none of the page's contests and not in the top 100
+    byKey.set(key, { key, name: String(name).trim(), contests: mine, rgRank: rgRank ?? t?.rank ?? null, rgName: t?.rgName ?? null, top100 });
   };
   for (const p of lists.players) add(p.name, p.contests ?? {}, Number.isInteger(p.rgRank) ? p.rgRank : null);
   for (const p of registry.rotogrindersTop100) add(p.dk);
-  for (const n of registry.adam) add(n);
-  for (const n of registry.players) add(n);
   const rows = [...byKey.values()].sort((a, b) => a.key.localeCompare(b.key) || (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
   for (const r of rows) {
     r.onLoad = new Set(Object.keys(r.contests));
@@ -82,65 +91,16 @@ const idsOfKind = (contests, kind) => contests.filter((c) => c.kind === kind).ma
 /** True when the row belongs on list `list` (by the marks at page load). */
 export function onList(row, list, contests) {
   const has = (ids) => ids.some((id) => row.contests[id]);
-  if (list === "crossover") {
-    const gpp = idsOfKind(contests, "gpp");
-    return [...row.onLoad].filter((k) => !gpp.includes(k)).length >= 2;
-  }
-  if (list === "doubleup") return has(idsOfKind(contests, "doubleUp")) && !has(idsOfKind(contests, "highDollar"));
-  if (list === "dalgb") return has(idsOfKind(contests, "gpp")) && row.onLoad.size === 1;
+  if (list === "crossover") return row.onLoad.size >= 2;
+  if (list === "top100") return row.top100;
+  if (list === "highdollar") return has(idsOfKind(contests, "highDollar"));
+  if (list === "doubleup") return has(idsOfKind(contests, "doubleUp"));
   return true;
 }
 
-/** Each list's row count, for the pills: { crossover, doubleup, dalgb, all }. */
+/** Each list's row count, for the chips: { all, top100, highdollar, doubleup, crossover }. */
 export function listCounts(model) {
   return Object.fromEntries(LIST_CHOICES.map((l) => [l.id, model.rows.filter((r) => onList(r, l.id, model.contests)).length]));
-}
-
-/** The contest ids a list is about (its Best rank, Avg points and Multi-entry filter use them): the double-up's or the GPP's, else every contest. */
-export function shownContestIds(list, contests) {
-  if (list === "doubleup") return idsOfKind(contests, "doubleUp");
-  if (list === "dalgb") return idsOfKind(contests, "gpp");
-  return contests.map((c) => c.id);
-}
-
-/** Entries summed over every contest the row entered (the Entries column), and the per-contest split for its hover. */
-export function entriesOf(row, contests) {
-  const split = contests.filter((c) => row.contests[c.id]).map((c) => ({ id: c.id, label: c.label, entries: row.contests[c.id].entries }));
-  return { total: split.reduce((s, x) => s + x.entries, 0), split };
-}
-
-/**
- * Best rank and average points over the contests `ids`. The best is the entry placed highest as a share of its field (rank / field
- * entries), so a rank in the 71-entry game and one in the 78,431-entry GPP compare fairly; within one contest that is the plain
- * rank. Average points is the entries-weighted mean. null where the row entered none of them.
- */
-export function statsOver(row, ids, contests) {
-  const byId = new Map(contests.map((c) => [c.id, c]));
-  let best = null;
-  let entries = 0;
-  let points = 0;
-  for (const id of ids) {
-    const s = row.contests[id];
-    if (!s) continue;
-    const c = byId.get(id);
-    const frac = s.best / c.entries;
-    if (best === null || frac < best.frac) best = { rank: s.best, of: c.entries, frac, label: c.label, live: c.liveSnapshot === true, snapshotAt: c.snapshotAt ?? null };
-    entries += s.entries;
-    points += s.avgPoints * s.entries;
-  }
-  return { best, avg: entries ? points / entries : null };
-}
-
-/**
- * A placing as the share of the field it beat into, "top 2.4%", the Best rank column's main figure (its sort is the same share).
- * Rounded UP at the shown precision (whole numbers from 10%, tenths from 1%, hundredths below), so the sentence stays true:
- * #3 of 78,431 (0.0038%) reads "top 0.01%", never "top 0%".
- */
-export function shareText(frac) {
-  const pct = frac * 100;
-  const step = pct >= 10 ? 1 : pct >= 1 ? 0.1 : 0.01;
-  const up = Math.ceil(Math.round((pct / step) * 1e6) / 1e6) * step; // the inner round drops float noise such as 2.4000000001
-  return `top ${up.toFixed(step === 1 ? 0 : step === 0.1 ? 1 : 2)}%`;
 }
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -160,7 +120,7 @@ export function snapshotText(live, at, timeText = () => null) {
   return t ? `live snapshot, ${t}` : "live snapshot (time not recorded)";
 }
 
-/** The source line's contest part: contests grouped by snapshotText, "High $ 675, Double-up: live snapshot ...; DAL@GB: final". */
+/** The source line's contest part: contests grouped by snapshotText, "High $ 675, Double-up: live snapshot ...; High $ 714: final". */
 export function snapshotSummary(contests, timeText = () => null) {
   const groups = new Map();
   for (const c of contests) {
@@ -170,33 +130,11 @@ export function snapshotSummary(contests, timeText = () => null) {
   return [...groups].map(([text, shorts]) => `${shorts.join(", ")}: ${text}`).join("; ");
 }
 
-/** False when nobody on the list has 2 or more entries in the list's contests (a single-entry contest), so the Multi-entry filter is off there. */
-export function multiPossible(model, list) {
-  const ids = shownContestIds(list, model.contests);
-  return model.rows.some((r) => onList(r, list, model.contests) && isMultiEntry(r, ids));
-}
-
-/** The badges a row shows, in order: [{ key, short, title, slot }] (slot 0 = Top 100, 1..n = the contests, "marked"). */
-export function badgesFor(row, contests, marked) {
-  const out = [];
-  if (row.top100) out.push({ key: "top100", short: "Top 100", title: row.rgRank ? `RotoGrinders top 100, #${row.rgRank}` : "RotoGrinders top 100", slot: 0 });
-  for (const c of contests) if (row.contests[c.id]) out.push({ key: c.id, short: c.short ?? c.id, title: c.label, slot: c.slot });
-  if (marked.has(row.key)) out.push({ key: "marked", short: "Marked", title: "Marked by you", slot: "marked" });
-  return out;
-}
-
-/** Every value a row sorts by on list `list`; null sorts last in both directions. */
-export function sortValues(row, list, model) {
-  const s = statsOver(row, shownContestIds(list, model.contests), model.contests);
-  return {
-    mark: model.marked.has(row.key) ? 1 : 0,
-    name: row.key,
-    on: badgesFor(row, model.contests, model.marked).length,
-    entries: entriesOf(row, model.contests).total,
-    best: s.best ? s.best.frac : null,
-    avg: s.avg,
-    rg: row.rgRank,
-  };
+/** Every value a row sorts by: the mark, the name, the RG rank and, per contest, 1 for YES (null for none, so YES rows come first either way); null sorts last in both directions. */
+export function sortValues(row, model) {
+  const values = { mark: model.marked.has(row.key) ? 1 : 0, name: row.key, top100: row.rgRank };
+  for (const c of model.contests) values[c.id] = row.contests[c.id] ? 1 : null;
+  return values;
 }
 
 /** Sorts rows by `col` and `dir` ("asc" or "desc"). Ties keep the input order in both directions; a missing value goes last either way. */
@@ -213,33 +151,34 @@ export function sortRows(rows, col, dir, valueOf) {
   return keyed.map((k) => k.row);
 }
 
-/** The next sort after a header click: the same column flips, a new one opens in its own first direction. */
-export function nextSort(sort, col) {
-  if (sort.col === col) return { col, dir: sort.dir === "asc" ? "desc" : "asc" };
-  return { col, dir: COLUMNS.find((c) => c.id === col)?.dir ?? "desc" };
+/** The default order: top-100 men by rank, then YES in both high-dollar games, then in one, then YES in the double-up, then name. */
+export function defaultSortRows(rows, contests) {
+  const yesIn = (row, ids) => ids.filter((id) => row.contests[id]).length;
+  const hd = idsOfKind(contests, "highDollar");
+  const du = idsOfKind(contests, "doubleUp");
+  const keyed = rows.map((row, i) => ({ row, i, rg: row.rgRank, hd: yesIn(row, hd), du: yesIn(row, du) }));
+  keyed.sort((a, b) => (a.rg === null) - (b.rg === null) || (a.rg ?? 0) - (b.rg ?? 0) || b.hd - a.hd || b.du - a.du || a.i - b.i); // rows come in name order
+  return keyed.map((k) => k.row);
 }
 
-/** True when the row has 2 or more entries in one of the contests `ids`. */
-export function isMultiEntry(row, ids) {
-  return ids.some((id) => (row.contests[id]?.entries ?? 0) >= 2);
+/** The next sort after a header click: the same column flips, a new one opens in its own first direction (from the `columns` list). */
+export function nextSort(sort, col, columns) {
+  if (sort.col === col) return { col, dir: sort.dir === "asc" ? "desc" : "asc" };
+  return { col, dir: columns.find((c) => c.id === col)?.dir ?? "desc" };
 }
 
 /**
  * The rows the table shows: on the chosen list, matching the search (substring, case-insensitive), without marked names when
- * hideMarked, only multi-entry names when multiOnly, sorted. view: { list, query, hideMarked, multiOnly, sort: { col, dir } }.
+ * hideMarked, sorted. view: { list, query, hideMarked, sort: { col, dir } }.
  */
 export function viewRows(model, view) {
   const q = lower(view.query ?? "");
-  const ids = shownContestIds(view.list, model.contests);
   const rows = model.rows.filter(
-    (r) =>
-      onList(r, view.list, model.contests) &&
-      (q === "" || r.key.includes(q)) &&
-      !(view.hideMarked && model.marked.has(r.key)) &&
-      !(view.multiOnly && !isMultiEntry(r, ids))
+    (r) => onList(r, view.list, model.contests) && (q === "" || r.key.includes(q)) && !(view.hideMarked && model.marked.has(r.key))
   );
   const sort = view.sort ?? DEFAULT_SORT;
-  const values = new Map(rows.map((r) => [r, sortValues(r, view.list, model)]));
+  if (sort.col === DEFAULT_SORT.col) return defaultSortRows(rows, model.contests);
+  const values = new Map(rows.map((r) => [r, sortValues(r, model)]));
   return sortRows(rows, sort.col, sort.dir, (r) => values.get(r));
 }
 
@@ -262,12 +201,33 @@ export function withMark(marked, key, on) {
   return next;
 }
 
-/** The table's columns: every column in the app; on the public site, where marking runs in the app, no Mark column. */
-export function columnsFor(site) {
-  return site ? COLUMNS.filter((c) => c.id !== "mark") : COLUMNS;
-}
-
-/** Names with at least one contest entry: the "M names across N contests" count. */
+/** Names with at least one entry in the page's contests: the "M names across N contests" count. */
 export function namesInContests(model) {
   return model.rows.filter((r) => Object.keys(r.contests).length > 0).length;
+}
+
+/** The row-focus step a key asks for: +1 for Down and j, -1 for Up and k, else 0. */
+export function keyStep(key) {
+  if (key === "ArrowDown" || key === "j") return 1;
+  if (key === "ArrowUp" || key === "k") return -1;
+  return 0;
+}
+
+/** The index after moving `delta` rows from `index` (-1 = no row focused yet) among `count` rows: stops at the first and last, lands on the first row when none was focused, -1 when there are no rows. */
+export function stepIndex(index, count, delta) {
+  if (count <= 0) return -1;
+  if (index < 0) return 0;
+  return Math.min(count - 1, Math.max(0, index + delta));
+}
+
+/** The name key to focus after moving `delta` rows from `key` in the ordered `keys` (null when there are none). */
+export function stepKey(keys, key, delta) {
+  const i = stepIndex(key === null ? -1 : keys.indexOf(key), keys.length, delta);
+  return i < 0 ? null : keys[i];
+}
+
+/** Which row keeps the focus after a sort, filter or list change: the same name while it is still listed, else the first row; none stays none. */
+export function cursorAfter(keys, key) {
+  if (key === null) return null;
+  return keys.includes(key) ? key : (keys[0] ?? null);
 }

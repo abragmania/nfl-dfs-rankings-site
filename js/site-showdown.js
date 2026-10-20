@@ -84,7 +84,7 @@ export function saveShowdownLineup(storage, key, board, payload, bakedLineups = 
   if (slotsResult.error) return errorBody("VALIDATION_ERROR", slotsResult.error);
   const nameResult = validateLineupName(body.name);
   if (nameResult.error) return errorBody("VALIDATION_ERROR", nameResult.error);
-  const snapshot = buildShowdownSnapshot(slotsResult.slots, board.rows);
+  const snapshot = buildShowdownSnapshot(slotsResult.slots, lineupRows(board)); // the app's save rows (lineups-routes.js, D71)
   if (snapshot.error) return errorBody("VALIDATION_ERROR", snapshot.error);
   const device = readShowdownDeviceLineups(storage, key);
   const others = [...bakedLineups, ...device];

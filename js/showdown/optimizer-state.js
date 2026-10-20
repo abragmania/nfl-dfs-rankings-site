@@ -221,10 +221,16 @@ export function statusLineText(ms, board) {
 
 // ---------- the request ----------
 
-/** The objective a GPP build uses: Adam's pick, except Median and Ceiling, which need TwoGun's figures (TwoGun mode): in Our
- *  sources they are greyed and the build is by projection (classic effectiveObjective's rule). */
-export function effectiveObjective(picked, boardMode) {
-  if (picked === "median" || picked === "ceil") return boardMode === "twogun" ? picked : "proj";
+/** Whether any board row carries TwoGun's `field` ("median" or "ceil") on row.tg (board-view.js withTwoGunTg puts them there while
+ *  his file is posted), read as classic's boardHasCeilings (state.js) reads a ceiling. */
+export function boardHasTg(board, field) {
+  return (board?.rows ?? []).some((r) => typeof r?.tg?.[field] === "number" && Number.isFinite(r.tg[field]));
+}
+
+/** The objective a GPP build uses: Adam's pick, except Median or Ceiling on a board with no row carrying that figure of TwoGun's:
+ *  it is greyed then and the build is by projection (classic effectiveObjective's rule). */
+export function effectiveObjective(picked, board) {
+  if (picked === "median" || picked === "ceil") return boardHasTg(board, picked) ? picked : "proj";
   return "proj";
 }
 
@@ -268,8 +274,9 @@ export function requestCount(text, mode) {
  *  maps, each always sent ({} when no box holds a percent, as the spec's body has them; 🔵 866b0ce B6). Cash: count, locks,
  *  excludes, maxPerTeam and mode only (the server refuses the GPP-only settings in
  *  cash with classic's sentences). includes only when someone is included (the engine's key is new, so an empty list is never
- *  sent; the server's sentence is shown when it refuses it). */
-export function buildSettings(ms, mode, boardMode) {
+ *  sent; the server's sentence is shown when it refuses it). `board`: the served board, whose rows say whether Median and
+ *  Ceiling can be built (effectiveObjective). */
+export function buildSettings(ms, mode, board) {
   const cash = mode === "cash";
   const settings = {
     count: requestCount(ms.count, mode),
@@ -280,31 +287,33 @@ export function buildSettings(ms, mode, boardMode) {
   };
   if (!cash) {
     settings.minUnique = parseWhole(ms.minUnique, 1, MAX_UNIQUE, Number(DEFAULTS.minUnique));
-    settings.objective = effectiveObjective(ms.objective, boardMode);
+    settings.objective = effectiveObjective(ms.objective, board);
     for (const c of CAP_KEYS) settings[c.key] = pctsOf(ms[c.field], c.positiveOnly);
   }
   if (ms.includes.length) settings.includes = [...ms.includes];
   return settings;
 }
 
-/** The whole body: {settings, boardMode}; boardMode is the Figures switch's ("twogun" or "current"). */
-export function buildGenerateBody(ms, mode, boardMode) {
-  return { settings: buildSettings(ms, mode, boardMode), boardMode: boardMode === "twogun" ? "twogun" : "current" };
+/** The whole body: {settings}. No boardMode: the server builds on this game's served board and takes its reading from the board
+ *  (optimizer-routes.js noteModeOf: board.mode.cashMode). */
+export function buildGenerateBody(ms, mode, board) {
+  return { settings: buildSettings(ms, mode, board) };
 }
 
 const plural = (n, word) => `${n} ${word}${Number(n) === 1 ? "" : "s"}`;
 const OBJECTIVE_WORD = { proj: "projection", median: "median", ceil: "ceiling" };
 
-/** The basis a cash build is made by, as the server picks it (server/lineup/cash.js cashBasis): TwoGun's median in TwoGun mode, else the projection. */
-export function cashBasisText(boardMode) {
-  return boardMode === "twogun" ? "TwoGun's median" : "Projection";
+/** The basis a cash build is made by, as the server picks it (server/lineup/cash.js cashBasis) from the board's mode.cashMode:
+ *  TwoGun's median while TwoGun is this game's only ticked projection source ("twogun"), else the projection. */
+export function cashBasisText(cashMode) {
+  return cashMode === "twogun" ? "TwoGun's median" : "Projection";
 }
 
 /** The one-line summary beside Make (classic optSummaryText): "20 lineups by projection, 2 unique players between any two · max 4
- *  per team · caps on 3 players"; cash "1 lineup by TwoGun's median · max 5 per team". */
-export function summaryText(ms, mode, boardMode) {
-  const s = buildSettings(ms, mode, boardMode);
-  if (mode === "cash") return `${plural(s.count, "lineup")} by ${cashBasisText(boardMode).replace(/^Projection$/, "projection")} · max ${s.maxPerTeam} per team`;
+ *  per team · caps on 3 players"; cash "1 lineup by TwoGun's median · max 5 per team". `board`: the served board. */
+export function summaryText(ms, mode, board) {
+  const s = buildSettings(ms, mode, board);
+  if (mode === "cash") return `${plural(s.count, "lineup")} by ${cashBasisText(board?.mode?.cashMode).replace(/^Projection$/, "projection")} · max ${s.maxPerTeam} per team`;
   const parts = [`${plural(s.count, "lineup")} by ${OBJECTIVE_WORD[s.objective]}${s.count === 1 ? "" : `, ${plural(s.minUnique, "unique player")} between any two`}`];
   parts.push(`max ${s.maxPerTeam} per team`);
   const capped = new Set(CAP_KEYS.flatMap((c) => Object.keys(s[c.key] ?? {})));

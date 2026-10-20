@@ -1,24 +1,35 @@
 // Showdown Lineup Builder: the uniqueness / projection meter strip under the six slots (Adam 2026-10-18: "being
 // unique is more important than any projection optimization"). When Captain plus five FLEX are all placed it asks
 // POST /api/showdown/<key>/lineup/meter once and shows, uniqueness first, the lineup's expected copies in the field on
-// a log colour scale (with how many other entries most likely hold it beside), then the projection against the best possible one. A two-way switch, "TwoGun | Our sources", picks where the
-// projections and ownership come from (default TwoGun, remembered in localStorage). Pure helpers are exported for
-// tests; lineup.js only calls syncMeter (before a draw), meterStripHtml (inside the draw) and wireMeter (after it).
+// a log colour scale (with how many other entries most likely hold it beside), then the projection against the best possible one.
+// Every figure is this game's served board's (Adam 2026-10-20 10:03 AM: "change sources to anything for any game, classic,
+// cash, showdown, make it uniform across everything"): the old TwoGun | Our sources switch is gone, and the head line names the
+// sources the board reads (./figures-label.js) with a link to the Sources page, where Adam picks them. Pure helpers are
+// exported for tests; lineup.js only calls syncMeter (before a draw), meterStripHtml (inside the draw) and wireMeter (after it).
 import { escapeHtml, dec1 } from "../format.js";
 import { isSampleMode } from "../api.js";
 import { readJson, requestFailureText, notJsonText, NOT_JSON } from "./read-json.js"; // the one JSON reader (🔵 866b0ce B4)
 import { likelyCopies, likelyFactText } from "./likely-copies.js";
+import { figuresLabelHtml, asOfText, halfName, twogunTicked } from "./figures-label.js";
 
-export { likelyCopies }; // the most-likely count and its usual range (likely-copies.js: a separate file, this one is past 600 lines)
+export { likelyCopies }; // the most-likely count and its usual range (likely-copies.js: a separate file, this one is near 600 lines)
+
+/** The retired Figures switch's remembered choice: cleared once at load, so no old pick lingers in the browser (the board's ticks decide now). */
+export const RETIRED_MODE_KEY = "nfldfs-sd-meter-mode";
+export function clearRetiredMode(getStorage) {
+  try {
+    getStorage()?.removeItem?.(RETIRED_MODE_KEY);
+  } catch (e) {
+    // Storage blocked or missing: there is nothing this page can clear, and nothing reads the key any more.
+  }
+}
+if (typeof window !== "undefined") clearRetiredMode(() => window.localStorage);
 
 const MINUS = "−";
 const lowerFirst = (s) => s.charAt(0).toLowerCase() + s.slice(1); // a shared sentence placed after a colon
 const DELAY_MS = 150; // double clicks and quick slot swaps collapse into one request
-const MODE_KEY = "nfldfs-sd-meter-mode";
-const MODES = [
-  { value: "twogun", label: "TwoGun" },
-  { value: "current", label: "Our sources" },
-];
+const NO_PROJECTIONS = "No projections from this game's ticked sources yet";
+const NO_OWNERSHIP = "No ownership from this game's ticked sources yet";
 const SCALE_STOPS = [
   [0, [200, 50, 59]], // chalky: the app's chalk red
   [0.5, [224, 165, 38]], // amber
@@ -101,47 +112,30 @@ export function gapText(gapPts, gapPct) {
   return `${pts} (${sign(gapPct)}${dec1(Math.abs(gapPct))}%)`;
 }
 
-/** The mode a server answer is for: its own `mode` when valid, else the one asked. */
-function answerMode(d, asked) {
-  return d && MODES.some((x) => x.value === d.mode) ? d.mode : asked;
-}
-
 /**
- * "Projection (TwoGun) 98.4 · best possible 112.6 · -14.2 (-12.6%)". In TwoGun mode the source is named on the figure
- * (the six slots follow the same switch, so they show TwoGun's figures too); in Our sources mode it is left off.
- * Pieces the server did not send are left out; a source with no projections posted says so with no numbers, a
+ * "Projection 98.4 · best possible 112.6 · -14.2 (-12.6%)" (the sources are named on the head line and the source line).
+ * Pieces the server did not send are left out; no projections posted from the ticked sources says so with no numbers, a
  * refused file shows the refusal; a lineup with an unprojected player says that.
  */
-export function projectionLineText(d, asked = "twogun") {
-  if (d?.projection && d.projection.posted === false) {
-    if (d.projection.error) return String(d.projection.error);
-    return answerMode(d, asked) === "current" ? "No projections from our sources yet" : "TwoGun hasn't posted Showdown projections for this game yet";
-  }
+export function projectionLineText(d) {
+  if (d?.projection && d.projection.posted === false) return d.projection.error ? String(d.projection.error) : NO_PROJECTIONS;
   if (!d || typeof d.proj !== "number" || !Number.isFinite(d.proj)) return "Projection unknown (a player has no projection)";
-  const named = answerMode(d, asked) === "twogun" ? " (TwoGun)" : "";
-  const parts = [`Projection${named} ${dec1(d.proj)}`];
+  const parts = [`Projection ${dec1(d.proj)}`];
   if (typeof d.bestProj === "number" && Number.isFinite(d.bestProj)) parts.push(`best possible ${dec1(d.bestProj)}`);
   const gap = gapText(d.gapPts, d.gapPct);
   if (gap) parts.push(gap);
   return parts.join(" · ");
 }
 
-const AS_OF_WORD = { "file time": "saved ", "board built": "board built ", fetched: "fetched " };
-
 /**
- * "Ownership: TwoGun, Oct 18, 2:30 PM" (or "Projections: ..."): the mode's short name and the half's as-of, kept to one
- * line (the full source goes in sourceTitle). A file's own time reads "saved <time>", the board's build time "board
- * built <time>"; an as-of that is not a date is shown as written without a trailing "(...)", a missing one says so.
+ * "Ownership: TwoGun, Oct 18, 2:30 PM" (or "Projections: ..."): the board's short name for the half's sources (figures-label.js
+ * halfName) and the half's as-of, kept to one line (the full source goes in sourceTitle). A file's own time reads "saved <time>",
+ * the board's build time "board built <time>"; an as-of that is not a date is shown as written without a trailing "(...)", a
+ * missing one says so.
  */
-export function sourceLineText(half, asked = "twogun", what = "Ownership") {
-  const label = MODES.find((x) => x.value === asked)?.label ?? "TwoGun";
-  const raw = half?.asOf;
-  if (raw === null || raw === undefined || raw === "") return `${what}: ${label}, as-of date missing`;
-  const d = new Date(raw);
-  const when = Number.isNaN(d.getTime()) || typeof raw !== "string" || !/^\d{4}-\d{2}-\d{2}/.test(raw)
-    ? String(raw).replace(/\s*\([^()]*\)\s*$/, "")
-    : d.toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
-  return `${what}: ${label}, ${AS_OF_WORD[half.asOfFrom] ?? ""}${when}`;
+export function sourceLineText(half, name, what = "Ownership") {
+  const label = typeof name === "string" && name ? name : "this game's sources";
+  return `${what}: ${label}, ${asOfText(half) ?? "as-of date missing"}`;
 }
 
 /** The hover text behind a source line: the server's full source name and as-of, as sent. */
@@ -151,13 +145,12 @@ export function sourceTitle(half) {
 }
 
 /** The words that stand in for the scale when uniqueness cannot be measured, or null when it can. */
-export function noUniquenessText(d, asked = "twogun") {
-  const current = answerMode(d, asked) === "current";
+export function noUniquenessText(d) {
   const own = d?.ownership;
   if (own && own.posted === false && own.error) return String(own.error);
-  if (!own || own.posted === false) return current ? "No ownership from our sources yet" : "TwoGun hasn't posted Showdown ownership for this game yet";
+  if (!own || own.posted === false) return NO_OWNERSHIP;
   const names = Array.isArray(own.unposted) ? own.unposted.filter(Boolean) : [];
-  if (names.length) return `No ${current ? "ownership from our sources" : "TwoGun ownership"} for ${names.join(", ")}, so uniqueness can't be measured for this lineup.`;
+  if (names.length) return `No ownership from this game's ticked sources for ${names.join(", ")}, so uniqueness can't be measured for this lineup.`;
   const u = d.uniqueness;
   if (!u || typeof u.aloneChance !== "number" || !Number.isFinite(u.aloneChance) || copiesText(u.copies) === null) return "Uniqueness is not available for this lineup.";
   return null;
@@ -172,8 +165,10 @@ function findRow(board, id) {
  * goes as his Captain candidate id (row.cptId), each FLEX as row.id. Null until all six are placed and on the board.
  * `excludes`: the Optimizer's excludes for the mode on screen (optimizer.js optimizerExcludes; 🔵 866b0ce B1), so the
  * "best possible" this lineup is measured against is the one the batch cards are, and the two gaps agree; none by default.
+ * mode "current" is the served board's path: the server still reads an absent mode as TwoGun's raw files until the next step
+ * of the plan deletes that path and flips its default, and then this field goes.
  */
-export function meterRequestBody(board, cpt, flex, mode = "twogun", excludes = []) {
+export function meterRequestBody(board, cpt, flex, excludes = []) {
   if (!cpt || !Array.isArray(flex) || flex.length !== 5 || !flex.every(Boolean)) return null;
   const cptRow = findRow(board, cpt.id);
   if (!cptRow || cptRow.cptId === null || cptRow.cptId === undefined) return null;
@@ -183,57 +178,25 @@ export function meterRequestBody(board, cpt, flex, mode = "twogun", excludes = [
     if (!row) return null;
     flexIds.push(String(row.id));
   }
-  return { cpt: String(cptRow.cptId), flex: flexIds, excludes: Array.isArray(excludes) ? excludes.map(String) : [], mode };
-}
-
-/**
- * True when GET .../modes ({modes: {<mode>: {projection: {posted, error}, ownership: {posted, error}}}}) says this mode
- * has neither half posted and neither file refused (a refusal is shown in the strip, not as "not posted"); anything
- * else labels nothing (the option itself is never hidden).
- */
-export function modeHasNothing(info, mode) {
-  const e = info?.modes?.[mode];
-  const absent = (h) => Boolean(h) && typeof h === "object" && h.posted === false && !h.error;
-  return absent(e?.projection) && absent(e?.ownership);
-}
-
-/** The remembered mode from a storage-like object; anything unreadable or unknown is the default, TwoGun. */
-export function readStoredMode(getStorage) {
-  try {
-    const v = getStorage().getItem(MODE_KEY);
-    return MODES.some((x) => x.value === v) ? v : "twogun";
-  } catch (e) {
-    return "twogun"; // storage blocked: the switch still works for this page view
-  }
-}
-
-/** Saves the mode; false when storage is blocked (the choice then lasts for this page view only). */
-export function writeStoredMode(getStorage, mode) {
-  try {
-    getStorage().setItem(MODE_KEY, mode);
-    return true;
-  } catch (e) {
-    return false;
-  }
+  return { cpt: String(cptRow.cptId), flex: flexIds, excludes: Array.isArray(excludes) ? excludes.map(String) : [], mode: "current" };
 }
 
 const finiteOrNull = (v) => (typeof v === "number" && Number.isFinite(v) ? v : null);
 
 /**
- * The figures a slot shows for one board row: { proj, own } (own in percent). "Our sources" mode: the board row's own
- * figures, as before. TwoGun mode: TwoGun's from the modes answer's `players` map (Captain: his Captain projection,
- * 1.5x, and Captain ownership; FLEX: FLEX projection and ownership), the same numbers the meter measures with. A man
- * TwoGun has no number for, or a map not yet read, gives null: missing is missing, never zero and never the other
- * source's number (D29). A man not on TwoGun's board at all adds notOnBoard: true beside his 0% (Q8).
+ * The figures a slot shows for one board row: { proj, own } (own in percent), the board row's own (Captain: cptProj and ownCpt;
+ * FLEX: proj and ownFlex), so they are this game's ticked sources' and Adam's typed numbers. `players` is the modes answer's
+ * board-path map (GET .../modes, modes.current.players), which adds what the row cannot say: notOnBoard for a slot whose figure
+ * is TwoGun's 0% for a man his posted board has no row for (Q8), projNote (a man listed Out counts as 0; what TwoGun projects)
+ * and missingReason (why a blank stays blank). Missing is missing: a blank figure is null, never zero (D29).
  */
-export function figuresFor(row, isCpt, mode, players) {
+export function figuresFor(row, isCpt, players = null) {
   if (!row) return { proj: null, own: null };
-  if (mode !== "twogun") return { proj: finiteOrNull(isCpt ? row.cptProj : row.proj), own: finiteOrNull(isCpt ? row.ownCpt : row.ownFlex) };
+  const out = { proj: finiteOrNull(isCpt ? row.cptProj : row.proj), own: finiteOrNull(isCpt ? row.ownCpt : row.ownFlex) };
   const p = players?.[String(row.id)];
-  const out = { proj: finiteOrNull(isCpt ? p?.cptProj : p?.proj), own: finiteOrNull(isCpt ? p?.ownCpt : p?.ownFlex) };
-  if (p?.notOnBoard === true) out.notOnBoard = true;
-  if (typeof p?.projNote === "string" && p.projNote) out.projNote = p.projNote; // a man listed Out counts as 0; this says what TwoGun projects
-  if (out.own === null && typeof p?.missingReason === "string" && p.missingReason) out.missingReason = p.missingReason; // why his blank stays blank
+  if ((isCpt ? p?.notOnBoardCpt : p?.notOnBoardFlex) === true) out.notOnBoard = true;
+  if (typeof p?.projNote === "string" && p.projNote) out.projNote = p.projNote;
+  if (out.own === null && typeof p?.missingReason === "string" && p.missingReason) out.missingReason = p.missingReason;
   return out;
 }
 
@@ -244,72 +207,40 @@ export function reasonHtml(reason, max = 44) {
   return `<span class="sd-reason"${cut === text ? "" : ` title="${escapeHtml(text)}"`}>${escapeHtml(cut)}</span>`;
 }
 
-function switchHtml(mode, modesInfo) {
-  const opts = MODES.map((o) => {
-    const on = o.value === mode;
-    const note = modeHasNothing(modesInfo, o.value) ? `<span class="sd-meter-opt-note">not posted yet</span>` : "";
-    return `<span class="sd-meter-opt-wrap"><button type="button" class="sd-meter-opt${on ? " active" : ""}" data-meter-mode="${o.value}" aria-pressed="${on}">${escapeHtml(o.label)}</button>${note}</span>`;
-  }).join("");
-  return `<div class="sd-meter-switch" role="group" aria-label="Where projections and ownership come from"><span class="sd-meter-switch-label">Source</span>${opts}</div>`;
-}
-
 /** The words for a man TwoGun's board has no row for (Q8), shared by the meter's note and the swaps; the slots' own line (lineup.js) says the same. */
 export const NOT_ON_BOARD_WORDS = "not on TwoGun's board, 0%";
 
-/** "A Smith, B Jones: not on TwoGun's board, 0%" for the lineup men TwoGun's board has no row for (Q8); null when none or not TwoGun mode. */
-export function notOnBoardText(d, asked = "twogun") {
-  if (answerMode(d, asked) !== "twogun") return null;
+/** "A Smith, B Jones: not on TwoGun's board, 0%" for the lineup men counted at TwoGun's 0% (Q8, only while TwoGun is ticked); null when none. */
+export function notOnBoardText(d) {
   const names = Array.isArray(d?.ownership?.notOnBoard) ? d.ownership.notOnBoard.filter(Boolean) : [];
   return names.length ? `${names.join(", ")}: ${NOT_ON_BOARD_WORDS}` : null;
 }
 
-/** What the chosen source has not posted, from the modes answer (no lineup needed): the ownership line, then the projection line; "" when both are posted. */
-function notPostedHtml(modesInfo, mode) {
-  const e = modesInfo?.modes?.[mode];
-  const d = { mode, ownership: e?.ownership, projection: e?.projection };
+/** What the ticked sources have not posted, from the modes answer's board-path entry (no lineup needed): the ownership line, then the projection line. */
+function notPostedHtml(modesInfo) {
+  const e = modesInfo?.modes?.current;
+  const d = { ownership: e?.ownership, projection: e?.projection };
   const line = (half, text) => (half?.posted === false ? `<div class="${half.error ? "sd-meter-error" : "sd-meter-none"}">${escapeHtml(text())}</div>` : "");
-  return line(d.ownership, () => noUniquenessText(d, mode)) + line(d.projection, () => projectionLineText(d, mode));
+  return line(d.ownership, () => noUniquenessText(d)) + line(d.projection, () => projectionLineText(d));
 }
 
-/**
- * The strip's html for one meter state ({status: "loading"|"error"|"ok", data, message}). `modesNote` is the one line
- * saying the TwoGun figures could not be read (shown even with no lineup measured); `notes` are the server's reasons
- * (TwoGun's list looks incomplete; why a placed man's ownership is blank), one plain line each; "" when nothing to show.
- * `showSwitch` (the app is live): with nothing measured yet the strip still draws the switch and, from the modes answer, the
- * line saying what the chosen source has not posted, so the source in use is always on screen (Adam 2026-10-18).
- */
-export function meterHtml(m, mode = "twogun", modesInfo = null, modesNote = null, notes = [], showSwitch = false) {
-  const note = (modesNote ? `<div class="sd-meter-error">${escapeHtml(modesNote)}</div>` : "") + notes.map((t) => `<div class="sd-meter-none">${reasonHtml(t, 120)}</div>`).join("");
-  if (!m || !m.status) {
-    if (showSwitch) return `<div class="sd-meter" aria-live="polite">${switchHtml(mode, modesInfo)}${note}${notPostedHtml(modesInfo, mode)}</div>`;
-    return note ? `<div class="sd-meter" aria-live="polite">${note}</div>` : "";
-  }
-  const switchOnly = switchHtml(mode, modesInfo);
-  const sw = switchOnly + note;
-  if (m.status === "loading") return `<div class="sd-meter" aria-live="polite">${sw}<div class="sd-meter-none">Measuring uniqueness…</div></div>`;
-  if (m.status === "error") return `<div class="sd-meter" aria-live="polite">${sw}<div class="sd-meter-error">${escapeHtml(m.message || "Could not measure this lineup.")}</div></div>`;
-  const d = m.data;
-  const shown = answerMode(d, mode);
-  const srcLine = (half, what) => `<div class="sd-meter-src" title="${escapeHtml(sourceTitle(half))}">${escapeHtml(sourceLineText(half, shown, what))}</div>`;
-  const offBoard = notOnBoardText(d, mode);
-  const offBoardHtml = offBoard ? `<div class="sd-meter-none">${escapeHtml(offBoard)}</div>` : "";
-  const none = noUniquenessText(d, mode);
-  let uniq;
-  if (none) {
-    uniq = `<div class="${d?.ownership?.error ? "sd-meter-error" : "sd-meter-none"}">${escapeHtml(none)}</div>`;
-  } else {
-    const u = d.uniqueness;
-    const likely = likelyFactText(u.copies);
-    const field = typeof u.field === "number" && Number.isFinite(u.field) ? u.field.toLocaleString("en-US") : null;
-    const copies = copiesText(u.copies);
-    const oneIn = oneInText(u.oneIn);
-    const colour = scaleColour(u.copies);
-    uniq = `
+/** The meter's head line: "Expected copies in a 100,000-lineup field", the figure in the scale's colour, and the figures label. */
+function headHtml(u, label) {
+  const field = typeof u.field === "number" && Number.isFinite(u.field) ? u.field.toLocaleString("en-US") : null;
+  return `
       <div class="sd-meter-head">
         <span class="sd-meter-label">Expected copies in ${field !== null ? `a ${escapeHtml(field)}-lineup` : "the"} field</span>
-        <span class="sd-meter-big" style="color:${colour}">${escapeHtml(copies)}</span>
-        ${switchOnly}
-      </div>
+        <span class="sd-meter-big" style="color:${scaleColour(u.copies)}">${escapeHtml(copiesText(u.copies))}</span>
+        ${label}
+      </div>`;
+}
+
+/** The scale, the fact lines and the ownership source line of a measured lineup. */
+function uniquenessHtml(u, label, srcLine, own) {
+  const likely = likelyFactText(u.copies);
+  const oneIn = oneInText(u.oneIn);
+  const colour = scaleColour(u.copies);
+  return `${headHtml(u, label)}
       <div class="sd-meter-scale" role="img" aria-label="Uniqueness scale in expected copies, chalky to unique">
         <div class="sd-meter-track" style="background:${scaleGradientCss()}">
           <span class="sd-meter-marker" style="left:${markerPosition(u.copies)}%;background:${colour}"></span>
@@ -320,15 +251,39 @@ export function meterHtml(m, mode = "twogun", modesInfo = null, modesNote = null
         ${likely ? `<span title="${escapeHtml(LIKELY_BASIS)}">${escapeHtml(likely)}</span>` : ""}
         ${oneIn ? `<span><b>${escapeHtml(oneIn)}</b> entries plays this exact lineup</span>` : ""}
       </div>
-      ${srcLine(d.ownership, "Ownership")}`;
+      ${srcLine(own, "Ownership")}`;
+}
+
+/**
+ * The strip's html for one meter state ({status: "loading"|"error"|"ok", data, message}). `v` = { label (figures-label.js
+ * figuresLabelHtml: the board's sources and the Sources link), modesInfo (GET .../modes), modesNote (the one line saying the
+ * modes answer could not be read), notes (the server's reasons: TwoGun's list looks incomplete, why a placed man's ownership is
+ * blank, one plain line each), live (the app is live: with nothing measured yet the strip still shows the label and what the
+ * ticked sources have not posted, so the sources in use are always on screen, Adam 2026-10-18), names ({ projection, ownership }:
+ * figures-label.js halfName, for the source lines) }. The label rides the head line when uniqueness is measured, else its own line.
+ */
+export function meterHtml(m, v = {}) {
+  const { label = "", modesInfo = null, modesNote = null, notes = [], live = false, names = {} } = v;
+  const note = (modesNote ? `<div class="sd-meter-error">${escapeHtml(modesNote)}</div>` : "") + notes.map((t) => `<div class="sd-meter-none">${reasonHtml(t, 120)}</div>`).join("");
+  const top = (label ? `<div class="sd-meter-figures-line">${label}</div>` : "") + note;
+  if (!m || !m.status) {
+    const idle = live ? top + notPostedHtml(modesInfo) : note; // a board with no figures and nothing to say draws no empty box
+    return idle ? `<div class="sd-meter" aria-live="polite">${idle}</div>` : "";
   }
+  if (m.status === "loading") return `<div class="sd-meter" aria-live="polite">${top}<div class="sd-meter-none">Measuring uniqueness…</div></div>`;
+  if (m.status === "error") return `<div class="sd-meter" aria-live="polite">${top}<div class="sd-meter-error">${escapeHtml(m.message || "Could not measure this lineup.")}</div></div>`;
+  const d = m.data;
+  const srcLine = (half, what) => `<div class="sd-meter-src" title="${escapeHtml(sourceTitle(half))}">${escapeHtml(sourceLineText(half, what === "Ownership" ? names.ownership : names.projection, what))}</div>`;
+  const offBoard = notOnBoardText(d);
+  const none = noUniquenessText(d);
+  const uniq = none ? `<div class="${d?.ownership?.error ? "sd-meter-error" : "sd-meter-none"}">${escapeHtml(none)}</div>` : uniquenessHtml(d.uniqueness, label, srcLine, d.ownership);
   const pr = d?.projection;
   return `
     <div class="sd-meter" aria-live="polite">
-      ${none ? sw : note}
+      ${none ? top : note}
       ${uniq}
-      ${offBoardHtml}
-      <div class="sd-meter-proj${pr?.posted === false && pr.error ? " sd-meter-error" : ""}">${escapeHtml(projectionLineText(d, mode))}</div>
+      ${offBoard ? `<div class="sd-meter-none">${escapeHtml(offBoard)}</div>` : ""}
+      <div class="sd-meter-proj${pr?.posted === false && pr.error ? " sd-meter-error" : ""}">${escapeHtml(projectionLineText(d))}</div>
       ${pr?.posted ? srcLine(pr, "Projections") : ""}
     </div>`;
 }
@@ -342,7 +297,7 @@ export async function postLineupMeter(key, body, fetchImpl = fetch) {
   return readJson(res);
 }
 
-/** GET /api/showdown/<key>/modes: what each mode has posted. */
+/** GET /api/showdown/<key>/modes: what the ticked sources have posted, and each man's notes. */
 export async function getLineupModes(key, fetchImpl = fetch) {
   const url = `/api/showdown/${encodeURIComponent(key)}/modes`;
   return readJson(await fetchImpl(url));
@@ -351,19 +306,11 @@ export async function getLineupModes(key, fetchImpl = fetch) {
 // ---------- state and trigger ----------
 
 const m = { sig: null, status: null, data: null, message: null, timer: null, modesDue: false }; // modesDue: the pending timer reads the modes too
-let mode = null; // read from storage on first use
-let modesInfo = null; // last good GET .../modes answer for modesKey: the "not posted yet" notes and each man's TwoGun figures
+let modesInfo = null; // last good GET .../modes answer for modesKey: the "not posted yet" lines and each man's notes
 let modesKey = null; // the showdown modesInfo is for
-let modesAsked = null; // what the last modes read was for (showdown and board build); null asks again
+let modesAsked = null; // what the last modes read was for (showdown and board.figures.key); null asks again
 let modesError = null; // why the last read for modesKey failed, in plain words; null once a read succeeds
 let modesSeq = 0; // numbers each modes read: only the latest read's answer or failure is taken
-let figuresListener = null; // lineup.js's repaint of the six slots' figure lines
-const browserStorage = () => window.localStorage;
-
-function currentMode() {
-  if (mode === null) mode = typeof window === "undefined" ? "twogun" : readStoredMode(browserStorage);
-  return mode;
-}
 
 function reset() {
   if (m.timer) clearTimeout(m.timer);
@@ -381,91 +328,35 @@ function liveMeterAllowed() {
   return !isSampleMode();
 }
 
-/** Switches the mode, remembers it, and drops the current answer so the next draw asks again. */
-export function setMeterMode(next, storage = browserStorage) {
-  if (!MODES.some((x) => x.value === next) || next === currentMode()) return false;
-  mode = next;
-  writeStoredMode(storage, next);
-  reset();
-  modesAsked = null; // a flip reads the modes (and so the slots' figures) afresh
-  return true;
-}
+const isLive = () => Boolean(last?.enabled && last?.key);
 
-/** Test hook: the current meter state and mode. */
+/** Test hook: the current meter state. */
 export function meterState() {
-  return { sig: m.sig, status: m.status, data: m.data, message: m.message, mode: currentMode(), modesInfo, modesError };
+  return { sig: m.sig, status: m.status, data: m.data, message: m.message, modesInfo, modesError };
 }
 
-/**
- * What a slot shows for this board row under the chosen mode (see figuresFor). Without a live meter (the published
- * site, sample mode, no showdown) the switch is not on the page, so the slots keep the board's own figures.
- */
+/** What a slot shows for this board row (see figuresFor); off the live app (the site, sample mode) there is no modes answer, so no notes. */
 export function playerFigures(row, isCpt) {
-  const twogun = figuresMode() === "twogun";
-  return figuresFor(row, isCpt, figuresMode(), twogun ? modesInfo?.modes?.twogun?.players : null);
+  return figuresFor(row, isCpt, isLive() ? modesInfo?.modes?.current?.players : null);
 }
 
-/** The mode every number on the screen follows: the switch's, or "current" when there is no live switch (site, sample mode). */
-export function figuresMode() {
-  return Boolean(last?.enabled && last?.key) && currentMode() === "twogun" ? "twogun" : "current";
-}
-
-/** The one short label on a Build result saying whose projections it used (Q16). */
-export function builtOnText(builtMode) {
-  return builtMode === "twogun" ? "Built on TwoGun's projections" : "Built on our sources' projections";
-}
-
-/** lineup.js hands in the function that repaints the six slots' figure lines; the meter calls it whenever the mode or the modes answer changes. */
-export function onFiguresChange(fn) {
-  figuresListener = typeof fn === "function" ? fn : null;
-}
-
-/**
- * The one line shown in TwoGun mode when the last modes read failed (instead of six silent "no proj", or silently
- * keeping an earlier answer); null otherwise.
- */
+/** The one line shown when the last modes read failed (instead of silently missing notes, or silently keeping an earlier answer); null otherwise. */
 function modesNoteText() {
-  const live = Boolean(last?.enabled && last?.key);
-  if (!live || currentMode() !== "twogun" || !modesError) return null;
-  // A failed re-read keeps the earlier answer on the slots, so the line says that (never silently stale).
-  return modesInfo ? `TwoGun figures could not be re-read: ${modesError.replace(/[.\s]+$/, "")}; the slots show the earlier read` : figuresProblemText(); // the first read failing is worded once, as the lists' header says it
+  if (!isLive() || !modesError) return null;
+  const why = modesError.replace(/[.\s]+$/, "");
+  // A failed re-read keeps the earlier answer's notes on the slots, so the line says that (never silently stale).
+  return modesInfo ? `This game's player notes could not be re-read: ${why}; the slots show the earlier read` : `This game's player notes (why a figure is blank, who is not on TwoGun's board) could not be read: ${why}`;
 }
 
-/** "reading TwoGun's figures…" while the first modes read for this showdown is out (TwoGun mode), else null: the slots then say this, not "no proj". */
-export function readingFiguresText() {
-  const live = Boolean(last?.enabled && last?.key);
-  return live && currentMode() === "twogun" && !modesInfo && !modesError ? "reading TwoGun's figures…" : null;
-}
-
-/**
- * Why every TwoGun figure is blank when the first modes read for this showdown failed (TwoGun mode, no earlier answer to
- * show), in plain words for the lists' header note and the hover on their blank cells; null otherwise (a failed re-read keeps
- * the earlier answer on screen and is told in the strip above the slots).
- */
-export function figuresProblemText() {
-  const live = Boolean(last?.enabled && last?.key);
-  return live && currentMode() === "twogun" && !modesInfo && modesError ? `TwoGun's figures could not be read: ${modesError}` : null;
-}
-
-/**
- * Why TwoGun has no number for a whole half ("ownership" or "projection") of this showdown: the modes answer's own reason,
- * the same words the strip's not-posted line uses; null when that half is posted, or not in TwoGun mode, or not yet read.
- */
-export function twogunNotPostedText(half) {
-  const e = modesInfo?.modes?.twogun;
-  if (!e || figuresMode() !== "twogun" || e[half]?.posted !== false) return null;
-  const d = { mode: "twogun", ownership: e.ownership, projection: e.projection };
-  return half === "ownership" ? noUniquenessText(d, "twogun") : projectionLineText(d, "twogun");
-}
-
-/** The server's reasons in TwoGun mode: TwoGun's list looks incomplete, and why each placed man's blank ownership stays blank. */
+/** The server's reasons: TwoGun's list looks incomplete (while he is a ticked ownership source), and why each placed man's blank ownership stays blank. */
 function reasonNotes() {
-  if (!last?.enabled || !last?.key || currentMode() !== "twogun") return [];
+  if (!isLive()) return [];
   const notes = [];
-  const incomplete = modesInfo?.modes?.twogun?.ownership?.incompleteReason;
+  const board = last.board;
+  const incomplete = modesInfo?.modes?.current?.ownership?.incompleteReason ?? (twogunTicked(board, "ownership") ? modesInfo?.modes?.twogun?.ownership?.incompleteReason : null);
   if (typeof incomplete === "string" && incomplete) notes.push(incomplete);
   for (const [s, isCpt] of [[last.cpt, true], ...(last.flex ?? []).map((f) => [f, false])]) {
-    const row = s ? findRow(last.board, s.id) : null;
+    const row = s ? findRow(board, s.id) : null;
     const why = row ? playerFigures(row, isCpt).missingReason : null;
     if (why) notes.push(`${row.name}: ${why}`);
   }
@@ -474,18 +365,20 @@ function reasonNotes() {
 
 /** The current strip html (call inside the panel draw, after syncMeter). */
 export function meterStripHtml() {
-  return meterHtml(m, currentMode(), modesInfo, modesNoteText(), reasonNotes(), Boolean(last?.enabled && last?.key));
+  const board = last?.board ?? null;
+  const names = { projection: halfName(board, "projection"), ownership: halfName(board, "ownership") };
+  return meterHtml(m, { label: figuresLabelHtml(board), modesInfo, modesNote: modesNoteText(), notes: reasonNotes(), live: isLive(), names });
 }
 
-let last = null; // the last syncMeter arguments, so a flip of the switch asks again without a panel draw
+let last = null; // the last syncMeter arguments, so an answer landing repaints without a panel draw
 
 /**
- * Repaints the meter's own strip inside the panel and nothing else: the panel is never redrawn from here, so a lineup
- * name being typed and its cursor survive an answer landing. No strip on show: one that now has something to say
- * (the modes-failure line) is put where the panel draws it, right after the six slots.
+ * Repaints the meter's own strip inside the panel and the slots' figure lines (lineup.js's onModes: the notes from the modes
+ * answer), nothing else: the panel is never redrawn from here, so a lineup name being typed and its cursor survive an answer
+ * landing. No strip on show: one that now has something to say is put where the panel draws it, right after the six slots.
  */
 function repaint() {
-  if (figuresListener) figuresListener(); // the slots' figures follow the mode; they exist with or without a strip
+  last?.onModes?.();
   repaintStrip();
 }
 
@@ -502,23 +395,15 @@ function repaintStrip() {
     if (added) wireMeter(added);
     return;
   }
-  const active = typeof document !== "undefined" ? document.activeElement : null;
-  const focused = active && el.contains?.(active) ? active.dataset?.meterMode : null;
   el.outerHTML = meterStripHtml();
   const fresh = host.querySelector(".sd-meter");
-  if (!fresh) return;
-  wireMeter(fresh);
-  if (focused) fresh.querySelector(`[data-meter-mode="${focused}"]`)?.focus();
+  if (fresh) wireMeter(fresh);
 }
 
-/** Wires the switch buttons inside `container`: a flip remembers the mode, asks again and repaints only the strip. */
+/** Wires the figures label's Sources link inside `container`: it opens the Sources page, as the Showdown header's Sources button does. */
 export function wireMeter(container) {
-  container.querySelectorAll("[data-meter-mode]").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      if (!setMeterMode(btn.dataset.meterMode)) return;
-      if (last) syncMeter(last);
-      repaint();
-    });
+  container.querySelectorAll(".sd-figures-link").forEach((btn) => {
+    btn.addEventListener("click", () => last?.onSources?.());
   });
 }
 
@@ -545,62 +430,68 @@ export function lineupSig(key, board, body, cpt, flex) {
 }
 
 /**
+ * Reads GET .../modes for `key` (the "not posted yet" lines and each man's notes), as of `asked` (the showdown and its board's
+ * figures key). A failed read leaves the last answer in place; with no answer yet for this showdown the strip says why.
+ */
+function readModes(key, asked, getModes) {
+  modesAsked = asked;
+  const seq = ++modesSeq;
+  const current = () => seq === modesSeq && last?.key === key; // an older read never overwrites a newer one
+  const fail = (reason) => {
+    if (!current()) return;
+    modesError = reason;
+    repaint();
+  };
+  Promise.resolve()
+    .then(() => getModes(key))
+    .then((info) => {
+      if (!current()) return;
+      if (!info || typeof info !== "object") return fail("the server's answer could not be read.");
+      if (info.error) return fail(info.error.message || "the server refused the request.");
+      const players = info.modes?.current?.players;
+      if (!players || typeof players !== "object") return fail("the answer had no per-player figures.");
+      modesInfo = info;
+      modesError = null;
+      repaint();
+    })
+    .catch((e) => fail(e?.code === NOT_JSON ? lowerFirst(notJsonText(e.status)) : `the server could not be reached (${e?.message ?? e}).`)); // it follows a colon, as the other reasons do
+}
+
+/**
  * Called before every panel draw with the panel element (`container`). Incomplete lineup: the strip goes away.
- * Complete lineup whose ids, projections, ownership, board or mode differ from the one last asked about: strip shows
+ * Complete lineup whose ids, projections, ownership or board differ from the one last asked about: strip shows
  * "measuring", one request goes out after a short pause, and an answer for a lineup that has since changed is
  * dropped. When an answer lands only the strip is repainted. `excludes`: the Optimizer's for the mode on screen, sent in the
  * body (so they are part of the signature: a changed exclude asks again); none by default (🔵 866b0ce B1). `readModes`
  * false (an exclude toggle) skips the modes re-read the new measurement would send, unless one still waiting is replaced.
+ * `onSources`: what the label's Sources link does (view.js opens the Sources page); `onModes`: lineup.js's repaint of the
+ * slots' figure lines when the modes answer lands.
  */
-export function syncMeter({ board, key, cpt, flex, container = null, post = postLineupMeter, getModes = getLineupModes, delayMs = DELAY_MS, enabled = liveMeterAllowed(), excludes = [], readModes = true }) {
-  last = { board, key, cpt, flex, container, post, getModes, delayMs, enabled, excludes };
-  const asked = currentMode();
+export function syncMeter({ board, key, cpt, flex, container = null, post = postLineupMeter, getModes = getLineupModes, delayMs = DELAY_MS, enabled = liveMeterAllowed(), excludes = [], readModes: wantRead = true, onSources = null, onModes = null }) {
+  last = { board, key, cpt, flex, container, post, getModes, delayMs, enabled, excludes, onSources, onModes };
   const live = Boolean(enabled && key);
   if (live && key !== modesKey) {
-    modesKey = key; // another showdown: the last one's figures, notes and failure are not this one's
+    modesKey = key; // another showdown: the last one's notes and failure are not this one's
     modesInfo = null;
     modesAsked = null;
     modesError = null;
   }
-  // The modes answer (the "not posted yet" notes and the slots' TwoGun figures) is read as soon as a showdown is on
-  // show, again for a rebuilt board, a mode flip or a new complete lineup. A failed read leaves the last answer in
-  // place (the options are never hidden); with no answer yet for this showdown the strip says why (modesNoteText).
-  const wantModes = live && modesAsked !== `${key}|${board?.generatedAt ?? ""}`;
-  const askModes = () => {
-    modesAsked = `${key}|${board?.generatedAt ?? ""}`;
-    const seq = ++modesSeq;
-    const current = () => seq === modesSeq && last?.key === key; // an older read never overwrites a newer one
-    const fail = (reason) => {
-      if (!current()) return;
-      modesError = reason;
-      repaint();
-    };
-    Promise.resolve()
-      .then(() => getModes(key))
-      .then((info) => {
-        if (!current()) return;
-        if (!info || typeof info !== "object") return fail("the server's answer could not be read.");
-        if (info.error) return fail(info.error.message || "the server refused the request.");
-        const tgPlayers = info.modes?.twogun?.players;
-        if (!tgPlayers || typeof tgPlayers !== "object") return fail("the answer had no TwoGun figures.");
-        modesInfo = info;
-        modesError = null;
-        repaint();
-      })
-      .catch((e) => fail(e?.code === NOT_JSON ? lowerFirst(notJsonText(e.status)) : `the server could not be reached (${e?.message ?? e}).`)); // it follows a colon, as the other reasons do
-  };
-  const body = live ? meterRequestBody(board, cpt, flex, asked, excludes) : null;
+  // Read as soon as a showdown is on show, again whenever its figures key moves (a Sources save, a typed number, TwoGun's files:
+  // board-view.js figuresKeyOf), and for a new complete lineup.
+  const asked = `${key}|${board?.figures?.key ?? ""}`;
+  const wantModes = live && modesAsked !== asked;
+  const body = live ? meterRequestBody(board, cpt, flex, excludes) : null;
   if (!body) {
     if (m.sig !== null) reset();
-    if (wantModes) askModes();
+    if (wantModes) readModes(key, asked, getModes);
     return;
   }
   const sig = lineupSig(key, board, body, cpt, flex);
   if (sig === m.sig) {
-    if (wantModes && !m.timer) askModes(); // a pending timer reads them anyway
+    if (wantModes && !m.timer) readModes(key, asked, getModes); // a pending timer reads them anyway
     return;
   }
-  const modesDue = readModes || wantModes || Boolean(m.timer && m.modesDue); // a read that is due, or a replaced wait's, still happens
+  const modesDue = wantRead || wantModes || Boolean(m.timer && m.modesDue); // a read that is due, or a replaced wait's, still happens
   reset();
   m.sig = sig;
   m.modesDue = modesDue;
@@ -609,7 +500,7 @@ export function syncMeter({ board, key, cpt, flex, container = null, post = post
     m.timer = null;
     // A new complete lineup reads the modes afresh too (a TwoGun file saved meanwhile), behind the same pause as the
     // POST, so quick swaps send one GET.
-    if (modesDue) askModes();
+    if (modesDue) readModes(key, asked, getModes);
     let next;
     try {
       const data = await post(key, body);
@@ -620,7 +511,7 @@ export function syncMeter({ board, key, cpt, flex, container = null, post = post
     } catch (e) {
       next = { status: "error", message: requestFailureText(e) };
     }
-    if (m.sig !== sig) return; // the lineup (or the mode) changed while this was out
+    if (m.sig !== sig) return; // the lineup changed while this was out
     m.status = next.status;
     m.data = next.data ?? null;
     m.message = next.message ?? null;

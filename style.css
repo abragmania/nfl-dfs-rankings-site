@@ -1304,10 +1304,7 @@ tr:last-child .cell-edit-hint { top: auto; bottom: 100%; margin-top: 0; margin-b
   min-width: 0;
   font-variant-numeric: tabular-nums;
 }
-.sd-meter-switch { display: flex; align-items: flex-start; justify-content: flex-end; gap: var(--sp-2); margin-bottom: var(--sp-2); font-size: var(--fs-sm); }
-.sd-meter-switch-label { margin-right: auto; color: var(--text-dim); line-height: 24px; }
-.sd-meter-opt-wrap { display: flex; flex-direction: column; align-items: center; }
-.sd-meter-opt {
+.sd-meter-opt { /* the Captain | FLEX toggle over the Lineup tab's lists (lineup-lists.js listsHtml) */
   cursor: pointer;
   background: var(--bg-elevated-2);
   border: 1px solid var(--border);
@@ -1318,13 +1315,18 @@ tr:last-child .cell-edit-hint { top: auto; bottom: 100%; margin-top: 0; margin-b
   white-space: nowrap;
 }
 .sd-meter-opt.active { background: var(--accent); border-color: var(--accent); color: #ffffff; font-weight: 600; }
-.sd-meter-opt-note { font-size: 11px; color: var(--text-dim); line-height: 14px; }
 /* Adam 2026-10-20: "the number is spread too far to the right": the label and the number sit together on one line, left-aligned. */
 .sd-meter-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: flex-start; gap: 10px; }
-/* Adam 2026-10-20 (visual check): the Source switch rides the right end of this line instead of a row of its own, which gives back
-   about 32px so the meter's last line clears the sticky Make row at 1920x947; a column too narrow for all three wraps it to its own line. */
-.sd-meter-head .sd-meter-switch { margin: 0 0 0 auto; align-self: center; }
-.sd-meter-head .sd-meter-switch-label { margin-right: 0; }
+/* The figures label (Adam 2026-10-20: the retired Source switch's place, showdown/figures-label.js): the sources this game's board reads
+   and the Sources link, kept to one unit at the right end of the head line, as the switch rode it (so the meter's last line still clears
+   the sticky Make row at 1920x947); the full source lines are on its hover. With nothing measured it is the strip's first line. */
+.sd-figures { display: inline-flex; align-items: baseline; gap: var(--sp-2); font-size: 12px; color: var(--text-dim); white-space: nowrap; }
+.sd-meter-head .sd-figures { margin-left: auto; }
+.sd-figures-link { font-size: 12px; }
+.sd-meter-figures-line { margin-bottom: var(--sp-2); }
+/* The Showdown header's sources pill (#sd-figures-pill) is a button that opens the Sources page: the pill's own look, no button chrome. */
+.sd-figures-pill { background: none; border: 0; padding: 0; margin: 0; font: inherit; cursor: pointer; }
+.sd-figures-pill:hover .pill { border-color: var(--accent); }
 .sd-meter-label { color: var(--text); font-weight: 600; min-width: 0; }
 .sd-meter-big { font-size: 22px; font-weight: 700; line-height: 1.1; white-space: nowrap; flex: none; }
 .sd-meter-scale { margin: var(--sp-2) 0; }

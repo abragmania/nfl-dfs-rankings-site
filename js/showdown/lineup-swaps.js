@@ -1,7 +1,7 @@
 // Showdown Lineup Builder: the uniqueness swaps, a full-width section below the two columns (Adam 2026-10-18: "show the
 // tradeoffs for uniqueness....like replace this guy with another guy and X more unique.....comes with projection tradeoff").
 // When the meter has a complete lineup it asks POST /api/showdown/<key>/lineup/swaps once (same body as the meter's, so it
-// follows the TwoGun / Our sources switch) and lists, in a grid of seat cards, the first three swaps of each seat's frontier
+// reads this game's served board, its ticked sources) and lists, in a grid of seat cards, the first three swaps of each seat's frontier
 // (no other swap is both more unique and higher projected; highest projection first) with a "Show all N" button for the rest.
 // Each swap is one line of aligned columns: the man in with his position and team chips, how many times more (or less)
 // unique, the expected copies before and after, the points change, the salary change and chips (a game-script tag, a man not
@@ -183,10 +183,10 @@ export function swapsHtml(st, opts = {}) {
   return `<div class="sd-swaps" aria-live="polite">${head}${body}</div>`; // not .sd-meter: the meter's repaint looks that class up, and the box look is shared in the stylesheet
 }
 
-/** The request body: the meter's, for the same lineup, mode and Optimizer excludes (so an excluded man is never offered as
- *  the man in). Null until all six are placed and on the board. */
-export function swapsRequestBody(board, cpt, flex, mode = "twogun", excludes = []) {
-  return meterRequestBody(board, cpt, flex, mode, excludes);
+/** The request body: the meter's (the board path, lineup-meter.js meterRequestBody), for the same lineup and Optimizer excludes
+ *  (so an excluded man is never offered as the man in). Null until all six are placed and on the board. */
+export function swapsRequestBody(board, cpt, flex, excludes = []) {
+  return meterRequestBody(board, cpt, flex, excludes);
 }
 
 // ---------- the fetch, kept here beside the panel (api.js's names are the public site's stand-in contract) ----------
@@ -202,7 +202,7 @@ export async function postLineupSwaps(key, body, fetchImpl = fetch) {
 // ---------- state and trigger ----------
 
 const st = { sig: null, status: null, data: null, message: null, timer: null, open: new Set() }; // open: the seats (0 to 5) showing their whole frontier
-let last = null; // the last syncSwaps arguments, so a flip of the meter's switch asks again without a panel draw
+let last = null; // the last syncSwaps arguments, so an exclude toggle asks again without a panel draw
 const wired = new WeakSet();
 
 function reset() {
@@ -212,7 +212,7 @@ function reset() {
   st.status = null;
   st.data = null;
   st.message = null;
-  st.open = new Set(); // another lineup or mode: every seat starts at its first three
+  st.open = new Set(); // another lineup or board: every seat starts at its first three
 }
 
 /** Test hook: the current state. */
@@ -233,14 +233,14 @@ function repaint() {
 
 /**
  * Called before every panel draw (after syncMeter). The swaps follow the meter: they exist only while it has a complete
- * live lineup (`enabled`, which is false on the published site and in sample mode, where the meter itself is off). A lineup,
- * board or mode that differs from the one last asked about shows "working out" and sends one request after a short pause;
+ * live lineup (`enabled`, which is false on the published site and in sample mode, where the meter itself is off). A lineup
+ * or board that differs from the one last asked about shows "working out" and sends one request after a short pause;
  * an answer for a lineup that has since changed is dropped. `excludes`: the Optimizer's for the mode on screen, as the meter
  * gets them (optimizer.js optimizerExcludes); none by default.
  */
-export function syncSwaps({ board, key, cpt, flex, container = null, post = postLineupSwaps, delayMs = DELAY_MS, enabled = meterState().sig !== null, mode = meterState().mode, excludes = [] }) {
-  last = { board, key, cpt, flex, container, post, delayMs, enabled, mode, excludes };
-  const body = enabled && key ? swapsRequestBody(board, cpt, flex, mode, excludes) : null;
+export function syncSwaps({ board, key, cpt, flex, container = null, post = postLineupSwaps, delayMs = DELAY_MS, enabled = meterState().sig !== null, excludes = [] }) {
+  last = { board, key, cpt, flex, container, post, delayMs, enabled, excludes };
+  const body = enabled && key ? swapsRequestBody(board, cpt, flex, excludes) : null;
   if (!body) {
     if (st.sig !== null || st.status !== null) reset();
     return;
@@ -261,7 +261,7 @@ export function syncSwaps({ board, key, cpt, flex, container = null, post = post
     } catch (e) {
       next = { status: "error", message: requestFailureText(e) };
     }
-    if (st.sig !== sig) return; // the lineup (or the mode) changed while this was out
+    if (st.sig !== sig) return; // the lineup (or the board) changed while this was out
     st.status = next.status;
     st.data = next.data ?? null;
     st.message = next.message ?? null;
@@ -273,31 +273,24 @@ export function syncSwaps({ board, key, cpt, flex, container = null, post = post
  *  the meter has (lineup-meter.js resyncMeterExcludes), and only the swaps panel is repainted. Nothing before a first draw. */
 export function resyncSwapsExcludes(excludes) {
   if (!last) return;
-  syncSwaps({ ...last, excludes, mode: meterState().mode, enabled: meterState().sig !== null });
+  syncSwaps({ ...last, excludes, enabled: meterState().sig !== null });
   repaint();
 }
 
 /**
  * After a panel draw: a click on a seat's "Show all N" / "Show top 3" button opens or closes that seat's whole frontier (the
- * panel alone is repainted); a click on the meter's TwoGun / Our sources switch (its own handler runs first and repaints only
- * its strip) asks the swaps again for the new mode. One listener per panel element, however often the panel is redrawn.
+ * panel alone is repainted). One listener per panel element, however often the panel is redrawn.
  */
 export function wireSwaps(container) {
   if (!container?.addEventListener || wired.has(container)) return;
   wired.add(container);
   container.addEventListener("click", (e) => {
     const toggle = e.target?.closest?.("[data-swaps-toggle]");
-    if (toggle && last) {
-      const seat = Number(toggle.dataset?.swapsToggle);
-      if (Number.isInteger(seat)) {
-        if (st.open.has(seat)) st.open.delete(seat);
-        else st.open.add(seat);
-        repaint();
-      }
-      return;
-    }
-    if (!last || !e.target?.closest?.("[data-meter-mode]")) return;
-    syncSwaps({ ...last, mode: meterState().mode, enabled: meterState().sig !== null });
+    if (!toggle || !last) return;
+    const seat = Number(toggle.dataset?.swapsToggle);
+    if (!Number.isInteger(seat)) return;
+    if (st.open.has(seat)) st.open.delete(seat);
+    else st.open.add(seat);
     repaint();
   });
 }

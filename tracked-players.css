@@ -1,12 +1,17 @@
 /* The Tracked DFS players page (public/tracked-players.html, Adam 2026-10-20: "make it something I can sort and click through
    that isn't ugly"), linked by that page only. The Rankings table's look (30px rows, 14px text, sticky muted header, a centred box)
    with its own column widths, since .rankings-table sizes its columns by position. The box is the Rankings table's 1250px cap
-   (D54); the On column takes 460px so a row with all six badges (five lists plus Marked, about 415px at 1920) stays on one 30px
-   line (visual check round 3, 2026-10-20). In the app every row is a click target that marks or unmarks the name; on the public
-   site the rows are read-only and there is no Mark column. */
+   (D54). The columns are the mark, the name, the top-100 rank and one YES column per contest (Adam 2026-10-20 2:10 and 2:19 PM), so
+   every row is one 30px line. In the app every row is a click target that marks or unmarks the name; on the public site the rows
+   are read-only and there is no Mark column. */
 .tp-wrap { max-width: 1250px; margin: 0 auto; }
 a.tp-back { display: inline-block; text-decoration: none; }
-.tp-controls { margin-bottom: var(--sp-2); }
+/* The chip bar (lists, filters, search, key hint) stays pinned while the table scrolls (Adam 2026-10-20 2:09 PM: "easy to scroll
+   through"); it is opaque on the page background in both themes. tracked-players.js sets --tp-bar-h to its height, which is where
+   the table's header row pins (no gap, no overlap), and --tp-stick-h to the bar plus the header row, which a row scrolls clear of. */
+.tp-bar { position: sticky; top: 0; z-index: 3; background: var(--bg); padding: var(--sp-2) 0 var(--sp-1); border-bottom: 1px solid var(--border); }
+.tp-controls { margin-bottom: var(--sp-1); }
+.tp-keys { margin: 0; color: var(--text-dim); }
 .tp-sep { width: 1px; align-self: stretch; background: var(--border); margin: 0 var(--sp-1); }
 .tp-search { margin-left: auto; }
 .tp-search input { width: 220px; }
@@ -27,7 +32,7 @@ a.tp-back { display: inline-block; text-decoration: none; }
 }
 .tp-error[hidden] { display: none; }
 .tp-table { width: 100%; border-collapse: collapse; font-size: 14px; table-layout: fixed; }
-.tp-table thead { position: sticky; top: 0; z-index: 2; background: var(--bg-elevated-2); }
+.tp-table thead { position: sticky; top: var(--tp-bar-h, 0px); z-index: 2; background: var(--bg-elevated-2); }
 .tp-table th {
   text-align: left;
   padding: 6px 10px;
@@ -48,54 +53,29 @@ a.tp-back { display: inline-block; text-decoration: none; }
   overflow: hidden;
   text-overflow: ellipsis;
 }
-/* The seven widths sum to the 1250px box, so each column gets exactly its width at 1920 and 2560. */
+/* The name column takes whatever the fixed columns leave of the 1250px box (60 + 130 + 3 x 190 = 760px fixed, so 490px at the cap). */
 .tp-table .tp-col-mark { width: 60px; }
-.tp-table .tp-col-name { width: 205px; }
-.tp-table .tp-col-on { width: 460px; } /* six badges (about 415px) plus "saving…" while a mark saves, on one line */
-.tp-table .tp-col-entries { width: 100px; }
-.tp-table .tp-col-best { width: 205px; }
-.tp-table .tp-col-avg { width: 120px; }
-.tp-table .tp-col-rg { width: 100px; }
-.tp-table th.tp-col-entries, .tp-table th.tp-col-best, .tp-table th.tp-col-avg, .tp-table th.tp-col-rg, .tp-table td.tp-num { text-align: right; font-variant-numeric: tabular-nums; }
-.tp-table td.tp-on { line-height: 0; } /* the badges set the line, so the row keeps its 30px */
+.tp-table .tp-col-top100 { width: 130px; }
+.tp-table .tp-col-count { width: 190px; } /* a contest's YES column ("High $ 675", "Double-up") */
+.tp-table th.tp-col-top100, .tp-table td.tp-num { text-align: right; font-variant-numeric: tabular-nums; }
+/* Adam 2:19 PM: a contest column is just YES or blank, centred, in the note size (not the 14px body text) and the normal text colour. */
+.tp-table th.tp-col-count, .tp-table td.tp-yes { text-align: center; }
+.tp-table td.tp-yes { font-size: var(--fs-sm); font-weight: 400; color: var(--text); }
 .tp-table td.tp-mark { text-align: left; }
 .tp-mark input { pointer-events: none; margin: 0; width: 15px; height: 15px; accent-color: var(--accent); vertical-align: middle; }
-.tp-row { cursor: pointer; }
+.tp-row { cursor: pointer; scroll-margin-top: var(--tp-stick-h, 0px); scroll-margin-bottom: var(--sp-3); }
 .tp-row.is-read-only { cursor: default; }
 .tp-row:hover { background: var(--row-hover); }
 .tp-row:focus { outline: none; }
 .tp-row:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+/* The keyboard row (arrow keys, j and k): a wash plus a bar down its left edge, distinct from Marked (accent name text). */
+.tp-row.is-cursor, .tp-row.is-cursor:hover { background: rgba(var(--accent-rgb), 0.2); }
+.tp-row.is-cursor td:first-child { box-shadow: inset 4px 0 0 var(--accent); }
 .tp-row.is-marked td.tp-name { color: var(--accent-text); font-weight: 600; }
 .tp-row.is-saving { cursor: progress; }
 .tp-row.is-saving td { opacity: 0.6; }
 .tp-name { font-weight: 600; }
-.tp-of, .tp-missing { color: var(--text-dim); }
-/* The dim "#rank / field" part has one width down the column (the widest, "#12,345 / 78,431", is about 108px), so every
-   "top X%" before it shares one right edge (visual check round 3). */
-.tp-of { display: inline-block; min-width: 116px; margin-left: 6px; font-size: 13px; text-align: right; }
 .tp-saving { margin-left: var(--sp-1); color: var(--text-dim); font-size: 12px; line-height: 20px; vertical-align: middle; }
 .tp-empty td { color: var(--text-muted); cursor: default; }
-.tp-badge {
-  display: inline-block;
-  margin: 1px 4px 1px 0;
-  padding: 1px 7px;
-  border-radius: 4px;
-  font-size: 12px;
-  font-weight: 600;
-  line-height: 16px;
-  vertical-align: middle;
-  white-space: nowrap;
-  --tp-badge: var(--pos-k);
-  --tp-badge-rgb: var(--pos-k-rgb);
-  color: var(--tp-badge);
-  background: rgba(var(--tp-badge-rgb), 0.16);
-  border: 1px solid rgba(var(--tp-badge-rgb), 0.45);
-}
-.tp-badge-0 { --tp-badge: var(--amber); --tp-badge-rgb: var(--amber-rgb); }
-.tp-badge-1 { --tp-badge: var(--pos-wr); --tp-badge-rgb: var(--pos-wr-rgb); }
-.tp-badge-2 { --tp-badge: var(--pos-rb); --tp-badge-rgb: var(--pos-rb-rgb); }
-.tp-badge-3 { --tp-badge: var(--pos-qb); --tp-badge-rgb: var(--pos-qb-rgb); }
-.tp-badge-4 { --tp-badge: var(--pos-te); --tp-badge-rgb: var(--pos-te-rgb); }
-.tp-badge-marked { color: #ffffff; background: var(--accent); border-color: var(--accent); }
 .tp-foot { display: flex; align-items: center; gap: var(--sp-3); margin: var(--sp-3) 0 var(--sp-5); color: var(--text-muted); font-size: var(--fs-sm); }
 .tp-foot .chip[hidden] { display: none; }

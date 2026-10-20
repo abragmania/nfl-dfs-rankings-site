@@ -11,7 +11,8 @@ import { parsePct, uniqueSavedName, duplicateSaveStatus } from "../lineup.js";
 import { newBuildId, batchBuild } from "../lineup-builds.js";
 import { lineupModeOf } from "../lineup-cash.js";
 import { postShowdownLineup, getShowdowns } from "./api.js";
-import { figuresMode, resyncMeterExcludes } from "./lineup-meter.js";
+import { resyncMeterExcludes } from "./lineup-meter.js";
+import { halfName } from "./figures-label.js";
 import { resyncSwapsExcludes } from "./lineup-swaps.js";
 import { readJson, requestFailureText } from "./read-json.js"; // the one JSON reader (🔵 866b0ce B3, B4)
 import * as S from "./optimizer-state.js";
@@ -31,7 +32,6 @@ const opt = {
   saveError: null,
   results: null, // the batch on screen, see doGenerate
   expSortDir: "desc",
-  drawnBoardMode: null, // the Figures mode the band was last drawn for
 };
 let seq = 0;
 let storage = browserStorage;
@@ -117,8 +117,10 @@ export async function postShowdownGenerate(key, body, fetchImpl = fetch) {
 }
 
 /** The batch kept from a generate answer: the lineups in the server's order (each with a page id and its number), and what it was
- *  made with. Pure; `seqStart` numbers the page ids; `boardBuiltAt` is the board's own build time, the as-of of an Our sources batch. */
-export function resultsFromAnswer(data, sent, seqStart = 0, boardBuiltAt = null) {
+ *  made with. Pure; `seqStart` numbers the page ids; `board` is the served board it was made on: its build time is the as-of of a
+ *  batch whose answer names none, its reading (board.mode.cashMode) the build record's boardMode when the answer names none (as
+ *  classic records it), and its short source names label the batch's source line (figures-label.js halfName). */
+export function resultsFromAnswer(data, sent, seqStart = 0, board = null) {
   const lineups = (Array.isArray(data.lineups) ? data.lineups : []).map((l, i) => ({ ...l, uid: `s${seqStart + i + 1}`, index: i }));
   const notes = Array.isArray(data.notes) ? [...data.notes] : [];
   if (!lineups.length && !notes.length) notes.push("No lineups could be made from these locks and settings.");
@@ -126,12 +128,14 @@ export function resultsFromAnswer(data, sent, seqStart = 0, boardBuiltAt = null)
   return {
     mode: cash ? "cash" : "gpp",
     basis: cash ? data.basis ?? null : null,
-    boardMode: data.boardMode === "twogun" ? "twogun" : sent.boardMode,
+    boardMode: data.boardMode === "twogun" || data.boardMode === "current" ? data.boardMode : board?.mode?.cashMode ?? null,
     objective: cash ? null : sent.settings.objective,
     projection: data.projection ?? null,
     ownership: data.ownership ?? null,
+    figuresKey: typeof data.figuresKey === "string" && data.figuresKey !== "" ? data.figuresKey : null, // the served board's key, sent back with each save
     meter: data.meter ?? null,
-    boardBuiltAt,
+    boardBuiltAt: board?.generatedAt ?? null,
+    names: { projection: halfName(board, "projection"), ownership: halfName(board, "ownership") },
     lineups,
     notes,
     bends: Array.isArray(data.bends) ? data.bends : [],
@@ -146,7 +150,7 @@ async function doGenerate(ctx) {
   const mode = opt.ks.mode;
   opt.formError = S.capProblem(modeState(), mode, ctx.board);
   if (opt.formError) return ctx.commit();
-  const sent = S.buildGenerateBody(modeState(), mode, figuresMode());
+  const sent = S.buildGenerateBody(modeState(), mode, ctx.board); // no boardMode: the server builds on this game's served board
   const madeFor = opt.key;
   opt.generating = true;
   opt.error = null;
@@ -160,7 +164,7 @@ async function doGenerate(ctx) {
     stale = opt.key !== madeFor;
     if (!stale && (!data || data.ok === false || data.error)) opt.error = data?.error?.code === "GENERATE_BUSY" ? data.error.message || BUSY_TEXT : data?.error?.message ?? "Could not make lineups.";
     else if (!stale) {
-      opt.results = resultsFromAnswer(data, sent, seq, ctx.board?.generatedAt ?? null);
+      opt.results = resultsFromAnswer(data, sent, seq, ctx.board ?? null);
       seq += opt.results.lineups.length;
     }
   } catch (e) {
@@ -188,13 +192,15 @@ export function savedKeysOf(saved, mode, board) {
 
 /** The POST .../lineups body for one card: its name, its six men by person id (as the builder saves them, so the saved card
  *  finds every row), its mode and the build record (classic saveGenerated: lineup-builds.js batchBuild, plus TwoGun's projection
- *  file and as-of on a TwoGun build). Pure. */
+ *  file and as-of on a TwoGun build, and the answer's figures key, so the server refuses a save after this game's sources
+ *  changed). Pure. */
 export function saveBody(lineup, results, name) {
   const slots = (lineup.slots ?? []).map((s) => ({ slot: s.slot, playerId: String(s.personId ?? s.playerId) }));
   const build = batchBuild({ buildId: results.buildId, boardMode: results.boardMode, objective: results.objective }, { ceil: lineup.ceil, players: [] });
   const p = results.projection;
   const text = (v) => typeof v === "string" && v.trim() !== "";
   if (results.boardMode === "twogun" && p && text(p.source) && text(p.asOf) && (p.asOfFrom === "meta" || p.asOfFrom === "file time")) build.projection = { source: p.source, asOf: p.asOf, asOfFrom: p.asOfFrom };
+  if (typeof results.figuresKey === "string" && results.figuresKey !== "") build.figuresKey = results.figuresKey;
   return { name, slots, mode: results.mode, build };
 }
 
@@ -243,12 +249,11 @@ async function saveCards(uids, ctx) {
 
 const busy = () => opt.generating || opt.saving;
 
-const bandView = (board) => ({ mode: opt.ks.mode, ms: modeState(), board, boardMode: opt.drawnBoardMode, error: opt.error, formError: opt.formError });
+const bandView = (board) => ({ mode: opt.ks.mode, ms: modeState(), board, error: opt.error, formError: opt.formError });
 
 /** The Optimizer band's head (title, GPP | Cash switch, refusal sentences), at the top of the left column; "" off the live app. */
 export function optimizerBandHeadHtml(board) {
   if (!optimizerLive()) return "";
-  opt.drawnBoardMode = figuresMode();
   return V.bandHeadHtml(bandView(board));
 }
 
@@ -256,7 +261,6 @@ export function optimizerBandHeadHtml(board) {
  *  and the meter come first); "" off the live app. */
 export function optimizerBandBoxesHtml(board) {
   if (!optimizerLive()) return "";
-  opt.drawnBoardMode = figuresMode();
   return V.bandBoxesHtml(bandView(board));
 }
 
@@ -265,10 +269,11 @@ export function optimizerBandHtml(board) {
   return optimizerBandHeadHtml(board) + optimizerBandBoxesHtml(board);
 }
 
-/** The Make row (the summary and Make N lineups), the last piece of the builder's column, sticky as classic's footer; "" off the live app. */
-export function optimizerGoRowHtml() {
+/** The Make row (the summary and Make N lineups), the last piece of the builder's column, sticky as classic's footer; "" off the live app.
+ *  `board`: the served board (its reading names the cash basis, its rows whether Median and Ceiling can be built). */
+export function optimizerGoRowHtml(board) {
   if (!optimizerLive()) return "";
-  return V.goRowHtml({ summary: S.summaryText(modeState(), opt.ks.mode, figuresMode()), count: S.requestCount(modeState().count, opt.ks.mode), generating: opt.generating, busy: busy(), formError: opt.formError });
+  return V.goRowHtml({ summary: S.summaryText(modeState(), opt.ks.mode, board), count: S.requestCount(modeState().count, opt.ks.mode), generating: opt.generating, busy: busy(), formError: opt.formError });
 }
 
 /** The batch (its head, source line, exposure tables and cards), drawn full width below both columns (Adam 2026-10-19 11:17 PM:
@@ -302,7 +307,7 @@ export const listControls = {
 /** Puts the summary, the Make label and the included / locked line back after a box changed, without a redraw (focus stays). */
 function refreshLines(container, board) {
   const summary = container.querySelector("#sd-opt-summary");
-  if (summary) summary.textContent = S.summaryText(modeState(), opt.ks.mode, figuresMode());
+  if (summary) summary.textContent = S.summaryText(modeState(), opt.ks.mode, board);
   const go = container.querySelector("#sd-opt-go-btn");
   if (go && !opt.generating) go.textContent = V.goLabel(S.requestCount(modeState().count, opt.ks.mode), false);
   const info = container.querySelector("#sd-opt-lockinfo");
@@ -357,22 +362,6 @@ export function wirePoolControls(listEl, ctx) {
       refreshLines(ctx.container, ctx.board);
     });
   });
-}
-
-/** Redraws the band in place when the Figures switch moved since it was drawn (Median / Ceiling greyed or not, the cash basis). */
-export function repaintBandIfFiguresMoved(ctx) {
-  if (!optimizerLive() || figuresMode() === opt.drawnBoardMode) return;
-  // The band is two elements (the head up top, the boxes above the Make row); each is replaced where it stands and wired again.
-  const head = ctx.container?.querySelector?.("#sd-opt-head");
-  const boxes = ctx.container?.querySelector?.("#sd-opt-panel");
-  if (!head && !boxes) return;
-  if (head) head.outerHTML = optimizerBandHeadHtml(ctx.board);
-  if (boxes) boxes.outerHTML = optimizerBandBoxesHtml(ctx.board);
-  for (const id of ["#sd-opt-head", "#sd-opt-panel"]) {
-    const fresh = ctx.container.querySelector(id);
-    if (fresh) wireBand(fresh, ctx);
-  }
-  refreshLines(ctx.container, ctx.board);
 }
 
 function wireBand(root, ctx) {

@@ -5,7 +5,7 @@
 // Two tabs (Rankings, Optimizer) plus the Sources view: ONE Sources page (public/js/sources-page.js, the same file classic uses) with
 // the Projections or Ownership player table under it, picked by a switch on the page (Adam 2026-10-18; tabs.js SOURCE_TABS keys).
 import { getShowdownBoard, postShowdownRefresh, postShowdownProjectionsPaste } from "./api.js";
-import { renderPills, kickoffDateAndClock, paintSourcesLink, wireSourcesLink } from "../header.js";
+import { renderPills, kickoffDateAndClock, paintSourcesLink, wireSourcesLink, modePillHtml } from "../header.js";
 import { isSourcesTab, sourcesTabToOpen } from "../tabs.js";
 import { renderSourcesPage, sectionSources } from "../sources-page.js";
 import { escapeHtml, dec1 } from "../format.js";
@@ -15,8 +15,7 @@ import { showAllToggleHtml, wireShowAllButtons } from "../filterbar.js";
 import { store } from "../state.js";
 import { renderShowdownTableHead, renderShowdownTableBody, shownRows } from "./table.js";
 import { renderShowdownTabs, renderShowdownProjectionsPanel, renderShowdownOwnershipPanel, renderShowdownLineupPanel } from "./tabs.js";
-import { playerFigures, figuresMode } from "./lineup-meter.js";
-import { twogunCardRow } from "../player-card-body.js";
+import { figuresPillHtml } from "./figures-label.js"; // the header pill naming the sources this game's board reads (Adam 2026-10-20)
 
 const state = {
   activeTab: "rankings",
@@ -65,9 +64,7 @@ export function showdownRowById(id) {
   const row = state.board?.rows?.find((r) => String(r.id) === String(id) || (r.cptId != null && String(r.cptId) === String(id)));
   const g = state.board?.game;
   if (!row) return null;
-  const withGame = row.gameId || !g?.away || !g?.home ? row : { ...row, gameId: `${g.away}@${g.home}` };
-  // Q16: on the Lineup tab in TwoGun mode the card shows TwoGun's projection and ownership, as the slots do; other tabs unchanged.
-  return state.activeTab === "lineup" && figuresMode() === "twogun" ? twogunCardRow(withGame, playerFigures(row, false), playerFigures(row, true)) : withGame;
+  return row.gameId || !g?.away || !g?.home ? row : { ...row, gameId: `${g.away}@${g.home}` }; // the board row's figures on every tab, as the Lineup tab's slots show them
 }
 export const showdownBoardAsOf = () => state.board?.generatedAt ?? null;
 
@@ -79,6 +76,7 @@ const els = {
   salaryBtn: document.getElementById("sd-salary-btn"),
   band: document.getElementById("sd-band"),
   pillsRow: document.getElementById("sd-pills-row"),
+  figuresPill: document.getElementById("sd-figures-pill"),
   refreshBtn: document.getElementById("sd-refresh-btn"),
   rankingsPanel: document.getElementById("sd-rankings-panel"),
   gameline: document.getElementById("sd-gameline"),
@@ -472,6 +470,7 @@ function render() {
   if (isSourcesTab(state.activeTab)) state.lastSourcesTab = state.activeTab;
   renderShowdownTabs(els.tabs, state.activeTab, onTabClick);
   paintSourcesLink(els.sourcesBtn, isSourcesTab(state.activeTab));
+  if (els.figuresPill) els.figuresPill.hidden = !(els.figuresPill.innerHTML = figuresPillHtml(state.board, modePillHtml)); // none for no board or one with no figures
   if (!state.board) {
     renderEmpty();
     return;
@@ -495,7 +494,7 @@ function render() {
   } else if (isSourcesTab(state.activeTab)) {
     renderSourcesView();
   } else if (state.activeTab === "lineup") {
-    renderShowdownLineupPanel(els.lineupPanel, state.board, state.boardKey);
+    renderShowdownLineupPanel(els.lineupPanel, state.board, state.boardKey, { onOpenSources: openSources });
   }
 }
 
@@ -533,13 +532,14 @@ store.subscribe(() => {
   if (state.board && document.getElementById("showdown-main")?.hidden === false) render();
 });
 
-// The Sources button opens the Sources page on the table already showing, else the last one shown, else Projections (tabs.js sourcesTabToOpen).
-wireSourcesLink(els.sourcesBtn, {
-  onOpen: () => {
-    state.activeTab = sourcesTabToOpen(state.activeTab, state.lastSourcesTab);
-    render();
-  },
-});
+// The Sources button opens the Sources page on the table already showing, else the last one shown, else Projections (tabs.js sourcesTabToOpen);
+// the header's sources pill and the Lineup meter's figures label open it the same way.
+function openSources() {
+  state.activeTab = sourcesTabToOpen(state.activeTab, state.lastSourcesTab);
+  render();
+}
+wireSourcesLink(els.sourcesBtn, { onOpen: openSources });
+els.figuresPill?.addEventListener("click", (e) => { if (e.target?.closest?.("[data-sd-open-sources]")) openSources(); });
 
 // The Salary used button opens the contest salary-used page, naming the Showdown on screen so its Back button returns here.
 // The address is relative (the page sits beside index.html), so it works on localhost and under the public site's sub-path.

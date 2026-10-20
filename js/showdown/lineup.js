@@ -13,7 +13,7 @@ import { postShowdownLineupOptimize, getShowdownLineups, postShowdownLineup, del
 import { sdLine, SD_PILL } from "./table.js";
 import { listsHtml, paintLists, wireLists, setListControls } from "./lineup-lists.js"; // the Captain list and the FLEX list, each sortable (Adam 2026-10-18)
 // The Showdown Optimizer (Adam 2026-10-19, sketch A): its band over the builder, its Make row under it, its batch full width below, its controls on the pool rows.
-import { syncOptimizer, optimizerLive, optimizerBandHeadHtml, optimizerBandBoxesHtml, optimizerGoRowHtml, optimizerResultsBlockHtml, optimizerExcludes, poolChipsRowHtml, listControls, wirePoolControls, wireOptimizer, repaintBandIfFiguresMoved } from "./optimizer.js";
+import { syncOptimizer, optimizerLive, optimizerBandHeadHtml, optimizerBandBoxesHtml, optimizerGoRowHtml, optimizerResultsBlockHtml, optimizerExcludes, poolChipsRowHtml, listControls, wirePoolControls, wireOptimizer } from "./optimizer.js";
 import { handBuild } from "../lineup-builds.js";
 import { requestFailureText } from "./read-json.js";
 import { lineupModeOf, cashBadgeHtml } from "../lineup-cash.js";
@@ -23,7 +23,8 @@ import { syncSwaps, swapsPanelHtml, wireSwaps } from "./lineup-swaps.js"; // the
 import { showAllToggleHtml, wireShowAllButtons } from "../filterbar.js";
 import { store } from "../state.js";
 import { showdownPerSpotText, shownTotal } from "../totals.js";
-import { syncMeter, meterStripHtml, wireMeter, playerFigures, onFiguresChange, figuresMode, builtOnText, readingFiguresText, reasonHtml } from "./lineup-meter.js"; // uniqueness / projection strip under the slots; every figure on the screen follows its TwoGun / Our sources switch (Q16)
+import { syncMeter, meterStripHtml, wireMeter, playerFigures, reasonHtml } from "./lineup-meter.js"; // uniqueness / projection strip under the slots; every figure on the screen is the served board's (Adam 2026-10-20)
+import { builtOnText } from "./figures-label.js"; // the board's sources in words (the retired Figures switch's place)
 
 const SALARY_CAP = 50000;
 const FLEX_COUNT = 5;
@@ -54,6 +55,7 @@ const state = {
 let lastContainer = null;
 let lastBoard = null;
 let lastKey = null;
+let openSources = null; // view.js's opener of the Sources page, for the meter's figures label (kept across commit's redraws)
 let savedFetchInFlightKey = null;
 
 setListControls(listControls); // the pool rows' Min % / Max % boxes and lock / In / exclude buttons (live app only)
@@ -96,7 +98,7 @@ function isPlacedFlex(id) {
 /**
  * Salary used, salary left and total projection of the placed players (`picked` = {cpt, flex}, the panel's state by
  * default; exported for the tests). The projection is the sum of the figures the slots show (`figures`, the meter's
- * playerFigures by default: it follows the TwoGun / Our sources switch); salary is the board's in both modes. Missing
+ * playerFigures by default: the board row's own); salary is the board's too. Missing
  * is missing: a placed player who is no longer on the board makes both the salary and the projection unknown (null),
  * and one with no projection makes the projection unknown. The projection is shownTotal's (each slot rounded as it is
  * shown, then summed; Adam 2026-10-17), as the results cards, the cash totals and the saved card add it.
@@ -125,7 +127,7 @@ export function computeTotals(board, picked = state, figures = playerFigures) {
 
 /** The "Total projection ... · N of 6 slots filled" line's contents. */
 function totalsLineHtml(totals) {
-  return `Total projection ${totals.totalProj === null ? escapeHtml(readingFiguresText() ?? "unknown (a player has no projection)") : dec1(totals.totalProj)} &middot; ${totals.filled} of 6 slots filled`;
+  return `Total projection ${totals.totalProj === null ? "unknown (a player has no projection)" : dec1(totals.totalProj)} &middot; ${totals.filled} of 6 slots filled`;
 }
 
 // D39: both teams required. Reports which of the game's two teams are (not yet) represented among the
@@ -207,8 +209,7 @@ async function doBuild(key) {
   state.addError = null;
   commit();
   try {
-    const sent = figuresMode(); // Q16: Build uses the projections the screen shows
-    const data = await postShowdownLineupOptimize(key, { objective: state.objective, locks: [], excludes: [], mode: sent });
+    const data = await postShowdownLineupOptimize(key, { objective: state.objective, locks: [], excludes: [] }); // no mode: the server builds on the served board, the figures on screen
     if (!data || data.ok === false) {
       state.lastResult = { feasible: false, message: data?.error?.message ?? "Could not build a lineup." };
     } else if (data.feasible) {
@@ -224,7 +225,7 @@ async function doBuild(key) {
       state.cpt = cptEntry ? { id: personIdOf(cptEntry) } : null;
       state.flex = new Array(FLEX_COUNT).fill(null).map((_, i) => (flexEntries[i] ? { id: personIdOf(flexEntries[i]) } : null));
       const message = [data.objectiveNote, data.message].filter(Boolean).join(" ");
-      state.lastResult = { feasible: true, message, builtOn: builtOnText(data.mode ?? "current"), salaryUsed: data.salaryUsed, totalProj: data.totalProj };
+      state.lastResult = { feasible: true, message, builtOn: builtOnText(lastBoard), salaryUsed: data.salaryUsed, totalProj: data.totalProj };
     } else {
       const message = [data.objectiveNote, data.message ?? "No legal lineup fits the salary cap and both-teams rule."].filter(Boolean).join(" ");
       state.lastResult = { feasible: false, message };
@@ -237,10 +238,10 @@ async function doBuild(key) {
 }
 
 /**
- * The POST .../lineups body for the lineup built by hand: {name, slots, build}. build is classic's hand record with the figures
- * switch's mode (lineup-builds.js handBuild, as classic's hand save sends it), because the server learns whose figures to
- * snapshot only from build.boardMode (🔵 re-check of the saved routes, V8): without it a TwoGun-mode lineup was saved on our
- * board's figures. Pure; `picked` = {cpt, flex} (the panel's state), `boardMode` = figuresMode().
+ * The POST .../lineups body for the lineup built by hand: {name, slots, build}. build is classic's hand record with the board's
+ * reading (lineup-builds.js handBuild; board.mode.cashMode, as classic's cash hand save records it), because the server learns
+ * whose figures to snapshot from build.boardMode (🔵 re-check of the saved routes, V8). Pure; `picked` = {cpt, flex} (the panel's
+ * state), `boardMode` = the board's mode.cashMode ("twogun" or "current"; null records none).
  */
 export function handSaveBody(name, picked, boardMode) {
   const slots = [];
@@ -251,7 +252,7 @@ export function handSaveBody(name, picked, boardMode) {
 
 async function doSaveLineup(key, name) {
   if (state.saving) return;
-  const body = handSaveBody(name, state, figuresMode());
+  const body = handSaveBody(name, state, lastBoard?.mode?.cashMode ?? null);
   const slotsPayload = body.slots;
   if (slotsPayload.length === 0) {
     state.saveError = "Add at least one player to the lineup before saving.";
@@ -324,14 +325,11 @@ function ownParen(own) {
   return own == null ? "" : ` (${Math.round(own)}% own)`;
 }
 
-// The slot's "$ · proj · (own)" line. Projection and ownership follow the meter's TwoGun / Our sources switch
-// (playerFigures); salary is the board's in both. A missing figure reads "no proj" / no "% own", never zero (D29);
-// a man not on TwoGun's board reads "(not on TwoGun's board, 0%)" (Q8).
+// The slot's "$ · proj · (own)" line: the board row's projection and ownership (playerFigures) and salary. A missing figure
+// reads "no proj" / no "% own", never zero (D29); a man not on TwoGun's board reads "(not on TwoGun's board, 0%)" (Q8).
 function slotDetailHtml(row, isCpt) {
   const salary = isCpt ? row.cptSalary : row.salary;
   const { proj, own, notOnBoard, missingReason, projNote } = playerFigures(row, isCpt);
-  const reading = readingFiguresText();
-  if (reading) return `${money(salary)} &middot; ${escapeHtml(reading)}`; // first TwoGun read still out: not "no proj"
   const projText = proj == null ? "no proj" : `${dec1(proj)} proj`;
   const projHtml = projNote ? `<span title="${escapeHtml(projNote)}">${projText}</span>` : projText; // listed Out: TwoGun's own figure on hover
   const ownText = notOnBoard ? " (not on TwoGun's board, 0%)" : ownParen(own);
@@ -339,7 +337,7 @@ function slotDetailHtml(row, isCpt) {
 }
 
 // Repaints only the six slots' figure lines and the total projection line under them (the panel is not redrawn, so a
-// typed lineup name survives); the meter calls it when the mode flips or its modes answer lands.
+// typed lineup name survives); the meter calls it when its modes answer (each man's notes) lands.
 function repaintSlotFigures() {
   if (!lastContainer || !lastBoard) return;
   const paint = (slotEl, placed, isCpt) => {
@@ -351,15 +349,13 @@ function repaintSlotFigures() {
   lastContainer.querySelectorAll("[data-flex-index]").forEach((el) => paint(el, state.flex[Number(el.dataset.flexIndex)], false));
   const totalsEl = lastContainer.querySelector(".lineup-totals");
   if (totalsEl) totalsEl.innerHTML = totalsLineHtml(computeTotals(lastBoard));
-  // Q16: both player lists (Captain and FLEX) and the saved cards' projection totals follow the switch too, repainted in place.
+  // Both player lists (Captain and FLEX) and the saved cards' projection totals carry the same notes, repainted in place.
   paintLists(lastContainer, listCtx(lastBoard));
   lastContainer.querySelectorAll(".saved-lineup-proj").forEach((el) => {
     const lineup = state.savedLineups.find((l) => l.id === el.dataset.lineupId);
     if (lineup) el.innerHTML = savedProjHtml(lineup, lastBoard);
   });
-  repaintBandIfFiguresMoved(optCtx(lastBoard, lastKey)); // Median / Ceiling and the cash basis follow the switch too
 }
-onFiguresChange(repaintSlotFigures);
 
 export function slotPlayerHtml(row, isCpt) {
   return `
@@ -469,8 +465,8 @@ export function savedLineupSlotHtml(entry, palette = null) {
     </div>`;
 }
 
-// The saved card's projection total (Q16: the figures the switch shows, `figures` = playerFigures by default): null when
-// a man is off the board or has no figure. The salary total is the board's in both modes. The total is the sum of the six
+// The saved card's projection total (the board row's figures, `figures` = playerFigures by default): null when
+// a man is off the board or has no figure. The salary total is the board's too. The total is the sum of the six
 // figures each rounded to one decimal as a card row prints them (totals.js shownTotal, ChatGPT wish d, Adam 2026-10-17), as a
 // generated card's total is (optimizer-view.js gppTotalsText): 👁 V4 found this card summing the unrounded figures, so the
 // same six men read 105.0 here and 105.1 on their results card.
@@ -596,7 +592,7 @@ function panelHtml(board) {
         <div class="lineup-totals">${totalsLineHtml(totals)}</div>
         ${buildStatusHtml(board)}
         ${optimizerBandBoxesHtml(board)}
-        ${optimizerGoRowHtml()}
+        ${optimizerGoRowHtml(board)}
       </div>
       <div class="lineup-right">
         <h3 class="lineup-right-title">Showdown players (click a column to sort)</h3>
@@ -712,10 +708,12 @@ function wire(container, board, key) {
 
 let lastValidatedKey = null;
 
-export function renderShowdownLineupPanel(container, board, key) {
+// `onOpenSources`: what the meter's figures label's Sources link does (view.js: the Showdown header's Sources button's opener).
+export function renderShowdownLineupPanel(container, board, key, { onOpenSources = openSources } = {}) {
   lastContainer = container;
   lastBoard = board;
   lastKey = key;
+  openSources = onOpenSources;
   if (key !== lastValidatedKey) {
     lastValidatedKey = key;
     state.savedLoaded = false;
@@ -731,7 +729,7 @@ export function renderShowdownLineupPanel(container, board, key) {
     if (key) loadSavedLineups(key);
   }
   syncOptimizer(key, board); // this showdown's Optimizer settings; another showdown's batch is dropped (first: the meter reads its excludes)
-  syncMeter({ board, key, cpt: state.cpt, flex: state.flex, container, excludes: optimizerExcludes() }); // the meter repaints only its own strip; the on-screen mode's excludes, as a batch card's meter has them (🔵 866b0ce B1)
+  syncMeter({ board, key, cpt: state.cpt, flex: state.flex, container, excludes: optimizerExcludes(), onSources: openSources, onModes: repaintSlotFigures }); // the meter repaints only its own strip and the slots' notes; the on-screen mode's excludes, as a batch card's meter has them (🔵 866b0ce B1)
   syncSwaps({ board, key, cpt: state.cpt, flex: state.flex, container, excludes: optimizerExcludes() }); // after the meter: the swaps exist while it has a complete live lineup; the meter's excludes, so no excluded man is offered
   container.innerHTML = panelHtml(board);
   wire(container, board, key);

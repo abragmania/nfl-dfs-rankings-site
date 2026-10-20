@@ -142,7 +142,7 @@ export function secondSlateSavedText(secondSlate) {
 // board says the current numbers are showing.
 const appliesText = (scope) => (scope ? ` Applies to ${scope}.` : "");
 
-function modePillHtml(cls, text, title) {
+export function modePillHtml(cls, text, title) { // exported for the Showdown header's sources pill (showdown/figures-label.js figuresPillHtml)
   return `<span class="pill ${cls}" title="${escapeHtml(title || text)}">${escapeHtml(text)}</span>`;
 }
 

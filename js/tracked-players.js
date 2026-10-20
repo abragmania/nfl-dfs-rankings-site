@@ -1,6 +1,7 @@
 // The Tracked DFS players page (public/tracked-players.html; Adam 2026-10-20: "make it something I can sort and click through
-// that isn't ugly"): one sortable table of DraftKings usernames from the contest standings Adam uploaded, the RotoGrinders top 100
-// and his marks. Clicking a row (or Enter or Space on it) marks or unmarks the name at once through POST /api/tracked-players/mark.
+// that isn't ugly"): one sortable table of DraftKings usernames: the RotoGrinders top-100 rank and YES for each WAS@SF contest entered
+// from the standings Adam uploaded (2:10 PM: columns, not tags; contest results are not shown). Clicking a row, or Enter or Space on the
+// keyboard row (arrow keys or j and k move it), marks or unmarks the name at once through POST /api/tracked-players/mark.
 // What to show is worked out in tracked-players-view.js (pure, tested); this file only draws it and wires the controls.
 // On the public site (D71) the page shows the same list read-only: tools/publish.mjs rewrites TRACKED_URL to the baked copy,
 // which is how the page knows where it runs, and marking is left to the app.
@@ -8,17 +9,13 @@ import { escapeHtml, localStamp } from "./format.js";
 import { sortArrowHtml } from "./table.js";
 import { cameFromApp, backTarget } from "./showdown/salary-used.js";
 import {
-  PAGE_SIZE, LIST_CHOICES, DEFAULT_SORT, buildModel, listCounts, listLabels, viewRows, page, badgesFor, entriesOf, statsOver,
-  shownContestIds, nextSort, withMark, namesInContests, shareText, multiPossible, columnsFor, snapshotText, snapshotSummary,
+  PAGE_SIZE, LIST_CHOICES, DEFAULT_SORT, buildModel, listCounts, viewRows, page, nextSort, withMark, namesInContests,
+  columnsFor, snapshotSummary, keyStep, stepKey, cursorAfter,
 } from "./tracked-players-view.js";
 
 const TRACKED_URL = "baked/tracked-players.json";
 const SITE = TRACKED_URL.startsWith("baked/");
-const COLS = columnsFor(SITE);
-const HEADER_TITLES = {
-  best: "The best placing as a share of its contest's field (top 1% = in the first hundredth); sorted by that share",
-  rg: "RotoGrinders overall rank",
-};
+let cols = columnsFor(SITE, []); // the contests' columns join them once the lists load
 
 const els = {
   counts: document.getElementById("tp-counts"),
@@ -28,19 +25,23 @@ const els = {
   readOnly: document.getElementById("tp-readonly"),
   lists: document.getElementById("tp-lists"),
   hideMarked: document.getElementById("tp-hide-marked"),
-  multi: document.getElementById("tp-multi"),
   source: document.getElementById("tp-source"),
   thead: document.getElementById("tp-thead"),
   tbody: document.getElementById("tp-tbody"),
   showing: document.getElementById("tp-showing"),
   more: document.getElementById("tp-more"),
+  foot: document.getElementById("tp-foot"),
+  bar: document.getElementById("tp-bar"),
+  keys: document.getElementById("tp-keys"),
 };
 
-const view = { list: "crossover", query: "", hideMarked: false, multiOnly: false, sort: { ...DEFAULT_SORT }, limit: PAGE_SIZE };
+const view = { list: "all", query: "", hideMarked: false, sort: { ...DEFAULT_SORT }, limit: PAGE_SIZE };
 let model = null;
 let counts = null;
-let labels = null;
-let multiOk = null; // list id -> whether anyone on it has 2+ entries in its contests
+let cursor = null; // the keyboard row's name key, or null until an arrow key or a click picks one
+let shownKeys = []; // every row of the current list, in order (not just the loaded page): where the arrow keys step
+let hasMore = false; // rows beyond the loaded page
+let footObserver = null;
 const saving = new Map(); // key -> the state being saved (true = marking)
 let saves = Promise.resolve(); // marks are posted one at a time, in click order
 
@@ -51,9 +52,6 @@ function when(iso) {
   const s = localStamp(iso);
   return s ? `${s.monthDay} ${s.clock}` : null;
 }
-
-/** "final" or the live snapshot's wording (tracked-players-view.js snapshotText) for a contest or a best placing. */
-const stateText = (live, at) => snapshotText(live, at, when);
 
 function showError(message) {
   els.error.textContent = message;
@@ -72,54 +70,48 @@ function renderLists() {
   els.lists.innerHTML = LIST_CHOICES.map(
     (l) =>
       `<button type="button" class="chip toggle-chip tp-list${view.list === l.id ? " active" : ""}" data-list="${l.id}" aria-pressed="${view.list === l.id}">` +
-      `${escapeHtml(labels[l.id])} <span class="tp-list-count">${fmt(counts[l.id])}</span></button>`
+      `${escapeHtml(l.label)} <span class="tp-list-count">${fmt(counts[l.id])}</span></button>`
   ).join("");
 }
 
 function renderToggles() {
-  const possible = multiOk[view.list];
-  els.multi.disabled = !possible;
-  els.multi.title = possible ? "2 or more entries in one contest (on a contest's own list, in that contest)" : "single-entry contest";
-  for (const [btn, on] of [[els.hideMarked, view.hideMarked], [els.multi, view.multiOnly && possible]]) {
-    btn.classList.toggle("active", on);
-    btn.setAttribute("aria-pressed", String(on));
-  }
+  els.hideMarked.classList.toggle("active", view.hideMarked);
+  els.hideMarked.setAttribute("aria-pressed", String(view.hideMarked));
 }
 
 function renderHead() {
-  els.thead.innerHTML = `<tr>${COLS.map((c) => {
+  els.thead.innerHTML = `<tr>${cols.map((c) => {
     const active = view.sort.col === c.id;
     const aria = active ? ` aria-sort="${view.sort.dir === "asc" ? "ascending" : "descending"}"` : "";
-    const title = HEADER_TITLES[c.id] ? ` title="${escapeHtml(HEADER_TITLES[c.id])}"` : "";
-    return `<th class="tp-col-${c.id}${active ? " sorted" : ""}" data-col="${c.id}"${aria}${title}>${escapeHtml(c.label)}${sortArrowHtml(active, view.sort.dir, true)}</th>`;
+    const title = c.title ? ` title="${escapeHtml(c.title)}"` : "";
+    const kind = c.id === "mark" || c.id === "name" || c.id === "top100" ? c.id : "count";
+    return `<th class="tp-col-${kind}${active ? " sorted" : ""}" data-col="${escapeHtml(c.id)}"${aria}${title}>${escapeHtml(c.label)}${sortArrowHtml(active, view.sort.dir, true)}</th>`;
   }).join("")}</tr>`;
 }
 
-function bestCell(best) {
-  if (!best) return `<td class="tp-num tp-missing">&mdash;</td>`;
-  const title = `Best placing: #${fmt(best.rank)} of ${fmt(best.of)} entries in ${best.label} (${stateText(best.live, best.snapshotAt)})`;
-  return `<td class="tp-num" title="${escapeHtml(title)}">${shareText(best.frac)}<span class="tp-of"> #${fmt(best.rank)} / ${fmt(best.of)}</span></td>`;
+/** The Top 100 cell: his RotoGrinders rank, blank when he is not in the top 100. */
+function rankCell(row) {
+  if (!row.rgRank) return `<td class="tp-num"></td>`;
+  const listed = row.rgName && row.rgName.toLowerCase() !== row.key ? `, listed there as ${row.rgName}` : "";
+  return `<td class="tp-num" title="${escapeHtml(`RotoGrinders overall rank${listed}`)}">${row.rgRank}</td>`;
+}
+
+/** One contest's cell: YES when he entered it (Adam 2026-10-20 2:19 PM: no counts), blank when he did not. */
+function entriesCell(row, contest) {
+  return `<td class="tp-yes">${row.contests[contest.id] ? "YES" : ""}</td>`;
 }
 
 function rowHtml(row) {
   const pending = saving.get(row.key);
   const marked = pending ?? model.marked.has(row.key);
-  const badges = badgesFor(row, model.contests, model.marked); // the Marked badge changes once the save is confirmed
-  const ent = entriesOf(row, model.contests);
-  const stats = statsOver(row, shownContestIds(view.list, model.contests), model.contests);
-  const split = ent.split.map((x) => `${x.label}: ${fmt(x.entries)}`).join("\n");
-  const rg = row.rgRank ? `<td class="tp-num" title="RotoGrinders overall rank${row.rgName && row.rgName.toLowerCase() !== row.key ? `, listed there as ${escapeHtml(row.rgName)}` : ""}">${row.rgRank}</td>` : `<td class="tp-num tp-missing">&mdash;</td>`;
-  const cls = `tp-row${marked ? " is-marked" : ""}${pending !== undefined ? " is-saving" : ""}${SITE ? " is-read-only" : ""}`;
+  const cls = `tp-row${marked ? " is-marked" : ""}${cursor === row.key ? " is-cursor" : ""}${pending !== undefined ? " is-saving" : ""}${SITE ? " is-read-only" : ""}`;
   const mark = SITE ? "" : `<td class="tp-mark"><input type="checkbox" tabindex="-1" aria-label="Mark ${escapeHtml(row.name)}"${marked ? " checked" : ""}></td>`;
   return (
     `<tr class="${cls}"${SITE ? "" : ` tabindex="0" aria-busy="${pending !== undefined}"`} data-key="${escapeHtml(row.key)}">` +
     mark +
-    `<td class="tp-name" title="${escapeHtml(row.name)}">${escapeHtml(row.name)}</td>` +
-    `<td class="tp-on">${badges.map((b) => `<span class="tp-badge tp-badge-${b.slot}" title="${escapeHtml(b.title)}">${escapeHtml(b.short)}</span>`).join("")}${pending !== undefined ? `<span class="tp-saving">saving…</span>` : ""}</td>` +
-    `<td class="tp-num"${split ? ` title="${escapeHtml(split)}"` : ""}>${ent.total ? fmt(ent.total) : `<span class="tp-missing" title="In none of these contests">0</span>`}</td>` +
-    bestCell(stats.best) +
-    `<td class="tp-num">${stats.avg === null ? `<span class="tp-missing">&mdash;</span>` : stats.avg.toFixed(1)}</td>` +
-    rg +
+    `<td class="tp-name" title="${escapeHtml(row.name)}">${escapeHtml(row.name)}${pending !== undefined ? `<span class="tp-saving">saving…</span>` : ""}</td>` +
+    rankCell(row) +
+    model.contests.map((c) => entriesCell(row, c)).join("") +
     `</tr>`
   );
 }
@@ -127,14 +119,55 @@ function rowHtml(row) {
 /** Redraws the rows, the "showing X of Y" line and the More button; keeps keyboard focus on the row that had it. */
 function renderBody() {
   const focusedKey = document.activeElement?.closest?.("tr.tp-row")?.dataset.key ?? null;
-  const p = page(viewRows(model, { ...view, multiOnly: view.multiOnly && multiOk[view.list] }), view.limit);
+  const all = viewRows(model, view);
+  shownKeys = all.map((r) => r.key);
+  cursor = cursorAfter(shownKeys, cursor); // the same name stays focused while it is listed, else the first row
+  const p = page(all, view.limit);
+  hasMore = p.more;
   els.tbody.innerHTML = p.shown.length
     ? p.shown.map(rowHtml).join("")
-    : `<tr class="tp-empty"><td colspan="${COLS.length}">No names match.</td></tr>`;
+    : `<tr class="tp-empty"><td colspan="${cols.length}">No names match.</td></tr>`;
   els.showing.textContent = `showing ${fmt(p.showing)} of ${fmt(p.total)}`;
   els.more.hidden = !p.more;
   els.more.textContent = `Show ${fmt(Math.min(PAGE_SIZE, p.total - p.showing))} more`;
   if (focusedKey !== null) els.tbody.querySelector(`tr[data-key="${CSS.escape(focusedKey)}"]`)?.focus({ preventScroll: true });
+  // Observing again makes the observer report the footer's present state, so a footer still in view after a load loads the next page.
+  if (footObserver) {
+    footObserver.unobserve(els.foot);
+    footObserver.observe(els.foot);
+  }
+}
+
+/** Moves the keyboard row to `key` without redrawing: the old row loses its highlight, the new one gains it (and the focus, and the view if asked). */
+function setCursor(key, reveal) {
+  if (cursor !== null) els.tbody.querySelector(`tr[data-key="${CSS.escape(cursor)}"]`)?.classList.remove("is-cursor");
+  cursor = key;
+  const tr = key === null ? null : els.tbody.querySelector(`tr[data-key="${CSS.escape(key)}"]`);
+  tr?.classList.add("is-cursor");
+  if (reveal && tr) {
+    tr.focus({ preventScroll: true });
+    tr.scrollIntoView({ block: "nearest" }); // the row's scroll-margin keeps it clear of the pinned bar and header
+  }
+}
+
+/** Down/j and Up/k: steps the keyboard row, loading the next page first when the step goes past the rows drawn. */
+function moveCursor(delta) {
+  const key = stepKey(shownKeys, cursor, delta);
+  if (key === null) return;
+  while (shownKeys.indexOf(key) >= view.limit) view.limit += PAGE_SIZE;
+  if (els.tbody.querySelector(`tr[data-key="${CSS.escape(key)}"]`) === null) {
+    cursor = key;
+    renderBody();
+  }
+  setCursor(key, true);
+}
+
+/** Pins the table header just under the chip bar: publishes the bar's and the bar-plus-header heights as CSS variables. */
+function measureStick() {
+  const bar = els.bar.getBoundingClientRect().height;
+  const head = els.thead.getBoundingClientRect().height;
+  document.documentElement.style.setProperty("--tp-bar-h", `${bar}px`);
+  document.documentElement.style.setProperty("--tp-stick-h", `${bar + head}px`);
 }
 
 function replaceRow(key) {
@@ -216,26 +249,58 @@ function wire() {
     renderBody();
   });
   els.hideMarked.addEventListener("click", () => { view.hideMarked = !view.hideMarked; view.limit = PAGE_SIZE; renderToggles(); renderBody(); });
-  els.multi.addEventListener("click", () => { view.multiOnly = !view.multiOnly; view.limit = PAGE_SIZE; renderToggles(); renderBody(); });
   els.thead.addEventListener("click", (e) => {
     const th = e.target.closest("th[data-col]");
     if (!th) return;
-    view.sort = nextSort(view.sort, th.dataset.col);
+    view.sort = nextSort(view.sort, th.dataset.col, cols);
     renderHead();
     renderBody();
   });
   els.tbody.addEventListener("click", (e) => {
     const tr = e.target.closest("tr.tp-row");
-    if (tr) toggle(tr.dataset.key);
-  });
-  els.tbody.addEventListener("keydown", (e) => {
-    if (e.key !== "Enter" && e.key !== " ") return;
-    const tr = e.target.closest("tr.tp-row");
-    if (!tr || e.target !== tr || SITE) return;
-    e.preventDefault(); // Space would scroll the page
+    if (!tr) return;
+    setCursor(tr.dataset.key, false);
     toggle(tr.dataset.key);
   });
-  els.more.addEventListener("click", () => { view.limit += PAGE_SIZE; renderBody(); });
+  els.tbody.addEventListener("focusin", (e) => { // Tab onto a row makes it the keyboard row
+    const tr = e.target.closest("tr.tp-row");
+    if (tr && tr.dataset.key !== cursor) setCursor(tr.dataset.key, false);
+  });
+  els.more.addEventListener("click", loadMore);
+  wireKeys();
+  wireScrollLoad();
+}
+
+function loadMore() {
+  if (!hasMore) return;
+  view.limit += PAGE_SIZE;
+  renderBody();
+}
+
+/** Rows load as the footer scrolls into view; the Show more button stays as the fallback where there is no IntersectionObserver. */
+function wireScrollLoad() {
+  if (typeof IntersectionObserver === "undefined") return;
+  footObserver = new IntersectionObserver((entries) => { if (entries.some((x) => x.isIntersecting)) loadMore(); }, { rootMargin: "400px 0px" });
+  footObserver.observe(els.foot);
+}
+
+/** Down/j and Up/k move the keyboard row; Enter and Space mark it (the click's save path). Typing in the search box or on a button is left alone. */
+function wireKeys() {
+  document.addEventListener("keydown", (e) => {
+    if (e.ctrlKey || e.metaKey || e.altKey || e.target.closest?.("input, textarea, select, button, a, [contenteditable]")) return;
+    const step = keyStep(e.key);
+    if (step !== 0) {
+      e.preventDefault(); // the arrow keys would scroll the page
+      moveCursor(step);
+    } else if ((e.key === "Enter" || e.key === " ") && cursor !== null && !SITE) {
+      e.preventDefault(); // Space would scroll the page
+      toggle(cursor);
+    }
+  });
+  measureStick();
+  if (typeof ResizeObserver !== "undefined") new ResizeObserver(measureStick).observe(els.bar);
+  window.addEventListener("resize", measureStick);
+  if (SITE) els.keys.textContent = "↑ ↓ move";
 }
 
 /** The source line: each contest group's live-or-final state and time, and where the RG rank comes from (its page on hover). */
@@ -263,13 +328,13 @@ async function init() {
   }
   model = buildModel(data.registry, data.lists);
   counts = listCounts(model);
-  labels = listLabels(model.contests);
-  multiOk = Object.fromEntries(LIST_CHOICES.map((l) => [l.id, multiPossible(model, l.id)]));
+  cols = columnsFor(SITE, model.contests);
   renderSource(data);
   renderCounts();
   renderLists();
   renderToggles();
   renderHead();
+  measureStick(); // the header row now has its height
   renderBody();
 }
 

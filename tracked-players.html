@@ -39,12 +39,14 @@
     <div class="tp-wrap">
       <div id="tp-error" class="tp-error" role="alert" hidden></div>
       <p id="tp-readonly" class="tab-note tp-readonly" hidden>Read-only on the live site. Marking runs in the app on your computer.</p>
-      <div class="filter-row tp-controls">
-        <div id="tp-lists" class="chip-group" aria-label="List"></div>
-        <span class="tp-sep" aria-hidden="true"></span>
-        <button id="tp-hide-marked" type="button" class="chip toggle-chip" aria-pressed="false">Hide marked</button>
-        <button id="tp-multi" type="button" class="chip toggle-chip" aria-pressed="false">Multi-entry only</button>
-        <span class="filter-search tp-search"><input id="tp-search" type="search" placeholder="Search names" aria-label="Search names" autocomplete="off" spellcheck="false" /></span>
+      <div id="tp-bar" class="tp-bar">
+        <div class="filter-row tp-controls">
+          <div id="tp-lists" class="chip-group" aria-label="List"></div>
+          <span class="tp-sep" aria-hidden="true"></span>
+          <button id="tp-hide-marked" type="button" class="chip toggle-chip" aria-pressed="false">Hide marked</button>
+          <span class="filter-search tp-search"><input id="tp-search" type="search" placeholder="Search names" aria-label="Search names" autocomplete="off" spellcheck="false" /></span>
+        </div>
+        <p id="tp-keys" class="tab-note tp-keys">&uarr; &darr; move &middot; Enter marks</p>
       </div>
       <p id="tp-source" class="tab-note tp-source"></p>
       <div class="table-wrap">
@@ -53,7 +55,7 @@
           <tbody id="tp-tbody"></tbody>
         </table>
       </div>
-      <div class="tp-foot">
+      <div id="tp-foot" class="tp-foot">
         <span id="tp-showing" class="tp-showing"></span>
         <button id="tp-more" type="button" class="chip" hidden>Show 300 more</button>
       </div>

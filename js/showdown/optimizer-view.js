@@ -14,14 +14,14 @@ import { shownTotal } from "../totals.js";
 import { showdownPalette } from "./lineup-look.js";
 import { copiesText, gapText, scaleColour, noUniquenessText, sourceLineText } from "./lineup-meter.js";
 import { likelyRangeText, likelyFactText } from "./likely-copies.js";
-import { OBJECTIVES, TEAM_OPTIONS, MAX_COUNT, MAX_UNIQUE, effectiveObjective, cashBasisText, statusLineText, isLocked, isIncluded, excludeState, exposureTables } from "./optimizer-state.js";
+import { OBJECTIVES, TEAM_OPTIONS, MAX_COUNT, MAX_UNIQUE, effectiveObjective, boardHasTg, cashBasisText, statusLineText, isLocked, isIncluded, excludeState, exposureTables } from "./optimizer-state.js";
 
 // The Showdown pool's position chips (D41): the six positions a Showdown board carries, K included and no FLEX chip, as the
 // Rankings filter bar's (view.js SD_POSITION_CHIPS), in the classic pool's row with Show all players. Classic's Starred only is
 // not drawn: Showdown players cannot be starred, so it could never work (lead's call on 🔵 866b0ce B9); it returns as
 // "Favorites only" when they can be.
 export const SD_POOL_POSITIONS = Object.freeze(["All", "QB", "RB", "WR", "TE", "K", "DST"]);
-const NO_FIGURES_TITLE = "Median and Ceiling need TwoGun's figures: set Figures to TwoGun to build by them.";
+const NO_FIGURES_TITLE = { median: "Median needs TwoGun's medians, and this game's board has none (TwoGun is not ticked for its projections on the Sources page, or his file is not posted).", ceil: "Ceiling needs TwoGun's ceilings, and this game's board has none (TwoGun is not ticked for its projections on the Sources page, or his file is not posted)." };
 const OBJECTIVE_TITLE = { proj: "Build the lineups with the highest total projection", median: "Build the lineups with the highest total of TwoGun's medians", ceil: "Build the lineups with the highest total of TwoGun's ceilings" };
 const OBJECTIVE_WORD = { proj: "projection", median: "median", ceil: "ceiling" };
 // The lock button's padlock, drawn in the text colour (the sketch's, approved 2026-10-19).
@@ -29,17 +29,20 @@ const LOCK_SVG = `<svg viewBox="0 0 16 16" width="13" height="13" fill="currentC
 
 // ---------- the heading and the settings ----------
 
-/** Projection | Median | Ceiling (classic objectiveChipsHtml's shape): Median and Ceiling are greyed in Our sources, where the
- *  build is by projection (effectiveObjective), with the reason on hover and a dim "(TwoGun mode only)". */
-export function objectiveChipsHtml(picked, boardMode) {
-  const active = effectiveObjective(picked, boardMode);
+/** Projection | Median | Ceiling (classic objectiveChipsHtml's shape): Median or Ceiling is greyed when no row of the served
+ *  board carries that figure of TwoGun's (optimizer-state.js boardHasTg, as classic's boardHasCeilings), and the build is then by
+ *  projection (effectiveObjective), with the reason on hover and one dim "(needs TwoGun's figures)" after the chips. */
+export function objectiveChipsHtml(picked, board) {
+  const active = effectiveObjective(picked, board);
+  const offs = [];
   const chips = OBJECTIVES.map((o) => {
-    const off = o.value !== "proj" && boardMode !== "twogun";
+    const off = o.value !== "proj" && !boardHasTg(board, o.value);
+    if (off) offs.push(NO_FIGURES_TITLE[o.value]);
     const on = o.value === active;
-    const title = off ? NO_FIGURES_TITLE : OBJECTIVE_TITLE[o.value];
+    const title = off ? NO_FIGURES_TITLE[o.value] : OBJECTIVE_TITLE[o.value];
     return `<button type="button" class="chip toggle-chip opt-chip${on ? " active" : ""}${off ? " is-disabled" : ""}" data-sd-objective="${o.value}" aria-pressed="${on}"${off ? ` aria-disabled="true"` : ""} title="${escapeHtml(title)}">${escapeHtml(o.label)}</button>`;
   }).join("");
-  return boardMode === "twogun" ? chips : `${chips}<span class="opt-sub" title="${escapeHtml(NO_FIGURES_TITLE)}">(TwoGun mode only)</span>`;
+  return offs.length ? `${chips}<span class="opt-sub" title="${escapeHtml(offs.join(" "))}">(needs TwoGun's figures)</span>` : chips;
 }
 
 function teamSelectHtml(value) {
@@ -51,7 +54,7 @@ function teamSelectHtml(value) {
  * The Optimizer band in its two pieces (Adam 2026-10-20: "I can't see the main lineup that I'm building"): the head stays at the top
  * of the left column, the Pool and Build boxes sit under the build status line, just above the Make row, so the six slots and the
  * meter are the first thing on screen. bandHtml is the two together (the band's whole markup, in the old order).
- * `v` = {mode, ms, board, boardMode, error, formError}.
+ * `v` = {mode, ms, board, error, formError}.
  */
 export function bandHtml(v) {
   return bandHeadHtml(v) + bandBoxesHtml(v);
@@ -84,12 +87,14 @@ export function bandBoxesHtml(v) {
     numberBoxHtml(`type="number" min="1" max="${MAX_COUNT}" class="opt-input opt-input-num" id="sd-opt-count" value="${escapeHtml(v.ms.count)}" aria-label="How many lineups"`),
     cash ? "The best first, then the next best" : "Around the pool's locks and includes"
   ).replace(/<\/div>$/, `${lockLine}</div>`);
+  // Cash builds by the board's own reading (board.mode.cashMode): TwoGun's median while TwoGun is this game's only ticked projection source.
+  const cashMode = v.board?.mode?.cashMode;
   const build = cash
-    ? [countRow, settingRowHtml("Build by", `<span class="cash-basis">${escapeHtml(cashBasisText(v.boardMode))}</span>`, v.boardMode === "twogun" ? "Fixed in cash (Our sources mode: projection)" : "Fixed in cash (TwoGun mode: TwoGun's median)")].join("")
+    ? [countRow, settingRowHtml("Build by", `<span class="cash-basis">${escapeHtml(cashBasisText(cashMode))}</span>`, cashMode === "twogun" ? "Fixed in cash: TwoGun is this game's only projection source" : "Fixed in cash: TwoGun's median only when he is this game's only projection source")].join("")
     : [
         countRow,
         settingRowHtml("Min unique players", numberBoxHtml(`type="number" min="1" max="${MAX_UNIQUE}" class="opt-input opt-input-num" id="sd-opt-min-unique" value="${escapeHtml(v.ms.minUnique)}" aria-label="Minimum unique players between lineups"`), "Between any two lineups"),
-        settingRowHtml("Build by", `<span class="opt-chips">${objectiveChipsHtml(v.ms.objective, v.boardMode)}</span>`),
+        settingRowHtml("Build by", `<span class="opt-chips">${objectiveChipsHtml(v.ms.objective, v.board)}</span>`),
         settingSubtitleHtml("Max share of lineups"),
         `<div class="opt-set-hint">Each man's Min % and Max % are on the pool rows: the Captain list sets his Captain share, the FLEX list his FLEX share.</div>`,
       ].join("");
@@ -140,13 +145,13 @@ export function gppTotalsText(lineup, objective) {
 
 /** A GPP card's meter strip, from the lineup's own meter as the server measured it (nothing computed here): expected copies in
  *  the field (in the meter's colour), how many other entries most likely hold it ("likely 0 to 2"), and the gap to the best possible projection. */
-export function cardMeterHtml(meter, boardMode) {
+export function cardMeterHtml(meter) {
   if (!meter || typeof meter !== "object") return "";
-  const none = noUniquenessText(meter, boardMode);
+  const none = noUniquenessText(meter);
   const gap = gapText(meter.gapPts, meter.gapPct);
   const gapPart = gap ? `<span>${escapeHtml(gap)} vs best</span>` : "";
   // 🔵 866b0ce B5: a man TwoGun's board has no row for counts 0% (Q8) and his card row reads "(0% own)", so the strip names him.
-  const off = offBoardText(meter, boardMode);
+  const off = offBoardText(meter);
   const offPart = off ? `<span class="sd-card-offboard">${escapeHtml(off)}</span>` : "";
   if (none) return `<div class="sd-card-meter"><span>${escapeHtml(none)}</span>${gapPart}${offPart}</div>`;
   const u = meter.uniqueness;
@@ -156,9 +161,8 @@ export function cardMeterHtml(meter, boardMode) {
   return `<div class="sd-card-meter"><span${field}><b style="color:${scaleColour(u.copies)}">${escapeHtml(copiesText(u.copies))}</b> copies</span>${likelyPart}${gapPart}${offPart}</div>`;
 }
 
-/** "not on TwoGun's board: A Smith, B Jones" from the lineup's own meter (TwoGun mode only), else null. */
-export function offBoardText(meter, boardMode) {
-  if ((meter?.mode ?? boardMode) !== "twogun") return null;
+/** "not on TwoGun's board: A Smith, B Jones" from the lineup's own meter (the server names them only while TwoGun is ticked), else null. */
+export function offBoardText(meter) {
   const names = Array.isArray(meter?.ownership?.notOnBoard) ? meter.ownership.notOnBoard.filter((n) => typeof n === "string" && n) : [];
   return names.length ? `not on TwoGun's board: ${names.join(", ")}` : null;
 }
@@ -174,7 +178,7 @@ function rowForSlot(board, personId) {
 /**
  * One generated card (classic optLineupCardHtml): "Lineup N" or "Cash N", Save (a disabled "Saved ✓" once saved) and Discard, the
  * Captain row first then the five FLEX, each row the classic card row with the price and points of its spot as the server sent
- * them (the Captain's 1.5x), the totals, and on GPP the meter strip. `o` = {cash, basis, objective, boardMode, busy, saved, board}.
+ * them (the Captain's 1.5x), the totals, and on GPP the meter strip. `o` = {cash, basis, objective, busy, saved, board}.
  */
 export function cardHtml(lineup, index, o) {
   const palette = showdownPalette(o.board);
@@ -204,27 +208,28 @@ export function cardHtml(lineup, index, o) {
       </div>
       <div class="opt-card-players">${rows}</div>
       <div class="opt-card-totals">${totals}</div>
-      ${o.cash ? "" : cardMeterHtml(lineup.meter, o.boardMode)}
+      ${o.cash ? "" : cardMeterHtml(lineup.meter)}
     </div>`;
 }
 
 // ---------- the batch ----------
 
-/** The words a batch is labelled with (classic builtInText / builtInTextCash): "20 lineups from the last Make (TwoGun mode, by median)". */
+/** The words a batch is labelled with (classic builtInText / builtInTextCash): "20 lineups from the last Make (TwoGun only, by median)";
+ *  a board reading other sources says "this game's sources". */
 export function batchHeadText(r, n) {
   if (r.mode === "cash") return builtInTextCash(n, r.basis).replace("from the last Build", "from the last Make");
-  return `${n} lineup${n === 1 ? "" : "s"} from the last Make (${r.boardMode === "twogun" ? "TwoGun" : "current"} mode, by ${OBJECTIVE_WORD[r.objective] ?? "projection"})`;
+  return `${n} lineup${n === 1 ? "" : "s"} from the last Make (${r.boardMode === "twogun" ? "TwoGun only" : "this game's sources"}, by ${OBJECTIVE_WORD[r.objective] ?? "projection"})`;
 }
 
-/** The source and as-of of the batch's figures (every figure carries its source): "Projections: TwoGun, Mon, Oct 19, 6:07 PM CT ·
- *  Ownership: TwoGun, ...". TwoGun mode: the answer's projection and ownership (the meter's halves on GPP, which carry the as-of's
- *  kind); Our sources: the meter's halves on GPP, else the board's own build time, the figures being the board's. */
+/** The source and as-of of the batch's figures (every figure carries its source): "Projections: TwoGun, Oct 19, 6:07 PM ·
+ *  Ownership: TwoGun, ...": the meter's halves on GPP (which carry the as-of's kind), else the answer's projection and ownership
+ *  (board.figures), else the board's own build time; each half named as the board names it at Make (r.names, figures-label.js halfName). */
 export function provenanceText(r) {
   const named = (h) => Boolean(h && (h.source || h.asOf));
-  const board = r.boardMode === "current" && r.boardBuiltAt ? { asOf: r.boardBuiltAt, asOfFrom: "board built" } : null;
+  const board = r.boardBuiltAt ? { asOf: r.boardBuiltAt, asOfFrom: "board built" } : null;
   const proj = [r.meter?.projection?.posted ? r.meter.projection : null, r.projection, board].find(named);
-  const own = [r.meter?.ownership?.posted ? r.meter.ownership : null, r.ownership?.status === "posted" ? r.ownership : null, board].find(named);
-  return [proj ? sourceLineText(proj, r.boardMode, "Projections") : null, own ? sourceLineText(own, r.boardMode, "Ownership") : null].filter(Boolean).join(" · ");
+  const own = [r.meter?.ownership?.posted ? r.meter.ownership : null, r.ownership?.status === "posted" || (r.ownership && !("status" in r.ownership)) ? r.ownership : null, board].find(named);
+  return [proj ? sourceLineText(proj, r.names?.projection, "Projections") : null, own ? sourceLineText(own, r.names?.ownership, "Ownership") : null].filter(Boolean).join(" · ");
 }
 
 /** The full source names behind the provenance line, for its hover. */
@@ -280,7 +285,7 @@ export function resultsHtml(v) {
     const marks = whole && r.made >= r.marks.asked ? r.marks : null; // a short or trimmed batch is not marked (classic's rule)
     // Adam 2026-10-17 (classic newLineupsTabHtml): the exposure tables above the cards, so they are high on the screen.
     parts.push(exposureHtml(r.lineups, v.board, v.expSortDir, marks));
-    parts.push(`<div class="opt-cards">${r.lineups.map((l, i) => cardHtml(l, l.index, { cash, basis: r.basis, objective: r.objective, boardMode: r.boardMode, busy: v.busy, saved: v.savedFlags[i], board: v.board })).join("")}</div>`);
+    parts.push(`<div class="opt-cards">${r.lineups.map((l, i) => cardHtml(l, l.index, { cash, basis: r.basis, objective: r.objective, busy: v.busy, saved: v.savedFlags[i], board: v.board })).join("")}</div>`);
     if (whole) parts.push(bendsLineHtml(r.bends, r.made));
   }
   return `<div class="opt-results sd-opt-results" id="sd-opt-results">${parts.join("")}</div>`;

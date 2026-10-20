@@ -4,15 +4,15 @@
 // classic Optimizer's pool: the same header (tabs.js sortableHeadHtml: "sortable"/"sorted" classes and the arrow), the same sort
 // (state.js sortRows: a blank always last, a tie keeps the board's order) and the same first-click directions (state.js
 // defaultDirFor). The Player cell is the one shared Showdown row (table.js sdLine, D80). Every figure comes from `figures(row,
-// isCpt)`, the Lineup tab's playerFigures (lineup-meter.js), so the TwoGun / Our sources switch drives both lists; salary is
-// the board's. This file only draws, sorts and wires the lists; lineup.js owns the lineup (the slots and their rules).
+// isCpt)`, the Lineup tab's playerFigures (lineup-meter.js): the board row's own, so both lists read this game's ticked sources
+// (Adam 2026-10-20); salary is the board's. This file only draws, sorts and wires the lists; lineup.js owns the lineup.
 import { escapeHtml, money, dec1 } from "../format.js";
 import { gradedCellHtml } from "../table.js";
-import { zGrades, inGradePool } from "../grade.js";
 import { sortRows, defaultDirFor } from "../state.js";
 import { sortableHeadHtml } from "../tabs.js";
 import { shownRows, sdLine, projTitleText, ownTitleText } from "./table.js";
-import { playerFigures, figuresMode, readingFiguresText, figuresProblemText, twogunNotPostedText } from "./lineup-meter.js";
+import { playerFigures } from "./lineup-meter.js";
+import { readingShortText } from "./figures-label.js";
 import { snapPanelMaxHeight } from "../lineup.js";
 import { shortName } from "../lineup-card.js"; // the cards' one name shortener (👁 V-N1: a tagged row's name)
 
@@ -43,7 +43,7 @@ export function resetListSorts() {
   shownKind = null;
 }
 
-// ---------- which list is shown (remembered per viewer, as the meter's source switch is) ----------
+// ---------- which list is shown (remembered per viewer) ----------
 
 const browserStorage = () => window.localStorage;
 let shownKind = null; // read from storage on first use
@@ -130,43 +130,11 @@ export function nextListSort(sort, col) {
 
 // ---------- drawing ----------
 
-/**
- * The source and read state every figure is drawn under: { mode: "twogun" | "current", reading: text or null, problem: text or
- * null (the first TwoGun read failed), ownBlank / projBlank: why TwoGun posted no ownership / projection at all, or null }.
- */
-function viewOf(view = {}) {
-  const pick = (given, read) => (given === undefined ? read() : given);
-  return {
-    mode: view.mode ?? figuresMode(),
-    reading: pick(view.reading, readingFiguresText),
-    problem: pick(view.problem, figuresProblemText),
-    ownBlank: pick(view.ownBlank, () => twogunNotPostedText("ownership")),
-    projBlank: pick(view.projBlank, () => twogunNotPostedText("projection")),
-  };
-}
-
-/** The header line over the lists: the source every figure comes from, and the note while TwoGun's figures are out (first read under way, or failed). */
-export function listsNoteText(view) {
-  const { mode, reading, problem } = viewOf(view);
-  const note = reading || problem;
-  return `Figures: ${mode === "twogun" ? "TwoGun" : "our sources"}${note ? ` · ${note}` : ""}`;
-}
-
-/**
- * The Proj/$ grade (D33, one colour system) for each man in one list. Our sources: the board row's own grade (view.js
- * applyGrades; Captain value equals FLEX value there because the board's Captain salary and projection are both 1.5x). TwoGun's
- * figures are not on the row, so grade.js zGrades bands the list's own Proj/$ within position, over the men the board
- * grades (inGradePool: FLEX projection 3+, not out).
- */
-function gradesFor(board, kind, figures, mode) {
-  if (mode !== "twogun") return null;
-  const items = [];
-  for (const row of board?.rows ?? []) {
-    const value = listFigures(row, kind, figures).value;
-    if (value !== null && inGradePool({ ...row, proj: figures(row, false).proj })) items.push({ id: row.id, pos: row.pos, value });
-  }
-  const banded = zGrades(items, (it) => it.value, (it) => it.pos);
-  return new Map(items.map((it) => [String(it.id), banded.get(it) ?? null]));
+/** The header line over the lists: the board's reading in a few words ("Figures: TwoGun only"); the full source lines are on the
+ *  meter's label and the header pill. "" for a board with no figures (the dev sample). */
+export function listsNoteText(board) {
+  const reading = readingShortText(board, ", ");
+  return reading ? `Figures: ${reading}` : "";
 }
 
 /** What is placed, for the rows' look and buttons: { cptId, flexIds } (strings). */
@@ -174,9 +142,9 @@ function isPlacedAnywhere(placement, id) {
   return String(placement.cptId ?? "") === id || (placement.flexIds ?? new Set()).has(id);
 }
 
-/** One row of one list. `grade` is the Proj/$ band (v1..v5) or null; `view` is { mode, reading } (see viewOf). */
-export function listRowHtml(row, kind, placement, figures = playerFigures, view = {}, grade = row.valueGrade ?? null) {
-  const { mode, reading, problem, ownBlank, projBlank } = viewOf(view);
+/** One row of one list. `grade` is the Proj/$ band (v1..v5) or null: the board row's own (view.js applyGrades, D33; the Captain's
+ *  value equals his FLEX value, his Captain salary and projection being both 1.5x). */
+export function listRowHtml(row, kind, placement, figures = playerFigures, grade = row.valueGrade ?? null) {
   const id = String(row.id);
   const isCpt = kind === "cpt";
   const f = listFigures(row, kind, figures);
@@ -185,24 +153,14 @@ export function listRowHtml(row, kind, placement, figures = playerFigures, view 
   const button = isCpt
     ? `<button type="button" class="lineup-row-btn${isCaptain ? " active" : ""}" data-action="add-cpt" data-id="${escapeHtml(id)}">${isCaptain ? "Captain" : controls?.addLabel?.() ?? "Add CPT"}</button>`
     : `<button type="button" class="lineup-row-btn" data-action="add-flex" data-id="${escapeHtml(id)}"${placed ? " disabled" : ""}>${controls?.addLabel?.() ?? "Add FLEX"}</button>`; // the Optimizer's rows say "Add" (the list's toggle names the slot) so its boxes fit
-  // Hovers (D41): in Our sources the board's projHow / ownHow, as the Showdown Rankings cells carry (a list reads only its own side
-  // of ownHow). In TwoGun mode a figure says "TwoGun's projection" (with TwoGun's note for an Out man) and a blank says why:
-  // the failed first read, else the modes answer's "not posted" reason, else the man's own reason.
-  const ours = mode !== "twogun";
-  const projTitle = ours
-    ? projTitleText(f.proj, row, isCpt ? "Captain: 1.5x price, 1.5x points. " : "")
-    : f.proj == null
-      ? problem || f.projNote || projBlank || "TwoGun has no projection for him."
-      : f.projNote ? `TwoGun's ${TITLES[kind]} projection. ${f.projNote}` : `TwoGun's ${TITLES[kind]} projection`;
-  const ownTitle = f.notOnBoard
-    ? "Not on TwoGun's board, 0%"
-    : ours
-      ? ownTitleText(f.own, row.ownHow, isCpt ? "Captain" : "FLEX")
-      : f.own == null ? problem || f.missingReason || ownBlank || "TwoGun has no ownership figure for him." : `TwoGun's ${TITLES[kind]} ownership`;
+  // Hovers (D41): the board's projHow / ownHow, as the Showdown Rankings cells carry (a list reads only its own side of ownHow); a
+  // man listed Out adds what TwoGun projects (projNote), a blank ownership gives the server's reason, a man TwoGun's board has no
+  // row for says so (Q8). The notes come from the modes answer (lineup-meter.js figuresFor).
+  const projBase = projTitleText(f.proj, row, isCpt ? "Captain: 1.5x price, 1.5x points. " : "");
+  const projTitle = f.projNote ? `${projBase}${projBase && !/\s$/.test(projBase) ? " " : ""}${f.projNote}` : projBase;
+  const ownTitle = f.notOnBoard ? "Not on TwoGun's board, 0%" : f.own == null && f.missingReason ? f.missingReason : ownTitleText(f.own, row.ownHow, isCpt ? "Captain" : "FLEX");
   const num = (title, text) => `<td class="sd-num"${title ? ` title="${escapeHtml(title)}"` : ""}>${text}</td>`;
-  const figureCells = reading
-    ? [num(reading, "…"), num(reading, "…"), num(reading, "…")] // the first TwoGun read is out: not "no proj"
-    : [num(projTitle, f.proj == null ? "no proj" : dec1(f.proj)), num(ownTitle, f.own == null ? "—" : `${dec1(f.own)}%`), `<td class="sd-num">${gradedCellHtml(f.value, grade)}</td>`];
+  const figureCells = [num(projTitle, f.proj == null ? "no proj" : dec1(f.proj)), num(ownTitle, f.own == null ? "—" : `${dec1(f.own)}%`), `<td class="sd-num">${gradedCellHtml(f.value, grade)}</td>`];
   // The Optimizer's row look (excluded, locked) beside the builder's placed tint, each class once.
   const classes = [...new Set([placed ? "lineup-row-locked" : "", ...String(controls?.rowClass?.(row, kind) ?? "").trim().split(/\s+/)].filter(Boolean))];
   return `
@@ -220,14 +178,12 @@ export function listHeadHtml(kind, sort = sorts[kind]) {
 }
 
 /** The body rows of one list in its sort order; `rows` are the board's rows (Out players are left out unless Show all players is on;
- *  the Optimizer's position chip and its locked / included / excluded men through controls.rows). `view` = { mode, reading }. */
-export function listBodyHtml(board, kind, placement, sort = sorts[kind], figures = playerFigures, view = {}) {
-  const v = viewOf(view);
-  const grades = gradesFor(board, kind, figures, v.mode);
+ *  the Optimizer's position chip and its locked / included / excluded men through controls.rows). */
+export function listBodyHtml(board, kind, placement, sort = sorts[kind], figures = playerFigures) {
   const all = board?.rows ?? [];
   const shown = shownRows(all);
   const rows = sortListRows(controls?.rows ? controls.rows(all, shown) : shown, kind, sort, figures);
-  return rows.map((r) => listRowHtml(r, kind, placement, figures, v, grades ? grades.get(String(r.id)) ?? null : r.valueGrade ?? null)).join("");
+  return rows.map((r) => listRowHtml(r, kind, placement, figures)).join("");
 }
 
 function listHtml(board, kind, placement, shown) {
@@ -254,7 +210,7 @@ export function listsHtml(board, placement, chipsHtml = "") {
     <div class="sd-lists-wrap">
       <div class="sd-lists-bar">
         <div class="sd-kind-switch" role="group" aria-label="Which player list">${toggle}</div>
-        <span class="sd-lists-note">${escapeHtml(listsNoteText())}</span>
+        <span class="sd-lists-note">${escapeHtml(listsNoteText(board))}</span>
       </div>${chipsHtml}
       ${LIST_KINDS.map((k) => listHtml(board, k, placement, k === shown)).join("")}
     </div>`;
@@ -264,7 +220,7 @@ export function listsHtml(board, placement, chipsHtml = "") {
 
 /**
  * Wires one drawn list: a click on a header sorts that list, a click on a row (not on its button or the name, which
- * opens the player card) calls ctx.onPick(kind, id). ctx = { board, placement(), figures?, view?, onPick(kind, id), onRepaint?(listEl) }.
+ * opens the player card) calls ctx.onPick(kind, id). ctx = { board, placement(), figures?, onPick(kind, id), onRepaint?(listEl) }.
  */
 export function wireList(listEl, ctx) {
   const kind = listEl.dataset?.kind;
@@ -293,14 +249,14 @@ export function wireList(listEl, ctx) {
   });
 }
 
-/** Redraws one list's head and body in place (a sort click, or the switch flipping), wires them and lets lineup.js wire the row buttons. */
+/** Redraws one list's head and body in place (a sort click, or the modes answer's notes landing), wires them and lets lineup.js wire the row buttons. */
 export function paintList(listEl, ctx) {
   const kind = listEl.dataset?.kind;
   const head = listEl.querySelector("thead");
   const body = listEl.querySelector("tbody");
   if (!LIST_KINDS.includes(kind) || !head || !body) return;
   head.innerHTML = listHeadHtml(kind);
-  body.innerHTML = listBodyHtml(ctx.board, kind, ctx.placement(), sorts[kind], ctx.figures ?? playerFigures, ctx.view);
+  body.innerHTML = listBodyHtml(ctx.board, kind, ctx.placement(), sorts[kind], ctx.figures ?? playerFigures);
   wireList(listEl, ctx);
   ctx.onRepaint?.(listEl);
   sizeShownList(listEl.parentElement); // a redraw can change the rows (a Show all players flip, a sort), so the shown box is fitted again
@@ -310,7 +266,7 @@ export function paintList(listEl, ctx) {
 export function paintLists(container, ctx) {
   container.querySelectorAll(".sd-list").forEach((el) => paintList(el, ctx));
   const note = container.querySelector?.(".sd-lists-note");
-  if (note) note.textContent = listsNoteText(ctx.view);
+  if (note) note.textContent = listsNoteText(ctx.board);
 }
 
 /** The toggle's click: shows that list, hides the other and marks the button, without redrawing the panel. */

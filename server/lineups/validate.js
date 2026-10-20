@@ -69,14 +69,22 @@ const CEIL_TOTAL_MAX = 1000; // nine players cannot score more
 // Showdown's saved lineups (PROJECT.md Part 4 "Showdown Optimizer port", step 2) pass `options`: `objectives` is the Showdown
 // engine's own list (proj, ceil, median: server/showdown/lineup-checks.js BUILD_OPTIONS; the retired names are always accepted too) and
 // `projection: true` admits build.projection, the TwoGun projection file's provenance {source, asOf, asOfFrom} that a TwoGun-mode
-// generate answer carries (every figure carries its source and as-of date). Classic passes neither, so its record is unchanged.
+// generate answer carries (every figure carries its source and as-of date), and build.figuresKey, the served board's figures key
+// (server/showdown/board-view.js figuresKeyOf) a generate answer carries, checked by the save and never stored: it comes back
+// beside the build ({build, figuresKey}), absent or null when not sent (an older page). Classic passes neither, so its record is unchanged.
 const PROJECTION_KEYS = ["source", "asOf", "asOfFrom"];
 const PROJECTION_AS_OF_FROM = new Set(["meta", "file time"]); // server/showdown/twogun-projections.js loadTwoGunProjections
 const PROJECTION_TEXT_MAX = 200;
+const SHOWDOWN_BUILD_KEYS = new Set(["projection", "figuresKey"]);
+const FIGURES_KEY_MAX = 64;
 export function validateLineupBuild(value, { objectives = OBJECTIVES, projection: allowProjection = false } = {}) {
   if (value === undefined || value === null) return { build: undefined };
   if (typeof value !== "object" || Array.isArray(value)) return { error: "build must be an object" };
-  for (const key of Object.keys(value)) if (!BUILD_KEYS.has(key) && !(allowProjection && key === "projection")) return { error: `build has an unknown field ${JSON.stringify(key)}` };
+  for (const key of Object.keys(value)) if (!BUILD_KEYS.has(key) && !(allowProjection && SHOWDOWN_BUILD_KEYS.has(key))) return { error: `build has an unknown field ${JSON.stringify(key)}` };
+  const figuresKey = value.figuresKey ?? null;
+  if (figuresKey !== null && !(typeof figuresKey === "string" && figuresKey !== "" && figuresKey.length <= FIGURES_KEY_MAX)) {
+    return { error: `build.figuresKey must be a non-empty string of at most ${FIGURES_KEY_MAX} characters` };
+  }
   const { kind, id, boardMode, objective, totalCeil, edited } = value;
   const allowedObjectives = objectives === OBJECTIVES ? BUILD_OBJECTIVES : new Set([...objectives, ...RETIRED_BUILD_OBJECTIVES]);
   if (kind !== "batch" && kind !== "hand") return { error: "build.kind must be batch or hand" };
@@ -98,7 +106,7 @@ export function validateLineupBuild(value, { objectives = OBJECTIVES, projection
   if (totalCeil !== undefined) build.totalCeil = totalCeil;
   if (edited === true) build.edited = true;
   if (projection.projection) build.projection = projection.projection;
-  return { build };
+  return figuresKey === null ? { build } : { build, figuresKey };
 }
 
 /** build.projection (Showdown only, see validateLineupBuild): absent or null stays absent; otherwise exactly {source, asOf,
