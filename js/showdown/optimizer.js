@@ -243,11 +243,26 @@ async function saveCards(uids, ctx) {
 
 const busy = () => opt.generating || opt.saving;
 
-/** The Optimizer band, at the top of the left column; "" off the live app. */
-export function optimizerBandHtml(board) {
+const bandView = (board) => ({ mode: opt.ks.mode, ms: modeState(), board, boardMode: opt.drawnBoardMode, error: opt.error, formError: opt.formError });
+
+/** The Optimizer band's head (title, GPP | Cash switch, refusal sentences), at the top of the left column; "" off the live app. */
+export function optimizerBandHeadHtml(board) {
   if (!optimizerLive()) return "";
   opt.drawnBoardMode = figuresMode();
-  return V.bandHtml({ mode: opt.ks.mode, ms: modeState(), board, boardMode: opt.drawnBoardMode, error: opt.error, formError: opt.formError });
+  return V.bandHeadHtml(bandView(board));
+}
+
+/** The Optimizer band's Pool and Build boxes, under the build status line and above the Make row (Adam 2026-10-20: the six slots
+ *  and the meter come first); "" off the live app. */
+export function optimizerBandBoxesHtml(board) {
+  if (!optimizerLive()) return "";
+  opt.drawnBoardMode = figuresMode();
+  return V.bandBoxesHtml(bandView(board));
+}
+
+/** The whole band, head then boxes (the pieces' old order); lineup.js draws the two apart. */
+export function optimizerBandHtml(board) {
+  return optimizerBandHeadHtml(board) + optimizerBandBoxesHtml(board);
 }
 
 /** The Make row (the summary and Make N lineups), the last piece of the builder's column, sticky as classic's footer; "" off the live app. */
@@ -301,7 +316,7 @@ function refreshLines(container, board) {
 function clearFormError(container) {
   if (!opt.formError) return;
   opt.formError = null;
-  container.querySelector(".sd-opt-panel .opt-form-error")?.remove();
+  container.querySelector(".sd-opt-head .opt-form-error")?.remove();
   container.querySelector(".sd-opt-go .opt-form-error-footer")?.remove();
 }
 
@@ -347,11 +362,16 @@ export function wirePoolControls(listEl, ctx) {
 /** Redraws the band in place when the Figures switch moved since it was drawn (Median / Ceiling greyed or not, the cash basis). */
 export function repaintBandIfFiguresMoved(ctx) {
   if (!optimizerLive() || figuresMode() === opt.drawnBoardMode) return;
-  const band = ctx.container?.querySelector?.("#sd-opt-panel");
-  if (!band) return;
-  band.outerHTML = optimizerBandHtml(ctx.board);
-  const fresh = ctx.container.querySelector("#sd-opt-panel");
-  if (fresh) wireBand(fresh, ctx);
+  // The band is two elements (the head up top, the boxes above the Make row); each is replaced where it stands and wired again.
+  const head = ctx.container?.querySelector?.("#sd-opt-head");
+  const boxes = ctx.container?.querySelector?.("#sd-opt-panel");
+  if (!head && !boxes) return;
+  if (head) head.outerHTML = optimizerBandHeadHtml(ctx.board);
+  if (boxes) boxes.outerHTML = optimizerBandBoxesHtml(ctx.board);
+  for (const id of ["#sd-opt-head", "#sd-opt-panel"]) {
+    const fresh = ctx.container.querySelector(id);
+    if (fresh) wireBand(fresh, ctx);
+  }
   refreshLines(ctx.container, ctx.board);
 }
 
@@ -409,8 +429,10 @@ function wireExposureSort(container, ctx) {
 export function wireOptimizer(ctx) {
   if (!optimizerLive()) return;
   const c = ctx.container;
-  const band = c.querySelector("#sd-opt-panel");
-  if (band) wireBand(band, ctx);
+  for (const id of ["#sd-opt-head", "#sd-opt-panel"]) {
+    const piece = c.querySelector(id);
+    if (piece) wireBand(piece, ctx);
+  }
   c.querySelectorAll("[data-sd-pool-pos]").forEach((btn) => {
     btn.addEventListener("click", () => {
       opt.pos = btn.dataset.sdPoolPos;

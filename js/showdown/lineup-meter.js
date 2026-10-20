@@ -1,12 +1,15 @@
 // Showdown Lineup Builder: the uniqueness / projection meter strip under the six slots (Adam 2026-10-18: "being
 // unique is more important than any projection optimization"). When Captain plus five FLEX are all placed it asks
 // POST /api/showdown/<key>/lineup/meter once and shows, uniqueness first, the lineup's expected copies in the field on
-// a log colour scale (with the chance nobody else holds it beside), then the projection against the best possible one. A two-way switch, "TwoGun | Our sources", picks where the
+// a log colour scale (with how many other entries most likely hold it beside), then the projection against the best possible one. A two-way switch, "TwoGun | Our sources", picks where the
 // projections and ownership come from (default TwoGun, remembered in localStorage). Pure helpers are exported for
 // tests; lineup.js only calls syncMeter (before a draw), meterStripHtml (inside the draw) and wireMeter (after it).
 import { escapeHtml, dec1 } from "../format.js";
 import { isSampleMode } from "../api.js";
 import { readJson, requestFailureText, notJsonText, NOT_JSON } from "./read-json.js"; // the one JSON reader (🔵 866b0ce B4)
+import { likelyCopies, likelyFactText } from "./likely-copies.js";
+
+export { likelyCopies }; // the most-likely count and its usual range (likely-copies.js: a separate file, this one is past 600 lines)
 
 const MINUS = "−";
 const lowerFirst = (s) => s.charAt(0).toLowerCase() + s.slice(1); // a shared sentence placed after a colon
@@ -23,9 +26,13 @@ const SCALE_STOPS = [
 ];
 // The scale is the lineup's expected copies on a log axis, so 22 and 59 copies sit visibly apart. The ends are
 // where the track stops telling lineups apart: at or below COPIES_UNIQUE_END the marker is at the unique end, at or
-// above COPIES_CHALKY_END at the chalky end. Four decades, so 22 versus 59 copies is over a tenth of the track.
-const COPIES_UNIQUE_END = 0.03;
-const COPIES_CHALKY_END = 300;
+// above COPIES_CHALKY_END at the chalky end. Re-anchored (Adam 2026-10-20, "How is 0.72 / 100k lineups not more unique
+// (visually)?"): the ends were 0.03 and 300, so the whole right third held 0.72 down to 0.03, differences that mean nothing in
+// play. Half a copy or fewer is as unique as the bar needs to show, and 100 copies is fully chalky; the log axis is unchanged,
+// two and a third decades. Positions toward Unique: 0.72 at 93%, 1 copy 87%, 3 copies 66%, 10 copies 43%, 25 copies 26% (Adam's
+// "25 dupes is maybe the cutoff-ish" lands in the red-orange); 22 versus 59 copies still differ by 19% of the track.
+const COPIES_UNIQUE_END = 0.5;
+const COPIES_CHALKY_END = 100;
 const COPIES_FLOOR = 0.01; // below this the headline figure reads "<0.01"
 
 // ---------- pure helpers ----------
@@ -42,21 +49,8 @@ export function oneInText(oneIn) {
   return s === null ? null : `1 in ${s}`;
 }
 
-/**
- * The alone chance (0..1) as a percent: "100%" only when it is exactly 1, one decimal above 99% (">99.9%" when that
- * would round to 100.0), whole numbers from 1%, two significant figures from 0.1%, "<0.1%" below that (never a long
- * decimal), "0%" at zero.
- */
-export function alonePercentText(p) {
-  if (typeof p !== "number" || !Number.isFinite(p)) return null;
-  const pct = Math.min(1, Math.max(0, p)) * 100;
-  if (pct === 0) return "0%";
-  if (pct === 100) return "100%";
-  if (pct > 99) return pct.toFixed(1) === "100.0" ? ">99.9%" : `${pct.toFixed(1)}%`;
-  if (pct >= 1) return `${Math.round(pct)}%`;
-  if (pct < 0.1) return "<0.1%";
-  return `${sigFig2(pct)}%`;
-}
+/** The hover on the most-likely fact line: what it is computed from (likely-copies.js). */
+export const LIKELY_BASIS = "From the expected copies, as a Poisson count: the most likely number of other entries with this exact lineup, and the range between its 10% and 90% points.";
 
 /** The headline figure: expected copies written plainly, two significant figures ("0.3", "4.1", "22", "59"), "<0.01" below 0.01. */
 export function copiesText(copies) {
@@ -290,7 +284,8 @@ export function meterHtml(m, mode = "twogun", modesInfo = null, modesNote = null
     if (showSwitch) return `<div class="sd-meter" aria-live="polite">${switchHtml(mode, modesInfo)}${note}${notPostedHtml(modesInfo, mode)}</div>`;
     return note ? `<div class="sd-meter" aria-live="polite">${note}</div>` : "";
   }
-  const sw = switchHtml(mode, modesInfo) + note;
+  const switchOnly = switchHtml(mode, modesInfo);
+  const sw = switchOnly + note;
   if (m.status === "loading") return `<div class="sd-meter" aria-live="polite">${sw}<div class="sd-meter-none">Measuring uniqueness…</div></div>`;
   if (m.status === "error") return `<div class="sd-meter" aria-live="polite">${sw}<div class="sd-meter-error">${escapeHtml(m.message || "Could not measure this lineup.")}</div></div>`;
   const d = m.data;
@@ -304,7 +299,7 @@ export function meterHtml(m, mode = "twogun", modesInfo = null, modesNote = null
     uniq = `<div class="${d?.ownership?.error ? "sd-meter-error" : "sd-meter-none"}">${escapeHtml(none)}</div>`;
   } else {
     const u = d.uniqueness;
-    const p = u.aloneChance;
+    const likely = likelyFactText(u.copies);
     const field = typeof u.field === "number" && Number.isFinite(u.field) ? u.field.toLocaleString("en-US") : null;
     const copies = copiesText(u.copies);
     const oneIn = oneInText(u.oneIn);
@@ -313,6 +308,7 @@ export function meterHtml(m, mode = "twogun", modesInfo = null, modesNote = null
       <div class="sd-meter-head">
         <span class="sd-meter-label">Expected copies in ${field !== null ? `a ${escapeHtml(field)}-lineup` : "the"} field</span>
         <span class="sd-meter-big" style="color:${colour}">${escapeHtml(copies)}</span>
+        ${switchOnly}
       </div>
       <div class="sd-meter-scale" role="img" aria-label="Uniqueness scale in expected copies, chalky to unique">
         <div class="sd-meter-track" style="background:${scaleGradientCss()}">
@@ -321,7 +317,7 @@ export function meterHtml(m, mode = "twogun", modesInfo = null, modesNote = null
         <div class="sd-meter-ends"><span>Chalky</span><span>Unique</span></div>
       </div>
       <div class="sd-meter-facts">
-        <span>Chance no one else has it: <b>${escapeHtml(alonePercentText(p) ?? "")}</b></span>
+        ${likely ? `<span title="${escapeHtml(LIKELY_BASIS)}">${escapeHtml(likely)}</span>` : ""}
         ${oneIn ? `<span><b>${escapeHtml(oneIn)}</b> entries plays this exact lineup</span>` : ""}
       </div>
       ${srcLine(d.ownership, "Ownership")}`;
@@ -329,7 +325,7 @@ export function meterHtml(m, mode = "twogun", modesInfo = null, modesNote = null
   const pr = d?.projection;
   return `
     <div class="sd-meter" aria-live="polite">
-      ${sw}
+      ${none ? sw : note}
       ${uniq}
       ${offBoardHtml}
       <div class="sd-meter-proj${pr?.posted === false && pr.error ? " sd-meter-error" : ""}">${escapeHtml(projectionLineText(d, mode))}</div>

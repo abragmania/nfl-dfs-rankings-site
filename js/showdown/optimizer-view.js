@@ -12,7 +12,8 @@ import { optNotesHtml, bendsLineHtml } from "../lineup.js";
 import { showAllToggleHtml } from "../filterbar.js";
 import { shownTotal } from "../totals.js";
 import { showdownPalette } from "./lineup-look.js";
-import { copiesText, alonePercentText, gapText, scaleColour, noUniquenessText, sourceLineText } from "./lineup-meter.js";
+import { copiesText, gapText, scaleColour, noUniquenessText, sourceLineText } from "./lineup-meter.js";
+import { likelyRangeText, likelyFactText } from "./likely-copies.js";
 import { OBJECTIVES, TEAM_OPTIONS, MAX_COUNT, MAX_UNIQUE, effectiveObjective, cashBasisText, statusLineText, isLocked, isIncluded, excludeState, exposureTables } from "./optimizer-state.js";
 
 // The Showdown pool's position chips (D41): the six positions a Showdown board carries, K included and no FLEX chip, as the
@@ -47,10 +48,31 @@ function teamSelectHtml(value) {
 }
 
 /**
- * The Optimizer band: the heading row (the title, the green $ chip in cash, the GPP | Cash switch, a refused Make's sentence), a
- * blocked Make's sentence, then the Pool and Build boxes (the included / locked line in Build). `v` = {mode, ms, board, boardMode, error, formError}.
+ * The Optimizer band in its two pieces (Adam 2026-10-20: "I can't see the main lineup that I'm building"): the head stays at the top
+ * of the left column, the Pool and Build boxes sit under the build status line, just above the Make row, so the six slots and the
+ * meter are the first thing on screen. bandHtml is the two together (the band's whole markup, in the old order).
+ * `v` = {mode, ms, board, boardMode, error, formError}.
  */
 export function bandHtml(v) {
+  return bandHeadHtml(v) + bandBoxesHtml(v);
+}
+
+/** The head: the heading row (the title, the green $ chip in cash, the GPP | Cash switch, a refused Make's sentence) and a blocked
+ *  Make's sentence. Its own element, #sd-opt-head. */
+export function bandHeadHtml(v) {
+  const cash = v.mode === "cash";
+  return `
+    <div class="sd-opt-head" id="sd-opt-head">
+      <div class="opt-settings-head">
+        <h3 class="opt-title">Optimizer${cash ? ` ${cashChipHtml()}` : ""}${modeSwitchHtml(v.mode)}</h3>
+        ${v.error ? `<span class="lineup-status-error opt-go-error">${escapeHtml(v.error)}</span>` : ""}
+      </div>
+      ${v.formError ? `<div class="lineup-status lineup-status-error opt-form-error">${escapeHtml(v.formError)}</div>` : ""}
+    </div>`;
+}
+
+/** The Pool and Build boxes (the included / locked line in Build). Its own element, #sd-opt-panel. */
+export function bandBoxesHtml(v) {
   const cash = v.mode === "cash";
   const status = statusLineText(v.ms, v.board);
   const pool = settingRowHtml("Max per team", teamSelectHtml(v.ms.maxPerTeam), "5 = DraftKings' rule: at most 5 men from one team");
@@ -73,11 +95,6 @@ export function bandHtml(v) {
       ].join("");
   return `
     <div class="opt-panel opt-settings sd-opt-panel" id="sd-opt-panel">
-      <div class="opt-settings-head">
-        <h3 class="opt-title">Optimizer${cash ? ` ${cashChipHtml()}` : ""}${modeSwitchHtml(v.mode)}</h3>
-        ${v.error ? `<span class="lineup-status-error opt-go-error">${escapeHtml(v.error)}</span>` : ""}
-      </div>
-      ${v.formError ? `<div class="lineup-status lineup-status-error opt-form-error">${escapeHtml(v.formError)}</div>` : ""}
       <div class="opt-groups opt-groups-cash">
         ${settingGroupHtml("Pool", pool)}
         ${settingGroupHtml("Build", build)}
@@ -122,7 +139,7 @@ export function gppTotalsText(lineup, objective) {
 }
 
 /** A GPP card's meter strip, from the lineup's own meter as the server measured it (nothing computed here): expected copies in
- *  the field (in the meter's colour), the chance no one else has it, and the gap to the best possible projection. */
+ *  the field (in the meter's colour), how many other entries most likely hold it ("likely 0 to 2"), and the gap to the best possible projection. */
 export function cardMeterHtml(meter, boardMode) {
   if (!meter || typeof meter !== "object") return "";
   const none = noUniquenessText(meter, boardMode);
@@ -134,7 +151,9 @@ export function cardMeterHtml(meter, boardMode) {
   if (none) return `<div class="sd-card-meter"><span>${escapeHtml(none)}</span>${gapPart}${offPart}</div>`;
   const u = meter.uniqueness;
   const field = finite(u.field) === null ? "" : ` title="Expected copies in a ${escapeHtml(u.field.toLocaleString("en-US"))}-lineup field"`;
-  return `<div class="sd-card-meter"><span${field}><b style="color:${scaleColour(u.copies)}">${escapeHtml(copiesText(u.copies))}</b> copies</span><span>${escapeHtml(alonePercentText(u.aloneChance))} alone</span>${gapPart}${offPart}</div>`;
+  const likely = likelyRangeText(u.copies);
+  const likelyPart = likely ? `<span title="${escapeHtml(likelyFactText(u.copies))}">${escapeHtml(likely)}</span>` : "";
+  return `<div class="sd-card-meter"><span${field}><b style="color:${scaleColour(u.copies)}">${escapeHtml(copiesText(u.copies))}</b> copies</span>${likelyPart}${gapPart}${offPart}</div>`;
 }
 
 /** "not on TwoGun's board: A Smith, B Jones" from the lineup's own meter (TwoGun mode only), else null. */

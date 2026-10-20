@@ -13,7 +13,7 @@ import { postShowdownLineupOptimize, getShowdownLineups, postShowdownLineup, del
 import { sdLine, SD_PILL } from "./table.js";
 import { listsHtml, paintLists, wireLists, setListControls } from "./lineup-lists.js"; // the Captain list and the FLEX list, each sortable (Adam 2026-10-18)
 // The Showdown Optimizer (Adam 2026-10-19, sketch A): its band over the builder, its Make row under it, its batch full width below, its controls on the pool rows.
-import { syncOptimizer, optimizerLive, optimizerBandHtml, optimizerGoRowHtml, optimizerResultsBlockHtml, optimizerExcludes, poolChipsRowHtml, listControls, wirePoolControls, wireOptimizer, repaintBandIfFiguresMoved } from "./optimizer.js";
+import { syncOptimizer, optimizerLive, optimizerBandHeadHtml, optimizerBandBoxesHtml, optimizerGoRowHtml, optimizerResultsBlockHtml, optimizerExcludes, poolChipsRowHtml, listControls, wirePoolControls, wireOptimizer, repaintBandIfFiguresMoved } from "./optimizer.js";
 import { handBuild } from "../lineup-builds.js";
 import { requestFailureText } from "./read-json.js";
 import { lineupModeOf, cashBadgeHtml } from "../lineup-cash.js";
@@ -578,13 +578,14 @@ function panelHtml(board) {
     : totals.salaryLeft < 0
       ? `${money(totals.salaryUsed)} used · ${money(-totals.salaryLeft)} over`
       : `${money(totals.salaryUsed)} used · ${money(totals.salaryLeft)} left${perSpot ? ` · ${perSpot}` : ""}`;
-  // The Optimizer (sketch A, Adam 2026-10-19): its band heads the left column (wider then, .sd-opt-left), the builder sits under it
-  // unchanged and the Make row (sticky, as classic's footer) ends it; the batch is full width below both columns, its cards four
+  // The Optimizer (sketch A, Adam 2026-10-19): its band head heads the left column (wider then, .sd-opt-left), the builder sits under
+  // it unchanged, then the Pool and Build boxes (Adam 2026-10-20: "I can't see the main lineup that I'm building", so the six slots
+  // and the meter come before the boxes) and the Make row (sticky, as classic's footer) ends it; the batch is full width below both columns, its cards four
   // across (Adam 2026-10-19 11:17 PM: "generated lineups should go 4 across"). Off the live app the pieces are empty, as before.
   return `
     <div class="lineup-layout">
       <div class="lineup-left${optimizerLive() ? " sd-opt-left" : ""}">
-        ${optimizerBandHtml(board)}
+        ${optimizerBandHeadHtml(board)}
         ${controlsHtml()}
         <div class="lineup-slots">${slotsHtml(board)}</div>
         ${meterStripHtml()}
@@ -594,6 +595,7 @@ function panelHtml(board) {
         </div>
         <div class="lineup-totals">${totalsLineHtml(totals)}</div>
         ${buildStatusHtml(board)}
+        ${optimizerBandBoxesHtml(board)}
         ${optimizerGoRowHtml()}
       </div>
       <div class="lineup-right">
