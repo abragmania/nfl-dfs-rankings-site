@@ -22,7 +22,7 @@ import {
   postProjectionsPaste,
   postMode,
 } from "./js/api.js";
-import { renderPills, renderSlateLine, wireUpload, wireRefresh, wireThemeToggle, secondSlateSavedText, renderModeBox, uploadStatusSetter, entriesUploadedHandler, paintSourcesLink, wireSourcesLink } from "./js/header.js";
+import { renderPills, renderSlateLine, wireUpload, wireRefresh, wireThemeToggle, secondSlateSavedText, renderModeBox, uploadStatusSetter, entriesUploadedHandler, paintSourcesLink, wireSourcesLink, wireTrackedLink } from "./js/header.js";
 import { uploadEntriesText, setUploadRouter } from "./js/entries-wire.js"; // Adam 2026-10-18: one upload for every DraftKings export
 import { showdownKeyFromHash, showdownRowById, showdownBoardAsOf } from "./js/showdown/view.js";
 import { configureShowdown, setRouteDkFile, uploadShowdownText, renderModeRowNow, renderShowdownTabNow, loadShowdownList, applyMode } from "./js/app-showdown.js";
@@ -33,7 +33,7 @@ import { renderGameStrip, getGamestripCollapsed, setGamestripCollapsed } from ".
 import { renderFilterBar, updateFilterSummary } from "./js/filterbar.js";
 import { renderTableHead, renderTableBody, updateRow } from "./js/table.js";
 import { renderTabs, isSourcesTab, sourcesTabToOpen, shownTab, renderProjectionsPanel, renderOwnershipPanel, renderLineupPanel, renderEntriesPanel } from "./js/tabs.js";
-import { renderSourcesPage } from "./js/sources-page.js"; // the one Sources page (Adam 2026-10-18), shared with the Showdown view
+import { renderSourcesPage, APPLIED_ALL_EVENT } from "./js/sources-page.js"; // the one Sources page (Adam 2026-10-18), shared with the Showdown view
 import { teamsSampleHtml } from "./js/teams-sample.js"; // Temporary (Adam 2026-10-18)
 import { renderFavoritesPanel, favoriteRows } from "./js/favorites.js";
 import { initExpand, syncExpandUi } from "./js/expand.js";
@@ -243,6 +243,11 @@ async function repaintAfterSourceSave() {
   if (!board?.ok) throw new Error(board?.error?.message ?? "the server did not return the board");
   await handleBoardLoaded(board);
 }
+// "Apply to the main slate and every game" on a Showdown game's Sources page saved the main slate's choices too (Adam 2026-10-20),
+// so the main slate's board held here is reloaded the same way; one that cannot be read stays and the status line says so.
+window.addEventListener(APPLIED_ALL_EVENT, () => {
+  repaintAfterSourceSave().catch((e) => setStatusMessage(`The sources were applied, but the main slate's board could not be reloaded: ${e.message}`, true));
+});
 
 const sourceCallbacks = {
   onPaste: async (payload) => {
@@ -481,6 +486,9 @@ setUploadRouter(handleFile);
 
 wireThemeToggle(el.themeToggleBtn);
 wireSourcesLink(el.sourcesBtn, { onOpen: onSourcesOpen });
+// The Tracked button sits on both headers (main slate and Showdown); both are in index.html, so both are wired here.
+wireTrackedLink(document.getElementById("tracked-btn"));
+wireTrackedLink(document.getElementById("sd-tracked-btn"), showdownKeyFromHash); // ?from= brings the page's back link to this game
 
 wireRefresh({ refreshBtn: el.refreshBtn, statusEl: el.status }, {
   onRefresh: async () => {

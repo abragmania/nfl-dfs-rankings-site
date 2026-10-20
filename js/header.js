@@ -134,7 +134,7 @@ export function secondSlateSavedText(secondSlate) {
 // TwoGun mode (merge plan 2026-10-15): a two-way switch, Current or TwoGun, after the slate line, and the board-stamp
 // pill in #tg-pill under the title (rules repo 2026-10-18, so the header's top line fits at 1366). `mode` is board.mode {active, appliesTo, twogun: {status, boardUpdated, ageAtLockH, stale, covered,
 // fallback, note}}; a board without it (an older server) shows nothing. The switch sets the saved source choices (a preset over
-// every section), so what it covers is the board's own mode.appliesTo ("classic and Showdown"), worded from it and never
+// every section of the main slate's own choices), so what it covers is the board's own mode.appliesTo ("classic slates"), worded from it and never
 // written here: a mode without it draws no scope and no "Applies to". Mode "custom" (the saved ticks match neither preset)
 // lights neither side of the switch and gets its own pill. One pill only: the board stamp when TwoGun's board
 // is fresh; one amber stale pill instead when it is stale for any reason (D30 as amended: stamped after lock, over 36
@@ -431,6 +431,15 @@ export function paintSourcesLink(btn, active) {
 
 export function wireSourcesLink(btn, { onOpen }) {
   btn?.addEventListener("click", () => onOpen());
+}
+
+// The header's Tracked button (Adam 2026-10-20), on the main-slate and Showdown headers: opens the Tracked DFS players page.
+// Relative, as the Salary used button's link is; `fromKey` names the Showdown on screen (?from=) so the page's back link returns to it.
+export function trackedPageHref(key) {
+  return key ? `tracked-players.html?from=${encodeURIComponent(key)}` : "tracked-players.html";
+}
+export function wireTrackedLink(btn, fromKey = () => null) {
+  btn?.addEventListener("click", () => window.location.assign(trackedPageHref(fromKey())));
 }
 
 export function wireRefresh({ refreshBtn, statusEl }, { onRefresh }) {

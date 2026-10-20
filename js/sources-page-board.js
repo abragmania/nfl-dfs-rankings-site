@@ -65,6 +65,10 @@ export function selectionFromBoard(board, showdown, opts = {}) {
   return {
     preset: presetOf(board?.mode?.active, changed), appliesTo: "", writable: edit.on, note: edit.on ? "" : edit.note,
     quiet: edit.on ? SITE_QUIET : "", sections, shownOnly: [], siteLocal: { changed },
+    // Each game keeps its own choices (Adam 2026-10-20): a Showdown page says so and keeps its "apply to every game" button. A page built
+    // here is never editable for a Showdown game (edit.on is false), so the button is drawn disabled, and the page's note says why: on the
+    // public site that Showdown choices are made in the app (D71), on sample data that nothing can be changed.
+    scopeKind: showdown ? "showdown" : "classic",
   };
 }
 

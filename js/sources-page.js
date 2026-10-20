@@ -44,11 +44,19 @@ async function parseResponse(res) {
   return body;
 }
 
-const urlFor = (slate) => `/api/source-selection?slate=${encodeURIComponent(slate)}`;
+const urlFor = (slate, route = "") => `/api/source-selection${route}?slate=${encodeURIComponent(slate)}`;
+const postJson = async (url, body) => parseResponse(await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }));
 export const defaultApi = {
   get: async (slate) => parseResponse(await fetch(urlFor(slate))),
-  post: async (slate, change) => parseResponse(await fetch(urlFor(slate), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(change) })),
+  post: async (slate, change) => postJson(urlFor(slate), change),
+  // Copies this slate's shown choices to the main slate and every loaded game (server/sources/selection-routes.js handleApplyAll); answers this slate's body.
+  applyAll: async (slate) => postJson(urlFor(slate, "/apply-all"), {}),
 };
+/** The window event after "apply to every game" saved: the main slate's board the browser holds is out of date, and app.js reloads it.
+ *  showdown/view.js needs no listener: it holds only the game on screen, which this page repaints itself (ctx.onChanged), and it loads
+ *  any other game afresh when that game is opened (renderShowdownView reloads when the key changes). */
+export const APPLIED_ALL_EVENT = "nfldfs:sources-applied-all";
+const APPLY_ALL_IN_APP = "Applying to every game runs in the app.";
 
 // ---------- the page ----------
 
@@ -155,7 +163,7 @@ function discardAnswer(st) {
   load(st, keyOf(st.ctx));
 }
 
-async function doSave(st, change, rowKey, slate) {
+async function doSave(st, change, rowKey, slate, send = (s, c) => st.api.post(s, c)) {
   if (isReadOnly(st)) return;
   const showing = st.ctx.slate === slate; // a save made on a slate that is no longer showing must not disturb the read of the one that is
   if (showing) {
@@ -166,7 +174,7 @@ async function doSave(st, change, rowKey, slate) {
   try {
     let next;
     try {
-      next = await st.api.post(slate, change);
+      next = await send(slate, change);
     } catch (e) {
       if (st.ctx.slate !== slate) return discardAnswer(st); // another slate's refusal is not shown on this one
       st.errors.set(rowKey, e.message);
@@ -195,12 +203,28 @@ function failSave(st, rowKey, e) {
   draw(st);
 }
 
-/** Saves one change, after any save already running, to the slate showing now. Resolves when this save and the board repaint are done; never rejects. */
-export function saveChange(st, change, rowKey) {
+/** Saves one change, after any save already running, to the slate showing now. Resolves when this save and the board repaint are done; never rejects.
+ *  `send(slate, change)` is the request (default: POST /api/source-selection). */
+export function saveChange(st, change, rowKey, send) {
   const slate = st.ctx.slate;
   // The first catch only keeps one save's failure (already reported under its row) from stopping the saves queued behind it.
-  st.chain = st.chain.catch(() => undefined).then(() => doSave(st, change, rowKey, slate)).catch((e) => failSave(st, rowKey, e));
+  st.chain = st.chain.catch(() => undefined).then(() => doSave(st, change, rowKey, slate, send)).catch((e) => failSave(st, rowKey, e));
   return st.chain;
+}
+
+/** "Apply to the main slate and every game" (Adam 2026-10-20): queued like a save; the page redraws from the answer (this slate's
+ *  choices), this board repaints, and the window hears that every other board it holds is out of date. */
+export function applyAll(st) {
+  if (typeof st.api.applyAll !== "function") {
+    st.errors.set("apply-all", APPLY_ALL_IN_APP);
+    draw(st);
+    return Promise.resolve();
+  }
+  return saveChange(st, {}, "apply-all", async (slate) => {
+    const next = await st.api.applyAll(slate);
+    if (typeof window !== "undefined" && typeof window.dispatchEvent === "function") window.dispatchEvent(new CustomEvent(APPLIED_ALL_EVENT, { detail: { slate } }));
+    return next;
+  });
 }
 
 function sourceOf(st, kind, id) {
@@ -286,6 +310,7 @@ function onClick(st, target) {
   else if (d.sp === "gaps") saveChange(st, { kind: d.kind, gaps: d.gaps }, `gaps:${d.kind}`);
   else if (d.sp === "toggle") saveChange(st, { kind: d.kind, sourceId: d.id, use: d.use === "true" }, rowKeyOf(btn));
   else if (d.sp === "local-reset") saveChange(st, { reset: true }, "local");
+  else if (d.sp === "apply-all") applyAll(st);
 }
 
 function onChange(st, target) {

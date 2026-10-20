@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Tracked DFS players - NFLDFSRankings</title>
+  <link rel="stylesheet" href="style.css" />
+  <link rel="stylesheet" href="tracked-players.css" />
+  <script>
+    // Same theme bootstrap as index.html: a saved "light"/"dark" choice wins, otherwise dark; ?theme= overrides for one load.
+    (function () {
+      var theme = "dark";
+      try {
+        var saved = window.localStorage.getItem("nfldfs-theme");
+        if (saved === "light" || saved === "dark") theme = saved;
+      } catch (e) {
+        /* localStorage unavailable: dark for this load */
+      }
+      var forced = new URLSearchParams(window.location.search).get("theme");
+      if (forced === "light" || forced === "dark") theme = forced;
+      document.documentElement.setAttribute("data-theme", theme);
+    })();
+  </script>
+</head>
+<body>
+  <!-- Tracked DFS players (Adam 2026-10-20): public/js/tracked-players.js draws the page from GET /api/tracked-players (the baked
+       copy on the public site, where it is read-only). The back link's address is set from ?from= (a Showdown) by the script. -->
+  <header class="header">
+    <div class="header-top">
+      <h1 class="title">Tracked DFS players</h1>
+      <span id="tp-counts" class="slate-line">Loading...</span>
+      <div class="header-actions">
+        <a id="tp-back" class="sources-btn tp-back" href="./">&larr; Rankings</a>
+        <button id="theme-toggle-btn" class="theme-toggle-btn" type="button" title="Switch theme"></button>
+      </div>
+    </div>
+  </header>
+  <main class="main">
+    <div class="tp-wrap">
+      <div id="tp-error" class="tp-error" role="alert" hidden></div>
+      <p id="tp-readonly" class="tab-note tp-readonly" hidden>Read-only on the live site. Marking runs in the app on your computer.</p>
+      <div class="filter-row tp-controls">
+        <div id="tp-lists" class="chip-group" aria-label="List"></div>
+        <span class="tp-sep" aria-hidden="true"></span>
+        <button id="tp-hide-marked" type="button" class="chip toggle-chip" aria-pressed="false">Hide marked</button>
+        <button id="tp-multi" type="button" class="chip toggle-chip" aria-pressed="false">Multi-entry only</button>
+        <span class="filter-search tp-search"><input id="tp-search" type="search" placeholder="Search names" aria-label="Search names" autocomplete="off" spellcheck="false" /></span>
+      </div>
+      <p id="tp-source" class="tab-note tp-source"></p>
+      <div class="table-wrap">
+        <table class="tp-table">
+          <thead id="tp-thead"></thead>
+          <tbody id="tp-tbody"></tbody>
+        </table>
+      </div>
+      <div class="tp-foot">
+        <span id="tp-showing" class="tp-showing"></span>
+        <button id="tp-more" type="button" class="chip" hidden>Show 300 more</button>
+      </div>
+    </div>
+  </main>
+  <script type="module" src="js/tracked-players.js"></script>
+</body>
+</html>

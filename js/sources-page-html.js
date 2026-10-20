@@ -8,7 +8,7 @@ import { WEIGHT_MIN, WEIGHT_MAX } from "./weight-limits.js"; // the browser's co
 export { WEIGHT_MIN, WEIGHT_MAX };
 export const WEIGHT_STEP = 0.25;
 const REBUILD_LINE = "Changes rebuild the board from the data already pulled; nothing is re-downloaded.";
-/** The header's quiet line: the body's own appliesTo in front ("Applies to classic and Showdown."), dropped when the body sends none (the public site). */
+/** The header's quiet line: the body's own appliesTo in front ("Applies to classic slates." or "Applies to this Showdown game."), dropped when the body sends none (the public site). */
 export const quietLine = (appliesTo) => (typeof appliesTo === "string" && appliesTo.trim() ? `Applies to ${appliesTo.trim()}. ${REBUILD_LINE}` : REBUILD_LINE);
 export const PRESETS = Object.freeze([
   Object.freeze({ key: "twogun", label: "TwoGun only" }),
@@ -23,6 +23,7 @@ const STATUS_PILL = Object.freeze({
   failed: ["failed", "failed"],
   "not fetched": ["none", "not fetched"],
   empty: ["none", "no players"], // pulled, but no player on this slate (server/sources/selection-view.js settleRow)
+  unlisted: ["none", "not on this game's list"], // ticked here, but this game's ownership file has no such source (selection-view.js unlistedRows)
   unknown: ["none", "unknown", UNKNOWN_STATUS_TITLE], // the board could not be built (selection-view.js unknownWhenFailed)
 });
 const SLIM_KINDS = new Set(["lines", "injuries", "extras"]);
@@ -55,7 +56,7 @@ const weightOf = (s, draft) => {
  * could not be built, so no source was looked at), and not a coverage of 0.
  * The server makes status and coverage agree (selection-view.js settleRow); a coverage the page cannot know (no slate rows) is not 0.
  */
-const NO_FIGURES = new Set(["not fetched", "failed", "empty", "unknown"]);
+const NO_FIGURES = new Set(["not fetched", "failed", "empty", "unknown", "unlisted"]);
 const coversSomeone = (s) => !NO_FIGURES.has(s.status) && !(s.coverage != null && Number(s.coverage.matched) === 0);
 
 /**
@@ -166,7 +167,49 @@ export function headerHtml(data, view) {
   const err = view.errors.get("preset");
   // A page that cannot tell which preset is in force (no `preset` in its data) draws no preset control rather than a wrong one.
   const presets = data.preset == null ? "" : `<span class="sp-seg" role="group" aria-label="Preset">${PRESETS.map(btn).join("")}${custom}</span>`;
-  return `<div class="sp-head"><h1 class="sp-title">Sources</h1>${presets}<span class="sp-quiet">${esc(data.quiet ?? quietLine(data.appliesTo))}</span>${err ? `<span class="sp-err" role="alert">${esc(err)}</span>` : ""}</div>`;
+  // A Showdown game with no choices saved reads its default (server/sources/showdown-default.js): data.defaulted { preset, why }.
+  const defaulted = defaultedPillHtml(data.defaulted);
+  return `<div class="sp-head"><h1 class="sp-title">Sources</h1>${presets}${defaulted}<span class="sp-quiet">${esc(data.quiet ?? quietLine(data.appliesTo))}</span>${err ? `<span class="sp-err" role="alert">${esc(err)}</span>` : ""}</div>`;
+}
+
+/** The pill's words for a game reading its default: "default (TwoGun only)" or "default (Our sources)". */
+export const defaultedPillText = (preset) => `default (${PRESETS.find((p) => p.key === preset)?.label ?? "Our sources"})`;
+
+/** "" unless the game reads its default; the hover is the server's reason ("TwoGun only: his file for this game is posted"). */
+export function defaultedPillHtml(defaulted) {
+  if (!defaulted || typeof defaulted !== "object") return "";
+  const why = typeof defaulted.why === "string" && defaulted.why ? ` ${defaulted.why}.` : "";
+  const title = `No source choices are saved for this game yet.${why} Any change here saves this game's own choices.`;
+  return `<span class="sp-pill sp-pill-none" title="${esc(title)}">${esc(defaultedPillText(defaulted.preset))}</span>`;
+}
+/** The Showdown page's line under the title (Adam 2026-10-20: every game keeps its own choices) and its one button. */
+export const SCOPE_LINE = "This game's sources. The main slate and the other games keep their own.";
+export const APPLY_ALL_LABEL = "Apply to the main slate and every game";
+
+const plural = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;
+const listed = (keys) => (keys.length < 3 ? keys.join(" and ") : `${keys.slice(0, -1).join(", ")} and ${keys.at(-1)}`);
+
+/**
+ * The one line after "apply to every game" (the answer's `applied`, server/sources/selection-routes.js handleApplyAll): how many games
+ * it reached, the ones it left out and why, and any ticked ownership source a game's own list does not carry. null without `applied`.
+ */
+export function appliedLineText(applied) {
+  if (!applied || !Array.isArray(applied.scopes)) return null;
+  const games = applied.scopes.filter((s) => s !== "classic").length;
+  const parts = [`Applied to the main slate and ${plural(games, "game")}`];
+  const by = (why) => (applied.skipped ?? []).filter((s) => s.why === why).map((s) => s.key);
+  const out = [["played", by("played")], ["could not be read", by("unreadable")]].filter(([, keys]) => keys.length).map(([why, keys]) => `${listed(keys)} (${why})`);
+  if (out.length) parts.push(`not to ${out.join(" or ")}`);
+  const lacking = (applied.lacking ?? []).map((l) => `${l.scope} lists no ${listed(l.ids)}`);
+  return `${parts.join("; ")}.${lacking.length ? ` Not on a game's own list, so shown there to untick: ${lacking.join("; ")}.` : ""}`;
+}
+
+/** The scope line and the "apply to every game" button, on a Showdown game's page only (data.scopeKind "showdown"); "" elsewhere. */
+export function scopeLineHtml(data, view) {
+  if (data.scopeKind !== "showdown") return "";
+  const applied = appliedLineText(data.applied);
+  const err = view.errors.get("apply-all");
+  return `<p class="sp-note">${esc(SCOPE_LINE)} <span class="sp-seg"><button type="button" class="sp-seg-btn" data-sp="apply-all"${view.ro ? " disabled" : ""} title="Copies this game's Projections, FLEX and Captain choices to every other loaded game, and its Projections choices to the main slate.">${esc(APPLY_ALL_LABEL)}</button></span>${err ? ` <span class="sp-err" role="alert">${esc(err)}</span>` : ""}</p>${applied ? `<p class="sp-note">${esc(applied)}</p>` : ""}`;
 }
 
 /** The public site's line about weights kept in this browser, with the one button that puts every one of them back. */
@@ -226,7 +269,7 @@ export function selectionHtml(data, view) {
     : showdown && first.kind === "projection"
       ? `<div class="sp-wide">${sectionHtml(first, view)}</div>${rest.length ? `<div class="sp-cols">${rest.map((s) => col([s])).join("")}</div>` : ""}`
       : `<div class="sp-cols">${col([first])}${rest.length ? col(rest) : ""}</div>`;
-  return `${headerHtml(data, view)}${note}${boardNote}${localNoteHtml(data.siteLocal?.changed, view)}
+  return `${headerHtml(data, view)}${scopeLineHtml(data, view)}${note}${boardNote}${localNoteHtml(data.siteLocal?.changed, view)}
     ${boxes}
     ${slim.length ? `<div class="sp-slim">${slim.map((s) => slimItemHtml(s, view)).join("")}</div>` : ""}
     ${shownOnlyHtml(data.shownOnly)}`;
