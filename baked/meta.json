@@ -1,5 +1,5 @@
 {
-  "publishedAt": "2026-10-20T01:35:51.558Z",
+  "publishedAt": "2026-10-20T02:26:46.934Z",
   "season": 2026,
   "week": 6,
   "boardGeneratedAt": "2026-10-20T01:35:40.051Z",
@@ -7,7 +7,7 @@
   "showdowns": [
     "2026-w06-WASSF"
   ],
-  "sourceCommit": "4ed20c54ebeca3aa5fcecd66f275956014bed2bd",
+  "sourceCommit": "d94a2d399b7b2bf48ca33c22c62997cb892a5562",
   "appCommit": "4ed20c54ebeca3aa5fcecd66f275956014bed2bd",
   "machine": "this machine",
   "matchups": false

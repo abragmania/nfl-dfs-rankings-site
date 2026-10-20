@@ -10,7 +10,6 @@ import {
   activeSlateRows,
   activeSlateGames,
   slateDisplayName,
-  slateKeyFromHashString,
   isTwoGunMode,
   sortForBoard,
 } from "./js/state.js";
@@ -24,20 +23,20 @@ import {
   postProjectionsPaste,
   postMode,
 } from "./js/api.js";
-import { renderPills, renderSlateLine, wireUpload, wireRefresh, renderModeRow, wireThemeToggle, secondSlateSavedText, renderModeBox, uploadStatusSetter, entriesUploadedHandler, paintSourcesLink, wireSourcesLink } from "./js/header.js";
+import { renderPills, renderSlateLine, wireUpload, wireRefresh, wireThemeToggle, secondSlateSavedText, renderModeBox, uploadStatusSetter, entriesUploadedHandler, paintSourcesLink, wireSourcesLink } from "./js/header.js";
 import { uploadEntriesText, setUploadRouter } from "./js/entries-wire.js"; // Adam 2026-10-18: one upload for every DraftKings export
-import { getShowdowns, postShowdownUpload } from "./js/showdown/api.js";
-import { renderShowdownView, showdownKeyFromHash, forceReloadShowdown, showUploadPills, showdownRowById, showdownBoardAsOf } from "./js/showdown/view.js";
+import { showdownKeyFromHash, showdownRowById, showdownBoardAsOf } from "./js/showdown/view.js";
+import { configureShowdown, setRouteDkFile, uploadShowdownText, renderModeRowNow, renderShowdownTabNow, loadShowdownList, applyMode } from "./js/app-showdown.js";
+import { adjustScrollPanels } from "./js/scroll-panels.js";
 import { normalizeBoard } from "./js/normalize.js";
 import { applyGrades, rowsGradedForView } from "./js/grade.js";
 import { renderGameStrip, getGamestripCollapsed, setGamestripCollapsed } from "./js/gamestrip.js";
 import { renderFilterBar, updateFilterSummary } from "./js/filterbar.js";
 import { renderTableHead, renderTableBody, updateRow } from "./js/table.js";
-import { renderTabs, renderSourcesTabs, isSourcesTab, sourcesTabToOpen, shownTab, onSitePage, renderProjectionsPanel, renderOwnershipPanel, renderLineupPanel, renderEntriesPanel } from "./js/tabs.js";
-import { renderShowdownTab } from "./js/showdown-tab.js";
+import { renderTabs, renderSourcesTabs, isSourcesTab, sourcesTabToOpen, shownTab, renderProjectionsPanel, renderOwnershipPanel, renderLineupPanel, renderEntriesPanel } from "./js/tabs.js";
 import { teamsSampleHtml } from "./js/teams-sample.js"; // Temporary (Adam 2026-10-18)
 import { renderFavoritesPanel, favoriteRows } from "./js/favorites.js";
-import { initExpand, syncExpandUi, phoneMinHeight, panelMinHeight } from "./js/expand.js";
+import { initExpand, syncExpandUi } from "./js/expand.js";
 import { initPlayerCard } from "./js/player-card.js";
 
 const el = {
@@ -79,6 +78,9 @@ const el = {
   thead: document.getElementById("rankings-thead"),
   tbody: document.getElementById("rankings-tbody"),
 };
+
+// The Showdown module (public/js/app-showdown.js) reaches back for the element map and these three functions.
+configureShowdown({ el, renderFilterBarNow, renderDynamic, renderSlateChrome });
 
 function findRow(id) {
   return store.get().board?.rows.find((r) => String(r.id) === String(id));
@@ -319,130 +321,6 @@ function renderSlateChrome() {
   el.slateNote.textContent = `${slateDisplayName(slate)}: ${n} of this week's ${total} game${total === 1 ? "" : "s"}. Projections and ownership are the main slate's numbers.`;
 }
 
-// ---------------------------------------------------------------------------------------------------
-// Mode row (Showdown, D39/D40): a tile per loaded showdown plus "Main slate" and "Upload Showdown CSV",
-// always visible above the classic game strip. app.js owns location.hash's "#sd=<key>" and the
-// classic-vs-showdown visibility toggle; public/js/showdown/view.js owns everything drawn inside the
-// showdown header/main once a key is active.
-// ---------------------------------------------------------------------------------------------------
-let showdownList = [];
-let showdownListError = null; // 🔵 2026-10-17: a failed list read is "unknown" (the message), never an empty list shown as "none loaded"
-let showdownListRead = false; // 🔵 2026-10-17 (cold read is unknown): false until the first list read returns, so the tab says "reading", not "none loaded"
-
-function mainSlateLabel() {
-  const games = store.get().board?.slate?.games?.length;
-  return games != null ? `Main slate · ${games} game${games === 1 ? "" : "s"}` : "Main slate";
-}
-
-// The showdown buttons take any DraftKings export (Adam 2026-10-18): the file goes through the header's routing, which
-// calls uploadShowdownText below for a showdown file. Set when wireUpload runs.
-let routeDkFile = null;
-async function uploadShowdownCsv(file) {
-  await routeDkFile?.(file);
-}
-
-// The one showdown-CSV upload, used by the mode row's tile and the Showdown tab's button (ChatGPT wish t, Adam 2026-10-17).
-// Answers { ok: true } when the showdown was saved, else { ok: false, message }; the header's handleFile writes the status line
-// (setUploadStatus, 🔵 2026-10-18: one copy of the rule that puts it where Adam is looking).
-async function uploadShowdownText(text) {
-  try {
-    const data = await postShowdownUpload(text);
-    if (data?.ok) {
-      await loadShowdownList();
-      // The upload's own stale list is shown immediately, before any reload/navigation lands (same as
-      // the classic header's wireUpload) — but only when the showdown just uploaded is the one already
-      // on screen; otherwise the tile/hash switch below is about to load it fresh anyway.
-      if (data.key === showdownKeyFromHash()) {
-        showUploadPills(data.stale ?? []);
-        await forceReloadShowdown(data.key);
-      } else {
-        window.location.hash = `sd=${encodeURIComponent(data.key)}`;
-      }
-      return { ok: true };
-    }
-    return { ok: false, message: `Showdown upload failed: ${data?.error?.message ?? "unknown error"}` };
-  } catch (e) {
-    return { ok: false, message: `Showdown upload failed: ${e.message}` };
-  }
-}
-
-function renderModeRowNow() {
-  renderModeRow(el.modeRow, {
-    mainLabel: mainSlateLabel(),
-    showdowns: showdownList,
-    activeKey: showdownKeyFromHash(),
-    slates: store.get().board?.slates ?? [],
-    activeSlateKey: store.get().activeSlateKey,
-    onSelectMain: () => {
-      window.location.hash = "";
-    },
-    onSelectSlate: (key) => {
-      window.location.hash = `slate=${encodeURIComponent(key)}`;
-    },
-    onSelectShowdown: (key) => {
-      window.location.hash = `sd=${encodeURIComponent(key)}`;
-    },
-    onUploadShowdownCsv: uploadShowdownCsv,
-  });
-}
-
-// The Showdown tab (ChatGPT wish t, Adam 2026-10-17): its games are the whole week's main-slate games (none before an upload,
-// whichever slate is on screen; 🔵 2026-10-17) plus the loaded showdowns.
-function renderShowdownTabNow() {
-  renderShowdownTab(el.showdownPanel, { games: store.get().board?.slate?.games ?? [], showdowns: showdownList, listError: showdownListError, listRead: showdownListRead, onSite: onSitePage() }, {
-    onOpen: (key) => {
-      window.location.hash = `sd=${encodeURIComponent(key)}`;
-    },
-    onUpload: uploadShowdownCsv,
-  });
-}
-
-async function loadShowdownList() {
-  try {
-    const data = await getShowdowns();
-    if (data?.ok) {
-      showdownList = data.showdowns ?? [];
-      showdownListError = null;
-    } else {
-      showdownList = [];
-      showdownListError = data?.error?.message || "the server did not return the list"; // an empty message falls back too (🔵 low)
-    }
-  } catch (e) {
-    showdownList = [];
-    showdownListError = e?.message || "the server did not return the list"; // a thrown value with no message is still unknown, never "none loaded" (🔵 low)
-  }
-  showdownListRead = true; // 🔵 2026-10-17 (cold read is unknown): the first read has returned, by success or failure
-  renderModeRowNow();
-  if (shownTab(store.get().activeTab) === "showdown") renderShowdownTabNow(); // the list arrives after the first draw
-}
-
-// Switches the whole page between the classic slate and a showdown, driven entirely by location.hash so
-// the mode survives a reload and is one click away from the mode row at any time.
-function applyMode() {
-  const key = showdownKeyFromHash();
-  const isShowdown = Boolean(key);
-  el.classicHeader.hidden = isShowdown;
-  el.classicMain.hidden = isShowdown;
-  el.showdownHeader.hidden = !isShowdown;
-  el.showdownMain.hidden = !isShowdown;
-  // Second slates (D57): "#slate=<key>" keeps the classic app on screen and picks which slate's players it
-  // lists; any other hash (none, or a showdown's) is the main slate. A team or game filter names main-slate
-  // games, so both are cleared on a switch rather than left hiding every player of the new slate.
-  const slateKey = isShowdown ? null : slateKeyFromHashString(window.location.hash);
-  if (slateKey !== store.get().activeSlateKey) {
-    store.set({ activeSlateKey: slateKey, filters: { ...store.get().filters, teams: new Set(), gameId: null } });
-    const board = store.get().board;
-    if (board) {
-      renderFilterBarNow(board);
-      renderDynamic();
-    }
-  }
-  renderSlateChrome();
-  renderModeRowNow();
-  if (isShowdown) renderShowdownView(key);
-  syncExpandUi(); // a showdown hides the classic page: a table expanded there must close, never leave the page locked
-}
-
 // The one line above the Rankings table that says where Own% comes from: only numbers a named source
 // published for the DraftKings main slate. Everyone else is blank, and the app never estimates.
 function ownBannerText(rows) {
@@ -470,69 +348,6 @@ function renderEmptyState({ loading, boardError }) {
   el.emptyState.textContent = boardError?.message ?? "Something went wrong.";
 }
 
-// Whole-row snapping by geometry rather than by one row's height (👁 visual-qa fourth/fifth pass): finds
-// the last tbody row whose bottom edge actually fits within the available height and snaps the panel's
-// max-height to that row's bottom, so a row that renders taller/shorter than another (wrapped text,
-// badges, etc.) never leaves a partial row peeking out at the bottom. `panelEl.offsetHeight -
-// panelEl.clientHeight` is added back on as the panel's own border/scrollbar allowance. Falls back to the
-// previous head+available calc() only when the panel has no tbody rows yet (e.g. an empty table).
-//
-// This exact function also lives in public/js/lineup.js as resizeLineupScrollPanels's per-panel sizing
-// step. It isn't imported from here because app.js is the page's entry module (never imported by anyone
-// else) while lineup.js is imported by tabs.js which app.js itself imports — importing app.js back into
-// lineup.js would make that a circular module dependency. Duplicated on purpose; keep both in sync.
-function snapPanelMaxHeight(panelEl, top, reserve) {
-  // Layout round 2, 2026-10-17: a panel in a hidden tab reads every rect as 0 and would be sized to 0px: leave it alone.
-  if (panelEl.getClientRects().length === 0) return;
-  // Layout round 2, 2026-10-17: the room is measured from the panel's place in the document (docTop), not its place
-  // in the window, so a page scrolled past the panel's top (a negative `top`) sizes it exactly as an unscrolled page
-  // does; nothing is stored, so nothing goes stale (same as lineup.js).
-  const docTop = top + window.scrollY;
-  // On a phone (max-width 700px) the table gets at least 70% of the window's height, however much of the page
-  // sits above it (Adam, 2026-10-10: the list showed about three rows); the page scrolls to reach it. Wider
-  // windows size exactly as before. window.innerHeight is the dynamic viewport height (what dvh measures).
-  const phoneMin = Math.max(phoneMinHeight(), panelMinHeight(panelEl, top)); // the Optimizer pool's floor too (expand.js)
-  const available = Math.max(window.innerHeight - docTop - reserve, phoneMin);
-  const rows = panelEl.querySelectorAll("tbody tr");
-  const borderAllowance = panelEl.offsetHeight - panelEl.clientHeight;
-  if (rows.length === 0) {
-    panelEl.style.maxHeight = phoneMin
-      ? `${Math.max(Math.round(window.innerHeight - docTop - reserve), phoneMin)}px`
-      : `calc(100vh - ${Math.round(docTop)}px - ${Math.round(reserve)}px)`;
-    return;
-  }
-  let lastFitBottom = null;
-  rows.forEach((row) => {
-    const bottomOffset = row.getBoundingClientRect().bottom + window.scrollY - docTop; // the row's bottom below the panel's top
-    if (bottomOffset <= available) lastFitBottom = bottomOffset;
-  });
-  if (lastFitBottom == null) {
-    // Not even one body row fits: show through the header only rather than clip a partial row.
-    const theadEl = panelEl.querySelector("thead");
-    lastFitBottom = theadEl ? theadEl.getBoundingClientRect().bottom + window.scrollY - docTop : 0;
-  }
-  panelEl.style.maxHeight = `${Math.floor(lastFitBottom + borderAllowance)}px`;
-}
-
-// Keeps the table's own scroll area sized to whatever room is actually left below it, instead of a
-// fixed CSS height that only fit one particular window size (👁 visual-qa: at 1366x768 a fixed height
-// left just four rows visible). Every ".scroll-panel" (the rankings table plus the Projections/
-// Ownership tabs' tables) gets the same treatment.
-function adjustScrollPanels() {
-  document.querySelectorAll(".scroll-panel").forEach((panelEl) => {
-    if (panelEl.closest(".sd-list")) return; // the Showdown Captain | FLEX list box is sized by public/js/showdown/lineup-lists.js, not here
-    const top = panelEl.getBoundingClientRect().top;
-    // The rankings table's legend line sits right below .table-wrap; if its height isn't reserved here
-    // the table claims that room too, slicing the legend and forcing a second page-level scrollbar (👁
-    // visual-qa). Every other .scroll-panel has nothing below it, so this only adds for that one.
-    let reserve = 16;
-    const legend = panelEl.parentElement?.querySelector(".table-legend");
-    if (legend) reserve += legend.getBoundingClientRect().height + 8;
-    // The sticky Build footer covers the window bottom, so the pool must end above it (🔵 d842f0b); lineup.js keeps the same line.
-    reserve += document.querySelector("#lineup-panel .opt-footer")?.getBoundingClientRect().height ?? 0;
-    snapPanelMaxHeight(panelEl, top, reserve);
-  });
-}
 window.addEventListener("resize", adjustScrollPanels);
 // Expand / Minimize on the four player tables (public/js/expand.js); minimizing re-sizes the table for its place.
 initExpand({ onLayout: adjustScrollPanels });
@@ -657,7 +472,7 @@ const { handleFile } = wireUpload(
   }
 );
 
-routeDkFile = handleFile;
+setRouteDkFile(handleFile);
 setUploadRouter(handleFile);
 
 wireThemeToggle(el.themeToggleBtn);
