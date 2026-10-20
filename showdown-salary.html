@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Showdown salary used - NFLDFSRankings</title>
+  <link rel="stylesheet" href="style.css" />
+  <script>
+    // Same theme bootstrap as index.html: a saved "light"/"dark" choice wins, otherwise dark; ?theme= overrides for one load.
+    (function () {
+      var theme = "dark";
+      try {
+        var saved = window.localStorage.getItem("nfldfs-theme");
+        if (saved === "light" || saved === "dark") theme = saved;
+      } catch (e) {
+        /* localStorage unavailable: dark for this load */
+      }
+      var forced = new URLSearchParams(window.location.search).get("theme");
+      if (forced === "light" || forced === "dark") theme = forced;
+      document.documentElement.setAttribute("data-theme", theme);
+    })();
+  </script>
+  <style>
+    .su-wrap { max-width: 1100px; }
+    .su-row { display: grid; grid-template-columns: 170px minmax(0, 1fr) 80px 60px; align-items: center; gap: var(--sp-3); padding: 3px 0; font-size: var(--fs-base); }
+    .su-label { white-space: nowrap; color: var(--text); }
+    .su-track { height: 18px; background: var(--bg-elevated-2); border-radius: 3px; overflow: hidden; }
+    .su-bar { display: block; height: 100%; background: var(--accent); }
+    .su-exact .su-bar { background: var(--amber); }
+    .su-exact .su-label { color: var(--amber); font-weight: 700; }
+    .su-count, .su-pct { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+    .su-pct { color: var(--text-muted); }
+    .su-head { margin: var(--sp-4) 0 var(--sp-2); }
+    .su-source { margin: var(--sp-3) 0 0; }
+  </style>
+</head>
+<body>
+  <header class="header sd-header">
+    <div class="header-top">
+      <div class="sd-band"><span class="sd-band-text">SHOWDOWN &middot; Salary used</span></div>
+      <div class="header-actions">
+        <button id="su-back" class="sources-btn" type="button">Back to the app</button>
+        <button id="theme-toggle-btn" class="theme-toggle-btn" type="button" title="Switch theme"></button>
+      </div>
+    </div>
+  </header>
+  <main class="main">
+    <div class="su-wrap">
+      <p class="tab-note">Share of a contest's lineups by total salary spent (Captain at his Captain price, five FLEX), out of the $50,000 cap. The first two rows are exact bands: lineups that spent exactly $50,000, and lineups that spent $49,600 to $49,900. Every row after them is "and under" and cumulative: it counts every lineup that spent that much or less, including those in the rows above it.</p>
+      <div id="su-picker" class="chip-group"></div>
+      <div id="su-view"><p class="tab-note">Loading...</p></div>
+    </div>
+  </main>
+  <script type="module" src="js/showdown/salary-used.js"></script>
+</body>
+</html>

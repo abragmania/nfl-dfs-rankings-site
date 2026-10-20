@@ -35,7 +35,7 @@
   text-decoration: underline;
 }
 
-/* Header and mode row: Upload CSV, upload info, Refresh (classic and showdown), Upload Showdown CSV. */
+/* Header and mode row: Upload CSV, upload info, Refresh (classic and showdown) and Upload Showdown CSV. */
 .is-site .upload-btn,
 .is-site #upload-info,
 .is-site #refresh-btn,

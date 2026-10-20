@@ -75,6 +75,7 @@ const els = {
   tabs: document.getElementById("sd-tabs"),
   sourcesTabs: document.getElementById("sd-sources-tabs"),
   sourcesBtn: document.getElementById("sd-sources-btn"),
+  salaryBtn: document.getElementById("sd-salary-btn"),
   band: document.getElementById("sd-band"),
   pillsRow: document.getElementById("sd-pills-row"),
   refreshBtn: document.getElementById("sd-refresh-btn"),
@@ -512,6 +513,13 @@ wireSourcesLink(els.sourcesBtn, {
     state.activeTab = sourcesTabToOpen(state.activeTab, state.lastSourcesTab);
     render();
   },
+});
+
+// The Salary used button opens the contest salary-used page, naming the Showdown on screen so its Back button returns here.
+// The address is relative (the page sits beside index.html), so it works on localhost and under the public site's sub-path.
+els.salaryBtn?.addEventListener("click", () => {
+  const key = showdownKeyFromHash() ?? state.boardKey ?? state.requestedKey;
+  window.location.assign(key ? `showdown-salary.html?from=${encodeURIComponent(key)}` : "showdown-salary.html");
 });
 
 els.refreshBtn?.addEventListener("click", async () => {
