@@ -51,9 +51,10 @@ export function reconstructGamesById(games) {
  * previousBoard - the last /api/board shape built for this slate.
  * full          - the loaded slate (its games array, D13).
  * overrides     - the week's overrides object (proj, own, stars, notes).
+ * generatedAt   - the stamp for the new board; a pure caller (server/rank/select.js) passes its own, so no clock is read.
  * (No rank settings any more: the file is retired, Adam 2026-10-15, Lev measure to be redesigned.)
  */
-export function remergeOverrides(previousBoard, full, overrides) {
+export function remergeOverrides(previousBoard, full, overrides, generatedAt = new Date().toISOString()) {
   const baseRows = reconstructBaseRows(previousBoard.rows);
   const rows = zeroOutRows(mergeOverridesIntoRows(baseRows, overrides));
   // No lev on the rows: Adam 2026-10-15, Lev measure to be redesigned.
@@ -85,5 +86,5 @@ export function remergeOverrides(previousBoard, full, overrides) {
     ownership: (prevTabNotes.ownership ?? []).filter((n) => !staleOverrideNotes.has(n)),
     favorites: []
   };
-  return { ...previousBoard, generatedAt: new Date().toISOString(), rows, games, ownership, notes, tabNotes };
+  return { ...previousBoard, generatedAt, rows, games, ownership, notes, tabNotes };
 }

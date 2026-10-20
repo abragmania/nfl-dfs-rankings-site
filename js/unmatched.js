@@ -55,11 +55,11 @@ export function slateTeamSet(rows) {
   return set;
 }
 
-/** The card's shared markup pieces: the open list of on-slate names and the closed disclosure for the rest. */
+/** The markup pieces under a source's row on the Sources page: a small expander of the on-slate names, and a closed one for the rest (D27). */
 export function unmatchedPartsHtml(names, slateTeams, slateRows, escapeHtml) {
   const { onSlate, offSlate } = splitUnmatched(names, slateTeams, slateRows);
   const listHtml = onSlate.length
-    ? `<details class="source-unmatched"><summary>${onSlate.length} unmatched</summary>${onSlate.map(escapeHtml).join(", ")}</details>`
+    ? `<details class="source-unmatched"><summary>${onSlate.length} ${onSlate.length === 1 ? "name" : "names"} not matched</summary>${onSlate.map(escapeHtml).join(", ")}</details>`
     : "";
   const offSlateHtml = offSlate.length
     ? `<details class="source-unmatched source-unmatched-off muted"><summary>${offSlate.length} on teams not playing</summary>${offSlate.map(escapeHtml).join(", ")}</details>`

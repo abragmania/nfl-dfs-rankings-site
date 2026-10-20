@@ -47,8 +47,9 @@ export function generateResponse({ board, slate, body: rawBody, saved }) {
 
   const stale = Array.isArray(board.stale) ? board.stale : [];
   try {
-    // Cash mode job 2b, 2026-10-17: the mode the board was baked in (board.mode.active) picks a cash build's basis.
-    const result = generateLineups({ rows, slate, settings: checked.settings, existing, boardMode: board.mode?.active });
+    // Cash mode job 2b, 2026-10-17: the Cash basis the board was baked with (board.mode.cashMode, select.js modeOf), as the
+    // app reads it; a board baked without one is refused by cash.js cashBasis.
+    const result = generateLineups({ rows, slate, settings: checked.settings, existing, boardMode: board.mode?.cashMode });
     return envelope(enrichGenerateResult(result, rowById), { stale });
   } catch (e) {
     console.error("lineup generate: failed", e);

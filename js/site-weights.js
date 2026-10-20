@@ -123,6 +123,8 @@ export function boardWithWeights(board, slate, weights) {
   recipes.projection = swapTail(recipes.projection, blendProjections([], new Map(), pick((id) => published.get(id)), { labels, injuryReport: state }).recipe, blend.recipe);
   const ownRecipe = (weightOf) => ownershipRecipe(ownLive.map((s) => ({ label: label(s), weight: weightOf(s.id) })));
   recipes.ownership = swapTail(recipes.ownership, ownRecipe((id) => published.get(id)), ownRecipe(now));
-  const sources = board.sources.map((s) => (published.has(s.id) && Object.hasOwn(weights, s.id) ? { ...s, weight: weights[s.id] } : s));
+  // publishedWeight keeps the weight the board was published with beside the one this browser changed it to, so the Sources page can show
+  // what was changed and put it back (public/js/sources-page-board.js).
+  const sources = board.sources.map((s) => (published.has(s.id) && Object.hasOwn(weights, s.id) ? { ...s, weight: weights[s.id], publishedWeight: s.weight } : s));
   return remergeOverrides({ ...board, rows, recipes, sources }, slate, publishedOverrides(board));
 }

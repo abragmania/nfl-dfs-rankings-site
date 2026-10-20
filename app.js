@@ -19,7 +19,6 @@ import {
   postRefresh,
   putOverrides,
   deleteAllOverrides,
-  postSources,
   postProjectionsPaste,
   postMode,
 } from "./js/api.js";
@@ -33,7 +32,8 @@ import { applyGrades, rowsGradedForView } from "./js/grade.js";
 import { renderGameStrip, getGamestripCollapsed, setGamestripCollapsed } from "./js/gamestrip.js";
 import { renderFilterBar, updateFilterSummary } from "./js/filterbar.js";
 import { renderTableHead, renderTableBody, updateRow } from "./js/table.js";
-import { renderTabs, renderSourcesTabs, isSourcesTab, sourcesTabToOpen, shownTab, renderProjectionsPanel, renderOwnershipPanel, renderLineupPanel, renderEntriesPanel } from "./js/tabs.js";
+import { renderTabs, isSourcesTab, sourcesTabToOpen, shownTab, renderProjectionsPanel, renderOwnershipPanel, renderLineupPanel, renderEntriesPanel } from "./js/tabs.js";
+import { renderSourcesPage } from "./js/sources-page.js"; // the one Sources page (Adam 2026-10-18), shared with the Showdown view
 import { teamsSampleHtml } from "./js/teams-sample.js"; // Temporary (Adam 2026-10-18)
 import { renderFavoritesPanel, favoriteRows } from "./js/favorites.js";
 import { initExpand, syncExpandUi } from "./js/expand.js";
@@ -54,7 +54,7 @@ const el = {
   status: document.getElementById("status"),
   tabs: document.getElementById("tabs"),
   sourcesBtn: document.getElementById("sources-btn"), // Adam 2026-10-18: the header link to the Sources view
-  sourcesTabs: document.getElementById("sources-tabs"),
+  sourcesPanel: document.getElementById("sources-panel"),
   slateNote: document.getElementById("slate-note"),
   rankingsPanel: document.getElementById("rankings-panel"),
   projectionsPanel: document.getElementById("projections-panel"),
@@ -236,13 +236,15 @@ const tableCallbacks = {
   },
 };
 
+// The Sources page saves its own choices (public/js/sources-page.js); this is the board repaint it asks for afterwards: a plain
+// board read, so nothing is re-downloaded from a source. A board that cannot be read leaves the one on screen and says so under the row.
+async function repaintAfterSourceSave() {
+  const board = await getBoard();
+  if (!board?.ok) throw new Error(board?.error?.message ?? "the server did not return the board");
+  await handleBoardLoaded(board);
+}
+
 const sourceCallbacks = {
-  onSourceChange: async (id, patch) => {
-    // A failed save must revert whatever the user just typed/toggled back to the board's actual,
-    // still-current settings, so the panel is re-rendered from the unchanged board on failure.
-    const data = await runWrite(() => postSources({ id, ...patch }), { label: "the source setting" });
-    if (!data) renderDynamic();
-  },
   onPaste: async (payload) => {
     // The paste result (row/dropped/unmatched counts) is reported by tabs.js itself regardless of
     // success; only a genuinely thrown error (network down) needs to propagate to #status here.
@@ -268,7 +270,7 @@ function onTabClick(tabKey) {
   store.set({ activeTab: tabKey });
 }
 
-// The header's Sources link opens the Sources view on the sub-tab last shown (Projections the first time).
+// The header's Sources link opens the Sources page with the table last shown under it (Projections the first time).
 let lastSourcesTab = null;
 function onSourcesOpen() {
   store.set({ activeTab: sourcesTabToOpen(store.get().activeTab, lastSourcesTab) });
@@ -362,7 +364,6 @@ function renderDynamic() {
   const slateRows = activeSlateRows(board);
   renderTabs(el.tabs, activeTab, onTabClick, favoriteRows(slateRows).length);
   if (isSourcesTab(activeTab)) lastSourcesTab = activeTab;
-  renderSourcesTabs(el.sourcesTabs, activeTab, onTabClick);
   paintSourcesLink(el.sourcesBtn, isSourcesTab(activeTab));
 
   if (!board) {
@@ -372,6 +373,7 @@ function renderDynamic() {
     // panel on screen instead of the error text.
     el.rankingsPanel.hidden = true;
     el.favoritesPanel.hidden = true;
+    el.sourcesPanel.hidden = true;
     el.projectionsPanel.hidden = true;
     el.ownershipPanel.hidden = true;
     el.teamsPanel.hidden = true;
@@ -392,6 +394,7 @@ function renderDynamic() {
   el.emptyState.hidden = true;
   el.rankingsPanel.hidden = activeTab !== "rankings";
   el.favoritesPanel.hidden = activeTab !== "favorites";
+  el.sourcesPanel.hidden = !isSourcesTab(activeTab);
   el.projectionsPanel.hidden = activeTab !== "projections";
   el.ownershipPanel.hidden = activeTab !== "ownership";
   el.teamsPanel.hidden = activeTab !== "teams";
@@ -423,10 +426,11 @@ function renderDynamic() {
   } else if (activeTab === "favorites") {
     // Every starred player on the slate; the Rankings filters and the projection floor do not apply.
     renderFavoritesPanel(el.favorites, slateRows, tableCallbacks, slateRows.some((r) => r.note), [...(board.tabNotes?.favorites ?? []), board.injuryNote].filter(Boolean));
-  } else if (activeTab === "projections") {
-    renderProjectionsPanel(el.projectionsPanel, board, sourceCallbacks);
-  } else if (activeTab === "ownership") {
-    renderOwnershipPanel(el.ownershipPanel, board, sourceCallbacks);
+  } else if (isSourcesTab(activeTab)) {
+    // The Sources page (always the main slate's choices, D57), then the Projections or Ownership table under its Players heading.
+    renderSourcesPage(el.sourcesPanel, { board, slate: "main", showdown: false, activeKey: activeTab, onPlayersTab: onTabClick, onChanged: repaintAfterSourceSave });
+    if (activeTab === "projections") renderProjectionsPanel(el.projectionsPanel, board, sourceCallbacks);
+    else renderOwnershipPanel(el.ownershipPanel, board, sourceCallbacks);
   } else if (activeTab === "teams") {
     el.teamsPanel.innerHTML = teamsSampleHtml(); // Temporary (Adam 2026-10-18)
   } else if (activeTab === "lineup") {

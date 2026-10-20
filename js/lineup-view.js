@@ -830,7 +830,7 @@ function cashControlsHtml(rowById) {
 /** Adam 2026-10-17: the Build button always in view (sticky footer at the tab's end). The summary sentence and Build sit
  *  in the last child of the panel (#lineup-panel), so position: sticky holds them to the bottom of the screen. */
 function optimizerFooterHtml(board) {
-  const busy = opt.generating || opt.saving || (opt.mode === "cash" && cashBasisInfo(board).blocked); // cash mode job 3b: no medians in TwoGun mode cannot build (CQ5)
+  const busy = opt.generating || opt.saving || (opt.mode === "cash" && cashBasisInfo(board).blocked); // cash: Build is disabled whenever cashBasisInfo blocks (no Cash basis, or no medians on a TwoGun basis)
   // 🔵 d842f0b: a refusal from Build must show where Build was pressed, which can be far below the settings head.
   const footerError = opt.formError ? `<div class="lineup-status lineup-status-error opt-form-error-footer">${escapeHtml(opt.formError)}</div>` : "";
   return `
@@ -911,7 +911,7 @@ function newLineupsTabHtml(rowById, savedHere) {
   parts.push(
     n
       ? `<div class="opt-results-head">
-           <span class="opt-sub">${isCash ? escapeHtml(builtInTextCash(n, r.basis, r.boardMode)) : `${n} lineup${n === 1 ? "" : "s"} from the last Build${r.builtIn ? ` (${escapeHtml(r.builtIn)})` : ""}`}${nSaved ? `, ${nSaved} saved` : ", not saved yet"}</span>
+           <span class="opt-sub">${isCash ? escapeHtml(builtInTextCash(n, r.basis)) : `${n} lineup${n === 1 ? "" : "s"} from the last Build${r.builtIn ? ` (${escapeHtml(r.builtIn)})` : ""}`}${nSaved ? `, ${nSaved} saved` : ", not saved yet"}</span>
            <span class="opt-card-actions">
              <button type="button" class="saved-lineup-btn" data-action="opt-save-all"${busy || allSaved || noneShown ? " disabled" : ""}>${bulkLabel("Save", nShownUnsaved, filtered)}</button>
              <button type="button" class="saved-lineup-btn danger" data-action="opt-discard-all"${busy || noneShown ? " disabled" : ""}>${bulkLabel("Discard", nShown, filtered)}</button>

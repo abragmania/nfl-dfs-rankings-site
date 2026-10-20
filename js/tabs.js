@@ -1,18 +1,16 @@
 // Tabs above the table: Rankings (rendered by table.js/gamestrip.js/filterbar.js, default),
 // Favorites (starred players, favorites.js), Optimizer (the main-slate tab, second after Rankings; DECISIONS.md D70),
-// Entries (right after the Optimizer, app only). Projections and Projected Ownership are not tabs here any more: they are the two
-// sub-tabs of the Sources view the header's Sources link opens (Adam 2026-10-18; SOURCE_TABS, renderSourcesTabs).
-import { escapeHtml, dec1, localStamp } from "./format.js";
+// Entries (right after the Optimizer, app only). Projections and Projected Ownership are not tabs here any more: the header's
+// Sources link opens ONE Sources page (public/js/sources-page.js: which sources, their weights, when each was pulled), and the two
+// per-player tables below it are this file's renderProjectionsPanel and renderOwnershipPanel, chosen by a Projections | Ownership
+// switch on that page (Adam 2026-10-18; SOURCE_TABS keeps the two old tab keys, so "?tab=projections" and "?tab=ownership" still land there).
+import { escapeHtml, dec1 } from "./format.js";
 import { store, passesProjFloor, CLASSIC_PROJ_FLOOR, activeSlateRows, sortRows } from "./state.js";
 import { favoritesTabLabel } from "./favorites.js";
 import { showAllToggleHtml, wireShowAllButtons } from "./filterbar.js";
-import { unmatchedPartsHtml, slateTeamSet } from "./unmatched.js";
 import { sourceFailedMarkerHtml, sortArrowHtml, sortArrowText } from "./table.js";
 import { playerLineHtml } from "./player-row.js";
-
-// TwoGun's card (merge plan 2026-10-15) is read-only: his figures are used as he publishes them (D25 as amended) and
-// POST /api/sources does not know his id, so the card has no Enabled box and no weight box.
-const READ_ONLY_SOURCE_IDS = new Set(["twogun"]);
+import { sourceIsTicked } from "./sources-page-html.js"; // the one tick predicate (the Sources page and the Showdown tables use it too)
 
 // The classic projection floor (D52) as it applies to the two source tables: the same predicate and the same
 // "Show all players" toggle as the Rankings table, nothing else from the filter bar. These tabs have no search
@@ -42,14 +40,14 @@ const TABS = [
   { key: "teams", label: "Teams (sample)" }, // Temporary (Adam 2026-10-18): remove when he has seen the colours
 ];
 
-// The Sources view's two sub-tabs; their keys stay the old tab keys, so "?tab=projections" and "?tab=ownership" still land here.
+// The Sources page's Players switch; its keys stay the old tab keys, so "?tab=projections" and "?tab=ownership" still land on the page.
 export const SOURCE_TABS = Object.freeze([
   Object.freeze({ key: "projections", label: "Projections" }),
-  Object.freeze({ key: "ownership", label: "Projected Ownership" }),
+  Object.freeze({ key: "ownership", label: "Ownership" }),
 ]);
 export const isSourcesTab = (key) => SOURCE_TABS.some((t) => t.key === key);
 
-/** Which sub-tab the header's Sources link opens: the one already showing, else the one last shown, else Projections. */
+/** Which table the header's Sources link opens: the one already showing, else the one last shown, else Projections. */
 export function sourcesTabToOpen(current, last) {
   if (isSourcesTab(current)) return current;
   return isSourcesTab(last) ? last : SOURCE_TABS[0].key;
@@ -71,17 +69,6 @@ export function shownTab(activeTab, tabs = visibleTabs()) {
   return tabs.some((t) => t.key === activeTab) || isSourcesTab(activeTab) ? activeTab : "rankings";
 }
 
-/** The Sources view's sub-tab row: always drawn (so a "?tab=projections" link can click it), shown only while a source tab is on screen. */
-export function renderSourcesTabs(container, activeTab, onTabClick) {
-  const on = isSourcesTab(activeTab);
-  container.hidden = !on;
-  container.innerHTML = `<span class="sources-tabs-label">Sources</span>${SOURCE_TABS.map((t) =>
-    `<button type="button" class="tab-btn${t.key === activeTab ? " active" : ""}"${t.key === activeTab ? ' aria-current="true"' : ""} data-tab="${t.key}">${escapeHtml(t.label)}</button>`).join("")}`;
-  container.querySelectorAll(".tab-btn").forEach((el) => {
-    el.addEventListener("click", () => onTabClick(el.dataset.tab));
-  });
-}
-
 // `favoritesCount`: how many starred players are on the slate; the Favorites tab shows it as "Favorites (3)".
 export function renderTabs(container, activeTab, onTabClick, favoritesCount = 0) {
   container.innerHTML = visibleTabs().map((t) => {
@@ -90,80 +77,6 @@ export function renderTabs(container, activeTab, onTabClick, favoritesCount = 0)
   }).join("");
   container.querySelectorAll(".tab-btn").forEach((el) => {
     el.addEventListener("click", () => onTabClick(el.dataset.tab));
-  });
-}
-
-// `slateTeams`/`slateRows`: the team codes and rows of the loaded slate. Unmatched names on other teams are
-// counted and kept behind a closed disclosure, not listed in the open (Adam, 2026-10-10); see unmatched.js for
-// the split and its guards (unrecognised team codes, names matching a slate player, an empty slate).
-function sourceCardHtml(source, slateTeams, slateRows) {
-  const idAttr = escapeHtml(String(source.id));
-  // 👁 visual-qa: long "not on the DK slate" lists collapse behind a disclosure instead of always
-  // being shown in full; the label text is already the display name (server/rank/board.js's
-  // recordLabel), so it's shown as-is.
-  const { onSlate, listHtml: unmatchedHtml, offSlateHtml: offSlateNote } = unmatchedPartsHtml(source.unmatchedNames, slateTeams, slateRows, escapeHtml);
-  // With no names to split (an older response), the server's own count stands.
-  const unmatchedShown = source.unmatchedNames?.length ? onSlate.length : (source.unmatchedCount ?? 0);
-  // Ownership tables only: the page's own "updated" text as the site wrote it, and, for a source kept at
-  // weight 0, the plain statement that its numbers are stored and shown but never part of Own% (D35).
-  const pageUpdatedHtml = source.pageUpdated
-    ? `<div class="source-card-row muted"><span>Page updated ${escapeHtml(String(source.pageUpdated))}</span></div>`
-    : "";
-  const keptOnlyHtml = source.kind === "ownership" && Number(source.weight) === 0
-    ? `<div class="source-card-row muted"><span>kept for comparison, not used in Own%</span></div>`
-    : "";
-  const readOnly = source.readOnly === true || READ_ONLY_SOURCE_IDS.has(String(source.id));
-  const enabledHtml = readOnly
-    ? `<span class="source-readonly" title="TwoGun's published figures are used as he publishes them in TwoGun mode; switch modes in the header.">read-only</span>`
-    : `<label class="source-enabled">
-          <input type="checkbox" data-action="source-enabled" data-id="${idAttr}" ${source.enabled ? "checked" : ""} />
-          Enabled
-        </label>`;
-  const weightHtml = readOnly
-    ? `<span>Weight ${escapeHtml(String(source.weight ?? "—"))}</span>`
-    : `<label>Weight <input type="number" step="0.1" min="0" class="source-weight-input" data-action="source-weight" data-id="${idAttr}" value="${source.weight}" /></label>`;
-  return `
-    <div class="source-card" data-source-id="${idAttr}">
-      <div class="source-card-head">
-        <span class="source-label">${escapeHtml(source.label)}</span>
-        ${enabledHtml}
-      </div>
-      <div class="source-card-row">
-        ${weightHtml}
-        <span class="source-status source-status-${escapeHtml(source.status ?? "")}">${escapeHtml(source.status ?? "unknown")}</span>
-      </div>
-      <div class="source-weight-error" data-id="${idAttr}" hidden></div>
-      <div class="source-card-row muted">
-        <span>Fetched ${localStamp(source.fetchedAt)?.clock ?? "never"}</span>
-        <span>${source.recordCount ?? 0} rows · ${source.matchedCount ?? 0} matched · ${unmatchedShown} unmatched on this slate</span>
-      </div>
-      ${pageUpdatedHtml}
-      ${keptOnlyHtml}
-      ${unmatchedHtml}
-      ${offSlateNote}
-    </div>`;
-}
-
-function wireSourceCards(container, onSourceChange) {
-  container.querySelectorAll("[data-action='source-enabled']").forEach((el) => {
-    el.addEventListener("change", () => onSourceChange(el.dataset.id, { enabled: el.checked }));
-  });
-  container.querySelectorAll("[data-action='source-weight']").forEach((el) => {
-    el.addEventListener("change", () => {
-      const errorEl = container.querySelector(`.source-weight-error[data-id="${CSS.escape(el.dataset.id)}"]`);
-      const raw = el.value.trim();
-      const parsed = Number(raw);
-      if (raw === "" || !Number.isFinite(parsed) || parsed < 0) {
-        el.value = el.defaultValue; // restore the last-known-good weight rather than silently sending 0
-        if (errorEl) {
-          errorEl.textContent = "Enter a weight of 0 or greater.";
-          errorEl.hidden = false;
-        }
-        return;
-      }
-      if (errorEl) errorEl.hidden = true;
-      onSourceChange(el.dataset.id, { weight: parsed });
-    });
   });
 }
 
@@ -186,33 +99,35 @@ let lastPasteResultText = null;
 // reload. Default Proj high to low. Column keys: player, proj, cov, or "src:<id>".
 let projSort = { col: "proj", dir: "desc" };
 
-// A projection source is in the blend when it is switched on and its weight is above 0; otherwise it is "(not used)".
-const isProjectionNotUsed = (s) => Number(s.weight) <= 0 || s.enabled === false;
+// A projection source is in the blend when it is ticked (switched on and not at weight 0; a card with no weight is on); otherwise it is not used.
+const isProjectionNotUsed = (s) => !sourceIsTicked(s);
+
+// A source column that is not in the blend: dimmed by its class (style.css .sv-unused), never a "(not used)" word in the header
+// (👁 finding 7); its hover says it. Shared with the Showdown tables (showdown/tabs.js), which dim an unticked source the same way.
+export const UNUSED_COL = Object.freeze({ cls: "sv-unused", headTitle: "Not used: unticked on the Sources page, or at weight 0." });
+export const unusedColumn = (key, label) => ({ key, label, ...UNUSED_COL });
 
 // Projections table columns (Adam, 2026-10-10: like Projected Ownership): Player, Proj (the blend), the sources
-// in the blend in config order, the sources not in the blend, then Coverage. No Team column: the player line already shows
+// in the blend in config order, the sources not in the blend (dimmed), then Coverage. No Team column: the player line already shows
 // the team (D80; Adam 2026-10-18 round 3, as Rankings did in round 1).
 export function projectionColumns(sources, isNotUsed = isProjectionNotUsed) {
   return [
     { key: "player", label: "Player" },
     { key: "proj", label: "Proj" },
     ...sources.filter((s) => !isNotUsed(s)).map((s) => ({ key: `src:${s.id}`, label: s.label })),
-    ...sources.filter(isNotUsed).map((s) => ({ key: `src:${s.id}`, label: `${s.label} (not used)` })),
+    ...sources.filter(isNotUsed).map((s) => unusedColumn(`src:${s.id}`, s.label)),
     { key: "cov", label: "Coverage" },
   ];
 }
 
+// The Projections table under the Sources page's Players heading: the paste box, the floor note and the sortable table. Which
+// sources feed it and their weights are the Sources page above (sources-page.js), not cards here.
 export function renderProjectionsPanel(container, board, callbacks) {
   const sources = (board.sources ?? []).filter((s) => s.kind === "projection");
-  const slateRows = activeSlateRows(board);
-  const slateTeams = slateTeamSet(slateRows);
-  const cards = sources.map((s) => sourceCardHtml(s, slateTeams, slateRows)).join("");
   const pasteOptions = PASTE_POSITIONS.map((p) => `<option value="${p}">${p}</option>`).join("");
 
   container.innerHTML = `
-    <div class="tab-recipe">${escapeHtml(board.recipes?.projection ?? "")}</div>
     ${tabNotesHtml(board.tabNotes?.projections)}
-    <div class="source-card-grid">${cards}</div>
     <details class="paste-box">
       <summary>Paste a FantasyPros table</summary>
       <div class="paste-box-controls">
@@ -226,7 +141,6 @@ export function renderProjectionsPanel(container, board, callbacks) {
     <div class="tab-table-group"><div class="tab-table-wrap scroll-panel"><table class="source-value-table sv-classic"><thead></thead><tbody></tbody></table></div></div>
   `;
 
-  wireSourceCards(container, callbacks.onSourceChange);
   wireShowAllButtons(container);
 
   // The player table sorts like the Projected Ownership table (Adam, 2026-10-10): the wrapper and <table> are
@@ -296,7 +210,7 @@ export function sortDefaultDir(col) {
 
 // Projected Ownership table (Adam, 2026-10-10: Own% close to the left, every column sortable). Columns: Player,
 // Own% (the blend), the sources that feed the blend in config order, the sources not in the blend
-// ("(not used)": weight 0 or switched off), then Quoted coverage. Header clicks reuse the Rankings pattern
+// (weight 0 or switched off; dimmed, UNUSED_COL), then Quoted coverage. Header clicks reuse the Rankings pattern
 // (sortable/sorted classes, ▲/▼ arrow, blanks last either way via state.js sortRows). The scroll wrapper and
 // <table> are rendered once by renderOwnershipPanel; only the thead and tbody are rebuilt on a sort click, so
 // the wrapper keeps the height app.js's adjustScrollPanels gave it and its scroll position.
@@ -305,7 +219,7 @@ function ownershipColumns(sources, isNotUsed) {
     { key: "player", label: "Player" },
     { key: "own", label: "Own%" },
     ...sources.filter((s) => !isNotUsed(s)).map((s) => ({ key: `src:${s.id}`, label: s.label })),
-    ...sources.filter(isNotUsed).map((s) => ({ key: `src:${s.id}`, label: `${s.label} (not used)` })),
+    ...sources.filter(isNotUsed).map((s) => unusedColumn(`src:${s.id}`, s.label)),
     { key: "cov", label: "Quoted coverage" },
   ];
 }
@@ -318,7 +232,8 @@ export function sortableHeadHtml(cols, sort, reserveArrow = false) {
       const active = sort.col === c.key;
       const arrow = reserveArrow ? sortArrowHtml(active, sort.dir, true) : active ? sortArrowText(sort.dir) : "";
       const extra = c.cls ? ` ${escapeHtml(c.cls)}` : ""; // a column's own class (the Optimizer pool's lineup-star-col)
-      return `<th data-col="${escapeHtml(c.key)}" class="sortable${sort.col === c.key ? " sorted" : ""}${extra}">${escapeHtml(c.label)}${arrow}</th>`;
+      const hover = c.headTitle ? ` title="${escapeHtml(c.headTitle)}"` : ""; // an unused source column says why it is dimmed (UNUSED_COL)
+      return `<th data-col="${escapeHtml(c.key)}" class="sortable${sort.col === c.key ? " sorted" : ""}${extra}"${hover}>${escapeHtml(c.label)}${arrow}</th>`;
     })
     .join("");
   return `<tr>${head}</tr>`;
@@ -335,7 +250,7 @@ export function sortableBodyHtml(rows, cols, sort, valueOf, covMark = () => "") 
           // Adam 2026-10-18 Q10: the full matchup pill shows here too (the shared row's default).
           if (c.key === "player") return `<td data-card-id="${escapeHtml(String(r.id))}"><span class="player-cell">${playerLineHtml(r, { tag: "main" })}</span></td>`;
           if (c.key === "cov") return `<td>${v == null ? "—" : `${Math.round(v * 100)}%`}${covMark(r)}</td>`;
-          return `<td>${v == null ? "—" : dec1(v)}</td>`;
+          return `<td${c.cls ? ` class="${escapeHtml(c.cls)}"` : ""}>${v == null ? "—" : dec1(v)}</td>`;
         })
         .join("");
       return `<tr>${cells}</tr>`;
@@ -345,9 +260,6 @@ export function sortableBodyHtml(rows, cols, sort, valueOf, covMark = () => "") 
 
 export function renderOwnershipPanel(container, board, callbacks) {
   const sources = (board.sources ?? []).filter((s) => s.kind === "ownership");
-  const slateRows = activeSlateRows(board);
-  const slateTeams = slateTeamSet(slateRows);
-  const cards = sources.map((s) => sourceCardHtml(s, slateTeams, slateRows)).join("");
 
   // Coverage here must describe ownership coverage, not the projection blend's coverage field that
   // board rows also carry. Same definition as the projection blend (server/rank/blend.js): the covering
@@ -355,7 +267,7 @@ export function renderOwnershipPanel(container, board, callbacks) {
   // switched on, its weight is above 0 and it produced records. A source kept at weight 0 is shown in its own
   // column but never counts here (D35). A player none of the counting sources published a number for, or a
   // table with no counting source at all, has no coverage to report, so the cell is an em dash.
-  const isKeptOnly = (s) => Number(s.weight) === 0 || s.enabled === false;
+  const isKeptOnly = (s) => !sourceIsTicked(s);
   const usedSources = sources.filter((s) => !isKeptOnly(s) && Number(s.weight) > 0 && Number(s.recordCount) > 0);
   const usedWeight = usedSources.reduce((sum, s) => sum + Number(s.weight), 0);
   const coverageFn = (r) => {
@@ -368,17 +280,13 @@ export function renderOwnershipPanel(container, board, callbacks) {
   const published = rows.filter((r) => r.ownKind === "quoted").length;
   const blank = rows.filter((r) => r.own == null).length;
 
-  // The server's recipe is already plain English, so it is shown as it stands.
   container.innerHTML = `
-    <div class="tab-recipe">${escapeHtml(board.recipes?.ownership ?? "")}</div>
     <p class="tab-note">${published} of ${rows.length} players have a published DraftKings ownership number; ${blank} are blank.</p>
     ${tabNotesHtml(board.tabNotes?.ownership)}
-    <div class="source-card-grid">${cards}</div>
     ${floorNoteHtml(rows, floorRows(rows))}
     <div class="tab-table-group"><div class="tab-table-wrap scroll-panel"><table class="source-value-table sv-classic"><thead></thead><tbody></tbody></table></div></div>
   `;
 
-  wireSourceCards(container, callbacks.onSourceChange);
   wireShowAllButtons(container);
 
   const cols = ownershipColumns(sources, isKeptOnly);

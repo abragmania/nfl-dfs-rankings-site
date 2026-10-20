@@ -49,7 +49,7 @@
           <input id="csv-input" type="file" accept=".csv,text/csv" hidden />
         </label>
         <span id="upload-info" class="upload-info"></span>
-        <button id="sources-btn" class="sources-btn" type="button" title="The projection and ownership sources: cards, weights and tables">Sources</button>
+        <button id="sources-btn" class="sources-btn" type="button" title="Which sources feed the projections and ownership, their weights, and when each was last pulled">Sources</button>
         <button id="refresh-btn" class="refresh-btn" type="button">Refresh</button>
         <button id="theme-toggle-btn" class="theme-toggle-btn" type="button" title="Switch theme"></button>
       </div>
@@ -69,7 +69,7 @@
       <div id="sd-band" class="sd-band"></div>
       <div class="header-actions">
         <button id="sd-salary-btn" class="sources-btn" type="button" title="How much of the $50,000 cap contest lineups spent">Salary used</button>
-        <button id="sd-sources-btn" class="sources-btn" type="button" title="The projection and ownership sources: cards and tables">Sources</button>
+        <button id="sd-sources-btn" class="sources-btn" type="button" title="Which sources feed the projections and ownership, their weights, and when each was last pulled">Sources</button>
         <button id="sd-refresh-btn" class="refresh-btn" type="button">Refresh</button>
       </div>
     </div>
@@ -80,8 +80,6 @@
     <div id="status" class="status"></div>
 
     <nav id="tabs" class="tabs"></nav>
-    <!-- Sources view (Adam 2026-10-18): the Projections and Projected Ownership sub-tabs, shown only while the header's Sources link is on. -->
-    <nav id="sources-tabs" class="sources-tabs" aria-label="Sources" hidden></nav>
     <!-- Second slates (D57): one plain line while a second slate (the afternoon-only slate, say) is on screen;
          hidden on the main slate. Filled by app.js's renderSlateChrome. -->
     <p id="slate-note" class="tab-note" hidden></p>
@@ -110,6 +108,9 @@
       </div>
     </div>
 
+    <!-- Sources view (Adam 2026-10-18): ONE page (public/js/sources-page.js) shown while the header's Sources link is on, with the
+         Projections or Projected Ownership player table under its Players heading (the two panels below). -->
+    <div id="sources-panel" class="panel sources-panel" hidden></div>
     <div id="projections-panel" class="panel" hidden></div>
     <div id="ownership-panel" class="panel" hidden></div>
     <div id="teams-panel" class="panel" hidden></div>
@@ -126,8 +127,6 @@
     <div id="sd-status" class="status"></div>
 
     <nav id="sd-tabs" class="tabs"></nav>
-    <!-- Sources view (Adam 2026-10-18): the Projections and Projected Ownership sub-tabs, shown only while the header's Sources button is on. -->
-    <nav id="sd-sources-tabs" class="sources-tabs" aria-label="Sources" hidden></nav>
 
     <div id="sd-rankings-panel" class="panel sd-rankings-panel">
       <div id="sd-gameline" class="sd-gameline"></div>
@@ -140,6 +139,7 @@
       </div>
       <div id="sd-legend" class="table-legend"></div>
     </div>
+    <div id="sd-sources-panel" class="panel sources-panel" hidden></div>
     <div id="sd-projections-panel" class="panel" hidden></div>
     <div id="sd-ownership-panel" class="panel" hidden></div>
     <div id="sd-lineup-panel" class="panel" hidden></div>
@@ -198,10 +198,17 @@
           // location.hash's "#sd=" prefix picks the one actually on screen instead of always matching
           // #tabs first in document order.
           var scope = window.location.hash.indexOf("#sd=") === 0 ? "#sd-tabs" : "#tabs";
-          // "?tab=projections" and "?tab=ownership" are the Sources view's sub-tabs now (#sources-tabs).
-          // Only on the classic page (scope "#tabs"): on a showdown the classic row is hidden and must not be clicked while #sd-tabs is not drawn yet.
-          // A showdown has its own Sources row (#sd-sources-tabs; Adam 2026-10-18), tried only when scope is "#sd-tabs".
-          var btn = document.querySelector(scope + ' [data-tab="' + wantTab + '"]') || (scope === "#tabs" ? document.querySelector('#sources-tabs [data-tab="' + wantTab + '"]') : null) || (scope === "#sd-tabs" ? document.querySelector('#sd-sources-tabs [data-tab="' + wantTab + '"]') : null);
+          // "?tab=projections" and "?tab=ownership" are the Projections | Ownership switch of the Sources page now (Adam 2026-10-18):
+          // the page is not drawn until the header's Sources button is clicked, so that button is clicked first (once), then the switch.
+          // Each mode has its own page (#sources-panel on the classic page, #sd-sources-panel on a showdown), picked by scope.
+          var onSources = wantTab === "projections" || wantTab === "ownership";
+          var panel = scope === "#sd-tabs" ? "#sd-sources-panel" : "#sources-panel";
+          var btn = onSources ? document.querySelector(panel + ' [data-tab="' + wantTab + '"]') : document.querySelector(scope + ' [data-tab="' + wantTab + '"]');
+          // Clicked on every poll until the switch exists (opening the page twice changes nothing), since app.js may not have wired the button yet.
+          if (onSources && !btn) {
+            var link = document.getElementById(scope === "#sd-tabs" ? "sd-sources-btn" : "sources-btn");
+            if (link) link.click();
+          }
           if (btn) {
             btn.click();
             tabClicked = true;

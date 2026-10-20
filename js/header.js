@@ -133,13 +133,14 @@ export function secondSlateSavedText(secondSlate) {
 
 // TwoGun mode (merge plan 2026-10-15): a two-way switch, Current or TwoGun, after the slate line, and the board-stamp
 // pill in #tg-pill under the title (rules repo 2026-10-18, so the header's top line fits at 1366). `mode` is board.mode {active, appliesTo, twogun: {status, boardUpdated, ageAtLockH, stale, covered,
-// fallback, note}}; a board without it (an older server) shows nothing. The mode applies to the classic slates (main
-// and second slates, D57); showdown keeps the current sources (D39). One pill only: the board stamp when TwoGun's board
+// fallback, note}}; a board without it (an older server) shows nothing. The switch sets the saved source choices (a preset over
+// every section), so what it covers is the board's own mode.appliesTo ("classic and Showdown"), worded from it and never
+// written here: a mode without it draws no scope and no "Applies to". Mode "custom" (the saved ticks match neither preset)
+// lights neither side of the switch and gets its own pill. One pill only: the board stamp when TwoGun's board
 // is fresh; one amber stale pill instead when it is stale for any reason (D30 as amended: stamped after lock, over 36
 // hours old at lock, its time unreadable, or an older file in use), its sentence in the hover; a missing or failed
 // board says the current numbers are showing.
-const SHOWDOWN_STAYS = "Showdown stays on the current sources.";
-const MODE_SWITCH_TITLE = `Whose numbers the classic slates show. ${SHOWDOWN_STAYS}`;
+const appliesText = (scope) => (scope ? ` Applies to ${scope}.` : "");
 
 function modePillHtml(cls, text, title) {
   return `<span class="pill ${cls}" title="${escapeHtml(title || text)}">${escapeHtml(text)}</span>`;
@@ -160,24 +161,28 @@ export function staleTwoGun(tg) {
  *  top line, the status pill goes in the row under the title beside the source pills (#tg-pill; Sources fix round 3). */
 function modeParts(mode) {
   const active = mode?.active;
-  if (active !== "current" && active !== "twogun") return null;
+  if (active !== "current" && active !== "twogun" && active !== "custom") return null;
   const tg = mode.twogun ?? {};
-  const scope = typeof mode.appliesTo === "string" && mode.appliesTo ? mode.appliesTo : "classic slates";
+  const scope = typeof mode.appliesTo === "string" ? mode.appliesTo.trim() : "";
   const btn = (value, label) =>
     `<button type="button" class="tg-mode-btn${active === value ? " active" : ""}" data-mode-set="${value}" aria-pressed="${active === value}">${label}</button>`;
-  const switchHtml = `<span class="tg-mode-switch" role="group" aria-label="Classic-slate numbers" title="${escapeHtml(MODE_SWITCH_TITLE)}">${btn("current", "Current")}${btn("twogun", "TwoGun")}</span>`;
+  const applies = appliesText(scope);
+  const withScope = (text) => (scope ? `${text} · ${scope}` : text);
+  const switchHtml = `<span class="tg-mode-switch" role="group" aria-label="${escapeHtml(scope ? `Numbers for ${scope}` : "Numbers shown")}" title="${escapeHtml(`Whose numbers show: the current sources or TwoGun's.${applies}`)}">${btn("current", "Current")}${btn("twogun", "TwoGun")}</span>`;
   let pill;
   const stale = active === "twogun" && (tg.status === "ok" || tg.status === "stale") ? staleTwoGun(tg) : null;
-  if (active === "current") {
-    pill = modePillHtml("pill-mode", `Current sources · ${scope}`, `The ${scope} show the current sources' blended numbers. ${SHOWDOWN_STAYS}`);
+  if (active === "custom") {
+    pill = modePillHtml("pill-mode", withScope("Custom sources"), `Your own choice of sources: the ticks on the Sources page match neither the current sources nor TwoGun only.${applies}`);
+  } else if (active === "current") {
+    pill = modePillHtml("pill-mode", withScope("Current sources"), `The current sources' blended numbers.${applies}`);
   } else if (stale) {
     const stamp = tg.boardUpdated ? ` Board stamped ${tg.boardUpdated}.` : "";
-    pill = modePillHtml("pill-warning", `${stale.text} · ${scope}`, `${stale.sentence}${stamp}${tg.note ? ` ${tg.note}` : ""} ${SHOWDOWN_STAYS}`);
+    pill = modePillHtml("pill-warning", withScope(stale.text), `${stale.sentence}${stamp}${tg.note ? ` ${tg.note}` : ""}${applies}`);
   } else if (tg.status === "ok") {
     const counts = Number.isFinite(tg.covered) ? ` TwoGun covers ${tg.covered} players${Number.isFinite(tg.fallback) ? `; ${tg.fallback} show the current sources' figures, marked` : ""}.` : "";
-    pill = modePillHtml("pill-mode", `TwoGun board ${tg.boardUpdated ?? "(time not given)"} · ${scope}`, `TwoGun's figures as he published them.${counts}${tg.note ? ` ${tg.note}` : ""} ${SHOWDOWN_STAYS}`);
+    pill = modePillHtml("pill-mode", withScope(`TwoGun board ${tg.boardUpdated ?? "(time not given)"}`), `TwoGun's figures as he published them.${counts}${tg.note ? ` ${tg.note}` : ""}${applies}`);
   } else {
-    pill = modePillHtml("pill-warning", "No TwoGun board · current numbers shown", `${tg.note || "TwoGun mode is on but no TwoGun board could be read, so the current sources show."} ${SHOWDOWN_STAYS}`);
+    pill = modePillHtml("pill-warning", "No TwoGun board · current numbers shown", `${tg.note || "TwoGun mode is on but no TwoGun board could be read, so the current sources show."}${applies}`);
   }
   return { switchHtml, pillHtml: pill };
 }

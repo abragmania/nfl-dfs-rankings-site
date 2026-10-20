@@ -406,9 +406,6 @@ html, body {
 }
 .tab-btn:hover { color: var(--text); }
 /* The Sources view's sub-tab row (Projections, Projected Ownership), under the main tabs while the header's Sources link is on. */
-.sources-tabs { display: flex; align-items: center; gap: var(--sp-2); border-bottom: 1px solid var(--border); margin-bottom: var(--sp-4); }
-.sources-tabs[hidden] { display: none; }
-.sources-tabs-label { color: var(--text-muted); font-size: var(--fs-sm); font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; margin-right: var(--sp-2); padding-bottom: 6px; /* the tab buttons carry 4px more padding below the text than above, plus a 2px border: lifts the label to the tab text */ }
 
 .panel { width: 100%; }
 
@@ -500,7 +497,7 @@ body.table-expanded { overflow: hidden; }
   .header-actions { order: 4; flex: 1 1 100%; flex-wrap: wrap; gap: var(--sp-2); }
   .upload-info { white-space: normal; }
   .main { padding-left: var(--sp-3); padding-right: var(--sp-3); }
-  .tabs, .sources-tabs { flex-wrap: wrap; }
+  .tabs { flex-wrap: wrap; }
 }
 
 /* ---------- Game strip (D26) ---------- */
@@ -1079,9 +1076,6 @@ tr:last-child .cell-edit-hint { top: auto; bottom: 100%; margin-top: 0; margin-b
   white-space: nowrap;
 }
 
-/* TwoGun's source card is read-only (tabs.js): a quiet label where the Enabled box would be. */
-.source-readonly { font-size: var(--fs-sm); color: var(--text-dim); cursor: default; }
-
 /* The Optimizer's Projection / Ceiling choice: a greyed Ceiling (no ceilings on this board) keeps its hover reason. */
 .opt-chip.is-disabled { opacity: 0.45; cursor: not-allowed; }
 
@@ -1143,61 +1137,15 @@ tr:last-child .cell-edit-hint { top: auto; bottom: 100%; margin-top: 0; margin-b
 }
 
 /* ---------- Projections / Ownership tabs ---------- */
-.tab-recipe {
-  font-size: var(--fs-sm);
-  color: var(--text-muted);
-  background: var(--bg-elevated);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: var(--sp-3);
-  margin-bottom: var(--sp-3);
-}
-.tab-recipe p { margin: 0 0 var(--sp-1); }
-.tab-recipe p:last-of-type { margin-bottom: var(--sp-2); }
-.tab-recipe details summary { cursor: pointer; color: var(--text); font-weight: 600; }
-.tab-recipe details[open] summary { margin-bottom: var(--sp-1); }
 .tab-note { font-size: var(--fs-sm); color: var(--text-muted); margin: 0 0 var(--sp-3); }
 .tab-note .toggle-chip { margin-left: var(--sp-2); } /* the "Show all players" button after a list's hidden-count note */
+/* A Showdown's Projections and Ownership notes start with that button (showdown/tabs.js), so it sits on the page's left edge, not 8px in (👁 round 4, V4). */
+:is(#sd-projections-panel, #sd-ownership-panel) .tab-note .toggle-chip { margin-left: 0; }
 /* Favorites tab: same table as Rankings, but its headers do not sort, so they do not look clickable. */
 .favorites-table th { cursor: default; }
 
-.source-card-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-  gap: var(--sp-3);
-  margin-bottom: var(--sp-4);
-}
-.source-card {
-  background: var(--bg-elevated);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: var(--sp-3);
-  font-size: var(--fs-sm);
-}
-.source-card-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--sp-2); }
-.source-label { font-weight: 700; color: var(--text); }
-.source-enabled { display: flex; align-items: center; gap: 4px; color: var(--text-muted); }
-.source-card-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--sp-1); }
-/* flex-wrap plus an explicit gap (👁 visual-qa third pass): at 1366 the "Fetched HH:MM" and "N rows ·
-   M matched · K unmatched" spans had no minimum gap between them and could sit flush against each other;
-   now there's always at least sp-3 between them on one line, or they drop to their own lines instead of
-   touching. */
-.source-card-row.muted { color: var(--text-dim); font-size: var(--fs-sm); flex-wrap: wrap; gap: 2px var(--sp-3); }
-.source-weight-input {
-  width: 60px;
-  background: var(--bg-elevated-2);
-  border: 1px solid var(--border);
-  color: var(--text);
-  border-radius: 4px;
-  padding: 2px 4px;
-}
-.source-status { font-weight: 700; text-transform: capitalize; }
-.source-status-ok { color: var(--success); }
-.source-status-stale { color: var(--amber); }
-.source-status-failed { color: var(--danger); }
 .source-unmatched { font-size: var(--fs-sm); color: var(--text-dim); margin-top: var(--sp-1); }
 .source-unmatched summary { cursor: pointer; color: var(--text-muted); }
-.source-weight-error { color: var(--danger); font-size: var(--fs-sm); margin: 2px 0 var(--sp-1); }
 
 .paste-box {
   background: var(--bg-elevated);
@@ -1640,8 +1588,7 @@ tr:last-child .cell-edit-hint { top: auto; bottom: 100%; margin-top: 0; margin-b
 @media (max-height: 820px) {
   .header { padding: var(--sp-1) var(--sp-5); }
   .main { padding: var(--sp-1) var(--sp-5); }
-  .tabs, .sources-tabs { margin-bottom: var(--sp-1); }
-  .sources-tabs-label { padding-bottom: var(--sp-1); } /* the tabs here have 2px above and 4px below, so the label lifts 2px less */
+  .tabs { margin-bottom: var(--sp-1); }
   .tab-btn { padding: 2px var(--sp-3) var(--sp-1); }
   .gamestrip { margin-bottom: var(--sp-1); }
   .gamestrip-toggle-row { margin-bottom: 2px; }
@@ -2422,3 +2369,143 @@ td.opt-exp-opp { color: var(--text-muted); } /* the cells only: the Matchup head
 /* Temporary (Adam 2026-10-18): the Teams (sample) tab, one card-width box per team; remove with public/js/teams-sample.js. */
 .teams-sample-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 8px; }
 .teams-sample-box { gap: var(--sp-1); }
+
+/* ---------- The Sources page (public/js/sources-page.js, sources-page-html.js; Adam 2026-10-18) ----------
+   One screen for classic and Showdown: a header line with the presets, the choice tables (classic: Projections | Ownership; Showdown:
+   Projections across, then Ownership FLEX | Captain), a slim row, then the "Players" heading with the Projections | Ownership switch above the
+   per-player table. Compact (👁 finding 1, 2026-10-19: at 1920x947 the first player rows show without a scroll): each table's title sits in
+   its header row, rows are 25px. A source name wraps to a second line where it needs it (👁 round 2: nothing is cut mid-word); a Posted
+   stamp stays on one line (👁 round 4) and carries its full text as its hover; for the method note, the short note fits one line, a longer
+   one wraps, and the whole sentence is the hover. */
+.sources-page { display: flex; flex-direction: column; gap: var(--sp-2); }
+.sp-controls { display: flex; flex-direction: column; gap: var(--sp-2); min-width: 0; }
+.sp-head { display: flex; align-items: center; flex-wrap: wrap; gap: var(--sp-2) var(--sp-4); }
+.sp-title { margin: 0; font-size: var(--fs-lg); line-height: 1.1; }
+.sp-h { margin: 0; font-size: var(--fs-md); }
+.sp-quiet { color: var(--text-dim); font-size: var(--fs-sm); }
+.sp-note { margin: 0; font-size: var(--fs-sm); color: var(--text-muted); }
+.sp-warn { color: var(--text); border-left: 3px solid var(--amber); padding-left: var(--sp-2); }
+.sp-muted { color: var(--text-dim); }
+.sp-err { color: var(--text); font-size: var(--fs-sm); border-left: 3px solid var(--danger); padding-left: var(--sp-2); white-space: normal; }
+/* The segmented control: presets, gaps, On | Off, primary line source and the Players switch. */
+.sp-seg { display: inline-flex; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; vertical-align: middle; }
+.sp-seg-btn { cursor: pointer; background: var(--bg-elevated-2); color: var(--text-muted); border: 0; padding: 4px 12px; font-size: var(--fs-sm); font-weight: 600; white-space: nowrap; }
+.sp-seg-btn + .sp-seg-btn { border-left: 1px solid var(--border); }
+.sp-seg-btn:hover:not(:disabled):not(.active) { color: var(--text); }
+.sp-seg-btn.active { background: var(--accent); color: #ffffff; cursor: default; }
+.sp-seg-btn:disabled:not(.active) { cursor: default; opacity: 0.55; }
+/* Two columns at both detected sizes; one column when the window is narrower than 1100px. Each box is as tall as its own table and note
+   (👁 round 4, V2: held to one height, opening one box's recipe made the other box grow and left an empty band under its table). */
+.sp-cols { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: var(--sp-2); align-items: start; }
+.sp-col { display: flex; flex-direction: column; gap: var(--sp-2); min-width: 0; }
+@media (max-width: 1100px) { .sp-cols { grid-template-columns: minmax(0, 1fr); } }
+.sp-panel { display: flex; flex-direction: column; background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 8px; padding: 2px var(--sp-1) 4px; min-width: 0; overflow-x: auto; }
+/* One set of column widths for every choice table (sources-page-html.js COLGROUP), so tables side by side or stacked line up column for column
+   (👁 finding 6); the name column takes the rest, never less than the table's min-width leaves it. */
+.sp-table { --w-tick: 26px; --w-weight: 54px; --w-share: 44px; --w-pulled: 84px; --w-posted: 200px; --w-cov: 70px; --w-status: 96px;
+  width: 100%; min-width: 700px; table-layout: fixed; border-collapse: collapse; font-size: var(--fs-sm); }
+.sp-w-tick { width: var(--w-tick); }
+.sp-w-name { width: var(--w-name, auto); }
+.sp-w-weight { width: var(--w-weight); }
+.sp-w-share { width: var(--w-share); }
+.sp-w-pulled { width: var(--w-pulled); }
+.sp-w-posted { width: var(--w-posted); }
+.sp-w-cov { width: var(--w-cov); }
+.sp-w-status { width: var(--w-status); }
+/* Showdown's Projections box spans the page, but its table stops where its columns read well (👁 round 2, finding 7), as classic's tables do:
+   the name and Posted columns get fixed widths here (300px holds the long TwoGun stamp on one line) and the table is their sum. */
+.sp-wide .sp-table { --w-name: 220px; --w-posted: 300px; min-width: 0;
+  width: calc(var(--w-tick) + var(--w-name) + var(--w-weight) + var(--w-share) + var(--w-pulled) + var(--w-posted) + var(--w-cov) + var(--w-status)); }
+.sp-table th { text-align: left; padding: 3px 4px; color: var(--text-muted); font-weight: 600; border-bottom: 1px solid var(--border); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sp-table th.sp-th-title { color: var(--text); }
+.sp-table td { padding: 0 4px; height: 24px; border-bottom: 1px solid var(--border); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* A name wraps to a second line rather than being cut (👁 round 2, findings 2 and 3); the whole text stays the hover. A source's own Posted
+   stamp never wraps (👁 round 4, V1: "...12:42 PM" / "GMT" made one row 33px against 17px); the column is wide enough for the longest one seen. */
+.sp-table td.sp-c-name { white-space: normal; text-overflow: clip; line-height: 1.2; }
+.sp-table td.sp-c-posted { white-space: nowrap; text-overflow: ellipsis; }
+.sp-table tbody tr:last-child td { border-bottom: 0; }
+.sp-table th:nth-child(3), .sp-table th:nth-child(4), .sp-table th:nth-child(7), .sp-table td.sp-c-weight, .sp-table td.sp-c-share, .sp-table td.sp-c-cov { text-align: right; font-variant-numeric: tabular-nums; }
+/* Last pulled in tabular figures, so the times line up down the column (👁 finding 11). */
+.sp-table td.sp-c-pulled { font-variant-numeric: tabular-nums; }
+.sp-c-name { font-weight: 600; color: var(--text); }
+.sp-row.is-off .sp-c-name { color: var(--text-muted); font-weight: 500; }
+/* The status cell's saved check sits inside the cell's right edge (it stuck out 7px past the row, and so past its table: 👁 round 2, finding 3). */
+.sp-table td.sp-c-status { overflow: visible; }
+.sp-tick-box { width: 16px; height: 16px; cursor: pointer; accent-color: var(--accent); vertical-align: middle; }
+/* A box that cannot be ticked looks it in both themes (👁 finding 9): the app's disabled look, its reason on hover. */
+.sp-tick-box:disabled { cursor: not-allowed; opacity: 0.4; }
+/* The weight is a control to grab: a boxed number field in the app's input tokens (👁 finding 8), sunk into the box so it reads in dark; no
+   spin arrows (the up and down keys still step it by 0.25); its live share is the next column. */
+.sp-weight-input { width: 46px; box-sizing: border-box; text-align: right; font-variant-numeric: tabular-nums; background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 2px 6px; font-size: var(--fs-sm); font-weight: 600; -moz-appearance: textfield; appearance: textfield; }
+.sp-weight-input:hover:not(:disabled), .sp-weight-input:focus { border-color: var(--accent); }
+.sp-weight-input:focus { outline: 2px solid rgba(var(--accent-rgb), 0.45); outline-offset: 0; }
+.sp-weight-input::-webkit-inner-spin-button, .sp-weight-input::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+.sp-weight-input:disabled { cursor: not-allowed; opacity: 0.4; }
+.sp-row.is-off .sp-weight-input:not(:disabled) { color: var(--text-muted); }
+.sp-share { font-weight: 700; color: var(--text); font-variant-numeric: tabular-nums; }
+/* The status pill: a tinted background and a solid dot carry the colour; the words stay in the normal text colour so they read in both themes. */
+.sp-pill { display: inline-flex; align-items: center; gap: 4px; padding: 1px 6px; border-radius: 999px; font-size: 12px; font-weight: 700; border: 1px solid var(--border); color: var(--text); white-space: nowrap; }
+.sp-pill::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--text-dim); }
+.sp-pill-ok { background: rgba(var(--success-rgb), 0.18); border-color: rgba(var(--success-rgb), 0.5); }
+.sp-pill-ok::before { background: var(--success); }
+.sp-pill-stale { background: rgba(var(--amber-rgb), 0.18); border-color: rgba(var(--amber-rgb), 0.55); }
+.sp-pill-stale::before { background: var(--amber); }
+.sp-pill-failed { background: rgba(var(--danger-rgb), 0.2); border-color: rgba(var(--danger-rgb), 0.6); }
+.sp-pill-failed::before { background: var(--danger); }
+.sp-pill-none { background: var(--bg-elevated-2); color: var(--text-muted); }
+/* "saved": a check that shows when a row has just been saved and fades out. */
+.sp-c-status { position: relative; }
+.sp-saved { position: absolute; right: 0; top: 50%; margin-top: -9px; line-height: 18px; color: var(--success); font-weight: 700; opacity: 0; }
+.sp-row.is-saved .sp-saved { animation: sp-saved-fade 1.6s ease-out forwards; }
+@keyframes sp-saved-fade { 0%, 70% { opacity: 1; } 100% { opacity: 0; } }
+.sp-err-row td { height: auto; padding: 2px 5px 6px; white-space: normal; }
+/* The names a source gave that matched nobody on the slate: small expanders on one line under the source's row (unmatched.js; one
+   line until one is opened). */
+.sp-um-row td { height: auto; padding: 0 5px 1px 22px; white-space: normal; line-height: 15px; }
+.sp-um-row .source-unmatched { display: inline-block; vertical-align: top; margin: 0 var(--sp-4) 0 0; font-size: 11px; }
+.sp-um-row .source-unmatched[open] { display: block; margin-right: 0; }
+.sp-row:has(+ .sp-um-row) td, .sp-err-row:has(+ .sp-um-row) td { border-bottom: 0; }
+.sp-local { display: flex; align-items: center; flex-wrap: wrap; gap: var(--sp-2); }
+/* The foot of a box: the method note (the short note fits one line; a longer one wraps; the whole sentence is the hover) and the gaps toggle at its right. */
+.sp-foot { display: flow-root; margin-top: auto; padding-top: 4px; }
+/* The method is never cut (👁 round 2, finding 8): the short note fits one line; a longer one wraps; the whole sentence is the hover. It runs inline and the gaps toggle floats right after it, so the toggle sits at
+   the end of the method's last line when there is room (the Showdown Projections box: one line; a half-filled last line), else on the line below. */
+.sp-method { display: inline; margin: 0; font-size: 12px; line-height: 1.4; color: var(--text-dim); }
+.sp-gaps { float: right; display: flex; align-items: center; gap: var(--sp-2); margin: 0 0 0 var(--sp-3); font-size: var(--fs-sm); color: var(--text-muted); white-space: nowrap; }
+.sp-gaps .sp-seg-btn { padding: 2px 10px; }
+/* The method note with the board's recipe behind it (sources-page-html.js methodHtml): a block that comes after the floated gaps toggle, so
+   the closed disclosure's summary runs on the toggle's line (👁 round 2, V1); opened, the recipe wraps beside the toggle and under it. */
+.sp-method.sp-recipe-box { display: block; line-height: 24px; }
+.sp-recipe-box > summary { cursor: pointer; }
+.sp-recipe-box > summary:hover { color: var(--text-muted); }
+.sp-recipe { margin: 0 0 2px; line-height: 1.4; white-space: normal; }
+.sp-slim, .sp-shown { display: flex; align-items: center; flex-wrap: wrap; gap: var(--sp-1) var(--sp-4); font-size: var(--fs-sm); }
+.sp-slim { padding: 4px var(--sp-3); background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 8px; }
+.sp-slim .sp-seg-btn { padding: 2px 8px; }
+.sp-shown { color: var(--text-muted); padding: 0 var(--sp-1); }
+.sp-slim-item, .sp-slim-src, .sp-shown-item { display: inline-flex; align-items: center; gap: var(--sp-2); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.sp-slim-title { font-weight: 700; color: var(--text); }
+.sp-slim-name { color: var(--text-muted); }
+.sp-slim-meta { display: inline-flex; align-items: center; gap: var(--sp-2); color: var(--text-muted); }
+.sp-players-head { display: flex; align-items: center; gap: var(--sp-3); padding-top: var(--sp-2); border-top: 1px solid var(--border); }
+/* An unused source's column in the per-player tables (classic and Showdown; tabs.js UNUSED_COL): dimmed, never a "(not used)" word (👁 finding 7). */
+.source-value-table th.sv-unused, .source-value-table td.sv-unused { color: var(--text-dim); font-weight: 400; }
+/* The classic per-player tables' headers stay on one line (👁 finding 7); the table scrolls sideways in its panel instead. */
+.source-value-table.sv-classic th { white-space: nowrap; }
+/* Except Ownership, whose six source names are long ("Footballguys percent rostered"): at 1920 on one line the table was 1527px in a 1510px panel
+   (👁 round 2, finding 4). Its source columns are 130px (above), so those headers take two lines, bottom-aligned, and "Quoted coverage" with them. */
+#ownership-panel .source-value-table.sv-classic th { white-space: normal; }
+.sp-players-head .sp-h { margin: 0; }
+/* Under the Sources page the closed paste box is one slim line, so the player rows start higher (👁 finding 1); opened, it is the usual box. */
+:is(#projections-panel, #sd-projections-panel) .paste-box { padding: 6px var(--sp-3); margin-bottom: var(--sp-2); }
+:is(#projections-panel, #sd-projections-panel) .paste-box:not([open]) summary { margin-bottom: 0; }
+:is(#projections-panel, #sd-projections-panel) .sd-kicker-paste { margin-top: 0; }
+/* The per-player table under the page keeps a usable height even when the choice tables above it take most of a short window; the page scrolls instead. */
+#projections-panel .scroll-panel, #ownership-panel .scroll-panel, #sd-projections-panel .scroll-panel, #sd-ownership-panel .scroll-panel { min-height: 320px; }
+/* The Showdown Projections and Ownership tables (public/js/showdown/tabs.js): as wide as their columns (like classic's Projections table), left-aligned;
+   every column after Player is a right-aligned number, except a Kind column, which is words. */
+.tab-table-wrap:not(.is-expanded):has(> .source-value-table.sd-fit) { width: fit-content; max-width: 100%; }
+.source-value-table.sd-fit { width: auto; }
+.source-value-table.sd-fit th:not(:first-child), .source-value-table.sd-fit td:not(:first-child) { text-align: right; font-variant-numeric: tabular-nums; }
+.source-value-table.sd-fit th.sd-kind, .source-value-table.sd-fit td.sd-kind { text-align: left; }
+.source-value-table.sd-fit th:first-child, .source-value-table.sd-fit td:first-child { min-width: 300px; }

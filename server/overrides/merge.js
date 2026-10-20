@@ -3,6 +3,12 @@
 // public site can run it in the visitor's browser (DECISIONS.md D71). store.js keeps the disk I/O and re-exports
 // everything here, so every existing caller is unchanged.
 
+/** No typed numbers: the one frozen copy that select.js, select-showdown.js, overlay.js and mode.js fall back to. */
+export const EMPTY_OVERRIDES = Object.freeze({
+  proj: Object.freeze({}), own: Object.freeze({}), stars: Object.freeze([]), notes: Object.freeze({}),
+  revive: Object.freeze([]), reviveTwoGun: Object.freeze([]), updatedAt: null
+});
+
 function invalid(field, detail) {
   const err = new Error(`OVERRIDES_INVALID: ${field}${detail ? ` ${detail}` : ""}`);
   err.code = "OVERRIDES_INVALID";

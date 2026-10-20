@@ -11,7 +11,7 @@ import { OPT_POSITIONS, optExposureHtml, exposureLimit, minLimit } from "./lineu
 import { wireQbStacks } from "./lineup-qb-stacks.js";
 import { postLineupGenerate, postLineup } from "./api.js";
 import {
-  boardHasMedians, buildCashSettings, poolReport, wantSwaps, swapDecisionHtml, excludedListHtml, lineupModeOf,
+  boardHasMedians, buildCashSettings, poolReport, wantSwaps, swapDecisionHtml, excludedListHtml, lineupModeOf, CASH_NO_MEDIAN_TEXT, CASH_UNKNOWN_BASIS_TEXT,
 } from "./lineup-cash.js";
 import {
   state, opt, LINEUP_SLOTS, SALARY_CAP, OBJECTIVES, MAX_TEAM_OPTIONS, OPT_MAX_COUNT, OPT_MAX_UNIQUE, OPT_DEFAULT_COUNT, OPT_DEFAULT_UNIQUE,
@@ -44,11 +44,15 @@ export function cashPick(id, pick) {
   setWant(slateKey, id, pick === "want" && (wasMust || !wantIdsFor(slateKey).includes(id)));
 }
 
-/** What a cash build is made by: {basis "median" | "proj" | null, blocked, text}. TwoGun mode builds by TwoGun's median, else
- *  by projection; TwoGun mode on a board with no medians cannot build (CQ5). The server picks the same basis. */
+/** What a cash build is made by: {basis "median" | "proj" | null, blocked, text, why (blocked only: the summary's words)}. The
+ *  board's own Cash basis decides (board.mode.cashMode, server/rank/select.js modeOf; code review of a9455a0, MUST 1, so a custom
+ *  board agrees with the server): "twogun" builds by TwoGun's median and cannot build with no medians (CQ5), "current" by
+ *  projection, and a board naming neither is blocked with the server's own refusal (cash.js cashBasis). */
 export function cashBasisInfo(board) {
-  if (!isTwoGunMode(board)) return { basis: "proj", blocked: false, text: "Projection" };
-  if (!boardHasMedians(activeSlateRows(board))) return { basis: null, blocked: true, text: "TwoGun mode is on but this board has no medians; switch to current mode to build by projection" };
+  const cashMode = board?.mode?.cashMode;
+  if (cashMode === "current") return { basis: "proj", blocked: false, text: "Projection" };
+  if (cashMode !== "twogun") return { basis: null, blocked: true, text: CASH_UNKNOWN_BASIS_TEXT, why: "the board names no Cash basis" };
+  if (!boardHasMedians(activeSlateRows(board))) return { basis: null, blocked: true, text: CASH_NO_MEDIAN_TEXT, why: "no TwoGun medians" };
   const when = board?.mode?.twogun?.boardUpdated;
   return { basis: "median", blocked: false, text: `TwoGun's median${when ? ` (board updated ${when})` : ""}` };
 }
@@ -63,7 +67,7 @@ export function cashSummaryText(board) {
   const s = buildCashSettings(opt.cash);
   const info = cashBasisInfo(board);
   const rowById = currentRowById();
-  const by = info.blocked ? "no basis (no TwoGun medians)" : info.basis === "median" ? "TwoGun's median" : "projection";
+  const by = info.blocked ? `no basis (${info.why})` : info.basis === "median" ? "TwoGun's median" : "projection";
   const parts = [`${s.count} cash lineup${s.count === 1 ? "" : "s"} by ${by}`, `${lockedNames(rowById).length} Must`, `${wantRowsFor(slateKeyOf(board), rowById).length} Want`];
   if (s.maxPerTeam !== null) parts.push(`max ${s.maxPerTeam} per team`);
   return parts.join(" · ");
@@ -676,8 +680,10 @@ async function doGenerate() {
       // The response's own exposure (saved plus new) is not shown: each tab computes its own (D74).
       const bends = Array.isArray(data.bends) ? data.bends : [];
       const marks = { asked: sent.settings.count, min: pctsOf(sent.settings.playerMinExposure), max: pctsOf(sent.settings.playerMaxExposure) };
-      // ChatGPT wish g, Adam 2026-10-17: what a save from this batch records on each lineup (lineup-builds.js batchBuild).
-      const build = { buildId: newBuildId(Date.now(), Math.random()), boardMode: boardModeOf(board), objective: form.objective };
+      // ChatGPT wish g, Adam 2026-10-17: what a save from this batch records on each lineup (lineup-builds.js batchBuild). A cash
+      // batch records the board's Cash basis (board.mode.cashMode, the one the server built by; code review of a9455a0, MUST 1), so
+      // its saved records name the basis used; GPP keeps the header's mode.
+      const build = { buildId: newBuildId(Date.now(), Math.random()), boardMode: cash ? board.mode.cashMode : boardModeOf(board), objective: form.objective };
       opt.results = { slateKey, lineups, notes, builtIn, bends, made: lineups.length, marks, ...build };
       // Cash mode job 3b: the batch keeps the mode and basis the answer names, and the limits its cards' swap search must respect.
       if (cash) {

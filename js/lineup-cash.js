@@ -17,6 +17,10 @@ const MAX_PER_TEAM = 8;
 // Change together with CASH_DEFAULTS in server/lineup/cash.js (the browser cannot import it; tests/cash-ui.test.mjs compares).
 // Adam 2026-10-17: cash has no minimum-unique rule, so no minUnique here, in the stored state or in the request.
 export const CASH_DEFAULTS_BROWSER = Object.freeze({ count: "1", maxPerTeam: "" });
+// Copies of server/lineup/cash.js NO_MEDIAN_SENTENCE and UNKNOWN_MODE_SENTENCE (code review of a9455a0, MUST 1): the Optimizer's
+// Cash band shows the server's own refusal before Build is pressed. Change together; tests/cash-ui.test.mjs compares.
+export const CASH_NO_MEDIAN_TEXT = "TwoGun is the only projection source in use, but this board carries no TwoGun medians, so a cash lineup cannot be built by median; use another projection source to build by projection.";
+export const CASH_UNKNOWN_BASIS_TEXT = "The board was published without its Cash basis, so a cash lineup's basis cannot be picked.";
 
 export function defaultCashState() {
   return { ...CASH_DEFAULTS_BROWSER, avoid: [], want: {} };
@@ -345,7 +349,9 @@ export function cashBadgeHtml() {
   return `<span class="saved-lineup-badge saved-lineup-badge-cash">$ Cash</span>`;
 }
 
-export function builtInTextCash(count, basis, boardMode) {
+/** "1 lineup from the last Build (Cash, by TwoGun's median)": no mode clause, since the basis names itself and the header may show a
+ *  custom mix (code review of c1f9890). The Showdown Optimizer's head reads it too (showdown/optimizer-view.js batchHeadText). */
+export function builtInTextCash(count, basis) {
   const n = Number(count);
-  return `${n} lineup${n === 1 ? "" : "s"} from the last Build (Cash, ${boardMode === "twogun" ? "TwoGun" : "current"} mode, by ${basis === "median" ? "TwoGun's median" : "projection"})`;
+  return `${n} lineup${n === 1 ? "" : "s"} from the last Build (Cash, by ${basis === "median" ? "TwoGun's median" : "projection"})`;
 }

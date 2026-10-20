@@ -536,12 +536,15 @@ async function doSaveLineup(name, { asNew = false } = {}) {
   const keyAtStart = lastSavedKey;
   const loadedAtStart = state.loadedId;
   const slate = slateKeyOf(store.get().board);
+  // A cash hand save records the board's Cash basis (board.mode.cashMode), as a cash batch does (code review of a9455a0, MUST 1
+  // follow-up); a board naming none records no boardMode. A GPP hand save keeps the header's mode.
+  const handMode = opt.mode === "cash" ? store.get().board?.mode?.cashMode : boardModeOf(store.get().board);
   let data = null;
   let failure = null;
   try {
     data = editId
       ? await putLineup(editId, { name, slots: slotsPayload, slate })
-      : await postLineup({ name: asNew ? uniqueSavedName(name, savedOfActiveSlate(null).map((l) => l.name)) : name, slots: slotsPayload, slate, ...(opt.mode === "cash" ? { mode: "cash" } : {}), build: handBuild(boardModeOf(store.get().board)) }); // Cash mode job 3b: names stay unique across both modes; a new lineup carries the mode on screen (Cash 3b fix round: only "cash" is sent, so GPP files keep their old shape)
+      : await postLineup({ name: asNew ? uniqueSavedName(name, savedOfActiveSlate(null).map((l) => l.name)) : name, slots: slotsPayload, slate, ...(opt.mode === "cash" ? { mode: "cash" } : {}), build: handBuild(handMode) }); // Cash mode job 3b: names stay unique across both modes; a new lineup carries the mode on screen (Cash 3b fix round: only "cash" is sent, so GPP files keep their old shape)
   } catch (e) {
     failure = `Could not reach the server: ${e.message}`;
   }

@@ -193,7 +193,7 @@ export function cardHtml(lineup, index, o) {
 
 /** The words a batch is labelled with (classic builtInText / builtInTextCash): "20 lineups from the last Make (TwoGun mode, by median)". */
 export function batchHeadText(r, n) {
-  if (r.mode === "cash") return builtInTextCash(n, r.basis, r.boardMode).replace("from the last Build", "from the last Make");
+  if (r.mode === "cash") return builtInTextCash(n, r.basis).replace("from the last Build", "from the last Make");
   return `${n} lineup${n === 1 ? "" : "s"} from the last Make (${r.boardMode === "twogun" ? "TwoGun" : "current"} mode, by ${OBJECTIVE_WORD[r.objective] ?? "projection"})`;
 }
 

@@ -1,5 +1,6 @@
 // Cash mode in the Optimizer's engine (cash mode job 1, 2026-10-17; PROJECT.md Part 4 "Cash mode"; Adam's CQ1-CQ5): the
-// server picks the basis (TwoGun's median in TwoGun mode, the projection in current mode, never the ceiling), adds no
+// server picks the basis (TwoGun's median when TwoGun is the only projection source in use, else the projection, never the
+// ceiling; the board's mode.cashMode carries that choice, server/rank/select.js modeOf), adds no
 // points of any kind, and turns off every stack, the four D55 roster rules, the exposure settings and minimum unique
 // players (Adam 2026-10-17; Cash 3b fix round names it as CASH_NOTES does); a per-team cap covers
 // every team, the quarterback's included (D76 off). multi.js enters this file only in cash. Pure and browser-safe (D69).
@@ -10,16 +11,19 @@ const num = (v) => (typeof v === "number" && Number.isFinite(v) ? v : null);
 /** The browser keeps a copy (public/js/lineup-cash.js) that a test compares with this one. */
 export const CASH_DEFAULTS = Object.freeze({ count: 1, minUnique: 1, maxPerTeam: null });
 
-export const NO_MEDIAN_SENTENCE = "TwoGun mode is on but this board carries no TwoGun medians, so a cash lineup cannot be built by median; switch the header to current mode to build by projection.";
-// Cash 2b fix, 2026-10-17: promises no remedy (a reload cannot add a mode to a board baked without one); still a refusal.
-export const UNKNOWN_MODE_SENTENCE = "The board was published without its mode, so a cash lineup's basis cannot be picked.";
+// Code review of a9455a0, MUST 1: true on a preset, a custom board (TwoGun the only projection source ticked) and the Showdown
+// Optimizer's TwoGun figures alike, so it names no header mode and no one control. The browser keeps a copy of this sentence and
+// the next one (public/js/lineup-cash.js; tests/cash-ui.test.mjs compares).
+export const NO_MEDIAN_SENTENCE = "TwoGun is the only projection source in use, but this board carries no TwoGun medians, so a cash lineup cannot be built by median; use another projection source to build by projection.";
+// Cash 2b fix, 2026-10-17: promises no remedy (a reload cannot add a Cash basis to a board baked without one); still a refusal.
+export const UNKNOWN_MODE_SENTENCE = "The board was published without its Cash basis, so a cash lineup's basis cannot be picked.";
 
 export const CASH_NOTES = Object.freeze({
   stacks: "Stack settings do not apply in cash mode.",
   rules: "Roster rules do not apply in cash mode.",
   exposure: "Exposure settings do not apply in cash mode.",
   unique: "Minimum unique players does not apply in cash mode.", // Cash: no minimum unique, Adam 2026-10-17
-  basis: "In cash mode the server picks the basis: TwoGun's median in TwoGun mode, else the projection."
+  basis: "In cash mode the server picks the basis: TwoGun's median when TwoGun is the only projection source in use, else the projection."
 });
 
 const STACK_KEYS = Object.freeze(["stackOwn", "stackOwnOrMore", "stackOpp", "stackOppOrMore", "qbStacks"]);
@@ -33,7 +37,7 @@ export function medianOf(row) {
   return median !== null && rowIsOut(row) ? 0 : median;
 }
 
-/** Adam CQ4, CQ5: TwoGun mode with no median on any row is refused, never built by projection. */
+/** Adam CQ4, CQ5: a TwoGun Cash basis (board.mode.cashMode "twogun", or Showdown's Figures switch) with no median on any row is refused, never built by projection. */
 export function cashBasis(rows, boardMode) {
   if (boardMode === "current") return { basis: "proj" };
   if (boardMode !== "twogun") return { fatal: UNKNOWN_MODE_SENTENCE }; // Cash mode job 2b, 2026-10-17: never a silent projection build

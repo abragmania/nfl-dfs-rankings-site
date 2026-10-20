@@ -2,11 +2,12 @@
 // panels), fetches and normalizes the showdown board, and renders whichever tab is active. Mounted from
 // app.js, which owns the mode row and the classic-vs-showdown visibility toggle (app.js reads/writes
 // location.hash's "#sd=<key>" itself); this module reacts to whatever key it is told to show.
-// Two tabs (Rankings, Optimizer) plus the Sources view, whose sub-tabs are Projections and Projected Ownership
-// (Adam 2026-10-18, as classic; app.js and public/js/tabs.js supply the same helpers).
+// Two tabs (Rankings, Optimizer) plus the Sources view: ONE Sources page (public/js/sources-page.js, the same file classic uses) with
+// the Projections or Ownership player table under it, picked by a switch on the page (Adam 2026-10-18; tabs.js SOURCE_TABS keys).
 import { getShowdownBoard, postShowdownRefresh, postShowdownProjectionsPaste } from "./api.js";
 import { renderPills, kickoffDateAndClock, paintSourcesLink, wireSourcesLink } from "../header.js";
-import { renderSourcesTabs, isSourcesTab, sourcesTabToOpen } from "../tabs.js";
+import { isSourcesTab, sourcesTabToOpen } from "../tabs.js";
+import { renderSourcesPage, sectionSources } from "../sources-page.js";
 import { escapeHtml, dec1 } from "../format.js";
 import { TEAM_BY_ABBR } from "../teams-data.js";
 import { applyGrades } from "../grade.js";
@@ -19,7 +20,7 @@ import { twogunCardRow } from "../player-card-body.js";
 
 const state = {
   activeTab: "rankings",
-  lastSourcesTab: null, // the Sources sub-tab shown last, which the Sources button reopens (Adam 2026-10-18)
+  lastSourcesTab: null, // the Sources page's table (projections or ownership) shown last, which the Sources button reopens (Adam 2026-10-18)
   // Default sort is Proj descending, matching the hosted sheet (coordinator fix) — Val stays sortable by
   // clicking its header, same as any other column; a null projection always sorts last (sortRows below).
   sort: { col: "proj", dir: "desc" },
@@ -73,7 +74,7 @@ export const showdownBoardAsOf = () => state.board?.generatedAt ?? null;
 const els = {
   status: document.getElementById("sd-status"),
   tabs: document.getElementById("sd-tabs"),
-  sourcesTabs: document.getElementById("sd-sources-tabs"),
+  sourcesPanel: document.getElementById("sd-sources-panel"),
   sourcesBtn: document.getElementById("sd-sources-btn"),
   salaryBtn: document.getElementById("sd-salary-btn"),
   band: document.getElementById("sd-band"),
@@ -308,7 +309,7 @@ function renderLegend() {
   const projText = projLabels ? `Proj from ${projLabels}${hasKickerCard ? " (kickers as consolidated)" : ""}` : "";
   const ownText = ownLabels
     ? `Own from ${ownLabels}; a dash where nobody has published one`
-    : ownSources.some((s) => (s.rows ?? []).length) ? "Own: no source in use names enough of the main players (R85)" : "Own: no source has published showdown ownership yet";
+    : ownSources.some((s) => (s.rows ?? []).length) ? "Own: no source in use names enough of the main players" : "Own: no source has published showdown ownership yet";
   const sourceSentence = [projText, ownText].filter(Boolean).join("; ");
   const legendText = [
     sourceSentence,
@@ -322,6 +323,7 @@ function renderLegend() {
 function renderEmpty() {
   els.emptyState.hidden = false;
   els.rankingsPanel.hidden = true;
+  els.sourcesPanel.hidden = true;
   els.projectionsPanel.hidden = true;
   els.ownershipPanel.hidden = true;
   els.lineupPanel.hidden = true;
@@ -414,6 +416,8 @@ function applyBoardResponse(raw, key, token) {
   return true;
 }
 
+// Never rejects. Returns null when the board was read (or a newer request took over), else the plain reason it could not be, which the
+// Sources page shows under the row it just saved (onChanged in renderSourcesView).
 async function loadBoard(key) {
   const token = beginRequest(key);
   // A good board for a DIFFERENT key is not shown while the new one loads (there is nothing honest to
@@ -427,7 +431,7 @@ async function loadBoard(key) {
   render();
   try {
     const raw = await getShowdownBoard(key);
-    if (!isCurrent(token, key)) return;
+    if (!isCurrent(token, key)) return null;
     if (!raw || !raw.ok) {
       state.loading = false;
       // A good board already on screen (same key, a prior success) stays up; the failure is reported in
@@ -440,11 +444,12 @@ async function loadBoard(key) {
         state.error = raw?.error?.message ?? "Could not load this showdown.";
         render();
       }
-      return;
+      return raw?.error?.message ?? "the server did not return the board";
     }
     applyBoardResponse(raw, key, token);
+    return null;
   } catch (e) {
-    if (!isCurrent(token, key)) return;
+    if (!isCurrent(token, key)) return null;
     state.loading = false;
     if (state.board && state.boardKey === key) {
       els.status.textContent = `Could not reload: ${e.message}`;
@@ -454,6 +459,7 @@ async function loadBoard(key) {
       state.error = e.message;
       render();
     }
+    return e.message;
   }
 }
 
@@ -465,7 +471,6 @@ function onTabClick(tab) {
 function render() {
   if (isSourcesTab(state.activeTab)) state.lastSourcesTab = state.activeTab;
   renderShowdownTabs(els.tabs, state.activeTab, onTabClick);
-  renderSourcesTabs(els.sourcesTabs, state.activeTab, onTabClick);
   paintSourcesLink(els.sourcesBtn, isSourcesTab(state.activeTab));
   if (!state.board) {
     renderEmpty();
@@ -473,6 +478,7 @@ function render() {
   }
   els.emptyState.hidden = true;
   els.rankingsPanel.hidden = state.activeTab !== "rankings";
+  els.sourcesPanel.hidden = !isSourcesTab(state.activeTab);
   els.projectionsPanel.hidden = state.activeTab !== "projections";
   els.ownershipPanel.hidden = state.activeTab !== "ownership";
   els.lineupPanel.hidden = state.activeTab !== "lineup";
@@ -486,8 +492,30 @@ function render() {
     renderFilterBar();
     renderRankingsTable();
     renderLegend();
-  } else if (state.activeTab === "projections") {
+  } else if (isSourcesTab(state.activeTab)) {
+    renderSourcesView();
+  } else if (state.activeTab === "lineup") {
+    renderShowdownLineupPanel(els.lineupPanel, state.board, state.boardKey);
+  }
+}
+
+// The Sources view: the one Sources page, then the Projections or Ownership player table under its Players heading.
+function renderSourcesView() {
+  renderSourcesPage(els.sourcesPanel, {
+    board: state.board,
+    slate: state.boardKey,
+    showdown: true,
+    activeKey: state.activeTab,
+    onPlayersTab: onTabClick,
+    onChanged: async () => { // a plain board read: the saved choices rebuild the board, nothing is re-downloaded
+      const why = await loadBoard(state.boardKey);
+      if (why) throw new Error(why); // loadBoard never rejects: the page says "Saved, but the board could not be refreshed" from this
+    },
+    onSelection: () => { if (isSourcesTab(state.activeTab) && state.board) render(); }, // the ticks arrived after the first draw: the Projections table's columns follow them
+  });
+  if (state.activeTab === "projections") {
     renderShowdownProjectionsPanel(els.projectionsPanel, state.board, {
+      selection: sectionSources(state.boardKey, "projection"), // ticked and unticked: an unticked source's column is dimmed, as classic's
       onPaste: async (payload) => {
         const key = state.boardKey;
         const token = beginRequest(key);
@@ -496,10 +524,8 @@ function render() {
         return result;
       },
     });
-  } else if (state.activeTab === "ownership") {
-    renderShowdownOwnershipPanel(els.ownershipPanel, state.board);
-  } else if (state.activeTab === "lineup") {
-    renderShowdownLineupPanel(els.lineupPanel, state.board, state.boardKey);
+  } else {
+    renderShowdownOwnershipPanel(els.ownershipPanel, state.board, { flex: sectionSources(state.boardKey, "sdOwnFlex"), cpt: sectionSources(state.boardKey, "sdOwnCpt") });
   }
 }
 
@@ -507,7 +533,7 @@ store.subscribe(() => {
   if (state.board && document.getElementById("showdown-main")?.hidden === false) render();
 });
 
-// The Sources button opens the sub-tab already showing, else the last one shown, else Projections (tabs.js sourcesTabToOpen).
+// The Sources button opens the Sources page on the table already showing, else the last one shown, else Projections (tabs.js sourcesTabToOpen).
 wireSourcesLink(els.sourcesBtn, {
   onOpen: () => {
     state.activeTab = sourcesTabToOpen(state.activeTab, state.lastSourcesTab);
