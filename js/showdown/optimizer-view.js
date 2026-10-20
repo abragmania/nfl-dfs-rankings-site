@@ -214,11 +214,12 @@ export function cardHtml(lineup, index, o) {
 
 // ---------- the batch ----------
 
-/** The words a batch is labelled with (classic builtInText / builtInTextCash): "20 lineups from the last Make (TwoGun only, by median)";
- *  a board reading other sources says "this game's sources". */
+/** The words a batch is labelled with (classic builtInText / builtInTextCash): "20 lineups from the last Make (TwoGun's projections, by
+ *  median)" when TwoGun is the game's only projection source (boardMode "twogun"; its ownership may come from other files), else
+ *  "this game's sources". */
 export function batchHeadText(r, n) {
   if (r.mode === "cash") return builtInTextCash(n, r.basis).replace("from the last Build", "from the last Make");
-  return `${n} lineup${n === 1 ? "" : "s"} from the last Make (${r.boardMode === "twogun" ? "TwoGun only" : "this game's sources"}, by ${OBJECTIVE_WORD[r.objective] ?? "projection"})`;
+  return `${n} lineup${n === 1 ? "" : "s"} from the last Make (${r.boardMode === "twogun" ? "TwoGun's projections" : "this game's sources"}, by ${OBJECTIVE_WORD[r.objective] ?? "projection"})`;
 }
 
 /** The source and as-of of the batch's figures (every figure carries its source): "Projections: TwoGun, Oct 19, 6:07 PM ·

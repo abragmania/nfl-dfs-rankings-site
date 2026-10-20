@@ -161,12 +161,10 @@ function findRow(board, id) {
 }
 
 /**
- * The meter request body {cpt, flex:[5], excludes, mode} from the placed ids (the panel's person ids): the Captain
+ * The meter request body {cpt, flex:[5], excludes} from the placed ids (the panel's person ids): the Captain
  * goes as his Captain candidate id (row.cptId), each FLEX as row.id. Null until all six are placed and on the board.
  * `excludes`: the Optimizer's excludes for the mode on screen (optimizer.js optimizerExcludes; 🔵 866b0ce B1), so the
  * "best possible" this lineup is measured against is the one the batch cards are, and the two gaps agree; none by default.
- * mode "current" is the served board's path: the server still reads an absent mode as TwoGun's raw files until the next step
- * of the plan deletes that path and flips its default, and then this field goes.
  */
 export function meterRequestBody(board, cpt, flex, excludes = []) {
   if (!cpt || !Array.isArray(flex) || flex.length !== 5 || !flex.every(Boolean)) return null;
@@ -178,22 +176,27 @@ export function meterRequestBody(board, cpt, flex, excludes = []) {
     if (!row) return null;
     flexIds.push(String(row.id));
   }
-  return { cpt: String(cptRow.cptId), flex: flexIds, excludes: Array.isArray(excludes) ? excludes.map(String) : [], mode: "current" };
+  return { cpt: String(cptRow.cptId), flex: flexIds, excludes: Array.isArray(excludes) ? excludes.map(String) : [] };
 }
 
 const finiteOrNull = (v) => (typeof v === "number" && Number.isFinite(v) ? v : null);
 
 /**
- * The figures a slot shows for one board row: { proj, own } (own in percent), the board row's own (Captain: cptProj and ownCpt;
- * FLEX: proj and ownFlex), so they are this game's ticked sources' and Adam's typed numbers. `players` is the modes answer's
- * board-path map (GET .../modes, modes.current.players), which adds what the row cannot say: notOnBoard for a slot whose figure
- * is TwoGun's 0% for a man his posted board has no row for (Q8), projNote (a man listed Out counts as 0; what TwoGun projects)
- * and missingReason (why a blank stays blank). Missing is missing: a blank figure is null, never zero (D29).
+ * The figures a slot shows for one board row: { proj, own } (own in percent; Captain: cptProj and ownCpt, FLEX: proj and ownFlex),
+ * this game's ticked sources' and Adam's typed numbers. `players` is the modes answer's board-path map (GET .../modes,
+ * modes.current.players). Once it is in, the projection is its proj / cptProj: the server's own reading of the rows
+ * (server/showdown/lineup-rows.js lineupRows, the rows the meter, swaps, Build, Generate and the saved snapshot count), so a typed
+ * revive of a man listed Out under TwoGun only shows his 0 as they count him (Adam 2026-10-18); in every other case it equals the
+ * row's, which stays the figure before the answer lands. Ownership is the row's. The map also adds what the row cannot say:
+ * notOnBoard for a slot whose figure is TwoGun's 0% for a man his posted board has no row for (Q8), projNote (a man listed Out
+ * counts as 0; what TwoGun projects) and missingReason (why a blank stays blank). Missing is missing: null, never zero (D29).
  */
 export function figuresFor(row, isCpt, players = null) {
   if (!row) return { proj: null, own: null };
-  const out = { proj: finiteOrNull(isCpt ? row.cptProj : row.proj), own: finiteOrNull(isCpt ? row.ownCpt : row.ownFlex) };
   const p = players?.[String(row.id)];
+  const projKey = isCpt ? "cptProj" : "proj";
+  const proj = p && Object.hasOwn(p, projKey) ? p[projKey] : row[projKey];
+  const out = { proj: finiteOrNull(proj), own: finiteOrNull(isCpt ? row.ownCpt : row.ownFlex) };
   if ((isCpt ? p?.notOnBoardCpt : p?.notOnBoardFlex) === true) out.notOnBoard = true;
   if (typeof p?.projNote === "string" && p.projNote) out.projNote = p.projNote;
   if (out.own === null && typeof p?.missingReason === "string" && p.missingReason) out.missingReason = p.missingReason;

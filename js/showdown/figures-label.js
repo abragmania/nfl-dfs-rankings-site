@@ -10,7 +10,7 @@ import { escapeHtml } from "../format.js";
 const TWOGUN_ID = "twogun";
 const LINEUP_KINDS = ["projection", "sdOwnFlex", "sdOwnCpt"]; // select-showdown.js LINEUP_KINDS
 const NO_FIGURES = " (no figures for this game)"; // board-view.js namesText's own words after a ticked source this game has nothing from
-const MAX_NAMED = 2; // a half with more sources than this reads "N sources" on the line, so the meter's head line never wraps; every name is on the hover
+const MAX_NAMED = 2; // on the head-line label only, a half with more sources than this reads "N sources" so the line never wraps (every name on the hover); the source lines name them all (D40)
 const AS_OF_WORD = { "file time": "saved ", "board built": "board built ", fetched: "fetched " };
 
 const isDateText = (raw) => typeof raw === "string" && /^\d{4}-\d{2}-\d{2}/.test(raw) && !Number.isNaN(new Date(raw).getTime());
@@ -45,56 +45,67 @@ function saysNone(board, half, s) {
   return new RegExp(`(?:^|: |, | and |FLEX |Captain )${name}${reEscape(NO_FIGURES)}`).test(text);
 }
 
-/** "TwoGun", "Sleeper, ESPN", "Sleeper (2), ESPN (1)" (weights only when they differ), or "4 sources" past MAX_NAMED. */
-function namesText(list) {
-  if (list.length > MAX_NAMED) return `${list.length} sources`;
+/** "TwoGun", "Sleeper, ESPN", "Sleeper (2), ESPN (1)" (weights only when they differ); `short` (the head-line label) reads "4 sources" past MAX_NAMED. */
+function namesText(list, short) {
+  if (short && list.length > MAX_NAMED) return `${list.length} sources`;
   const same = list.every((s) => s.weight === list[0].weight);
   return list.map((s) => (same ? s.label : `${s.label} (${s.weight})`)).join(", ");
 }
 
-/** One ticked list as the line names it: { text, missing } (missing: the ticked sources with no figures for this game, when some others have figures). */
-function listText(board, half, list) {
+/** One ticked list as a line names it: { text, missing } (missing: the ticked sources with no figures for this game, when some others have figures). */
+function listText(board, half, list, short) {
   if (!list.length) return { text: "none ticked", missing: 0 };
   const live = list.filter((s) => !saysNone(board, half, s));
-  return live.length ? { text: namesText(live), missing: list.length - live.length } : { text: "none for this game", missing: 0 };
+  return live.length ? { text: namesText(live, short), missing: list.length - live.length } : { text: "none for this game", missing: 0 };
 }
 
-/** The short name of one half's sources on this board ("TwoGun", "Sleeper, ESPN", "4 sources"; ownership "FLEX A; CPT B" when the two
- *  slots tick different lists), the name the meter's source lines and a batch's source line give; null for a board with no figures. */
+/** One half's sources on this board by name ("TwoGun", "Sleeper app, FantasyPros, CBS Sports, ESPN fantasy"; ownership "FLEX A; CPT B"
+ *  when the two slots tick different lists), every name in full (D40), as the meter's source lines, a batch's source line and the
+ *  Build line give it; null for a board with no figures. */
 export function halfName(board, half) {
-  return hasFigures(board) ? halfParts(board, half).text : null;
+  return hasFigures(board) ? halfParts(board, half, false).text : null;
 }
 
-function halfParts(board, half) {
-  if (half === "projection") return listText(board, half, tickedList(board, "projection"));
+function halfParts(board, half, short = true) {
+  if (half === "projection") return listText(board, half, tickedList(board, "projection"), short);
   const flex = tickedList(board, "sdOwnFlex");
   const cpt = tickedList(board, "sdOwnCpt");
-  if (sameList(flex, cpt)) return listText(board, half, flex);
-  const f = listText(board, half, flex);
-  const c = listText(board, half, cpt);
+  if (sameList(flex, cpt)) return listText(board, half, flex, short);
+  const f = listText(board, half, flex, short);
+  const c = listText(board, half, cpt, short);
   return { text: `FLEX ${f.text}; CPT ${c.text}`, missing: f.missing + c.missing };
 }
 
-/** The oldest of the two halves' stamps as the line writes it (dates compared; with no date, the projection's as written); null when neither has one. */
-function oldestStamp(fig) {
-  const halves = [fig?.projection, fig?.ownership].filter((h) => h && h.asOf !== null && h.asOf !== undefined && h.asOf !== "");
-  const dated = halves.filter((h) => isDateText(h.asOf)).sort((a, b) => Date.parse(a.asOf) - Date.parse(b.asOf));
-  const pick = dated[0] ?? halves[0] ?? null;
-  return pick ? whenText(pick.asOf) : null;
+const sameText = (a, b) => a.replace(/[,\s]+/g, " ").trim().toLowerCase() === b.replace(/[,\s]+/g, " ").trim().toLowerCase();
+
+/**
+ * The label's stamp from board.figures' own as-of per half (the server already picks each half's oldest, board-view.js boardFigures).
+ * Both halves written as dates: the older one. Otherwise (TwoGun's stamps are plain text such as "Mon Oct 19 6:07 PM CT") the two
+ * cannot be ordered, so both are shown, "proj <time> · own <time>", never one guessed as the older (review of 83ee117); the same text
+ * twice (commas and spaces aside) is shown once. Null when neither half has one.
+ */
+export function stampText(fig) {
+  const p = fig?.projection?.asOf;
+  const o = fig?.ownership?.asOf;
+  const has = (v) => v !== null && v !== undefined && v !== "";
+  if (!has(p) || !has(o)) return has(p) ? whenText(p) : has(o) ? whenText(o) : null;
+  if (isDateText(p) && isDateText(o)) return whenText(Date.parse(p) <= Date.parse(o) ? p : o);
+  const a = whenText(p);
+  const b = whenText(o);
+  return sameText(a, b) ? a : `proj ${a} · own ${b}`;
 }
 
 /**
- * The label's words: "Proj and own: TwoGun · Oct 20, 9:14 AM", or "Proj: 4 sources · Own: LineupHQ · Oct 15, 8:00 AM · 3 ticked
- * with no figures for this game"; null for a board with no figures.
+ * The head-line label's words: "Proj and own: TwoGun · Mon, Oct 19, 6:07 PM CT", or "Proj: 4 sources · Own: LineupHQ · Oct 15,
+ * 8:00 AM"; null for a board with no figures. Kept short so the head line never wraps (visual check of 83ee117): a ticked source
+ * with no figures for this game is named on the hover and the source lines, not here.
  */
 export function figuresLabelText(board) {
   if (!hasFigures(board)) return null;
   const proj = halfParts(board, "projection");
   const own = halfParts(board, "ownership");
   const names = proj.text === own.text ? `Proj and own: ${proj.text}` : `Proj: ${proj.text} · Own: ${own.text}`;
-  const stamp = oldestStamp(board.figures);
-  const missing = proj.missing + own.missing;
-  return [names, stamp, missing ? `${missing} ticked with no figures for this game` : null].filter(Boolean).join(" · ");
+  return [names, stampText(board.figures)].filter(Boolean).join(" · ");
 }
 
 /** The hover behind the label and the pill: board.figures' projection and ownership source lines in full, each with its as-of, and any refusal. */

@@ -13,7 +13,7 @@
 // so the app and the site refuse with the same messages and save the same snapshot.
 import { optimizeShowdown } from "../server/lineup/showdown.js";
 import { lineupRows } from "../server/showdown/lineup-rows.js";
-import { validateOptimizeBody, validateShowdownSlots, buildShowdownSnapshot, buildMode, WEEK_UNKNOWN_MESSAGE } from "../server/showdown/lineup-checks.js";
+import { validateOptimizeBody, validateShowdownSlots, buildShowdownSnapshot, staleModeError, WEEK_UNKNOWN_MESSAGE } from "../server/showdown/lineup-checks.js";
 import { envelope, errorBody } from "./site-generate.js";
 import { validateLineupName } from "../server/lineups/validate.js";
 import {
@@ -59,9 +59,9 @@ export function showdownOptimizeResponse(board, payload) {
   if (!usableBoard(board)) return board && board.ok === false && board.error ? board : errorBody("NO_SLATE", "No showdown slate has been uploaded.");
   const checked = validateOptimizeBody(payload);
   if (checked.error) return errorBody("VALIDATION_ERROR", checked.error);
-  // The route refuses an unknown mode; the site has no TwoGun files, so a known mode builds on the baked board as before.
-  const mode = buildMode(payload);
-  if (mode.error) return errorBody("VALIDATION_ERROR", mode.error);
+  // As the route: an old page's mode, any value, is refused with the reload sentence; every Build reads the board.
+  const stale = staleModeError(payload?.mode);
+  if (stale) return errorBody("VALIDATION_ERROR", stale);
   try {
     // The app's Build rows (server/showdown/lineup-rows.js, one copy): a revive is set aside while TwoGun is the only projection source.
     const result = optimizeShowdown(lineupRows(board), { objective: checked.objective, locks: checked.locks, excludes: checked.excludes });

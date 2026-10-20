@@ -1,5 +1,5 @@
 // The rows the Showdown Lineup tab reads from a served board, the one copy for the app's routes
-// (./uniqueness-routes.js, ./optimizer-routes.js through rowsForBuild) and the public site's Build
+// (./uniqueness-routes.js, ./optimizer-routes.js, ./lineups-routes.js) and the public site's Build
 // (site-src/site-showdown.js, D71). Pure and browser-safe: no node: module, no file, no logging; tools/publish.mjs copies
 // it, unchanged, to out/server/showdown/ by walking the site's imports.
 import { isRevived } from "../rank/sidelined.js";

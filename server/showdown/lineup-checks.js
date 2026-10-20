@@ -17,19 +17,21 @@ export const RETIRED_OBJECTIVES = Object.freeze({
   projMinusOwn: "\"Projection minus ownership\" has been removed, so this lineup was built by projection.",
   lev: "Leverage has no measure yet, so this lineup was built by projection."
 });
-// Whose projections (and ownership) the Lineup screen's switch, Build and the meter use (Adam 2026-10-18, Q16). The one list.
-export const METER_MODES = Object.freeze(["twogun", "current"]);
-
 // The build record a Showdown lineup may carry (server/lineups/validate.js validateLineupBuild): classic's, with the Showdown
-// engine's objectives (Projection plus the figure builds ceil and median, the list generate-request.js accepts) and TwoGun's
-// projection provenance. The figure builds are named here, not read from ../lineup/objective.js FIGURE_BUILDS, so this file
+// engine's objectives (Projection plus the figure builds ceil and median, the list generate-request.js accepts); `projection`
+// admits the Showdown-only keys (build.projection, which an older page sends and the save neither checks nor keeps, and
+// build.figuresKey). The figure builds are named here, not read from ../lineup/objective.js FIGURE_BUILDS, so this file
 // keeps no import (the public site copies it unchanged); tests/showdown-lineups-routes.test.mjs pins the two lists equal.
 export const BUILD_OPTIONS = Object.freeze({ objectives: Object.freeze(["proj", "ceil", "median"]), projection: true });
 
-/** The Build body's mode: absent is "current" (every older caller unchanged), anything else must be a known mode. */
-export function buildMode(body) {
-  const mode = body?.mode ?? "current";
-  return METER_MODES.includes(mode) ? { mode } : { error: 'mode must be "twogun" or "current".' };
+/** What a Lineup request that names a figures mode gets (Adam 2026-10-20: every game reads its ticked sources, with no mode):
+ *  only a page opened before the board became the only source of Lineup figures sends one, "twogun" or "current" alike. */
+export const RELOAD_PAGE_SENTENCE = "This page is older than the server: its Lineup request named a figures mode, and the Lineup tab now follows the game's ticked sources with no mode; reload the page.";
+
+/** The old mode field of a meter, swaps or Build body (or Generate's boardMode): absent (undefined or null) is the one
+ *  accepted shape and reads null; any value, "current" included, is an old open tab and reads RELOAD_PAGE_SENTENCE. Pure. */
+export function staleModeError(value) {
+  return value === undefined || value === null ? null : RELOAD_PAGE_SENTENCE;
 }
 
 const SHOWDOWN_SLOT_NAMES = new Set(["CPT", "FLEX"]);

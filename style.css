@@ -1318,12 +1318,15 @@ tr:last-child .cell-edit-hint { top: auto; bottom: 100%; margin-top: 0; margin-b
 /* Adam 2026-10-20: "the number is spread too far to the right": the label and the number sit together on one line, left-aligned. */
 .sd-meter-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: flex-start; gap: 10px; }
 /* The figures label (Adam 2026-10-20: the retired Source switch's place, showdown/figures-label.js): the sources this game's board reads
-   and the Sources link, kept to one unit at the right end of the head line, as the switch rode it (so the meter's last line still clears
-   the sticky Make row at 1920x947); the full source lines are on its hover. With nothing measured it is the strip's first line. */
-.sd-figures { display: inline-flex; align-items: baseline; gap: var(--sp-2); font-size: 12px; color: var(--text-dim); white-space: nowrap; }
-.sd-meter-head .sd-figures { margin-left: auto; }
-.sd-figures-link { font-size: 12px; }
-.sd-meter-figures-line { margin-bottom: var(--sp-2); }
+   and the Sources link at the right end of the head line, as the switch rode it, so the meter's last line still clears the sticky Make
+   row at 1920x947; the full source lines are on its hover. It takes the room the title and number leave (a 0 basis, so the wrapping head
+   line never drops it to a row of its own) and its words shorten with an ellipsis, the link always shown, so the head line stays one
+   row in every tick state (visual check of 83ee117). With nothing measured it is the strip's first line, left-aligned. */
+.sd-figures { display: flex; flex: 1 1 0; min-width: 0; justify-content: flex-end; align-items: baseline; gap: var(--sp-2); font-size: 12px; color: var(--text-dim); white-space: nowrap; }
+.sd-figures-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sd-figures-link { flex: none; font-size: 12px; }
+.sd-meter-figures-line { display: flex; margin-bottom: var(--sp-2); }
+.sd-meter-figures-line .sd-figures { justify-content: flex-start; }
 /* The Showdown header's sources pill (#sd-figures-pill) is a button that opens the Sources page: the pill's own look, no button chrome. */
 .sd-figures-pill { background: none; border: 0; padding: 0; margin: 0; font: inherit; cursor: pointer; }
 .sd-figures-pill:hover .pill { border-color: var(--accent); }

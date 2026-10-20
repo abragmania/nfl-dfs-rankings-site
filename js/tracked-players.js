@@ -10,7 +10,7 @@ import { sortArrowHtml } from "./table.js";
 import { cameFromApp, backTarget } from "./showdown/salary-used.js";
 import {
   PAGE_SIZE, LIST_CHOICES, DEFAULT_SORT, buildModel, listCounts, viewRows, page, nextSort, withMark, namesInContests,
-  columnsFor, snapshotSummary, keyStep, stepKey, cursorAfter,
+  columnsFor, snapshotSummary, keyStep, stepKey, cursorAfter, limitToShow,
 } from "./tracked-players-view.js";
 
 const TRACKED_URL = "baked/tracked-players.json";
@@ -34,7 +34,6 @@ const els = {
   bar: document.getElementById("tp-bar"),
   keys: document.getElementById("tp-keys"),
 };
-
 const view = { list: "all", query: "", hideMarked: false, sort: { ...DEFAULT_SORT }, limit: PAGE_SIZE };
 let model = null;
 let counts = null;
@@ -84,7 +83,7 @@ function renderHead() {
     const active = view.sort.col === c.id;
     const aria = active ? ` aria-sort="${view.sort.dir === "asc" ? "ascending" : "descending"}"` : "";
     const title = c.title ? ` title="${escapeHtml(c.title)}"` : "";
-    const kind = c.id === "mark" || c.id === "name" || c.id === "top100" ? c.id : "count";
+    const kind = c.id === "mark" || c.id === "name" || c.id === "top100" ? c.id : "yes";
     return `<th class="tp-col-${kind}${active ? " sorted" : ""}" data-col="${escapeHtml(c.id)}"${aria}${title}>${escapeHtml(c.label)}${sortArrowHtml(active, view.sort.dir, true)}</th>`;
   }).join("")}</tr>`;
 }
@@ -97,7 +96,7 @@ function rankCell(row) {
 }
 
 /** One contest's cell: YES when he entered it (Adam 2026-10-20 2:19 PM: no counts), blank when he did not. */
-function entriesCell(row, contest) {
+function yesCell(row, contest) {
   return `<td class="tp-yes">${row.contests[contest.id] ? "YES" : ""}</td>`;
 }
 
@@ -111,17 +110,22 @@ function rowHtml(row) {
     mark +
     `<td class="tp-name" title="${escapeHtml(row.name)}">${escapeHtml(row.name)}${pending !== undefined ? `<span class="tp-saving">saving…</span>` : ""}</td>` +
     rankCell(row) +
-    model.contests.map((c) => entriesCell(row, c)).join("") +
+    model.contests.map((c) => yesCell(row, c)).join("") +
     `</tr>`
   );
 }
 
 /** Redraws the rows, the "showing X of Y" line and the More button; keeps keyboard focus on the row that had it. */
 function renderBody() {
+  if (!model) return; // typing in search or clicking Hide marked before the data loads, or after a failed load
   const focusedKey = document.activeElement?.closest?.("tr.tp-row")?.dataset.key ?? null;
   const all = viewRows(model, view);
+  const prevKeys = shownKeys;
   shownKeys = all.map((r) => r.key);
-  cursor = cursorAfter(shownKeys, cursor); // the same name stays focused while it is listed, else the first row
+  // The same name stays the keyboard row while it is listed, else the row that took its place; the rows drawn always reach it,
+  // so Enter never marks a name that is not on screen.
+  cursor = cursorAfter(shownKeys, cursor, prevKeys);
+  view.limit = limitToShow(shownKeys, cursor, view.limit, PAGE_SIZE);
   const p = page(all, view.limit);
   hasMore = p.more;
   els.tbody.innerHTML = p.shown.length
@@ -150,16 +154,28 @@ function setCursor(key, reveal) {
   }
 }
 
-/** Down/j and Up/k: steps the keyboard row, loading the next page first when the step goes past the rows drawn. */
-function moveCursor(delta) {
-  const key = stepKey(shownKeys, cursor, delta);
-  if (key === null) return;
-  while (shownKeys.indexOf(key) >= view.limit) view.limit += PAGE_SIZE;
+/** Makes `key` the keyboard row and brings it into view, drawing more rows first when it lies past those drawn. */
+function showRow(key) {
+  view.limit = limitToShow(shownKeys, key, view.limit, PAGE_SIZE);
   if (els.tbody.querySelector(`tr[data-key="${CSS.escape(key)}"]`) === null) {
     cursor = key;
     renderBody();
   }
   setCursor(key, true);
+}
+
+/** Down/j and Up/k: steps the keyboard row. */
+function moveCursor(delta) {
+  const key = stepKey(shownKeys, cursor, delta);
+  if (key !== null) showRow(key);
+}
+
+/** True when the keyboard row is drawn and on screen (below the pinned bar and header): the only time Enter or Space may mark it. */
+function cursorOnScreen() {
+  const tr = cursor === null ? null : els.tbody.querySelector(`tr[data-key="${CSS.escape(cursor)}"]`);
+  if (!tr) return false;
+  const r = tr.getBoundingClientRect();
+  return r.bottom > els.thead.getBoundingClientRect().bottom && r.top < window.innerHeight;
 }
 
 /** Pins the table header just under the chip bar: publishes the bar's and the bar-plus-header heights as CSS variables. */
@@ -284,17 +300,24 @@ function wireScrollLoad() {
   footObserver.observe(els.foot);
 }
 
-/** Down/j and Up/k move the keyboard row; Enter and Space mark it (the click's save path). Typing in the search box or on a button is left alone. */
+/**
+ * Down/j and Up/k move the keyboard row from anywhere but a text field, so they work right after a chip is picked; Enter and Space
+ * mark it (the click's save path), but not on a button or link, where they press that control, and not while held down. A mark is
+ * made only when the keyboard row is on screen; if it is not, the key brings it into view and marks nothing.
+ */
 function wireKeys() {
   document.addEventListener("keydown", (e) => {
-    if (e.ctrlKey || e.metaKey || e.altKey || e.target.closest?.("input, textarea, select, button, a, [contenteditable]")) return;
+    const on = (selector) => e.target.closest?.(selector);
+    if (e.ctrlKey || e.metaKey || e.altKey || on("input, textarea, select, [contenteditable]")) return;
     const step = keyStep(e.key);
     if (step !== 0) {
       e.preventDefault(); // the arrow keys would scroll the page
       moveCursor(step);
-    } else if ((e.key === "Enter" || e.key === " ") && cursor !== null && !SITE) {
+    } else if ((e.key === "Enter" || e.key === " ") && cursor !== null && !SITE && !on("button, a")) {
       e.preventDefault(); // Space would scroll the page
-      toggle(cursor);
+      if (e.repeat) return; // a held key marks once, not on every finished save
+      if (cursorOnScreen()) toggle(cursor);
+      else showRow(cursor);
     }
   });
   measureStick();

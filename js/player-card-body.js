@@ -77,15 +77,6 @@ export function ratingBoxHtml(rating) {
   </div>`;
 }
 
-/**
- * A showdown board row carrying TwoGun's figures in place of the board's (Q16: the Lineup screen's card follows its
- * TwoGun / Our sources switch). `flex` and `cpt` are the screen's figures for him ({proj, own}); a blank stays blank,
- * never the board's number (D29). `figuresFrom` makes stripHtml label them as TwoGun's.
- */
-export function twogunCardRow(row, flex, cpt) {
-  return { ...row, proj: flex.proj, ownFlex: flex.own, ownCpt: cpt.own, figuresFrom: "TwoGun", projNote: flex.projNote ?? null };
-}
-
 /** This week's figures from the clicked row (this app's board, as of `asOf`): salary, projection, ownership, with the injury tag. */
 export function stripHtml(row, asOf = null) {
   if (!row) return "";

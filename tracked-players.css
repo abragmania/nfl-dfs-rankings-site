@@ -1,10 +1,11 @@
 /* The Tracked DFS players page (public/tracked-players.html, Adam 2026-10-20: "make it something I can sort and click through
    that isn't ugly"), linked by that page only. The Rankings table's look (30px rows, 14px text, sticky muted header, a centred box)
-   with its own column widths, since .rankings-table sizes its columns by position. The box is the Rankings table's 1250px cap
-   (D54). The columns are the mark, the name, the top-100 rank and one YES column per contest (Adam 2026-10-20 2:10 and 2:19 PM), so
-   every row is one 30px line. In the app every row is a click target that marks or unmarks the name; on the public site the rows
-   are read-only and there is no Mark column. */
-.tp-wrap { max-width: 1250px; margin: 0 auto; }
+   with its own column widths, since .rankings-table sizes its columns by position. The columns are the mark, the name, the top-100
+   rank and one YES column per contest (Adam 2026-10-20 2:10 and 2:19 PM), so every row is one 30px line and the box is 920px
+   (lead 2026-10-20, review round: six short columns left a 1,000px gap between a name and its YES in the Rankings table's 1250px cap
+   of D54, which this page does not use). In the app every row is a click target that marks or unmarks the name; on the public
+   site the rows are read-only and there is no Mark column. */
+.tp-wrap { max-width: 920px; margin: 0 auto; }
 a.tp-back { display: inline-block; text-decoration: none; }
 /* The chip bar (lists, filters, search, key hint) stays pinned while the table scrolls (Adam 2026-10-20 2:09 PM: "easy to scroll
    through"); it is opaque on the page background in both themes. tracked-players.js sets --tp-bar-h to its height, which is where
@@ -16,7 +17,6 @@ a.tp-back { display: inline-block; text-decoration: none; }
 .tp-search { margin-left: auto; }
 .tp-search input { width: 220px; }
 .tp-list-count { margin-left: 2px; font-weight: 400; opacity: 0.8; font-variant-numeric: tabular-nums; }
-.toggle-chip:disabled { cursor: default; opacity: 0.45; }
 .tp-source { margin-bottom: var(--sp-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .tp-readonly { margin-bottom: var(--sp-2); }
 .tp-readonly[hidden] { display: none; }
@@ -40,11 +40,15 @@ a.tp-back { display: inline-block; text-decoration: none; }
   color: var(--text-muted);
   font-size: var(--fs-sm);
   white-space: nowrap;
-  border-bottom: 1px solid var(--border);
+  box-shadow: inset 0 -1px 0 var(--border); /* the rule under the labels; a border is dropped by border-collapse once the header is pinned */
   user-select: none;
+  position: relative;
 }
 .tp-table th.sorted { color: var(--text); }
 .tp-table th .sort-arrow { font-size: 9px; }
+/* In the right-aligned and centred headers the arrow sits in the cell's right padding, so a hidden one takes no room and the label
+   lines up with the numbers and YES cells below it. */
+.tp-table th.tp-col-top100 .sort-arrow, .tp-table th.tp-col-yes .sort-arrow { position: absolute; right: 1px; top: 50%; transform: translateY(-50%); }
 .tp-table td {
   padding: 0 10px;
   height: 30px;
@@ -53,13 +57,13 @@ a.tp-back { display: inline-block; text-decoration: none; }
   overflow: hidden;
   text-overflow: ellipsis;
 }
-/* The name column takes whatever the fixed columns leave of the 1250px box (60 + 130 + 3 x 190 = 760px fixed, so 490px at the cap). */
+/* The name column takes whatever the fixed columns leave of the 920px box (60 + 110 + 3 x 150 = 620px fixed, so 300px at the cap). */
 .tp-table .tp-col-mark { width: 60px; }
-.tp-table .tp-col-top100 { width: 130px; }
-.tp-table .tp-col-count { width: 190px; } /* a contest's YES column ("High $ 675", "Double-up") */
+.tp-table .tp-col-top100 { width: 110px; }
+.tp-table .tp-col-yes { width: 150px; } /* a contest's YES column ("High $ 675", "Double-up") */
 .tp-table th.tp-col-top100, .tp-table td.tp-num { text-align: right; font-variant-numeric: tabular-nums; }
 /* Adam 2:19 PM: a contest column is just YES or blank, centred, in the note size (not the 14px body text) and the normal text colour. */
-.tp-table th.tp-col-count, .tp-table td.tp-yes { text-align: center; }
+.tp-table th.tp-col-yes, .tp-table td.tp-yes { text-align: center; }
 .tp-table td.tp-yes { font-size: var(--fs-sm); font-weight: 400; color: var(--text); }
 .tp-table td.tp-mark { text-align: left; }
 .tp-mark input { pointer-events: none; margin: 0; width: 15px; height: 15px; accent-color: var(--accent); vertical-align: middle; }

@@ -4,7 +4,8 @@
 // Adam 2026-10-20 2:10 PM: "I do NOT care about contest results! have columns for top 100, the high stakes entries, and then the
 // lower stakes / larger field one that I uploaded." The page is about the WAS@SF contests only: its rows are every username that
 // entered one of the high-dollar games or the double-up, plus every RotoGrinders top-100 account (whether or not he entered); the
-// DAL@GB entrants who are in neither drop out. Its columns are the mark, the name, the top-100 rank and one YES column per
+// DAL@GB entrants who are in neither drop out; a marked name is always a row too (blank rank and cells when he has none), so every
+// mark can be seen and unmarked. Its columns are the mark, the name, the top-100 rank and one YES column per
 // contest. Each row sits on "lists": the top 100, each contest it entered, and Adam's marks. The list chooser's rules use the marks
 // as they were when the page loaded, so ticking a name never moves it out of the list being worked through; the Hide marked filter
 // and the counts use the live marks. Crossover is the rule Adam worked from on 2026-10-19 (65 names): two or more of the top 100,
@@ -66,17 +67,18 @@ export function buildModel(registry, lists) {
   const top = new Map(registry.rotogrindersTop100.map((p) => [lower(p.dk), p]));
   const marked = new Set(registry.adam.map(lower));
   const byKey = new Map();
-  const add = (name, contestsOf = {}, rgRank = null) => {
+  const add = (name, contestsOf = {}, rgRank = null, isMarked = false) => {
     const key = lower(name);
     if (byKey.has(key) || key === "") return;
     const t = top.get(key);
     const mine = Object.fromEntries(Object.entries(contestsOf).filter(([id]) => ids.has(id)));
     const top100 = Boolean(t) || rgRank !== null;
-    if (!top100 && Object.keys(mine).length === 0) return; // in none of the page's contests and not in the top 100
+    if (!top100 && !isMarked && Object.keys(mine).length === 0) return; // in none of the page's contests, not in the top 100 and not marked
     byKey.set(key, { key, name: String(name).trim(), contests: mine, rgRank: rgRank ?? t?.rank ?? null, rgName: t?.rgName ?? null, top100 });
   };
   for (const p of lists.players) add(p.name, p.contests ?? {}, Number.isInteger(p.rgRank) ? p.rgRank : null);
   for (const p of registry.rotogrindersTop100) add(p.dk);
+  for (const n of registry.adam) add(n, {}, null, true); // a marked name is always a row, so every mark can be seen and unmarked here
   const rows = [...byKey.values()].sort((a, b) => a.key.localeCompare(b.key) || (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
   for (const r of rows) {
     r.onLoad = new Set(Object.keys(r.contests));
@@ -226,8 +228,21 @@ export function stepKey(keys, key, delta) {
   return i < 0 ? null : keys[i];
 }
 
-/** Which row keeps the focus after a sort, filter or list change: the same name while it is still listed, else the first row; none stays none. */
-export function cursorAfter(keys, key) {
+/**
+ * Which row keeps the keyboard focus after a sort, filter, search or list change (or a mark that hides its row): the same name while
+ * it is still listed; else the row that took its place (the same index in the old list `prevKeys`, held to the last row), so
+ * Enter never marks a name that is off screen; the first row when the old list did not hold it. None stays none, and an empty list gives none.
+ */
+export function cursorAfter(keys, key, prevKeys = []) {
   if (key === null) return null;
-  return keys.includes(key) ? key : (keys[0] ?? null);
+  if (keys.includes(key)) return key;
+  const at = prevKeys.indexOf(key);
+  return keys[at < 0 ? 0 : Math.min(at, keys.length - 1)] ?? null;
+}
+
+/** The row limit that draws `key`: `limit` itself when it is already within it, else raised by whole `pageSize` steps until it is. */
+export function limitToShow(keys, key, limit, pageSize) {
+  const at = key === null ? -1 : keys.indexOf(key);
+  if (at < 0 || at < limit) return limit;
+  return limit + Math.ceil((at + 1 - limit) / pageSize) * pageSize;
 }

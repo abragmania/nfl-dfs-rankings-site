@@ -68,13 +68,12 @@ const BUILD_ID = /^[A-Za-z0-9_-]{1,40}$/;
 const CEIL_TOTAL_MAX = 1000; // nine players cannot score more
 // Showdown's saved lineups (PROJECT.md Part 4 "Showdown Optimizer port", step 2) pass `options`: `objectives` is the Showdown
 // engine's own list (proj, ceil, median: server/showdown/lineup-checks.js BUILD_OPTIONS; the retired names are always accepted too) and
-// `projection: true` admits build.projection, the TwoGun projection file's provenance {source, asOf, asOfFrom} that a TwoGun-mode
-// generate answer carries (every figure carries its source and as-of date), and build.figuresKey, the served board's figures key
+// `projection: true` admits two Showdown-only keys: build.projection, which a page may still send and which is neither checked
+// nor kept (the Showdown save stamps the served board's own projection line, server/showdown/lineups-routes.js; Adam
+// 2026-10-20: every game reads its ticked sources), and build.figuresKey, the served board's figures key
 // (server/showdown/board-view.js figuresKeyOf) a generate answer carries, checked by the save and never stored: it comes back
-// beside the build ({build, figuresKey}), absent or null when not sent (an older page). Classic passes neither, so its record is unchanged.
-const PROJECTION_KEYS = ["source", "asOf", "asOfFrom"];
-const PROJECTION_AS_OF_FROM = new Set(["meta", "file time"]); // server/showdown/twogun-projections.js loadTwoGunProjections
-const PROJECTION_TEXT_MAX = 200;
+// beside the build ({build, figuresKey}), absent or null when not sent (an older page). boardMode is the board's reading
+// recorded at save (board.mode.cashMode). Classic passes neither option, so its record is unchanged.
 const SHOWDOWN_BUILD_KEYS = new Set(["projection", "figuresKey"]);
 const FIGURES_KEY_MAX = 64;
 export function validateLineupBuild(value, { objectives = OBJECTIVES, projection: allowProjection = false } = {}) {
@@ -97,30 +96,13 @@ export function validateLineupBuild(value, { objectives = OBJECTIVES, projection
   if (totalCeil !== undefined && totalCeil !== null && !(typeof totalCeil === "number" && Number.isFinite(totalCeil) && totalCeil >= 0 && totalCeil <= CEIL_TOTAL_MAX)) {
     return { error: `build.totalCeil must be a number from 0 to ${CEIL_TOTAL_MAX}, or null` };
   }
-  const projection = allowProjection ? buildProjection(value.projection, boardMode) : {};
-  if (projection.error) return { error: projection.error };
   const build = { kind };
   if (kind === "batch") build.id = id;
   if (boardMode !== undefined) build.boardMode = boardMode;
   if (objective !== undefined) build.objective = objective;
   if (totalCeil !== undefined) build.totalCeil = totalCeil;
   if (edited === true) build.edited = true;
-  if (projection.projection) build.projection = projection.projection;
   return figuresKey === null ? { build } : { build, figuresKey };
-}
-
-/** build.projection (Showdown only, see validateLineupBuild): absent or null stays absent; otherwise exactly {source, asOf,
- *  asOfFrom} as the generate answer gives them, and only on a TwoGun-mode build (the provenance names TwoGun's file). */
-function buildProjection(value, boardMode) {
-  if (value === undefined || value === null) return {};
-  if (typeof value !== "object" || Array.isArray(value)) return { error: "build.projection must be an object" };
-  for (const key of Object.keys(value)) if (!PROJECTION_KEYS.includes(key)) return { error: `build.projection has an unknown field ${JSON.stringify(key)}` };
-  if (boardMode !== "twogun") return { error: "build.projection names TwoGun's projection file, so it goes only with boardMode twogun" };
-  const text = (v) => typeof v === "string" && v.trim() !== "" && v.length <= PROJECTION_TEXT_MAX;
-  if (!text(value.source)) return { error: `build.projection.source must be a non-empty string of at most ${PROJECTION_TEXT_MAX} characters` };
-  if (!text(value.asOf)) return { error: `build.projection.asOf must be a non-empty string of at most ${PROJECTION_TEXT_MAX} characters` };
-  if (!PROJECTION_AS_OF_FROM.has(value.asOfFrom)) return { error: `build.projection.asOfFrom must be one of ${[...PROJECTION_AS_OF_FROM].join(", ")}` };
-  return { projection: { source: value.source, asOf: value.asOf, asOfFrom: value.asOfFrom } };
 }
 
 /** Pure: a lineup's `build` after its players were replaced by hand. A build that had a ceiling total (totalCeil defined,

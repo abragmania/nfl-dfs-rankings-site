@@ -191,15 +191,12 @@ export function savedKeysOf(saved, mode, board) {
 }
 
 /** The POST .../lineups body for one card: its name, its six men by person id (as the builder saves them, so the saved card
- *  finds every row), its mode and the build record (classic saveGenerated: lineup-builds.js batchBuild, plus TwoGun's projection
- *  file and as-of on a TwoGun build, and the answer's figures key, so the server refuses a save after this game's sources
- *  changed). Pure. */
+ *  finds every row), its mode and the build record (classic saveGenerated: lineup-builds.js batchBuild, plus the answer's
+ *  figures key, so the server refuses a save after this game's sources changed; the server stamps its own projection line,
+ *  so the page sends none). Pure. */
 export function saveBody(lineup, results, name) {
   const slots = (lineup.slots ?? []).map((s) => ({ slot: s.slot, playerId: String(s.personId ?? s.playerId) }));
   const build = batchBuild({ buildId: results.buildId, boardMode: results.boardMode, objective: results.objective }, { ceil: lineup.ceil, players: [] });
-  const p = results.projection;
-  const text = (v) => typeof v === "string" && v.trim() !== "";
-  if (results.boardMode === "twogun" && p && text(p.source) && text(p.asOf) && (p.asOfFrom === "meta" || p.asOfFrom === "file time")) build.projection = { source: p.source, asOf: p.asOf, asOfFrom: p.asOfFrom };
   if (typeof results.figuresKey === "string" && results.figuresKey !== "") build.figuresKey = results.figuresKey;
   return { name, slots, mode: results.mode, build };
 }
