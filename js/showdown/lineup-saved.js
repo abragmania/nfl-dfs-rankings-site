@@ -67,13 +67,14 @@ export function savedProjHtml(lineup, board, figures = playerFigures) {
 // `ui`: { renamingId, deleteConfirmId, numbers, busy, error } — the panel's open rename box and delete prompt (lineup.js's state; both
 // null draws neither), `numbers` = numberLineups over ALL of this game's saved lineups (the Entries tab's numbers; null draws no
 // number), `busy` = a PUT for this card is in flight (its letter and rename Save are disabled), `error` = the server's sentence for
-// this card's refused change (a badge on the card, as classic's lineupErrors badge).
+// this card's refused change (a badge on the card, as classic's lineupErrors badge); `editableTag` = false leaves the letter select out
+// (the public site, where a letter can only be refused; the prefix still shows the letter), default true.
 export function savedLineupCardHtml(lineup, board, figures = playerFigures, ui = {}) {
-  const { renamingId = null, deleteConfirmId = null, numbers = null, busy = false, error = null } = ui;
+  const { renamingId = null, deleteConfirmId = null, numbers = null, busy = false, error = null, editableTag = true } = ui;
   const busyAttr = busy ? " disabled" : "";
   const prefix = lineupPrefix(lineup, numbers);
   const tagOptions = `<option value=""${lineup.tag ? "" : " selected"}>no letter</option>${TAG_OPTIONS.map((t) => `<option value="${t}"${t === lineup.tag ? " selected" : ""}>${t}</option>`).join("")}`;
-  const tagHtml = `<select class="saved-lineup-tag" data-action="sd-lineup-tag" data-id="${escapeHtml(lineup.id)}" aria-label="Letter for ${escapeHtml(lineup.name)}"${busyAttr}>${tagOptions}</select>`;
+  const tagHtml = editableTag ? `<select class="saved-lineup-tag" data-action="sd-lineup-tag" data-id="${escapeHtml(lineup.id)}" aria-label="Letter for ${escapeHtml(lineup.name)}"${busyAttr}>${tagOptions}</select>` : "";
   const entries = (lineup.slots ?? []).map((s) => ({ slot: s.slot, row: findRow(board, s.playerId), snap: s }));
   let salaryUsed = 0;
   for (const e of entries) {
@@ -138,7 +139,7 @@ export function savedLineupCardHtml(lineup, board, figures = playerFigures, ui =
 // `filter` (the live app only, null elsewhere: the section is then drawn without it): the Optimizer's "only lineups with" list (D77),
 // { mustHave (the chosen role-aware keys), playersOf(lineup) (a saved lineup's men as lineup-filter.js reads them), exposureHtml(shown, of)
 // (the Captain and FLEX tables over the shown saved lineups; `of` = all of them while the filter hides some, else null), barHtml(shown, total)
-// (the chips bar, "" when the batch above already draws it), noMatchText }. The filter only hides; nothing saved is changed.
+// (the chips bar with Clear, drawn whenever the filter is on, so it is in view of the cards even under a long batch), noMatchText }. The filter only hides; nothing saved is changed.
 export function savedLineupsSectionHtml(board, saved, cardOf, filter = null) {
   let body;
   let titleCount = "";
@@ -206,7 +207,12 @@ export function cardPutGuard() {
     errors[id] = failure ?? data?.error?.message ?? "Could not save that change.";
     return false;
   }
-  return { busy, errors, run };
+  // Anything thrown past run's own request catch (a redraw or apply that threw): the card's sentence, not busy, never only the console.
+  function fail(id, e) {
+    busy.delete(id);
+    errors[id] = requestFailureText(e);
+  }
+  return { busy, errors, run, fail };
 }
 
 // The saved cards' buttons and letter selects. `actions`: { renameStart(id), renameCancel(), renameSave(id, name), deleteStart(id), deleteNo(), deleteYes(id), load(id), tag(id, letter | null) }.

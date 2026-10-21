@@ -19,6 +19,7 @@ import { requestFailureText } from "./read-json.js";
 import { slotLook, slotLogoHtml, controlsHtml as controlsMarkup } from "./lineup-look.js"; // the classic team rows on the slots and saved rows, the two-row controls (Adam 2026-10-18 9:09 PM)
 // The saved-lineups view lives in ./lineup-saved.js (state stays here); the two pure helpers keep their old exports from this module.
 import { findRow, SALARY_CAP, FLEX_COUNT, savedProjHtml, savedLineupCardHtml as savedCardHtml, savedLineupsSectionHtml as savedSectionHtml, wireSavedCards, cardPutGuard } from "./lineup-saved.js";
+import { onSitePage } from "../tabs.js"; // the public site marks the page is-site: its saved cards draw no letter select (it can only be refused there)
 export { savedLineupSlotHtml, savedProjTotal } from "./lineup-saved.js";
 import { syncSwaps, swapsPanelHtml, wireSwaps } from "./lineup-swaps.js"; // the uniqueness swaps, full width below both columns (Adam 2026-10-18)
 import { showAllToggleHtml, wireShowAllButtons } from "../filterbar.js";
@@ -280,7 +281,7 @@ async function doSaveLineup(key, name) {
 // A saved card's one PUT, rename or letter (cardPutGuard): the answer's list replaces ours; a refusal shows on the card and the redraw resets the select.
 async function putCard(key, id, send) {
   const gameAtStart = lastKey;
-  await cardPuts.run(id, send, { redraw: commit, still: () => lastKey === gameAtStart, apply: (list) => { state.savedLineups = list; } });
+  await cardPuts.run(id, send, { redraw: commit, still: () => lastKey === gameAtStart, apply: (list) => { state.savedLineups = list; } }).catch((e) => cardPuts.fail(id, e)); // a throw past the guard shows on the card too
   commit();
 }
 
@@ -434,7 +435,7 @@ function listCtx(board) {
 
 // The saved card with the panel's rename box, delete prompt and PUT state (lineup-saved.js draws it); `numbers`: numberLineups of this game's saved lineups.
 export function savedLineupCardHtml(lineup, board, figures = playerFigures, numbers = null) {
-  return savedCardHtml(lineup, board, figures, { renamingId: state.renamingId, deleteConfirmId: state.deleteConfirmId, numbers, busy: cardPuts.busy.has(lineup.id), error: cardPuts.errors[lineup.id] ?? null });
+  return savedCardHtml(lineup, board, figures, { renamingId: state.renamingId, deleteConfirmId: state.deleteConfirmId, numbers, busy: cardPuts.busy.has(lineup.id), error: cardPuts.errors[lineup.id] ?? null, editableTag: !onSitePage() });
 }
 
 // The Optimizer's "only lineups with" list filters these cards too, live app only (D77; optimizer.js optimizerSavedFilter).

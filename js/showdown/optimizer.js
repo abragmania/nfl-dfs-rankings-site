@@ -7,6 +7,7 @@
 // Live app only (as the meter): the published site and sample mode have no generate route, so nothing here is drawn there.
 import { isSampleMode } from "../api.js";
 import { store } from "../state.js";
+import { onSitePage } from "../tabs.js"; // the one is-site check
 import { parsePct, uniqueSavedName, duplicateSaveStatus } from "../lineup.js";
 import { newBuildId, batchBuild } from "../lineup-builds.js";
 import { toggleMustHave, bulkUids, filterBarHtml } from "../lineup-filter.js";
@@ -52,7 +53,7 @@ export function setOptimizerStorage(getStorage, list = null) {
 /** True on the live app only: the published site and sample mode have no generate route (lineup-meter.js's own rule). */
 export function optimizerLive() {
   if (typeof window === "undefined") return false;
-  if (typeof document !== "undefined" && document.documentElement?.classList?.contains("is-site")) return false;
+  if (onSitePage()) return false;
   return !isSampleMode();
 }
 
@@ -304,7 +305,7 @@ export function optimizerResultsBlockHtml(board, saved) {
 /**
  * The Saved half of the "only lineups with" filter (D77, Adam 2026-10-11: "this should work with new or saved"): what the saved section
  * (lineup-saved.js savedLineupsSectionHtml) needs to filter its cards by opt.mustHave, to draw the Captain and FLEX exposure tables over
- * the cards shown (no Min / Max marks, they belong to a batch) and, when no batch is on screen to carry it, the chips bar. null off the
+ * the cards shown (no Min / Max marks, they belong to a batch) and the chips bar with Clear (the batch's own bar can be far above). null off the
  * live app, where the section is drawn without any of it. A saved slot may carry a man's FLEX id or his Captain id, so each is read as
  * his person id (boardIndex), and his ownership is the board's current figure for the role, the snapshot's when he left the board.
  */
@@ -324,7 +325,7 @@ export function optimizerSavedFilter(board) {
     mustHave: chosen,
     playersOf: (l) => S.sdPlayersOf(viewOf(l)),
     exposureHtml: (shown, of) => V.exposureHtml(shown.map(viewOf), board, opt.expSortDir, null, { isChosen: (key) => chosen.includes(String(key)) }, of, "saved"),
-    barHtml: (shown, total) => (opt.results ? "" : filterBarHtml(chosen.map((key) => ({ key, name: opt.mustHaveNames[key] ?? key })), shown, total)),
+    barHtml: (shown, total) => filterBarHtml(chosen.map((key) => ({ key, name: opt.mustHaveNames[key] ?? key })), shown, total), // the batch's bar again: it can be screens above
     noMatchText: V.NO_MATCH_TEXT,
   };
 }
@@ -438,18 +439,13 @@ function wireBand(root, ctx) {
   });
 }
 
-/** The exposure header's sort: redraws only the exposure section (classic wireExposureSort). */
+/** The exposure header's sort, on the batch's tables and the saved section's: one direction (opt.expSortDir, classic's) shared by both
+ *  table sets, so a click redraws the panel and both show the new order and arrow. */
 function wireExposureSort(container, ctx) {
-  container.querySelectorAll(".sd-opt-results .opt-exposure [data-action='opt-exp-sort']").forEach((th) => {
+  container.querySelectorAll(".sd-opt-results .opt-exposure [data-action='opt-exp-sort'], #sd-saved-lineups .opt-exposure [data-action='opt-exp-sort']").forEach((th) => {
     th.addEventListener("click", () => {
       opt.expSortDir = opt.expSortDir === "asc" ? "desc" : "asc";
-      const section = container.querySelector(".sd-opt-results .opt-exposure");
-      const r = opt.results;
-      if (!section || !r) return;
-      section.outerHTML = V.exposureSectionHtml(r, ctx.board, opt.expSortDir, opt.mustHave);
-      const fresh = container.querySelector(".sd-opt-results .opt-exposure");
-      if (fresh) wirePickButtons(fresh, ctx); // the section's name buttons were redrawn with it
-      wireExposureSort(container, ctx);
+      ctx.commit();
     });
   });
 }
@@ -473,9 +469,11 @@ function wirePickButtons(root, ctx) {
       ctx.commit();
     });
   });
-  root.querySelector("[data-action='opt-pick-clear']")?.addEventListener("click", () => {
-    clearMustHave();
-    ctx.commit();
+  root.querySelectorAll("[data-action='opt-pick-clear']").forEach((btn) => { // the batch's bar and the saved section's
+    btn.addEventListener("click", () => {
+      clearMustHave();
+      ctx.commit();
+    });
   });
 }
 
@@ -520,12 +518,6 @@ export function wireOptimizer(ctx) {
   });
   wirePickButtons(c, ctx); // the whole panel: the batch's tables and chips bar and the saved section's (D77)
   wireExposureSort(c, ctx);
-  c.querySelectorAll("#sd-saved-lineups [data-action='opt-exp-sort']").forEach((th) => {
-    th.addEventListener("click", () => {
-      opt.expSortDir = opt.expSortDir === "asc" ? "desc" : "asc"; // the one direction both screens' tables share (classic's)
-      ctx.commit();
-    });
-  });
 }
 
 /** Test hook: run Make / Save with a context of stand-ins. */

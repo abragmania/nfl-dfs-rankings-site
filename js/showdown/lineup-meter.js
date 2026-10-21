@@ -8,6 +8,7 @@
 // exported for tests; lineup.js only calls syncMeter (before a draw), meterStripHtml (inside the draw) and wireMeter (after it).
 import { escapeHtml, dec1 } from "../format.js";
 import { isSampleMode } from "../api.js";
+import { onSitePage } from "../tabs.js"; // the one is-site check
 import { readJson, requestFailureText, notJsonText, NOT_JSON } from "./read-json.js"; // the one JSON reader (🔵 866b0ce B4)
 import { likelyCopies, likelyFactText } from "./likely-copies.js";
 import { figuresLabelHtml, asOfText, halfName, twogunTicked } from "./figures-label.js";
@@ -327,7 +328,7 @@ function reset() {
 function liveMeterAllowed() {
   if (typeof window === "undefined") return false;
   // The published site has no server to ask; sample mode writes nothing and has no meter route either.
-  if (typeof document !== "undefined" && document.documentElement.classList.contains("is-site")) return false;
+  if (onSitePage()) return false;
   return !isSampleMode();
 }
 
