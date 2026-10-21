@@ -36,6 +36,7 @@ import { renderTabs, isSourcesTab, sourcesTabToOpen, shownTab, renderProjections
 import { renderSourcesPage, APPLIED_ALL_EVENT } from "./js/sources-page.js"; // the one Sources page (Adam 2026-10-18), shared with the Showdown view
 import { teamsSampleHtml } from "./js/teams-sample.js"; // Temporary (Adam 2026-10-18)
 import { initExpand, syncExpandUi } from "./js/expand.js";
+import { makeFilterDebounce } from "./js/filter-debounce.js";
 import { initPlayerCard } from "./js/player-card.js";
 
 const el = {
@@ -55,12 +56,12 @@ const el = {
   sourcesBtn: document.getElementById("sources-btn"), // Adam 2026-10-18: the header link to the Sources view
   sourcesPanel: document.getElementById("sources-panel"),
   slateNote: document.getElementById("slate-note"),
-  rankingsPanel: document.getElementById("rankings-panel"),
   projectionsPanel: document.getElementById("projections-panel"),
   ownBanner: document.getElementById("own-banner"),
   ownershipPanel: document.getElementById("ownership-panel"),
   teamsPanel: document.getElementById("teams-panel"), // Temporary (Adam 2026-10-18): the Teams (sample) tab
   lineupPanel: document.getElementById("lineup-panel"),
+  lineupMount: document.getElementById("lineup-mount"), // the Optimizer's redrawn part inside #lineup-panel (step 4); the strip, filter bar and ranked list around it are static
   showdownPanel: document.getElementById("showdown-panel"), // ChatGPT wish t, Adam 2026-10-17
   entriesPanel: document.getElementById("entries-panel"), // rules repo 2026-10-17: Entries is its own tab
   emptyState: document.getElementById("empty-state"),
@@ -171,6 +172,10 @@ function hasAnyOverride(rows, siteTypedNumbers) {
   return (rows ?? []).some((r) => r.override && (r.override.proj != null || r.override.own != null));
 }
 
+// Optimizer-first step 4: the typed boxes (search, salary min and max) reach the store once typing pauses (public/js/filter-debounce.js,
+// 150 ms): a keystroke redraws both 525-row lists, about 300 ms. renderFilterBarNow flushes first, so a rebuild never loses typed letters.
+const typedFilters = makeFilterDebounce({ apply: (patch) => store.setFilters(patch) });
+
 const filterCallbacks = {
   onPosChange: (pos) => store.setFilters({ pos }),
   onTeamToggle: (abbr) => {
@@ -179,11 +184,12 @@ const filterCallbacks = {
     else teams.add(abbr);
     store.setFilters({ teams });
   },
-  onSalaryChange: ({ min, max }) => store.setFilters({ salaryMin: min, salaryMax: max }),
-  onSearchChange: (text) => store.setFilters({ search: text }),
+  onSalaryChange: ({ min, max }) => typedFilters.schedule("salary", { salaryMin: min, salaryMax: max }),
+  onSearchChange: (text) => typedFilters.schedule("search", { search: text }),
   onStarredToggle: (bool) => store.setFilters({ starredOnly: bool }),
   onShowAllToggle: (bool) => store.setFilters({ showAllPlayers: bool }),
   onClearFilters: () => {
+    typedFilters.cancelAll(); // a search or salary typed just before Clear filters never comes back after it
     store.setFilters(defaultFilters());
     const board = store.get().board;
     if (board) {
@@ -297,6 +303,7 @@ function renderStatic(board) {
 // every game on the main slate). "Reset all overrides" clears the whole week's typed numbers (D72), so whether it has anything to do
 // is still judged on the whole board, not just the slate on screen.
 function renderFilterBarNow(board) {
+  typedFilters.flush(); // letters still waiting out the pause reach the store first, so the rebuilt boxes show them (🔵 step 4)
   renderFilterBar(el.filterbar, uniqueTeams(activeSlateGames(board)), store.get().filters, filterCallbacks, hasAnyOverride(board.rows, board.siteTypedNumbers));
 }
 
@@ -346,14 +353,39 @@ function renderEmptyState({ loading, boardError }) {
 }
 
 window.addEventListener("resize", adjustScrollPanels);
-// Expand / Minimize on the four player tables (public/js/expand.js); minimizing re-sizes the table for its place.
+// Expand / Minimize on the player tables (public/js/expand.js); minimizing re-sizes the table for its place.
 initExpand({ onLayout: adjustScrollPanels });
 // The player card: a click on any player's name opens his page (public/js/player-card.js); a showdown name reads the showdown board's row.
 initPlayerCard({ findRow: (id, sd) => (sd ? showdownRowById(id) : findRow(id)), sdKey: showdownKeyFromHash, boardAsOf: (sd) => (sd ? showdownBoardAsOf() : store.get().board?.generatedAt) });
 
+// The Optimizer screen's static parts (Optimizer-first step 4: what the Rankings tab drew, now inside #lineup-panel): the game strip,
+// the ownership banner, the ranked list and the filter bar's count. The filter bar itself is drawn only by renderFilterBarNow (a board
+// load or Clear filters), never here, so a keystroke in its search box keeps the box, its value and its caret.
+function renderRankedParts(board, filters, sort, slateRows) {
+  renderGameStrip(el.gamestrip, activeSlateGames(board) ?? [], filters.gameId, onGameClick, {
+    collapsed: getGamestripCollapsed(),
+    onToggleCollapse: onToggleGamestripCollapse,
+  });
+  const allRows = rowsGradedForView(slateRows, filters.pos, board.rows); // D33: the FLEX view pools RB, WR and TE
+  el.ownBanner.textContent = [ownBannerText(allRows), board.injuryNote, ...(board.tabNotes?.favorites ?? [])].filter(Boolean).join(" ");
+  const filtered = filterRows(allRows, filters);
+  const sorted = sortRows(filtered, sort.col, sort.dir);
+  const hasNoteColumn = allRows.some((r) => r.note);
+  const tg = { twogun: isTwoGunMode(board), pos: filters.pos }; // TwoGun mode adds Med, Ceil, Ceil/$, Nuke, 3x%, 4x% (table.js TG_COLUMNS); a one-position list hides Pos (D80)
+  renderTableHead(el.thead, sort, onSortClick, hasNoteColumn, tg);
+  renderTableBody(el.tbody, sorted, tableCallbacks, hasNoteColumn, tg);
+  const activeGame = filters.gameId ? (board.slate?.games ?? []).find((g) => g.id === filters.gameId) : null;
+  updateFilterSummary(el.filterbar, {
+    filteredCount: filtered.length,
+    totalCount: allRows.length,
+    activeGameLabel: activeGame ? `${activeGame.away} @ ${activeGame.home}` : null,
+    onClearGame: () => store.setFilters({ gameId: null }),
+  });
+}
+
 function renderDynamic() {
   const { board, filters, sort, loading, boardError } = store.get();
-  const activeTab = shownTab(store.get().activeTab); // a tab the page does not draw (Entries on the site) shows Rankings
+  const activeTab = shownTab(store.get().activeTab); // a tab the page does not draw (Entries on the site) shows the Optimizer
 
   // Every list below reads the slate on screen's rows (D57): the whole board, or the active second slate's.
   const slateRows = activeSlateRows(board);
@@ -362,11 +394,10 @@ function renderDynamic() {
   paintSourcesLink(el.sourcesBtn, isSourcesTab(activeTab));
 
   if (!board) {
-    // #empty-state lives as a sibling of the five tab panels (not nested inside #rankings-panel), so a
+    // #empty-state lives as a sibling of the tab panels (not nested inside #lineup-panel), so a
     // board failure or a still-loading board hides every panel and shows the one message regardless of
-    // which tab is active — previously a failure while on a non-Rankings tab left that tab's blank
+    // which tab is active — previously a failure while on another tab left that tab's blank
     // panel on screen instead of the error text.
-    el.rankingsPanel.hidden = true;
     el.sourcesPanel.hidden = true;
     el.projectionsPanel.hidden = true;
     el.ownershipPanel.hidden = true;
@@ -386,7 +417,6 @@ function renderDynamic() {
     return;
   }
   el.emptyState.hidden = true;
-  el.rankingsPanel.hidden = activeTab !== "rankings";
   el.sourcesPanel.hidden = !isSourcesTab(activeTab);
   el.projectionsPanel.hidden = activeTab !== "projections";
   el.ownershipPanel.hidden = activeTab !== "ownership";
@@ -395,27 +425,10 @@ function renderDynamic() {
   el.showdownPanel.hidden = activeTab !== "showdown";
   el.entriesPanel.hidden = activeTab !== "entries";
 
-  if (activeTab === "rankings") {
-    const collapsed = getGamestripCollapsed();
-    renderGameStrip(el.gamestrip, activeSlateGames(board) ?? [], filters.gameId, onGameClick, {
-      collapsed,
-      onToggleCollapse: onToggleGamestripCollapse,
-    });
-    const allRows = rowsGradedForView(slateRows, filters.pos, board.rows); // D33: the FLEX view pools RB, WR and TE
-    el.ownBanner.textContent = [ownBannerText(allRows), board.injuryNote, ...(board.tabNotes?.favorites ?? [])].filter(Boolean).join(" ");
-    const filtered = filterRows(allRows, filters);
-    const sorted = sortRows(filtered, sort.col, sort.dir);
-    const hasNoteColumn = allRows.some((r) => r.note);
-    const tg = { twogun: isTwoGunMode(board), pos: filters.pos }; // TwoGun mode adds Med, Ceil, Ceil/$, Nuke, 3x%, 4x% (table.js TG_COLUMNS); a one-position list hides Pos (D80)
-    renderTableHead(el.thead, sort, onSortClick, hasNoteColumn, tg);
-    renderTableBody(el.tbody, sorted, tableCallbacks, hasNoteColumn, tg);
-    const activeGame = filters.gameId ? (board.slate?.games ?? []).find((g) => g.id === filters.gameId) : null;
-    updateFilterSummary(el.filterbar, {
-      filteredCount: filtered.length,
-      totalCount: allRows.length,
-      activeGameLabel: activeGame ? `${activeGame.away} @ ${activeGame.home}` : null,
-      onClearGame: () => store.setFilters({ gameId: null }),
-    });
+  if (activeTab === "lineup") {
+    // One screen (Optimizer-first step 4): the strip, banner and ranked list, then the Optimizer's own part in its mount between them.
+    renderRankedParts(board, filters, sort, slateRows);
+    renderLineupPanel(el.lineupMount, tableCallbacks);
   } else if (isSourcesTab(activeTab)) {
     // The Sources page (always the main slate's choices, D57), then the Projections or Ownership table under its Players heading.
     renderSourcesPage(el.sourcesPanel, { board, slate: "main", showdown: false, activeKey: activeTab, onPlayersTab: onTabClick, onChanged: repaintAfterSourceSave });
@@ -423,8 +436,6 @@ function renderDynamic() {
     else renderOwnershipPanel(el.ownershipPanel, board, sourceCallbacks);
   } else if (activeTab === "teams") {
     el.teamsPanel.innerHTML = teamsSampleHtml(); // Temporary (Adam 2026-10-18)
-  } else if (activeTab === "lineup") {
-    renderLineupPanel(el.lineupPanel, tableCallbacks);
   } else if (activeTab === "showdown") {
     renderShowdownTabNow();
   } else if (activeTab === "entries") {
@@ -433,7 +444,17 @@ function renderDynamic() {
 
   syncExpandUi();
   adjustScrollPanels();
+  syncFilterbarHeight();
 }
+
+// 🔵 step 4: the sticky filter bar covers the top of the window, so a scroll to an element of the Optimizer tab (Build's results, the
+// ?scrollTo= dev link) must land below it: style.css gives every element with an id in #lineup-panel a scroll-margin-top of
+// --filterbar-h, kept here to the bar's height while it sticks (0 where it does not: another tab, or a phone, where it is static).
+function syncFilterbarHeight() {
+  const sticky = !el.lineupPanel.hidden && getComputedStyle(el.filterbar).position === "sticky";
+  el.lineupPanel.style.setProperty("--filterbar-h", `${sticky ? Math.ceil(el.filterbar.getBoundingClientRect().height) : 0}px`);
+}
+window.addEventListener("resize", syncFilterbarHeight);
 
 store.subscribe(renderDynamic);
 

@@ -53,6 +53,13 @@ export function adjustScrollPanels() {
   document.querySelectorAll(".scroll-panel").forEach((panelEl) => {
     if (panelEl.closest(".sd-list")) return; // the Showdown Captain | FLEX list box is sized by public/js/showdown/lineup-lists.js, not here
     const top = panelEl.getBoundingClientRect().top;
+    // Optimizer-first step 4: the ranked list under the builder is not sized to the room below it (that is the whole page) but
+    // to 60% of the window, 420px at least, snapped to whole rows: the reserve is chosen so the room snapPanelMaxHeight sees is that height.
+    if (panelEl.closest("#ranked-list")) {
+      const target = Math.max(420, window.innerHeight * 0.6);
+      snapPanelMaxHeight(panelEl, top, window.innerHeight - (top + window.scrollY) - target);
+      return;
+    }
     // The rankings table's legend line sits right below .table-wrap; if its height isn't reserved here
     // the table claims that room too, slicing the legend and forcing a second page-level scrollbar (👁
     // visual-qa). Every other .scroll-panel has nothing below it, so this only adds for that one.

@@ -430,7 +430,7 @@ html, body {
   margin-bottom: var(--sp-1);
 }
 .expand-bar[hidden] { display: none; }
-#rankings-panel > .expand-bar {
+#ranked-list > .expand-bar:not(.is-expanded) { /* not while expanded: the full-screen bar spans the window (an id selector would beat .expand-bar.is-expanded) */
   max-width: 1250px;
   margin-left: auto;
   margin-right: auto;
@@ -751,10 +751,10 @@ body.table-expanded { overflow: hidden; }
   color: var(--text-dim);
   font-size: var(--fs-sm);
 }
-/* The note above and the legend below the classic Rankings table sit in the same centred
-   1250px box as the table, so their left edges line up with the table's at every width. */
-#rankings-panel > .own-banner,
-#rankings-panel > .table-legend {
+/* The legend below the ranked list sits in the same centred 1250px box as the table, so its left edge lines up with the
+   table's at every width. The ownership note (#own-banner) now sits under the filter bar, full width like the bar
+   (Optimizer-first step 4). */
+#ranked-list > .table-legend {
   max-width: 1250px;
   margin-left: auto;
   margin-right: auto;
@@ -1045,13 +1045,12 @@ tr:last-child .cell-edit-hint { top: auto; bottom: 100%; margin-top: 0; margin-b
 .rankings-table.tg-on:has(th[data-col="note"]) th[data-col="note"] { width: 102px; }
 .rankings-table.tg-on:has(th[data-col="note"]) th[data-col="tags"] { width: 60px; padding-left: 10px; }
 .rankings-table.tg-on:has(th[data-col="note"]) td.tags-cell { padding-left: 10px; }
-/* D80 round 7 (Adam 2026-10-18 Q1: no long name is cut): the columns now total 1296px, so while Rankings is in TwoGun mode with the Note column on, its box (the expand bar, the
-   ownership note, the table and the legend share it, so their left edges still line up) is 1316px instead of 1250px: 1296px + 2px of border + the 15px vertical scrollbar + 3px spare.
+/* D80 round 7 (Adam 2026-10-18 Q1: no long name is cut): the columns now total 1296px, so while the ranked list is in TwoGun mode with the Note column on, its box (the expand bar,
+   the table and the legend share it, so their left edges still line up) is 1316px instead of 1250px: 1296px + 2px of border + the 15px vertical scrollbar + 3px spare.
    It is a max-width on a 100%-wide box, so a 1366px window (1318px of room inside the page's 24px side padding) holds it with no sideways scroll. Expanded, the full-screen rules still apply. */
-#rankings-panel:has(.rankings-table.tg-on th[data-col="note"]) > .expand-bar:not(.is-expanded),
-#rankings-panel:has(.rankings-table.tg-on th[data-col="note"]) > .own-banner,
-#rankings-panel:has(.rankings-table.tg-on th[data-col="note"]) > .table-wrap:not(.is-expanded),
-#rankings-panel:has(.rankings-table.tg-on th[data-col="note"]) > .table-legend { max-width: 1316px; }
+#ranked-list:has(.rankings-table.tg-on th[data-col="note"]) > .expand-bar:not(.is-expanded),
+#ranked-list:has(.rankings-table.tg-on th[data-col="note"]) > .table-wrap:not(.is-expanded),
+#ranked-list:has(.rankings-table.tg-on th[data-col="note"]) > .table-legend { max-width: 1316px; }
 /* D80 round 7 fallback (Adam 2026-10-18 Q1: no long name is cut, no sideways scroll): below 1396px of window (1316px box + 48px page padding + a possible 15px page scrollbar + spare) the box is the room
    the page has, so the Player column gives up the shortfall: 464px, or 100vw - 912px when that is less (912 = 80px of padding, border and scrollbars + the 832px of the other columns). The matchup pill
    is what gives way for it, shrinking with an ellipsis (its full text is the row's matchup); the name, tag, chip and note icon never shrink. At 1366px Player is 454px; from 1376px it is the full 464px. */
@@ -1219,10 +1218,45 @@ tr:last-child .cell-edit-hint { top: auto; bottom: 100%; margin-top: 0; margin-b
 .lineup-right { flex: 1; min-width: 0; }
 .lineup-right-title { margin: 0 0 var(--sp-2); font-size: var(--fs-md); color: var(--text-muted); }
 .lineup-pos-chips { margin-bottom: var(--sp-2); }
-.lineup-pool-search { margin-bottom: var(--sp-2); }
-.pool-search-chip { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .lineup-rows-table th.sortable { cursor: pointer; user-select: none; color: var(--text-muted); }
 .lineup-rows-table th.sorted { color: var(--text); }
+
+/* ---------- The Optimizer screen (Optimizer-first step 4: Rankings folded into the Optimizer tab) ----------
+   The filter bar stays at the top of the window while the tab scrolls. The page has no fixed header (the classic header and the
+   mode row scroll away with the page), so the bar sticks at top 0; it is opaque with a bottom rule so the builder and both
+   lists pass under it, and sits above the ranked list's sticky header (z-index 2) and the Build footer (5). The game strip
+   is not sticky. */
+#lineup-panel > .filterbar {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: var(--bg);
+  padding: var(--sp-2) 0;
+  margin-bottom: var(--sp-2);
+  border-bottom: 1px solid var(--border);
+}
+/* A scroll to an element of the Optimizer's part lands below the sticky bar: Build scrolls to #opt-results (lineup-optimizer.js), the
+   ?scrollTo= dev link to a saved-lineups container by its id, and a keyboard focus on one of the part's boxes (the save name, the
+   Optimizer's number boxes) is kept clear of the bar too. Only the mount's elements, never the bar's own controls: a margin on the
+   search box made Tab into it scroll the page by the bar's height (👁 step 4). app.js keeps --filterbar-h on #lineup-panel to the
+   bar's height while it sticks, else 0. */
+#lineup-mount [id] { scroll-margin-top: calc(var(--filterbar-h, 0px) + var(--sp-2)); }
+/* On a phone the bar stays in the page as before (the phone layout is parked): a bar this tall fixed to the top would leave no room. */
+@media (max-width: 700px) { #lineup-panel > .filterbar { position: static; } }
+/* The ranked list under the builder: a fixed height of 60% of the window (420px at least) snapped to whole rows, with its own
+   scroll; public/js/scroll-panels.js sets it inline. While expanded the full-screen rule (.scroll-panel.is-expanded) applies. */
+#ranked-list { margin-top: var(--sp-5); }
+/* The Build footer's sticky place is the end of the whole tab: the panel is a column, the mount's children are its items
+   (display: contents) and the footer is ordered after the ranked list, so it stays pinned to the window's bottom and never rests
+   mid-page above the ranked list; it is hidden while neither the builder nor its results are in view (public/js/lineup.js
+   watchFooter and footerShown). :not([hidden]) keeps the hidden attribute working on other tabs. */
+#lineup-panel:not([hidden]) { display: flex; flex-direction: column; }
+#lineup-mount { display: contents; }
+#lineup-mount > .opt-footer { order: 1; }
+#lineup-mount > .opt-footer.is-away { visibility: hidden; }
+/* Its Expand bar names the list (the title shows only while expanded on the other tables). */
+#ranked-list > .expand-bar:not(.is-expanded) { justify-content: space-between; }
+#ranked-list > .expand-bar .expand-title { display: inline; }
 
 .lineup-controls { display: flex; flex-wrap: wrap; align-items: flex-end; gap: var(--sp-3); margin-bottom: var(--sp-3); }
 .lineup-control { display: flex; flex-direction: column; gap: 2px; font-size: var(--fs-sm); color: var(--text-muted); }

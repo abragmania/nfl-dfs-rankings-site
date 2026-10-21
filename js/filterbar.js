@@ -31,11 +31,11 @@ export function updateFilterSummary(container, { filteredCount, totalCount, acti
   slot.querySelector("#active-game-chip").addEventListener("click", () => onClearGame?.());
 }
 
-/** The position chips (All, QB, ... FLEX), one copy for the filter bar and the Optimizer tab's pool. `extraAttrs` is
- *  added to every button (the pool passes its data-action). */
-export function posChipsHtml(currentPos, extraAttrs = "") {
+/** The position chips (All, QB, ... FLEX) of the filter bar, which since Optimizer-first step 4 filters the Optimizer pool and the
+ *  ranked list alike (the pool's own chip row is gone). */
+export function posChipsHtml(currentPos) {
   return POSITION_CHIPS.map(
-    (pos) => `<button type="button" class="chip pos-chip${pos === currentPos ? " active" : ""}"${extraAttrs ? ` ${extraAttrs}` : ""} data-pos="${pos}">${pos}</button>`
+    (pos) => `<button type="button" class="chip pos-chip${pos === currentPos ? " active" : ""}" data-pos="${pos}">${pos}</button>`
   ).join("");
 }
 

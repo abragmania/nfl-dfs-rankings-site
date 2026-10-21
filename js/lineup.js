@@ -1,8 +1,9 @@
-// Optimizer tab (PROJECT.md D21/D32, D70, Part 4 Lineup Builder screen). Secondary tab, never the main
-// page. Top: the Optimizer band (its max-per-team and D73 QB-stack controls included). Left column: the
-// nine DraftKings classic slots (D1), a salary bar, totals, Clear all and Save lineup. Right column: the same rows the Rankings
-// tab is currently showing — same store, same filters (its own position chips set them), same sort (its headers set
-// it) — with per-row Lock, Exclude and Add-to-slot buttons.
+// Optimizer tab (PROJECT.md D21/D32, D70, Part 4 Lineup Builder screen): the main screen since Optimizer-first step 4 (D21's
+// "secondary section" wording is amended by step 6's documents). Top: the Optimizer band (its max-per-team and D73 QB-stack controls included). Left column: the
+// nine DraftKings classic slots (D1), a salary bar, totals, Clear all and Save lineup. Right column: the same rows the ranked list
+// below is showing — same store, same filters (the one filter bar above sets them, Optimizer-first step 4), same sort (its headers
+// set it) — with per-row Lock, Exclude and Add-to-slot buttons. app.js passes #lineup-mount as the container: only that part of
+// #lineup-panel is redrawn here, never the filter bar, game strip or ranked list around it.
 //
 // State (locks, excludes, the nine slots, and the option controls) lives in this module for the life of
 // the page load, independent of the app-level store in state.js (this tab never edits Proj/Own, and
@@ -27,15 +28,13 @@ import { rowIsOut, twoGunOutReason, STATUS_INFO } from "./table.js"; // D43: the
 import { shownTotal } from "./totals.js";
 import { handBuild } from "./lineup-builds.js";
 import { cleanSortState } from "./lineup-sort.js"; // Adam 2026-10-17: sort options; geo own = geometric mean of ownership, his multiplicative uniqueness
-import { wireShowAllButtons } from "./filterbar.js";
 import { optExposureHtml, sortExposure, exposureLimit, minLimit, exposureMark, zeroMinRows } from "./lineup-exposure.js";
-import { wirePoolSearchChip } from "./lineup-search.js";
 import { newQbState, listedQbs, pruneEntries, cleanSavedEntries, qbStacksPayload } from "./lineup-qb-stacks.js";
 import { getLineups, postLineup, putLineup, deleteLineup } from "./api.js";
 import { renderEntriesSection, wireEntries } from "./entries-wire.js";
 import { phoneMinHeight, panelMinHeight } from "./expand.js";
 import { defaultCashState, cleanCashState, swapModeStash } from "./lineup-cash.js";
-import { setPoolCallbacks, togglePoolStarredOnly, poolStarClick, panelHtml, savedOfActiveSlate } from "./lineup-view.js";
+import { setPoolCallbacks, poolStarClick, panelHtml, savedOfActiveSlate } from "./lineup-view.js";
 import { cleanPlayerMax, boardModeOf, slateKeyOf, uniqueSavedName, lockedIds, cashPick, wireOptimizer } from "./lineup-optimizer.js";
 
 export const LINEUP_SLOTS = ["QB", "RB", "RB", "WR", "WR", "WR", "TE", "FLEX", "DST"];
@@ -292,6 +291,44 @@ export function renderLineupPanel(container, callbacks) {
   const newPool = container.querySelector(".lineup-rows-wrap");
   if (newPool) newPool.scrollTop = savedScrollTop;
   resizeLineupScrollPanels(container);
+  watchFooter(container);
+}
+
+// Optimizer-first step 4: the ranked list sits under this part. style.css lays #lineup-panel out as a column with this mount as
+// display: contents and the Build footer ordered last, so the footer's sticky place is the end of the whole tab: it stays pinned to the
+// window's bottom and never rests mid-page between the results and the ranked list (it stays in this mount's DOM, so its wiring is as
+// before). It is shown only while the builder or its results are in view (footerShown; .is-away hides it, visibility only). The ranked
+// list below gives the room for the last slot and the last result to scroll into view above it.
+/** Whether the Build footer shows: some of the Optimizer's part (its first element's top to the results' bottom) lies between the
+ *  sticky filter bar's bottom and the footer's top. All four are window coordinates in px. */
+export function footerShown({ partTop, partBottom, barBottom, footerTop }) {
+  return partBottom > barBottom && partTop < footerTop;
+}
+
+let footerWatched = false;
+let footerFrame = 0;
+function updateFooter() {
+  footerFrame = 0;
+  const footer = lastContainer?.querySelector?.(":scope > .opt-footer");
+  const first = lastContainer?.firstElementChild;
+  const results = footer?.previousElementSibling;
+  const bar = document.querySelector("#filterbar");
+  if (!footer || !first || !results || !bar) return;
+  const rect = (el) => el.getBoundingClientRect();
+  footer.classList.toggle("is-away", !footerShown({ partTop: rect(first).top, partBottom: rect(results).bottom, barBottom: rect(bar).bottom, footerTop: rect(footer).top }));
+}
+
+function watchFooter(container) {
+  if (typeof window === "undefined" || !container.querySelector?.(":scope > .opt-footer")) return; // a test's stand-in container
+  if (!footerWatched) {
+    footerWatched = true;
+    const later = () => {
+      if (!footerFrame) footerFrame = requestAnimationFrame(updateFooter);
+    };
+    window.addEventListener("scroll", later, { passive: true });
+    window.addEventListener("resize", later);
+  }
+  updateFooter();
 }
 
 let entriesContainer = null; // the Entries tab's panel, once drawn (rules repo 2026-10-17)
@@ -699,25 +736,12 @@ function wire(container) {
       commit();
     });
   });
-  // Pool position chips and sortable headers write the store's global filter / sort, exactly what the Rankings tab's
-  // chips and headers write (app.js filterCallbacks.onPosChange / onSortClick), so "current filters" stays true.
-  // The store change re-renders this panel (keeping the pool's scroll position). The Rankings filter bar's own chips
-  // only get class toggles, so they are kept in step here.
-  container.querySelectorAll("[data-action='pool-pos']").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      const pos = btn.dataset.pos;
-      document.querySelectorAll("#pos-chips .pos-chip").forEach((c) => c.classList.toggle("active", c.dataset.pos === pos));
-      store.setFilters({ pos });
-    });
-  });
-  container.querySelectorAll("[data-action='pool-starred']").forEach((btn) => {
-    btn.addEventListener("click", togglePoolStarredOnly);
-  });
+  // The pool's sortable headers write the store's global sort, exactly what the ranked list's headers write (app.js
+  // onSortClick); its filters come from the one filter bar above (Optimizer-first step 4: the pool's own chip row and
+  // search chip are gone, and with them its Show all players button). The store change re-renders this panel (keeping the pool's scroll position).
   container.querySelectorAll("[data-action='toggle-star']").forEach((btn) => {
     btn.addEventListener("click", () => poolStarClick(btn.dataset.id));
   });
-  wireShowAllButtons(container);
-  wirePoolSearchChip(container);
   container.querySelectorAll(".lineup-rows-table th[data-col]").forEach((th) => {
     th.addEventListener("click", () => {
       const col = th.dataset.col;
@@ -936,5 +960,5 @@ function syncOptimizerSlate() {
 }
 
 // Re-exports: every name this module exported before the split is still importable from here (tabs.js, the tests and the site build import them).
-export { setPoolCallbacks, slotPlayerHtml, savedLineupSlotHtml, savedCeilHtml, savedLineupCardHtml, savedGroupsHtml, savedLineupPlayers, savedLineupFigures, saveControlsHtml, poolPosChipsHtml, togglePoolStarredOnly, poolStarClick, rightColumnHtml, lineupTotalsOf, ruleRowsHtml, starredQbQualifiers, usableQbIds, starredQbNote, avoidChipsHtml, optLineupCardHtml, optNotesHtml, bendsLineHtml, cardIsSaved } from "./lineup-view.js";
+export { setPoolCallbacks, slotPlayerHtml, savedLineupSlotHtml, savedCeilHtml, savedLineupCardHtml, savedGroupsHtml, savedLineupPlayers, savedLineupFigures, saveControlsHtml, poolStarClick, rightColumnHtml, lineupTotalsOf, ruleRowsHtml, starredQbQualifiers, usableQbIds, starredQbNote, avoidChipsHtml, optLineupCardHtml, optNotesHtml, bendsLineHtml, cardIsSaved } from "./lineup-view.js";
 export { swapScanHook, parseWhole, parsePct, exposureProblem, exposureOfLineups, lineupSetKey, savedSetKeys, savedForSlate, uniqueSavedName, playerMaxProblem, playerMinProblem, minSlotsFull, minSlotWords, dkKeyOfRow, minRowOut, pairClash, lockStackRefuses, minLockSkips, playerMinPositionProblem, lockedIds, requestCount, minProblemFor, buildGenerateSettings, buildGeneratePayload, slotsForSave, duplicateSaveStatus } from "./lineup-optimizer.js";

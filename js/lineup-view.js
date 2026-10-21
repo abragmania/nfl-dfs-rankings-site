@@ -6,21 +6,18 @@ import { escapeHtml, money, dec1 } from "./format.js";
 import { store, matchesPosition, filterRows, sortRows, passesProjFloor, activeSlateRows, activeSlateGames, boardHasCeilings, isTwoGunMode } from "./state.js";
 import { sortableHeadHtml } from "./tabs.js";
 import { matchupText, gradedCellHtml, rowIsOut } from "./table.js"; // D43: the one copy of "vs DAL" / "@ DET"
-import { playerLineHtml, matchupPillHtml, showPos, teamLogoHtml } from "./player-row.js";
+import { playerLineHtml, showPos } from "./player-row.js";
 import { shownTotal, lineupCeilTotal, perSpotText } from "./totals.js";
 import { buildTypeText, groupByBuild } from "./lineup-builds.js";
 import { lineupFigures, geoOwn, geoText, medianText, sortKeysFor, sortLineups, effectiveSort, sortRowHtml } from "./lineup-sort.js"; // Adam 2026-10-17: sort options; geo own = geometric mean of ownership, his multiplicative uniqueness
 import { rowsGradedForView } from "./grade.js";
-import { posChipsHtml, showAllToggleHtml } from "./filterbar.js";
 import { filterLineups, bulkLabel, filterBarHtml } from "./lineup-filter.js";
 import { OPT_POSITIONS, optExposureHtml, zeroMinRows } from "./lineup-exposure.js";
-import { cardPlayerRowHtml, cardDecor, badgeHtml, ownParen, teamColours, teamColourStyle } from "./lineup-card.js";
+import { cardPlayerRowHtml, cardDecor, teamColours, teamColourStyle } from "./lineup-card.js";
 import { lineupRoles, roleTagsHtml } from "./lineup-marks.js";
 import { paletteForRows } from "./team-palette.js";
-import { poolSearchChipHtml } from "./lineup-search.js";
 import { settingRowHtml, settingGroupHtml, settingChipsRowHtml, settingSubtitleHtml, activeRulesSummary, switchButtonHtml, switchCheckboxHtml, numberBoxHtml } from "./lineup-settings.js";
 import { listedQbs, qbStacksPayload, qbListHtml, qbPanelsHtml, defaultsApply, SPREAD_HINT } from "./lineup-qb-stacks.js";
-import { TEAM_BY_ABBR } from "./teams-data.js";
 import { slateLineups } from "./entries.js";
 import { TAG_OPTIONS, numberLineups, lineupPrefix } from "./lineup-tags.js";
 import {
@@ -60,12 +57,10 @@ export function panelHtml() {
   // 🔵 finding 3: any placed player with a null own% makes the total unknown, not smaller.
   const ownText = totals.totalOwn == null ? "— (not every player has a published number)" : `${Math.round(totals.totalOwn)}% own`;
 
-  // The Optimizer band is the first thing in the tab (DECISIONS.md D70, Adam 2026-10-10: "move the optimizer stuff up"); the lineup
-  // it builds from sits right under it, its results and the saved lineups below.
-  const noteList = [board?.injuryNote, ...(board?.tabNotes?.favorites ?? [])].filter(Boolean); // the favorites notes: the Favorites tab is gone, so the Optimizer shows them (an unreadable overrides file)
-  const injuryNoteHtml = noteList.length ? `<p class="tab-note">${escapeHtml(noteList.join(" "))}</p>` : "";
+  // The Optimizer band is the first thing in this part of the tab (DECISIONS.md D70, Adam 2026-10-10: "move the optimizer stuff up"); the
+  // lineup it builds from sits right under it, its results and the saved lineups below. The injury note and the unreadable-overrides
+  // note are not drawn here: the ownership banner just above this part (#own-banner, app.js) carries both (Optimizer-first step 4).
   return `
-    ${injuryNoteHtml}
     ${optimizerControlsHtml(rowById)}
     <div class="lineup-layout">
       <div class="lineup-left">
@@ -79,8 +74,7 @@ export function panelHtml() {
         ${buildStatusHtml()}
       </div>
       <div class="lineup-right">
-        <h3 class="lineup-right-title">Rankings (current filters)</h3>
-        ${poolPosChipsHtml()}${poolSearchChipHtml(store.get().filters.search)}
+        <h3 class="lineup-right-title">Player pool</h3>
         ${rightColumnHtml(activeSlateRows(board), rowById)}
       </div>
     </div>
@@ -438,14 +432,6 @@ export function setPoolCallbacks(callbacks) {
   poolCallbacks = callbacks;
 }
 
-/** The Rankings filter bar's position chips (filterbar.js's one copy), setting the same global position filter. */
-export function poolPosChipsHtml() {
-  const { pos, showAllPlayers, starredOnly } = store.get().filters;
-  // Adam 2026-10-17: "Starred only" sits by the position tabs and is the Rankings filter itself (filters.starredOnly), so it holds across tabs.
-  const starredChip = `<button type="button" data-action="pool-starred" class="chip toggle-chip${starredOnly ? " active" : ""}" aria-pressed="${starredOnly ? "true" : "false"}">★ Favorites only</button>`;
-  return `<div class="chip-group lineup-pos-chips">${posChipsHtml(pos, `data-action="pool-pos"`)}${starredChip}${showAllToggleHtml(showAllPlayers, `data-action="show-all"`)}</div>`;
-}
-
 /** Starred only is on and nothing is listed: say whether no one is starred at this position or other filters hide them. */
 function poolEmptyRowHtml(graded, pos, colspan) {
   const hidden = graded.filter((r) => r.starred && matchesPosition(r, pos)).length;
@@ -457,13 +443,6 @@ function poolEmptyRowHtml(graded, pos, colspan) {
     ? `${hidden} starred at this position ${hidden === 1 ? "is" : "are"} hidden by other filters (projection floor, teams, salary, game or search)`
     : pos === "All" ? "No starred players" : "No starred players at this position";
   return `<tr><td class="lineup-pool-empty" colspan="${colspan}">${text}</td></tr>`;
-}
-
-/** The Starred only chip's click: flips the Rankings filter and keeps Rankings' own chip in step. */
-export function togglePoolStarredOnly() {
-  const on = !store.get().filters.starredOnly;
-  document.querySelector("#starred-toggle")?.classList.toggle("active", on);
-  store.setFilters({ starredOnly: on });
 }
 
 /** A pool star click goes to app.js's star toggle; with none passed (Rankings never rendered) it says so. */
@@ -826,8 +805,10 @@ function cashControlsHtml(rowById) {
     </div>`;
 }
 
-/** Adam 2026-10-17: the Build button always in view (sticky footer at the tab's end). The summary sentence and Build sit
- *  in the last child of the panel (#lineup-panel), so position: sticky holds them to the bottom of the screen. */
+/** Adam 2026-10-17: the Build button always in view (sticky footer at the tab's end). The summary sentence and Build are the last
+ *  thing panelHtml draws; style.css orders them after the ranked list in #lineup-panel's column (Optimizer-first step 4), so
+ *  position: sticky holds them to the bottom of the screen over the whole tab, and lineup.js watchFooter hides them while neither the
+ *  builder nor its results are in view. */
 function optimizerFooterHtml(board) {
   const busy = opt.generating || opt.saving || (opt.mode === "cash" && cashBasisInfo(board).blocked); // cash: Build is disabled whenever cashBasisInfo blocks (no Cash basis, or no medians on a TwoGun basis)
   // 🔵 d842f0b: a refusal from Build must show where Build was pressed, which can be far below the settings head.

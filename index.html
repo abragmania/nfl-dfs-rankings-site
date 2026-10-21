@@ -90,17 +90,23 @@
          hidden on the main slate. Filled by app.js's renderSlateChrome. -->
     <p id="slate-note" class="tab-note" hidden></p>
 
-    <div id="rankings-panel" class="panel">
+    <!-- The Optimizer tab, the main screen (PROJECT.md Part 4 "Optimizer first", step 4; Rankings folded in here). The game strip,
+         the filter bar (sticky) with its banner, and the ranked list are static markup drawn by app.js; #lineup-mount is the only part
+         public/js/lineup.js's renderLineupPanel redraws, so a redraw never replaces the search box (its caret and value survive a keystroke). -->
+    <div id="lineup-panel" class="panel">
       <section id="gamestrip" class="gamestrip"></section>
       <section id="filterbar" class="filterbar"></section>
       <p id="own-banner" class="tab-note own-banner"></p>
-      <div class="table-wrap scroll-panel">
-        <table id="rankings-table" class="rankings-table">
-          <thead id="rankings-thead"></thead>
-          <tbody id="rankings-tbody"></tbody>
-        </table>
+      <div id="lineup-mount" class="lineup-mount"></div>
+      <div id="ranked-list" class="ranked-list">
+        <div class="table-wrap scroll-panel">
+          <table id="rankings-table" class="rankings-table">
+            <thead id="rankings-thead"></thead>
+            <tbody id="rankings-tbody"></tbody>
+          </table>
+        </div>
+        <div class="table-legend">coloured number = your own (&times; puts the original back) &middot; &mdash; = nobody has published one</div>
       </div>
-      <div class="table-legend">coloured number = your own (&times; puts the original back) &middot; &mdash; = nobody has published one</div>
     </div>
 
     <!-- Sources view (Adam 2026-10-18): ONE page (public/js/sources-page.js) shown while the header's Sources link is on, with the
@@ -109,7 +115,6 @@
     <div id="projections-panel" class="panel" hidden></div>
     <div id="ownership-panel" class="panel" hidden></div>
     <div id="teams-panel" class="panel" hidden></div>
-    <div id="lineup-panel" class="panel" hidden></div>
     <div id="showdown-panel" class="panel" hidden></div>
     <div id="entries-panel" class="panel" hidden></div>
     <div id="empty-state" class="empty-state" hidden></div>
@@ -207,6 +212,10 @@
           }
           if (btn) {
             btn.click();
+            tabClicked = true;
+          } else if (!onSources && document.querySelector(scope + " .tab-btn")) {
+            // The tab bar is drawn but has no such tab: a retired key ("?tab=rankings", "?tab=favorites"; tabs.js RETIRED_TABS) or an
+            // unknown one, which the page already shows as the Optimizer, so there is nothing to click and no reason to keep polling.
             tabClicked = true;
           }
         }

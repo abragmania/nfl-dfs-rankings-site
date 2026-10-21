@@ -1,5 +1,5 @@
 // Expand / Minimize for the player tables (Adam, 2026-10-10: "make it so I can expand the list to take up my whole
-// view and then minimize that after"). Rankings, Projections and Projected Ownership each get a small
+// view and then minimize that after"). The ranked list on the Optimizer tab, Projections and Projected Ownership each get a small
 // bar above their scroll panel holding an "Expand" button. Expanding turns that panel (and its bar) into a
 // full-screen overlay; minimizing puts it back where it was, scroll position kept.
 //
@@ -7,8 +7,10 @@
 // working while expanded. The top of the file is pure state helpers (tests/expand.test.mjs); the DOM part below
 // only runs when app.js calls initExpand().
 
+// `scrollSelector`: which scroll panel inside the tab is the target, when the tab holds more than one (the Optimizer tab also
+// holds the pool's scroll panel, which is not expandable; Optimizer-first step 4 put the ranked list there). Default: the first.
 export const EXPAND_TARGETS = [
-  { panelId: "rankings-panel", title: "Rankings" },
+  { panelId: "lineup-panel", title: "Rankings", scrollSelector: "#ranked-list > .scroll-panel" },
   { panelId: "projections-panel", title: "Projections" },
   { panelId: "ownership-panel", title: "Projected Ownership" },
 ];
@@ -63,7 +65,7 @@ let savedScroll = null;
 
 function panelFor(def) {
   const root = document.getElementById(def.panelId);
-  return root ? root.querySelector(".scroll-panel") : null;
+  return root ? root.querySelector(def.scrollSelector ?? ".scroll-panel") : null;
 }
 
 function buildBar(def) {

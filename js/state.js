@@ -82,7 +82,7 @@ class Store {
     this.state = {
       board: null,
       loadError: null,
-      activeTab: "rankings",
+      activeTab: "lineup", // the Optimizer, the main screen since Optimizer-first step 4 (public/js/tabs.js TABS)
       activeSlateKey: null, // key of the second slate on screen (D57), null = the main slate
       filters: defaultFilters(),
       sort: { col: "value", dir: "desc" },
