@@ -57,6 +57,11 @@ export function postShowdownProjectionsPaste() {
   return readOnly();
 }
 
+// A saved card's letter is changed in the app only: the site's saved lineups, its own device ones included, take no letter.
+export function putShowdownLineupTag() {
+  return readOnly();
+}
+
 // The Showdown Entries tab holds Adam's private entries files and is not on the site (showdown/tabs.js visibleShowdownTabs); all three refuse.
 export function getShowdownEntries() {
   return readOnly();

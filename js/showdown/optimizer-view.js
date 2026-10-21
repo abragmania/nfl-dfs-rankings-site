@@ -18,7 +18,7 @@ import { OBJECTIVES, TEAM_OPTIONS, MAX_COUNT, MAX_UNIQUE, effectiveObjective, bo
 import { filterLineups, bulkLabel, filterBarHtml } from "../lineup-filter.js";
 
 // Classic's words (lineup-view.js NO_MATCH_TEXT) for a filter no lineup passes.
-const NO_MATCH_TEXT = "No lineups here have all of the chosen players.";
+export const NO_MATCH_TEXT = "No lineups here have all of the chosen players."; // the saved section's too (optimizer.js optimizerSavedFilter)
 
 // The Showdown pool's position chips (D41): the six positions a Showdown board carries, K included and no FLEX chip, as the
 // Rankings filter bar's (view.js SD_POSITION_CHIPS), in the classic pool's row with Show all players. Classic's Starred only is
@@ -246,12 +246,13 @@ export function provenanceTitle(r) {
 /** The Captain and FLEX exposure tables of the cards on screen, side by side and never summed (lineup-exposure.js optExposureHtml's
  *  Showdown groups). Each row's id is its role-aware key ("cpt:<person>", "flex:<person>"): the key of its Min / Max mark and, when
  *  `pick` is given (D77), of the name button that filters by him in that role. `pick` = {isChosen(key)}. `of`: the number of
- *  lineups in the batch when only some are shown (the filter is on), for the subtitle; null otherwise. */
-export function exposureHtml(lineups, board, sortDir, marks, pick = null, of = null) {
+ *  lineups in the batch when only some are shown (the filter is on), for the subtitle; null otherwise. `noun`: "new" for the batch,
+ *  "saved" for the saved lineups (lineup-saved.js), the word before "lineup" in that subtitle. */
+export function exposureHtml(lineups, board, sortDir, marks, pick = null, of = null, noun = "new") {
   const t = exposureTables(lineups);
   const rowsOf = (role, list) => list.map((e) => ({ ...(rowForSlot(board, e.person) ?? {}), id: `${role}:${e.person}`, name: e.name, count: e.count, pct: e.pct, own: e.own }));
   const n = lineups.length;
-  const lead = of === null ? `${n} new lineup${n === 1 ? "" : "s"}` : `${n} of ${of} new lineup${of === 1 ? "" : "s"}, filtered`;
+  const lead = of === null ? `${n} ${noun} lineup${n === 1 ? "" : "s"}` : `${n} of ${of} ${noun} lineup${of === 1 ? "" : "s"}, filtered`;
   const subtitle = `${lead}; Captain and FLEX counted apart, never summed`;
   return optExposureHtml(null, subtitle, sortDir, pick, marks, {
     title: "Exposure",

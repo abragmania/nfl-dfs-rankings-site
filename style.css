@@ -2347,6 +2347,11 @@ td.opt-exp-opp { color: var(--text-muted); } /* the cells only: the Matchup head
 .sd-opt-results .opt-exp-table th { position: static; } /* no inner scroll box now, so the head stays with its table */
 /* One game: every row's matchup is "vs" or "@" the other team, which the team chip already says, so the column goes (🔵 866b0ce B10: by class, not position). */
 .sd-opt-results .opt-exp-table .opt-exp-opp { display: none; }
+/* The saved section's Captain and FLEX tables (D77, live app) look the same as the batch's: the same four rules, for #sd-saved-lineups. */
+#sd-saved-lineups .opt-exp-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+#sd-saved-lineups .opt-exp-list { max-height: none; overflow: visible; }
+#sd-saved-lineups .opt-exp-table th { position: static; }
+#sd-saved-lineups .opt-exp-table .opt-exp-opp { display: none; }
 /* A GPP card's meter strip: copies, likely range, gap to best; the dot ends the group before it, as .opt-nowrap's. The not-on-TwoGun's-board names may wrap. */
 .sd-card-meter { display: flex; flex-wrap: wrap; gap: 0 var(--sp-1); font-size: var(--fs-sm); color: var(--text-muted); }
 .sd-card-meter > span { white-space: nowrap; }
@@ -2367,6 +2372,7 @@ td.opt-exp-opp { color: var(--text-muted); } /* the cells only: the Matchup head
 @media (max-width: 700px) {
   .lineup-left.sd-opt-left { flex: 0 0 auto; max-width: 100%; width: 100%; }
   .sd-opt-results .opt-cards, .sd-opt-results .opt-exp-grid { grid-template-columns: minmax(0, 1fr); }
+  #sd-saved-lineups .opt-exp-grid { grid-template-columns: minmax(0, 1fr); }
 }
 
 /* Phone (Adam 2026-10-10): the Lineup Builder stacks (lineup above the player table) and its controls wrap, so the

@@ -9,16 +9,16 @@
 // width below both columns, above the swaps and the saved lineups.
 import { escapeHtml, money, dec1 } from "../format.js";
 import { matchupPillHtml } from "../player-row.js";
-import { postShowdownLineupOptimize, getShowdownLineups, postShowdownLineup, deleteShowdownLineup, putShowdownLineupName } from "./api.js";
+import { postShowdownLineupOptimize, getShowdownLineups, postShowdownLineup, deleteShowdownLineup, putShowdownLineupName, putShowdownLineupTag } from "./api.js";
 import { sdLine, SD_PILL } from "./table.js";
 import { listsHtml, paintLists, wireLists, setListControls } from "./lineup-lists.js"; // the Captain list and the FLEX list, each sortable (Adam 2026-10-18)
 // The Showdown Optimizer (Adam 2026-10-19, sketch A): its band over the builder, its Make row under it, its batch full width below, its controls on the pool rows.
-import { syncOptimizer, optimizerLive, optimizerBandHeadHtml, optimizerBandBoxesHtml, optimizerGoRowHtml, optimizerResultsBlockHtml, optimizerExcludes, poolChipsRowHtml, listControls, wirePoolControls, wireOptimizer } from "./optimizer.js";
+import { syncOptimizer, optimizerLive, optimizerBandHeadHtml, optimizerBandBoxesHtml, optimizerGoRowHtml, optimizerResultsBlockHtml, optimizerExcludes, optimizerSavedFilter, poolChipsRowHtml, listControls, wirePoolControls, wireOptimizer } from "./optimizer.js";
 import { handBuild } from "../lineup-builds.js";
 import { requestFailureText } from "./read-json.js";
 import { slotLook, slotLogoHtml, controlsHtml as controlsMarkup } from "./lineup-look.js"; // the classic team rows on the slots and saved rows, the two-row controls (Adam 2026-10-18 9:09 PM)
 // The saved-lineups view lives in ./lineup-saved.js (state stays here); the two pure helpers keep their old exports from this module.
-import { findRow, SALARY_CAP, FLEX_COUNT, savedProjHtml, savedLineupCardHtml as savedCardHtml, savedLineupsSectionHtml as savedSectionHtml, wireSavedCards } from "./lineup-saved.js";
+import { findRow, SALARY_CAP, FLEX_COUNT, savedProjHtml, savedLineupCardHtml as savedCardHtml, savedLineupsSectionHtml as savedSectionHtml, wireSavedCards, cardPutGuard } from "./lineup-saved.js";
 export { savedLineupSlotHtml, savedProjTotal } from "./lineup-saved.js";
 import { syncSwaps, swapsPanelHtml, wireSwaps } from "./lineup-swaps.js"; // the uniqueness swaps, full width below both columns (Adam 2026-10-18)
 import { showAllToggleHtml, wireShowAllButtons } from "../filterbar.js";
@@ -56,6 +56,7 @@ let lastBoard = null;
 let lastKey = null;
 let openSources = null; // view.js's opener of the Sources page, for the meter's figures label (kept across commit's redraws)
 let savedFetchInFlightKey = null;
+const cardPuts = cardPutGuard(); // the saved cards' PUTs in flight and their refusals
 
 setListControls(listControls); // the pool rows' Min % / Max % boxes and lock / In / exclude buttons (live app only)
 
@@ -276,15 +277,10 @@ async function doSaveLineup(key, name) {
   commit();
 }
 
-async function doRenameLineup(key, id, name) {
-  state.renamingId = null;
-  commit();
-  try {
-    const data = await putShowdownLineupName(key, id, name);
-    if (data && data.ok !== false && Array.isArray(data.lineups)) state.savedLineups = data.lineups;
-  } catch (e) {
-    // Best-effort: nothing destructive happened, the list just won't reflect the rename until reloaded.
-  }
+// A saved card's one PUT, rename or letter (cardPutGuard): the answer's list replaces ours; a refusal shows on the card and the redraw resets the select.
+async function putCard(key, id, send) {
+  const gameAtStart = lastKey;
+  await cardPuts.run(id, send, { redraw: commit, still: () => lastKey === gameAtStart, apply: (list) => { state.savedLineups = list; } });
   commit();
 }
 
@@ -436,13 +432,14 @@ function listCtx(board) {
   };
 }
 
-// The saved card with the panel's open rename box and delete prompt (the card itself is lineup-saved.js's).
-export function savedLineupCardHtml(lineup, board, figures = playerFigures) {
-  return savedCardHtml(lineup, board, figures, { renamingId: state.renamingId, deleteConfirmId: state.deleteConfirmId });
+// The saved card with the panel's rename box, delete prompt and PUT state (lineup-saved.js draws it); `numbers`: numberLineups of this game's saved lineups.
+export function savedLineupCardHtml(lineup, board, figures = playerFigures, numbers = null) {
+  return savedCardHtml(lineup, board, figures, { renamingId: state.renamingId, deleteConfirmId: state.deleteConfirmId, numbers, busy: cardPuts.busy.has(lineup.id), error: cardPuts.errors[lineup.id] ?? null });
 }
 
+// The Optimizer's "only lineups with" list filters these cards too, live app only (D77; optimizer.js optimizerSavedFilter).
 function savedLineupsSectionHtml(board) {
-  return savedSectionHtml(board, { loaded: state.savedLoaded, error: state.savedError, lineups: state.savedLineups }, (l) => savedLineupCardHtml(l, board));
+  return savedSectionHtml(board, { loaded: state.savedLoaded, error: state.savedError, lineups: state.savedLineups }, (l, numbers) => savedLineupCardHtml(l, board, undefined, numbers), optimizerSavedFilter(board));
 }
 
 function panelHtml(board) {
@@ -558,7 +555,8 @@ function wire(container, board, key) {
       state.renamingId = null;
       commit();
     },
-    renameSave: (id, name) => doRenameLineup(key, id, name),
+    renameSave: (id, name) => { state.renamingId = null; putCard(key, id, () => putShowdownLineupName(key, id, name)); },
+    tag: (id, tag) => putCard(key, id, () => putShowdownLineupTag(key, id, tag)),
     deleteStart: (id) => {
       state.deleteConfirmId = id;
       state.renamingId = null;

@@ -1,5 +1,5 @@
 {
-  "publishedAt": "2026-10-21T13:51:16.857Z",
+  "publishedAt": "2026-10-21T14:18:18.538Z",
   "season": 2026,
   "week": 6,
   "boardGeneratedAt": "2026-10-21T13:30:16.689Z",
@@ -8,7 +8,7 @@
   "showdowns": [
     "2026-w07-NECHI"
   ],
-  "sourceCommit": "032f8916e44c797db2465c790565033011447c47",
+  "sourceCommit": "b185779f2194c359f6c2167ab994fd44004c8418",
   "appCommit": "4867b61185a1496f5dd4ad9fd303fb8976396dc4",
   "machine": "this machine",
   "matchups": false

@@ -1,6 +1,10 @@
-// The Showdown Lineup Builder's saved-lineups view: the saved card, its slot rows, its projection total, the section around the
-// cards, and the card buttons' wiring. The panel's state stays in ./lineup.js, which hands what this reads in as arguments.
+// The Showdown Lineup Builder's saved-lineups view: the saved card (number, letter, slots, totals), the section around the
+// cards (with the "only lineups with" filter and its exposure tables on the live app, D77), the card buttons' wiring and the
+// one-PUT-per-card guard. The panel's state stays in ./lineup.js, which hands what this reads in as arguments.
 import { escapeHtml, money, dec1 } from "../format.js";
+import { TAG_OPTIONS, numberLineups, lineupPrefix } from "../lineup-tags.js"; // the one copy of the number / letter helpers
+import { filterLineups } from "../lineup-filter.js";
+import { requestFailureText } from "./read-json.js";
 import { sdLine } from "./table.js";
 import { lineupModeOf, cashBadgeHtml } from "../lineup-cash.js";
 import { showdownPalette } from "./lineup-look.js";
@@ -60,9 +64,16 @@ export function savedProjHtml(lineup, board, figures = playerFigures) {
   return total === null ? "proj unknown (a player has no projection)" : `${dec1(total)} proj`; // the "·" before it is CSS (.saved-lineup-totals), as on classic's card
 }
 
-// `ui`: { renamingId, deleteConfirmId } — the panel's open rename box and delete prompt (lineup.js's state); both null draws neither.
+// `ui`: { renamingId, deleteConfirmId, numbers, busy, error } — the panel's open rename box and delete prompt (lineup.js's state; both
+// null draws neither), `numbers` = numberLineups over ALL of this game's saved lineups (the Entries tab's numbers; null draws no
+// number), `busy` = a PUT for this card is in flight (its letter and rename Save are disabled), `error` = the server's sentence for
+// this card's refused change (a badge on the card, as classic's lineupErrors badge).
 export function savedLineupCardHtml(lineup, board, figures = playerFigures, ui = {}) {
-  const { renamingId = null, deleteConfirmId = null } = ui;
+  const { renamingId = null, deleteConfirmId = null, numbers = null, busy = false, error = null } = ui;
+  const busyAttr = busy ? " disabled" : "";
+  const prefix = lineupPrefix(lineup, numbers);
+  const tagOptions = `<option value=""${lineup.tag ? "" : " selected"}>no letter</option>${TAG_OPTIONS.map((t) => `<option value="${t}"${t === lineup.tag ? " selected" : ""}>${t}</option>`).join("")}`;
+  const tagHtml = `<select class="saved-lineup-tag" data-action="sd-lineup-tag" data-id="${escapeHtml(lineup.id)}" aria-label="Letter for ${escapeHtml(lineup.name)}"${busyAttr}>${tagOptions}</select>`;
   const entries = (lineup.slots ?? []).map((s) => ({ slot: s.slot, row: findRow(board, s.playerId), snap: s }));
   let salaryUsed = 0;
   for (const e of entries) {
@@ -81,13 +92,14 @@ export function savedLineupCardHtml(lineup, board, figures = playerFigures, ui =
   const isConfirmingDelete = deleteConfirmId === lineup.id;
   const badges = [
     lineupModeOf(lineup) === "cash" ? cashBadgeHtml() : "", // a lineup saved from a Cash batch says so, as classic's Saved card does
+    error ? `<span class="saved-lineup-badge saved-lineup-badge-danger">${escapeHtml(error)}</span>` : "",
     incomplete ? `<span class="saved-lineup-badge saved-lineup-badge-warning">Incomplete</span>` : "",
     overCap ? `<span class="saved-lineup-badge saved-lineup-badge-danger">Over cap</span>` : "",
   ].join("");
   const nameHtml = isRenaming
     ? `<span class="saved-lineup-rename">
         <input type="text" class="saved-lineup-rename-input" data-rename-input value="${escapeHtml(lineup.name)}" />
-        <button type="button" class="saved-lineup-mini-btn" data-action="sd-rename-save" data-id="${escapeHtml(lineup.id)}">Save</button>
+        <button type="button" class="saved-lineup-mini-btn" data-action="sd-rename-save" data-id="${escapeHtml(lineup.id)}"${busyAttr}>Save</button>
         <button type="button" class="saved-lineup-mini-btn" data-action="sd-rename-cancel">Cancel</button>
       </span>`
     : `<button type="button" class="saved-lineup-name-btn" data-action="sd-rename-start" data-id="${escapeHtml(lineup.id)}" title="Click to rename">${escapeHtml(lineup.name)}</button>`;
@@ -104,7 +116,8 @@ export function savedLineupCardHtml(lineup, board, figures = playerFigures, ui =
   return `
     <div class="saved-lineup-card">
       <div class="saved-lineup-card-head">
-        ${nameHtml}
+        ${prefix ? `<span class="saved-lineup-prefix">${escapeHtml(prefix)} &middot;</span>` : ""}${nameHtml}
+        ${tagHtml}
         <span class="saved-lineup-time">${escapeHtml(formatSavedAt(lineup.savedAt))}</span>
         ${badges}
       </div>
@@ -120,9 +133,15 @@ export function savedLineupCardHtml(lineup, board, figures = playerFigures, ui =
     </div>`;
 }
 
-// `saved`: { loaded, error, lineups } (lineup.js's state); `cardOf(lineup)`: one card's html.
-export function savedLineupsSectionHtml(board, saved, cardOf) {
+// `saved`: { loaded, error, lineups } (lineup.js's state); `cardOf(lineup, numbers)`: one card's html, `numbers` = numberLineups over all
+// of this game's saved lineups, so a card's number is the Entries tab's number for the same lineup even while the filter hides others.
+// `filter` (the live app only, null elsewhere: the section is then drawn without it): the Optimizer's "only lineups with" list (D77),
+// { mustHave (the chosen role-aware keys), playersOf(lineup) (a saved lineup's men as lineup-filter.js reads them), exposureHtml(shown, of)
+// (the Captain and FLEX tables over the shown saved lineups; `of` = all of them while the filter hides some, else null), barHtml(shown, total)
+// (the chips bar, "" when the batch above already draws it), noMatchText }. The filter only hides; nothing saved is changed.
+export function savedLineupsSectionHtml(board, saved, cardOf, filter = null) {
   let body;
+  let titleCount = "";
   if (!saved.loaded) {
     body = `<div class="saved-lineups-loading">Loading…</div>`;
   } else if (saved.error) {
@@ -130,17 +149,71 @@ export function savedLineupsSectionHtml(board, saved, cardOf) {
   } else if (saved.lineups.length === 0) {
     body = `<div class="saved-lineups-empty">No saved lineups yet.</div>`;
   } else {
-    body = `<div class="saved-lineups-list">${saved.lineups.map((l) => cardOf(l)).join("")}</div>`;
+    const numbers = numberLineups(saved.lineups);
+    const n = saved.lineups.length;
+    const filtered = Boolean(filter) && filter.mustHave.length > 0;
+    const shown = filtered ? filterLineups(saved.lineups, filter.mustHave, filter.playersOf).map((e) => e.item) : saved.lineups;
+    const k = shown.length;
+    if (filtered) titleCount = ` <span class="opt-sub">${k} of ${n} saved lineup${n === 1 ? "" : "s"}, filtered</span>`;
+    body = [
+      filtered ? filter.barHtml(k, n) : "",
+      filter && k ? filter.exposureHtml(shown, filtered ? n : null) : "",
+      k ? `<div class="saved-lineups-list">${shown.map((l) => cardOf(l, numbers)).join("")}</div>` : `<div class="saved-lineups-empty">${escapeHtml(filter.noMatchText)}</div>`,
+    ].join("");
   }
   return `
     <div class="saved-lineups" id="sd-saved-lineups">
-      <h3 class="saved-lineups-title">Saved lineups</h3>
+      <h3 class="saved-lineups-title">Saved lineups${titleCount}</h3>
       ${body}
     </div>`;
 }
 
-// The saved cards' buttons. `actions`: { renameStart(id), renameCancel(), renameSave(id, name), deleteStart(id), deleteNo(), deleteYes(id), load(id) }.
+/**
+ * One PUT in flight per saved card (port of classic's putLineupGuarded, lineup.js; 🔵/👁 2026-10-17): the card is busy (its letter and
+ * rename Save disabled) until the answer, only the newest answer per card counts, and a refusal stays on the card until its next good
+ * PUT. `run(id, send, { redraw, still, apply })`: `send()` makes the request, `still()` says the game on screen is still the one it
+ * was sent for, `apply(lineups)` shows the server's list; true when the change held and its list was shown. `busy` (a Set of ids) and
+ * `errors` (id -> sentence) are read by the card.
+ */
+export function cardPutGuard() {
+  const busy = new Set();
+  const errors = {};
+  const seq = new Map(); // id -> the number of its newest PUT
+  let last = 0;
+  let applied = 0; // the newest PUT whose list is shown; an older answer never replaces it
+  async function run(id, send, { redraw, still, apply }) {
+    const mine = ++last;
+    seq.set(id, mine);
+    busy.add(id);
+    redraw();
+    let data = null;
+    let failure = null;
+    try {
+      data = await send();
+    } catch (e) {
+      failure = requestFailureText(e);
+    } finally {
+      if (seq.get(id) === mine) busy.delete(id);
+    }
+    if (seq.get(id) !== mine || !still()) return false;
+    if (!failure && data && data.ok !== false && Array.isArray(data.lineups)) {
+      delete errors[id];
+      if (mine < applied) return false;
+      applied = mine;
+      apply(data.lineups);
+      return true;
+    }
+    errors[id] = failure ?? data?.error?.message ?? "Could not save that change.";
+    return false;
+  }
+  return { busy, errors, run };
+}
+
+// The saved cards' buttons and letter selects. `actions`: { renameStart(id), renameCancel(), renameSave(id, name), deleteStart(id), deleteNo(), deleteYes(id), load(id), tag(id, letter | null) }.
 export function wireSavedCards(container, actions) {
+  container.querySelectorAll("[data-action='sd-lineup-tag']").forEach((sel) => {
+    sel.addEventListener("change", () => actions.tag(sel.dataset.id, sel.value || null));
+  });
   container.querySelectorAll("[data-action='sd-rename-start']").forEach((btn) => {
     btn.addEventListener("click", () => actions.renameStart(btn.dataset.id));
   });

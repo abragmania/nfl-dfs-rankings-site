@@ -9,7 +9,7 @@ import { isSampleMode } from "../api.js";
 import { store } from "../state.js";
 import { parsePct, uniqueSavedName, duplicateSaveStatus } from "../lineup.js";
 import { newBuildId, batchBuild } from "../lineup-builds.js";
-import { toggleMustHave, bulkUids } from "../lineup-filter.js";
+import { toggleMustHave, bulkUids, filterBarHtml } from "../lineup-filter.js";
 import { lineupModeOf } from "../lineup-cash.js";
 import { postShowdownLineup, getShowdowns } from "./api.js";
 import { resyncMeterExcludes } from "./lineup-meter.js";
@@ -301,6 +301,34 @@ export function optimizerResultsBlockHtml(board, saved) {
   return V.resultsHtml({ results: r, generating: opt.generating, saveError: opt.saveError, busy: busy(), savedFlags, board, expSortDir: opt.expSortDir, mustHave: opt.mustHave, mustHaveNames: opt.mustHaveNames });
 }
 
+/**
+ * The Saved half of the "only lineups with" filter (D77, Adam 2026-10-11: "this should work with new or saved"): what the saved section
+ * (lineup-saved.js savedLineupsSectionHtml) needs to filter its cards by opt.mustHave, to draw the Captain and FLEX exposure tables over
+ * the cards shown (no Min / Max marks, they belong to a batch) and, when no batch is on screen to carry it, the chips bar. null off the
+ * live app, where the section is drawn without any of it. A saved slot may carry a man's FLEX id or his Captain id, so each is read as
+ * his person id (boardIndex), and his ownership is the board's current figure for the role, the snapshot's when he left the board.
+ */
+export function optimizerSavedFilter(board) {
+  if (!optimizerLive()) return null;
+  const { personOf, rowOf } = S.boardIndex(board);
+  const viewOf = (l) => ({
+    slots: (l?.slots ?? []).map((s) => {
+      const personId = personOf.get(String(s.playerId)) ?? String(s.playerId);
+      const row = rowOf.get(personId);
+      const cpt = String(s.slot ?? "").toUpperCase() === "CPT";
+      return { slot: s.slot, personId, name: row?.name ?? s.name, own: row ? (cpt ? row.ownCpt : row.ownFlex) ?? null : s.own ?? null };
+    }),
+  });
+  const chosen = opt.mustHave;
+  return {
+    mustHave: chosen,
+    playersOf: (l) => S.sdPlayersOf(viewOf(l)),
+    exposureHtml: (shown, of) => V.exposureHtml(shown.map(viewOf), board, opt.expSortDir, null, { isChosen: (key) => chosen.includes(String(key)) }, of, "saved"),
+    barHtml: (shown, total) => (opt.results ? "" : filterBarHtml(chosen.map((key) => ({ key, name: opt.mustHaveNames[key] ?? key })), shown, total)),
+    noMatchText: V.NO_MATCH_TEXT,
+  };
+}
+
 /** The pool's position chips row on the live app (drawn between the Captain | FLEX toggle and the lists, as the sketch has it); "" elsewhere. */
 export function poolChipsRowHtml() {
   return optimizerLive() ? V.poolChipsHtml(opt.pos, store.get().filters.showAllPlayers) : "";
@@ -490,8 +518,14 @@ export function wireOptimizer(ctx) {
     }
     ctx.commit();
   });
-  wirePickButtons(c, ctx);
+  wirePickButtons(c, ctx); // the whole panel: the batch's tables and chips bar and the saved section's (D77)
   wireExposureSort(c, ctx);
+  c.querySelectorAll("#sd-saved-lineups [data-action='opt-exp-sort']").forEach((th) => {
+    th.addEventListener("click", () => {
+      opt.expSortDir = opt.expSortDir === "asc" ? "desc" : "asc"; // the one direction both screens' tables share (classic's)
+      ctx.commit();
+    });
+  });
 }
 
 /** Test hook: run Make / Save with a context of stand-ins. */
