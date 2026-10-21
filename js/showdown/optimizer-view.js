@@ -14,7 +14,11 @@ import { shownTotal } from "../totals.js";
 import { showdownPalette } from "./lineup-look.js";
 import { copiesText, gapText, scaleColour, noUniquenessText, sourceLineText } from "./lineup-meter.js";
 import { likelyRangeText, likelyFactText } from "./likely-copies.js";
-import { OBJECTIVES, TEAM_OPTIONS, MAX_COUNT, MAX_UNIQUE, effectiveObjective, boardHasTg, cashBasisText, statusLineText, isLocked, isIncluded, excludeState, exposureTables } from "./optimizer-state.js";
+import { OBJECTIVES, TEAM_OPTIONS, MAX_COUNT, MAX_UNIQUE, effectiveObjective, boardHasTg, cashBasisText, statusLineText, isLocked, isIncluded, excludeState, exposureTables, sdPlayersOf } from "./optimizer-state.js";
+import { filterLineups, bulkLabel, filterBarHtml } from "../lineup-filter.js";
+
+// Classic's words (lineup-view.js NO_MATCH_TEXT) for a filter no lineup passes.
+const NO_MATCH_TEXT = "No lineups here have all of the chosen players.";
 
 // The Showdown pool's position chips (D41): the six positions a Showdown board carries, K included and no FLEX chip, as the
 // Rankings filter bar's (view.js SD_POSITION_CHIPS), in the classic pool's row with Show all players. Classic's Starred only is
@@ -240,38 +244,63 @@ export function provenanceTitle(r) {
 }
 
 /** The Captain and FLEX exposure tables of the cards on screen, side by side and never summed (lineup-exposure.js optExposureHtml's
- *  Showdown groups, role-aware keys for the Min / Max marks). */
-export function exposureHtml(lineups, board, sortDir, marks) {
+ *  Showdown groups). Each row's id is its role-aware key ("cpt:<person>", "flex:<person>"): the key of its Min / Max mark and, when
+ *  `pick` is given (D77), of the name button that filters by him in that role. `pick` = {isChosen(key)}. `of`: the number of
+ *  lineups in the batch when only some are shown (the filter is on), for the subtitle; null otherwise. */
+export function exposureHtml(lineups, board, sortDir, marks, pick = null, of = null) {
   const t = exposureTables(lineups);
-  const rowsOf = (list) => list.map((e) => ({ ...(rowForSlot(board, e.person) ?? {}), id: e.person, name: e.name, count: e.count, pct: e.pct, own: e.own }));
+  const rowsOf = (role, list) => list.map((e) => ({ ...(rowForSlot(board, e.person) ?? {}), id: `${role}:${e.person}`, name: e.name, count: e.count, pct: e.pct, own: e.own }));
   const n = lineups.length;
-  const subtitle = `${n} new lineup${n === 1 ? "" : "s"}; Captain and FLEX counted apart, never summed`;
-  return optExposureHtml(null, subtitle, sortDir, null, marks, {
+  const lead = of === null ? `${n} new lineup${n === 1 ? "" : "s"}` : `${n} of ${of} new lineup${of === 1 ? "" : "s"}, filtered`;
+  const subtitle = `${lead}; Captain and FLEX counted apart, never summed`;
+  return optExposureHtml(null, subtitle, sortDir, pick, marks, {
     title: "Exposure",
     groups: [
-      { title: "Captain exposure", rows: rowsOf(t.cpt), keyOf: (r) => `cpt:${r.id}` },
-      { title: "FLEX exposure", rows: rowsOf(t.flex), keyOf: (r) => `flex:${r.id}` },
+      { title: "Captain exposure", rows: rowsOf("cpt", t.cpt), keyOf: (r) => r.id },
+      { title: "FLEX exposure", rows: rowsOf("flex", t.flex), keyOf: (r) => r.id },
     ],
   });
+}
+
+/** The exposure section for a batch under the "only lineups with" filter (D77): the tables recount over the lineups shown, the names
+ *  are pick buttons, and the batch's Min / Max marks are left off while the filter hides lineups (classic's rule, they describe
+ *  the batch as made). `mustHave` = the chosen role-aware keys. */
+export function exposureSectionHtml(r, board, sortDir, mustHave) {
+  const chosen = mustHave ?? [];
+  const filtered = chosen.length > 0;
+  const shown = filterLineups(r.lineups, chosen, sdPlayersOf).map((e) => e.item);
+  const whole = r.lineups.length === r.made;
+  const marks = whole && !filtered && r.made >= r.marks.asked ? r.marks : null; // a short, trimmed or filtered batch is not marked
+  return exposureHtml(shown, board, sortDir, marks, { isChosen: (key) => chosen.includes(String(key)) }, filtered ? r.lineups.length : null);
 }
 
 /**
  * The results under the Make row: the batch head with Save all / Discard all, the figures' source line, a save refusal, the
  * server's notes as classic shows them, the two exposure tables, the cards, then the bent line. `v` = {results, generating,
- * error, saveError, busy, savedFlags (one per lineup), board, expSortDir}.
+ * error, saveError, busy, savedFlags (one per lineup), board, expSortDir, mustHave (the chosen role-aware keys, D77), mustHaveNames}.
+ * While the filter is on only the lineups holding every chosen man show (cards keep their own numbers), the exposure tables count
+ * those only, and Save all / Discard all act on them only (classic lineup-view.js newLineupsTabHtml).
  */
 export function resultsHtml(v) {
   const r = v.results;
   if (!r) return v.generating ? `<div class="opt-results sd-opt-results" id="sd-opt-results"><div class="saved-lineups-empty">Making lineups…</div></div>` : "";
   const n = r.lineups.length;
   const parts = [];
+  const mustHave = v.mustHave ?? [];
+  const filtered = mustHave.length > 0;
+  const shown = filterLineups(r.lineups, mustHave, sdPlayersOf);
+  const nShown = shown.length;
   const nSaved = v.savedFlags.filter(Boolean).length;
+  const allSaved = n > 0 && (filtered ? shown.every((e) => v.savedFlags[e.index]) : nSaved === n);
+  const noneShown = filtered && nShown === 0;
+  const nShownUnsaved = shown.filter((e) => !v.savedFlags[e.index]).length;
+  parts.push(filterBarHtml(mustHave.map((key) => ({ key, name: v.mustHaveNames?.[key] ?? key })), nShown, n));
   parts.push(n
     ? `<div class="opt-results-head">
          <span class="opt-sub">${escapeHtml(batchHeadText(r, n))}${nSaved ? `, ${nSaved} saved` : ", not saved yet"}</span>
          <span class="opt-card-actions">
-           <button type="button" class="saved-lineup-btn" data-sd-opt-save-all${v.busy || nSaved === n ? " disabled" : ""}>Save all</button>
-           <button type="button" class="saved-lineup-btn danger" data-sd-opt-discard-all${v.busy ? " disabled" : ""}>Discard all</button>
+           <button type="button" class="saved-lineup-btn" data-sd-opt-save-all${v.busy || allSaved || noneShown ? " disabled" : ""}>${bulkLabel("Save", nShownUnsaved, filtered)}</button>
+           <button type="button" class="saved-lineup-btn danger" data-sd-opt-discard-all${v.busy || noneShown ? " disabled" : ""}>${bulkLabel("Discard", nShown, filtered)}</button>
          </span>
        </div>`
     : `<div class="opt-sub">${r.made ? "None left from the last Make." : "No lineups were made."}</div>`);
@@ -280,13 +309,14 @@ export function resultsHtml(v) {
   if (prov) parts.push(`<div class="opt-note"${provTitle ? ` title="${escapeHtml(provTitle)}"` : ""}>${escapeHtml(prov)}</div>`);
   if (v.saveError) parts.push(`<div class="lineup-status lineup-status-error">${escapeHtml(v.saveError)}</div>`);
   parts.push(optNotesHtml(r.notes));
-  if (n) {
+  if (n && !nShown) {
+    parts.push(`<div class="saved-lineups-empty">${NO_MATCH_TEXT}</div>`);
+  } else if (n) {
     const cash = r.mode === "cash";
     const whole = n === r.made;
-    const marks = whole && r.made >= r.marks.asked ? r.marks : null; // a short or trimmed batch is not marked (classic's rule)
     // Adam 2026-10-17 (classic newLineupsTabHtml): the exposure tables above the cards, so they are high on the screen.
-    parts.push(exposureHtml(r.lineups, v.board, v.expSortDir, marks));
-    parts.push(`<div class="opt-cards">${r.lineups.map((l, i) => cardHtml(l, l.index, { cash, basis: r.basis, objective: r.objective, busy: v.busy, saved: v.savedFlags[i], board: v.board })).join("")}</div>`);
+    parts.push(exposureSectionHtml(r, v.board, v.expSortDir, mustHave));
+    parts.push(`<div class="opt-cards">${shown.map((e) => cardHtml(e.item, e.item.index, { cash, basis: r.basis, objective: r.objective, busy: v.busy, saved: v.savedFlags[e.index], board: v.board })).join("")}</div>`);
     if (whole) parts.push(bendsLineHtml(r.bends, r.made));
   }
   return `<div class="opt-results sd-opt-results" id="sd-opt-results">${parts.join("")}</div>`;

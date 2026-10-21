@@ -9,6 +9,7 @@ import { isSampleMode } from "../api.js";
 import { store } from "../state.js";
 import { parsePct, uniqueSavedName, duplicateSaveStatus } from "../lineup.js";
 import { newBuildId, batchBuild } from "../lineup-builds.js";
+import { toggleMustHave, bulkUids } from "../lineup-filter.js";
 import { lineupModeOf } from "../lineup-cash.js";
 import { postShowdownLineup, getShowdowns } from "./api.js";
 import { resyncMeterExcludes } from "./lineup-meter.js";
@@ -32,6 +33,8 @@ const opt = {
   saveError: null,
   results: null, // the batch on screen, see doGenerate
   expSortDir: "desc",
+  mustHave: [], // the "only lineups with" keys, in the order chosen ("cpt:<person>" / "flex:<person>", D77); page-only, hides and never deletes
+  mustHaveNames: {}, // key -> the chip's words
 };
 let seq = 0;
 let storage = browserStorage;
@@ -70,6 +73,18 @@ function setModeState(next) {
   persist();
 }
 
+/** Empties the "only lineups with" list: a new batch, another showdown or the Clear button (classic lineup.js clearMustHave). */
+function clearMustHave() {
+  opt.mustHave = [];
+  opt.mustHaveNames = {};
+}
+
+/** The uids of the lineups on screen: all of them, or only those holding every chosen man (classic shownNewUids); Save all and
+ *  Discard all act on these only. */
+function shownUids() {
+  return bulkUids(opt.results?.lineups ?? [], opt.mustHave, S.sdPlayersOf);
+}
+
 /** Before each draw: another showdown loads its own settings and drops the last one's batch; ids gone from the board are dropped. */
 export function syncOptimizer(key, board) {
   if (key !== opt.key) {
@@ -77,6 +92,7 @@ export function syncOptimizer(key, board) {
     opt.ks = key ? S.readKeyState(storage, key) : S.defaultKeyState();
     opt.pos = "All";
     opt.results = null;
+    clearMustHave();
     opt.error = null;
     opt.formError = null;
     opt.saveError = null;
@@ -165,6 +181,7 @@ async function doGenerate(ctx) {
     if (!stale && (!data || data.ok === false || data.error)) opt.error = data?.error?.code === "GENERATE_BUSY" ? data.error.message || BUSY_TEXT : data?.error?.message ?? "Could not make lineups.";
     else if (!stale) {
       opt.results = resultsFromAnswer(data, sent, seq, ctx.board ?? null);
+      clearMustHave(); // a new batch starts unfiltered (D77)
       seq += opt.results.lineups.length;
     }
   } catch (e) {
@@ -281,7 +298,7 @@ export function optimizerResultsBlockHtml(board, saved) {
   const keys = r ? savedKeysOf(saved, r.mode, board) : new Set();
   const { personOf } = S.boardIndex(board);
   const savedFlags = r ? r.lineups.map((l) => keys.has(S.sdSetKey(l.slots, personOf))) : [];
-  return V.resultsHtml({ results: r, generating: opt.generating, saveError: opt.saveError, busy: busy(), savedFlags, board, expSortDir: opt.expSortDir });
+  return V.resultsHtml({ results: r, generating: opt.generating, saveError: opt.saveError, busy: busy(), savedFlags, board, expSortDir: opt.expSortDir, mustHave: opt.mustHave, mustHaveNames: opt.mustHaveNames });
 }
 
 /** The pool's position chips row on the live app (drawn between the Captain | FLEX toggle and the lists, as the sketch has it); "" elsewhere. */
@@ -401,10 +418,36 @@ function wireExposureSort(container, ctx) {
       const section = container.querySelector(".sd-opt-results .opt-exposure");
       const r = opt.results;
       if (!section || !r) return;
-      const whole = r.lineups.length === r.made;
-      section.outerHTML = V.exposureHtml(r.lineups, ctx.board, opt.expSortDir, whole && r.made >= r.marks.asked ? r.marks : null);
+      section.outerHTML = V.exposureSectionHtml(r, ctx.board, opt.expSortDir, opt.mustHave);
+      const fresh = container.querySelector(".sd-opt-results .opt-exposure");
+      if (fresh) wirePickButtons(fresh, ctx); // the section's name buttons were redrawn with it
       wireExposureSort(container, ctx);
     });
+  });
+}
+
+/** Adam 2026-10-11 (D77): a man's name in an exposure table adds him to the "only lineups with" list or takes him out; the key is
+ *  role-aware, so the Captain table's row means him as Captain and the FLEX table's him at FLEX. A chip's × takes one out; Clear
+ *  empties the list. Page-only; redraws through ctx.commit(). `root` = the element whose buttons to wire. */
+function wirePickButtons(root, ctx) {
+  root.querySelectorAll("[data-action='opt-pick']").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const key = btn.dataset.pickId;
+      if (!key) return;
+      if (!opt.mustHave.includes(key)) opt.mustHaveNames[key] = S.pickChipName(key, btn.dataset.pickName);
+      opt.mustHave = toggleMustHave(opt.mustHave, key);
+      ctx.commit();
+    });
+  });
+  root.querySelectorAll("[data-action='opt-pick-remove']").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      opt.mustHave = toggleMustHave(opt.mustHave, btn.dataset.pickKey);
+      ctx.commit();
+    });
+  });
+  root.querySelector("[data-action='opt-pick-clear']")?.addEventListener("click", () => {
+    clearMustHave();
+    ctx.commit();
   });
 }
 
@@ -428,7 +471,7 @@ export function wireOptimizer(ctx) {
   });
   c.querySelector("#sd-opt-go-btn")?.addEventListener("click", () => doGenerate(ctx));
   c.querySelectorAll("[data-sd-opt-save]").forEach((btn) => btn.addEventListener("click", () => saveCards([btn.dataset.sdOptSave], ctx)));
-  c.querySelector("[data-sd-opt-save-all]")?.addEventListener("click", () => saveCards((opt.results?.lineups ?? []).map((l) => l.uid), ctx));
+  c.querySelector("[data-sd-opt-save-all]")?.addEventListener("click", () => saveCards(shownUids(), ctx)); // the shown lineups only while filtered (D77)
   c.querySelectorAll("[data-sd-opt-discard]").forEach((btn) => {
     btn.addEventListener("click", () => {
       if (!opt.results) return;
@@ -437,10 +480,17 @@ export function wireOptimizer(ctx) {
     });
   });
   c.querySelector("[data-sd-opt-discard-all]")?.addEventListener("click", () => {
-    opt.results = null;
-    opt.saveError = null;
+    if (opt.mustHave.length && opt.results) {
+      // Filtered: discard only the lineups shown; the hidden ones stay untouched (Adam 2026-10-11, classic's rule).
+      const gone = new Set(shownUids());
+      opt.results = { ...opt.results, lineups: opt.results.lineups.filter((l) => !gone.has(l.uid)) };
+    } else {
+      opt.results = null;
+      opt.saveError = null;
+    }
     ctx.commit();
   });
+  wirePickButtons(c, ctx);
   wireExposureSort(c, ctx);
 }
 

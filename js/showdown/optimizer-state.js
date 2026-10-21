@@ -351,6 +351,24 @@ export function exposureTables(lineups) {
   return { cpt: rows(tables.cpt), flex: rows(tables.flex) };
 }
 
+/** The role-aware key a Showdown lineup's slot is matched on by the "only lineups with" filter (RULES.md D77, D81): "cpt:<person>"
+ *  for the Captain, "flex:<person>" for a FLEX spot, the same keys the exposure tables and their Min / Max marks use. */
+export function sdPickKey(slot, person) {
+  return `${String(slot ?? "").toUpperCase() === "CPT" ? "cpt" : "flex"}:${String(person)}`;
+}
+
+/** A lineup's men as lineup-filter.js's pure functions read them ({id}): one entry per slot, keyed by role. Passed as `playersOf`
+ *  to filterLineups / bulkUids, so a chosen Captain-table row means "lineups with him as Captain" and a FLEX row "at FLEX". */
+export function sdPlayersOf(lineup) {
+  return (lineup?.slots ?? []).map((s) => ({ id: sdPickKey(s?.slot, s?.personId ?? s?.playerId) }));
+}
+
+/** A chip's words for a chosen exposure row: "Quinn Alpha (CPT)" or "Quinn Alpha (FLEX)", so the Captain table's man and the same
+ *  man in the FLEX table read apart. */
+export function pickChipName(key, name) {
+  return `${name ?? key} (${String(key).startsWith("cpt:") ? "CPT" : "FLEX"})`;
+}
+
 /** The Min / Max marks of a batch in role-aware keys ("cpt:<id>", "flex:<id>"), from the settings it was made with (lineup-exposure.js exposureMark). */
 export function exposureMarks(settings) {
   const marks = { asked: settings?.count ?? 0, min: {}, max: {} };
