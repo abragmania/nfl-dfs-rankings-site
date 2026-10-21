@@ -2041,6 +2041,27 @@ select.opt-input { text-align: left; padding: 3px 4px; }
    Covers .opt-p-logo (the card rows and the classic and Showdown slots) and .saved-lineup-slot .player-logo (the classic and Showdown saved rows). */
 :is(.opt-p-logo, .saved-lineup-slot .player-logo) { background: rgba(255, 255, 255, 0.9); border-radius: 50%; padding: 2px; }
 .saved-lineup-slot .player-logo { box-sizing: content-box; margin: -2px; }
+/* Optimizer-first step 5 (Adam 2026-10-18: "formatted the same way as the smaller ones ... just bigger"; D54, D70): the builder's nine slots draw the card row at 64px
+   (the cards' 50px): logo 48px, name 16px, line 2 13px, figures 15px. A filled classic slot (.lineup-slot-card) is just that row and the Clear button; an Empty or
+   "Not on this slate" slot keeps its label and the same 64px, so the column does not jump. Scoped to classic's .lineup-slot-big; Showdown's slots are unchanged. */
+.lineup-slots .lineup-slot.lineup-slot-big { box-sizing: border-box; min-height: 64px; }
+/* One geometry for both states: the filled row spans the whole slot (the empty box's outer edges) and its Clear sits inside it at the empty state's x (12px padding plus the 1px border from
+   the right edge, a fixed 49px wide in both states); the row's figures end a slot gap (12px) before Clear, as the empty state's text does. */
+.lineup-slots .lineup-slot-big .lineup-slot-clear { box-sizing: border-box; width: 49px; text-align: center; }
+.lineup-slots .lineup-slot.lineup-slot-card { position: relative; padding: 0; border: 0; background: none; gap: var(--sp-2); container-type: inline-size; } /* a container, so the cards' short-name rules (.nm-short under .opt-card) also switch a narrow (phone) slot */
+.lineup-slots .opt-p-big.opt-p-short .nm-full { display: none; } /* the first line is about 176px: a name that cannot fit shows the card's short form (lineup-card.js bigNameNeedsShort); one that fits stays full */
+.lineup-slots .opt-p-big.opt-p-short .nm-short { display: inline; }
+.lineup-slots .lineup-slot-card > .opt-p.opt-p-big { flex: 1 1 auto; min-width: 0; padding-right: calc(var(--sp-3) + 1px + 49px + var(--sp-3)); }
+.lineup-slots .lineup-slot-card > .lineup-slot-clear { position: absolute; right: calc(var(--sp-3) + 1px); top: 50%; transform: translateY(-50%); }
+.lineup-slots .opt-p.opt-p-big { box-sizing: border-box; min-height: 64px; gap: 10px; padding: 3px 0 3px 12px; font-size: 13px; border-radius: 4px; }
+.lineup-slots .opt-p-big .opt-p-slot { width: 38px; flex: 0 0 38px; font-size: 14px; }
+.lineup-slots .opt-p-big :is(.opt-p-logo, .player-badge) { flex: 0 0 48px; width: 48px; height: 48px; }
+.lineup-slots .opt-p-big .opt-p-body { gap: 3px; }
+.lineup-slots .opt-p-big .opt-p-name { font-size: 16px; }
+.lineup-slots .opt-p-big .opt-p-line2, .lineup-slots .opt-p-big .meta-pill { font-size: 13px; }
+.lineup-slots .opt-p-big .opt-p-nums { flex-basis: 72px; gap: 3px; font-size: 15px; font-variant-numeric: tabular-nums; }
+.lineup-slots .opt-p-big :is(.opt-p-sal, .opt-p-proj) { font-size: 15px; }
+@media (max-width: 700px) { .lineup-slots .opt-p.opt-p-big { gap: 6px; padding-left: 8px; } .lineup-slots .opt-p-big .opt-p-slot { width: 32px; flex-basis: 32px; } }
 /* Saved (or the same nine players as a saved lineup): the Save button becomes a disabled "Saved ✓". */
 .opt-card.opt-card-saved { border-color: rgba(var(--success-rgb), 0.6); }
 .saved-lineup-btn.opt-saved-btn:disabled { border-color: var(--success); color: var(--success); background: rgba(var(--success-rgb), 0.12); opacity: 1; cursor: default; font-weight: 600; }

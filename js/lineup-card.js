@@ -84,15 +84,29 @@ export function cardDecor(lineup, rowById, palette = null) {
   };
 }
 
-// D54: a card row is 50px.
-export function cardPlayerRowHtml(p, slotName, decor) {
+// D54: a card row is 50px. Optimizer-first step 5 (Adam 2026-10-18: the nine building slots "formatted the same way as the smaller ones ... just bigger"):
+// `big` (the builder's slots, style.css .opt-p-big, 64px) adds the one class and draws the logo at 48px; without it the markup is exactly the card's.
+// The big row's first line is about 176px (460px slot, less Clear and the figures), so a long name would be cut with an ellipsis while the card shows it in full. A container query cannot
+// tell a long name from a short one (every slot has the same width), so the row itself is marked when the full name cannot fit: more than NAME_FIT letters, or NAME_FIT_TAGGED beside an OUT tag
+// (the tag takes about 40px more). style.css .opt-p-short then shows the card's short name ("M. Valdes-Scantling"); a name that fits stays full. Measured in Chrome at 1920px over the 525 names of the
+// 2026 week 6 board: no untagged name of 18 letters or fewer is cut and every one of 21 or more is; tagged, none of 11 or fewer is cut, 12 is cut for 6 of 90 and 14 for 40 of 68. The limits are the
+// longest that are never cut, so a name that would be cut is always shown short (a few that would fit, mostly tagged ones, are shown short too).
+export const NAME_FIT = 18;
+export const NAME_FIT_TAGGED = 11;
+export function bigNameNeedsShort(name, tagged) {
+  return String(name ?? "").trim().length > (tagged ? NAME_FIT_TAGGED : NAME_FIT);
+}
+export function cardPlayerRowHtml(p, slotName, decor, opts = null) {
+  const big = opts?.big === true;
   const row = decor?.rowFor ? decor.rowFor(p) : p;
+  const line1 = playerIdentityHtml(row, { logo: false, nameCls: "opt-p-name", nameHtml: cardNameHtml(p), chipPlain: true, tagCls: "opt-p-tags", tag: "out" });
+  const shorten = big && bigNameNeedsShort(p.name, line1.includes('class="opt-p-tags"'));
   return `
-      <div class="opt-p" style="${teamColourStyle(decor ? decor.coloursFor(p.team) : teamColours(null, p.team))}"${p.id != null ? ` data-card-id="${escapeHtml(String(p.id))}"` : ""}>
+      <div class="opt-p${big ? " opt-p-big" : ""}${shorten ? " opt-p-short" : ""}" style="${teamColourStyle(decor ? decor.coloursFor(p.team) : teamColours(null, p.team))}"${p.id != null ? ` data-card-id="${escapeHtml(String(p.id))}"` : ""}>
         <span class="opt-p-slot">${escapeHtml(slotName)}</span>
-        ${teamLogoHtml(p.team, "opt-p-logo", 38) || badgeHtml(p.name, p.pos, p.team)}
+        ${teamLogoHtml(p.team, "opt-p-logo", big ? 48 : 38) || badgeHtml(p.name, p.pos, p.team)}
         <span class="opt-p-body">
-          <span class="opt-p-line1">${playerIdentityHtml(row, { logo: false, nameCls: "opt-p-name", nameHtml: cardNameHtml(p), chipPlain: true, tagCls: "opt-p-tags", tag: "out" })}</span>
+          <span class="opt-p-line1">${line1}</span>
           <span class="opt-p-line2">${matchupPillHtml(row)}<span class="opt-p-own">${escapeHtml(ownParen(p.own).trim())}</span>${decor ? decor.rolesFor(p) : ""}</span>
         </span>
         <span class="opt-p-nums"><span class="opt-p-sal">${money(p.salary)}</span><span class="opt-p-proj">${p.proj == null ? "—" : dec1(p.proj)}</span></span>

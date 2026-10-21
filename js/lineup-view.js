@@ -116,15 +116,16 @@ function slotsHtml(rowById, roles) {
     // 🔵 finding 2: a slot whose id no longer has a row (should already have been dropped by
     // validateAgainstBoard, but this is the defensive last line) shows a visible marker instead of
     // guessing at stale name/salary/proj/own.
+    // Optimizer-first step 5: a filled slot is the card row (the one the lineup cards draw), bigger; it carries the slot name, so the label column goes.
+    // An Empty or missing slot keeps the label, and every classic slot is padded to the same 64px (style.css .lineup-slot-big) so the column does not jump.
     const bodyHtml = !s
       ? `<span class="lineup-slot-player lineup-slot-empty">Empty</span>`
       : row
-        ? slotPlayerHtml(row, roles.get(String(row.id)))
+        ? slotPlayerHtml(row, roles.get(String(row.id)), slotName, paletteForRows(rowById))
         : `<span class="lineup-slot-player lineup-slot-missing">Not on this slate</span>`;
-    const tint = row ? ` lineup-slot-filled" style="--tc:${TEAM_BY_ABBR[row.team]?.colourPrimary ?? "#333333"}` : "";
     return `
-      <div class="lineup-slot lineup-slot-tall${tint}" data-slot-index="${i}">
-        <span class="lineup-slot-label">${escapeHtml(slotName)}</span>
+      <div class="lineup-slot lineup-slot-big${row ? " lineup-slot-card" : ""}" data-slot-index="${i}">
+        ${row ? "" : `<span class="lineup-slot-label">${escapeHtml(slotName)}</span>`}
         ${bodyHtml}
         <button type="button" class="lineup-slot-clear" data-action="slot-clear" data-slot="${i}"${s ? "" : " disabled"}>Clear</button>
       </div>`;
@@ -133,18 +134,11 @@ function slotsHtml(rowById, roles) {
 
 // `row` is the live board row for this slot's id (🔵 finding 2), never a cached copy: an override on
 // Proj or Own shows up here automatically because this reads the same fields the Rankings table does.
-// Adam 2026-10-18 Q2: the team logo the card rows show (lineup-card.js); the initials badge only for a team with no logo.
-export function slotPlayerHtml(row, tags = []) {
-  const projText = row.proj == null ? "no proj" : dec1(row.proj);
-  return `
-    <span class="lineup-slot-player lineup-slot-player-2" data-card-id="${escapeHtml(String(row.id))}">
-      ${teamLogoHtml(row.team, "opt-p-logo", 38) || badgeHtml(row.name, row.pos, row.team)}
-      <span class="lineup-slot-body">
-        <span class="lineup-slot-top">${playerLineHtml(row, { logo: false, nameCls: "lineup-slot-name", pill: false, tag: "out" })}</span>
-        ${matchupPillHtml(row)}
-        <span class="lineup-slot-detail">${money(row.salary)} &middot; ${projText} proj${escapeHtml(ownParen(row.own))}${roleTagsHtml(tags)}</span>
-      </span>
-    </span>`;
+// Optimizer-first step 5 (Adam 2026-10-18): the shared card row at the big size (lineup-card.js cardPlayerRowHtml, 48px team logo, the initials badge only for a team with no logo),
+// wearing the slate palette's colours like the cards; `slotName` is its label, `palette` the slate's (paletteForRows).
+export function slotPlayerHtml(row, tags = [], slotName = "", palette = null) {
+  const decor = { rowFor: (p) => p, rolesFor: () => roleTagsHtml(tags), coloursFor: (team) => teamColours(palette, team) };
+  return cardPlayerRowHtml(row, slotName, decor, { big: true });
 }
 
 function buildStatusHtml() {
