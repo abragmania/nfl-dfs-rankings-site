@@ -1,12 +1,11 @@
 // Tabs above the table: Rankings (rendered by table.js/gamestrip.js/filterbar.js, default),
-// Favorites (starred players, favorites.js), Optimizer (the main-slate tab, second after Rankings; DECISIONS.md D70),
+// Optimizer (the main-slate tab, second after Rankings; DECISIONS.md D70; the Favorites tab is retired, RETIRED_TABS),
 // Entries (right after the Optimizer, app only). Projections and Projected Ownership are not tabs here any more: the header's
 // Sources link opens ONE Sources page (public/js/sources-page.js: which sources, their weights, when each was pulled), and the two
 // per-player tables below it are this file's renderProjectionsPanel and renderOwnershipPanel, chosen by a Projections | Ownership
 // switch on that page (Adam 2026-10-18; SOURCE_TABS keeps the two old tab keys, so "?tab=projections" and "?tab=ownership" still land there).
 import { escapeHtml, dec1 } from "./format.js";
 import { store, passesProjFloor, CLASSIC_PROJ_FLOOR, activeSlateRows, sortRows } from "./state.js";
-import { favoritesTabLabel } from "./favorites.js";
 import { showAllToggleHtml, wireShowAllButtons } from "./filterbar.js";
 import { sourceFailedMarkerHtml, sortArrowHtml, sortArrowText } from "./table.js";
 import { playerLineHtml } from "./player-row.js";
@@ -36,9 +35,12 @@ const TABS = [
   { key: "lineup", label: "Optimizer" }, // DECISIONS.md D70: "Optimizer" (was "Lineup Builder"), second tab
   { key: "showdown", label: "Showdown" }, // ChatGPT wish t, Adam 2026-10-17: a second door to the Showdown boards, in the app and on the site
   { key: "entries", label: "Entries" }, // rules repo 2026-10-17: Entries is its own tab (was a section under the Optimizer); app-only, see visibleTabs
-  { key: "favorites", label: "Favorites" },
   { key: "teams", label: "Teams (sample)" }, // Temporary (Adam 2026-10-18): remove when he has seen the colours
 ];
+
+// Tab keys that are no longer drawn, and the tab each one opens instead (Adam 2026-10-18, Optimizer-first step 3: the Favorites
+// tab goes and its old key opens the Optimizer). Step 4 adds "rankings" here the same way.
+export const RETIRED_TABS = Object.freeze({ favorites: "lineup" });
 
 // The Sources page's Players switch; its keys stay the old tab keys, so "?tab=projections" and "?tab=ownership" still land on the page.
 export const SOURCE_TABS = Object.freeze([
@@ -64,16 +66,16 @@ export function visibleTabs(onSite = onSitePage()) {
   return TABS.filter((t) => !(onSite && (t.key === "entries" || t.key === "teams")));
 }
 
-/** The tab to show: the stored one when it is drawn, else Rankings (an Entries tab left over on the site; rules repo 2026-10-17). */
+/** The tab to show: the stored one when it is drawn, a retired key's replacement (RETIRED_TABS) when that is drawn, else Rankings
+ *  (an Entries tab left over on the site; rules repo 2026-10-17). */
 export function shownTab(activeTab, tabs = visibleTabs()) {
-  return tabs.some((t) => t.key === activeTab) || isSourcesTab(activeTab) ? activeTab : "rankings";
+  const key = Object.prototype.hasOwnProperty.call(RETIRED_TABS, activeTab) ? RETIRED_TABS[activeTab] : activeTab;
+  return tabs.some((t) => t.key === key) || isSourcesTab(key) ? key : "rankings";
 }
 
-// `favoritesCount`: how many starred players are on the slate; the Favorites tab shows it as "Favorites (3)".
-export function renderTabs(container, activeTab, onTabClick, favoritesCount = 0) {
+export function renderTabs(container, activeTab, onTabClick) {
   container.innerHTML = visibleTabs().map((t) => {
-    const label = t.key === "favorites" ? favoritesTabLabel(favoritesCount) : t.label;
-    return `<button type="button" class="tab-btn${t.key === activeTab ? " active" : ""}" data-tab="${t.key}">${escapeHtml(label)}</button>`;
+    return `<button type="button" class="tab-btn${t.key === activeTab ? " active" : ""}" data-tab="${t.key}">${escapeHtml(t.label)}</button>`;
   }).join("");
   container.querySelectorAll(".tab-btn").forEach((el) => {
     el.addEventListener("click", () => onTabClick(el.dataset.tab));

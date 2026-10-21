@@ -62,7 +62,8 @@ export function panelHtml() {
 
   // The Optimizer band is the first thing in the tab (DECISIONS.md D70, Adam 2026-10-10: "move the optimizer stuff up"); the lineup
   // it builds from sits right under it, its results and the saved lineups below.
-  const injuryNoteHtml = board?.injuryNote ? `<p class="tab-note">${escapeHtml(board.injuryNote)}</p>` : "";
+  const noteList = [board?.injuryNote, ...(board?.tabNotes?.favorites ?? [])].filter(Boolean); // the favorites notes: the Favorites tab is gone, so the Optimizer shows them (an unreadable overrides file)
+  const injuryNoteHtml = noteList.length ? `<p class="tab-note">${escapeHtml(noteList.join(" "))}</p>` : "";
   return `
     ${injuryNoteHtml}
     ${optimizerControlsHtml(rowById)}
@@ -447,14 +448,18 @@ export function setPoolCallbacks(callbacks) {
 export function poolPosChipsHtml() {
   const { pos, showAllPlayers, starredOnly } = store.get().filters;
   // Adam 2026-10-17: "Starred only" sits by the position tabs and is the Rankings filter itself (filters.starredOnly), so it holds across tabs.
-  const starredChip = `<button type="button" data-action="pool-starred" class="chip toggle-chip${starredOnly ? " active" : ""}" aria-pressed="${starredOnly ? "true" : "false"}">★ Starred only</button>`;
+  const starredChip = `<button type="button" data-action="pool-starred" class="chip toggle-chip${starredOnly ? " active" : ""}" aria-pressed="${starredOnly ? "true" : "false"}">★ Favorites only</button>`;
   return `<div class="chip-group lineup-pos-chips">${posChipsHtml(pos, `data-action="pool-pos"`)}${starredChip}${showAllToggleHtml(showAllPlayers, `data-action="show-all"`)}</div>`;
 }
 
 /** Starred only is on and nothing is listed: say whether no one is starred at this position or other filters hide them. */
 function poolEmptyRowHtml(graded, pos, colspan) {
   const hidden = graded.filter((r) => r.starred && matchesPosition(r, pos)).length;
-  const text = hidden > 0
+  // The week's overrides file could not be read (board.tabNotes.favorites): every star reads false, so the stars are unknown, never "none".
+  const unreadable = (store.get().board?.tabNotes?.favorites ?? []).some(Boolean);
+  const text = unreadable
+    ? "Stars could not be read this week (see the note above)."
+    : hidden > 0
     ? `${hidden} starred at this position ${hidden === 1 ? "is" : "are"} hidden by other filters (projection floor, teams, salary, game or search)`
     : pos === "All" ? "No starred players" : "No starred players at this position";
   return `<tr><td class="lineup-pool-empty" colspan="${colspan}">${text}</td></tr>`;

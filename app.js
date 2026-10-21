@@ -35,7 +35,6 @@ import { renderTableHead, renderTableBody, updateRow } from "./js/table.js";
 import { renderTabs, isSourcesTab, sourcesTabToOpen, shownTab, renderProjectionsPanel, renderOwnershipPanel, renderLineupPanel, renderEntriesPanel } from "./js/tabs.js";
 import { renderSourcesPage, APPLIED_ALL_EVENT } from "./js/sources-page.js"; // the one Sources page (Adam 2026-10-18), shared with the Showdown view
 import { teamsSampleHtml } from "./js/teams-sample.js"; // Temporary (Adam 2026-10-18)
-import { renderFavoritesPanel, favoriteRows } from "./js/favorites.js";
 import { initExpand, syncExpandUi } from "./js/expand.js";
 import { initPlayerCard } from "./js/player-card.js";
 
@@ -58,14 +57,6 @@ const el = {
   slateNote: document.getElementById("slate-note"),
   rankingsPanel: document.getElementById("rankings-panel"),
   projectionsPanel: document.getElementById("projections-panel"),
-  favoritesPanel: document.getElementById("favorites-panel"),
-  favorites: {
-    note: document.getElementById("favorites-note"),
-    empty: document.getElementById("favorites-empty"),
-    wrap: document.getElementById("favorites-wrap"),
-    thead: document.getElementById("favorites-thead"),
-    tbody: document.getElementById("favorites-tbody"),
-  },
   ownBanner: document.getElementById("own-banner"),
   ownershipPanel: document.getElementById("ownership-panel"),
   teamsPanel: document.getElementById("teams-panel"), // Temporary (Adam 2026-10-18): the Teams (sample) tab
@@ -121,8 +112,7 @@ function restoreRow(rowId) {
   const board = store.get().board;
   if (!row || !board) return;
   const hasNoteColumn = activeSlateRows(board).some((r) => r.note);
-  // A failed save redraws the row in whichever table is on screen (Rankings or Favorites).
-  updateRow(store.get().activeTab === "favorites" ? el.favorites.tbody : el.tbody, row, hasNoteColumn);
+  updateRow(el.tbody, row, hasNoteColumn);
 }
 
 function handleBoardFailure(raw) {
@@ -367,7 +357,7 @@ function renderDynamic() {
 
   // Every list below reads the slate on screen's rows (D57): the whole board, or the active second slate's.
   const slateRows = activeSlateRows(board);
-  renderTabs(el.tabs, activeTab, onTabClick, favoriteRows(slateRows).length);
+  renderTabs(el.tabs, activeTab, onTabClick);
   if (isSourcesTab(activeTab)) lastSourcesTab = activeTab;
   paintSourcesLink(el.sourcesBtn, isSourcesTab(activeTab));
 
@@ -377,7 +367,6 @@ function renderDynamic() {
     // which tab is active — previously a failure while on a non-Rankings tab left that tab's blank
     // panel on screen instead of the error text.
     el.rankingsPanel.hidden = true;
-    el.favoritesPanel.hidden = true;
     el.sourcesPanel.hidden = true;
     el.projectionsPanel.hidden = true;
     el.ownershipPanel.hidden = true;
@@ -398,7 +387,6 @@ function renderDynamic() {
   }
   el.emptyState.hidden = true;
   el.rankingsPanel.hidden = activeTab !== "rankings";
-  el.favoritesPanel.hidden = activeTab !== "favorites";
   el.sourcesPanel.hidden = !isSourcesTab(activeTab);
   el.projectionsPanel.hidden = activeTab !== "projections";
   el.ownershipPanel.hidden = activeTab !== "ownership";
@@ -414,7 +402,7 @@ function renderDynamic() {
       onToggleCollapse: onToggleGamestripCollapse,
     });
     const allRows = rowsGradedForView(slateRows, filters.pos, board.rows); // D33: the FLEX view pools RB, WR and TE
-    el.ownBanner.textContent = [ownBannerText(allRows), board.injuryNote].filter(Boolean).join(" ");
+    el.ownBanner.textContent = [ownBannerText(allRows), board.injuryNote, ...(board.tabNotes?.favorites ?? [])].filter(Boolean).join(" ");
     const filtered = filterRows(allRows, filters);
     const sorted = sortRows(filtered, sort.col, sort.dir);
     const hasNoteColumn = allRows.some((r) => r.note);
@@ -428,9 +416,6 @@ function renderDynamic() {
       activeGameLabel: activeGame ? `${activeGame.away} @ ${activeGame.home}` : null,
       onClearGame: () => store.setFilters({ gameId: null }),
     });
-  } else if (activeTab === "favorites") {
-    // Every starred player on the slate; the Rankings filters and the projection floor do not apply.
-    renderFavoritesPanel(el.favorites, slateRows, tableCallbacks, slateRows.some((r) => r.note), [...(board.tabNotes?.favorites ?? []), board.injuryNote].filter(Boolean));
   } else if (isSourcesTab(activeTab)) {
     // The Sources page (always the main slate's choices, D57), then the Projections or Ownership table under its Players heading.
     renderSourcesPage(el.sourcesPanel, { board, slate: "main", showdown: false, activeKey: activeTab, onPlayersTab: onTabClick, onChanged: repaintAfterSourceSave });

@@ -1,5 +1,5 @@
 // Expand / Minimize for the player tables (Adam, 2026-10-10: "make it so I can expand the list to take up my whole
-// view and then minimize that after"). Rankings, Favorites, Projections and Projected Ownership each get a small
+// view and then minimize that after"). Rankings, Projections and Projected Ownership each get a small
 // bar above their scroll panel holding an "Expand" button. Expanding turns that panel (and its bar) into a
 // full-screen overlay; minimizing puts it back where it was, scroll position kept.
 //
@@ -9,7 +9,6 @@
 
 export const EXPAND_TARGETS = [
   { panelId: "rankings-panel", title: "Rankings" },
-  { panelId: "favorites-panel", title: "Favorites" },
   { panelId: "projections-panel", title: "Projections" },
   { panelId: "ownership-panel", title: "Projected Ownership" },
 ];

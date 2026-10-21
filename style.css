@@ -430,8 +430,7 @@ html, body {
   margin-bottom: var(--sp-1);
 }
 .expand-bar[hidden] { display: none; }
-#rankings-panel > .expand-bar,
-#favorites-panel > .expand-bar {
+#rankings-panel > .expand-bar {
   max-width: 1250px;
   margin-left: auto;
   margin-right: auto;
@@ -752,11 +751,10 @@ body.table-expanded { overflow: hidden; }
   color: var(--text-dim);
   font-size: var(--fs-sm);
 }
-/* The note above and the legend below the classic Rankings and Favorites tables sit in the same centred
+/* The note above and the legend below the classic Rankings table sit in the same centred
    1250px box as the table, so their left edges line up with the table's at every width. */
 #rankings-panel > .own-banner,
-#rankings-panel > .table-legend,
-#favorites-panel > .tab-note {
+#rankings-panel > .table-legend {
   max-width: 1250px;
   margin-left: auto;
   margin-right: auto;
@@ -1141,8 +1139,6 @@ tr:last-child .cell-edit-hint { top: auto; bottom: 100%; margin-top: 0; margin-b
 .tab-note .toggle-chip { margin-left: var(--sp-2); } /* the "Show all players" button after a list's hidden-count note */
 /* A Showdown's Projections and Ownership notes start with that button (showdown/tabs.js), so it sits on the page's left edge, not 8px in (👁 round 4, V4). */
 :is(#sd-projections-panel, #sd-ownership-panel) .tab-note .toggle-chip { margin-left: 0; }
-/* Favorites tab: same table as Rankings, but its headers do not sort, so they do not look clickable. */
-.favorites-table th { cursor: default; }
 
 .source-unmatched { font-size: var(--fs-sm); color: var(--text-dim); margin-top: var(--sp-1); }
 .source-unmatched summary { cursor: pointer; color: var(--text-muted); }

@@ -1,5 +1,5 @@
 // Filter bar: position chips, team multi-select chips (one per team on the slate, in team colours),
-// salary range, search, starred-only toggle, reset-all-overrides. Rendered once per board load; after
+// salary range, search, favorites-only toggle, reset-all-overrides. Rendered once per board load; after
 // that only class names are toggled (never innerHTML) so the salary/search inputs never lose focus
 // or cursor position while Adam is typing.
 import { escapeHtml } from "./format.js";
@@ -78,7 +78,7 @@ export function renderFilterBar(container, teamAbbrs, filters, callbacks, hasOve
         <span>-</span>
         <label><input id="salary-max" type="number" step="100" placeholder="max" value="${filters.salaryMax ?? ""}" /></label>
       </div>
-      <button type="button" id="starred-toggle" class="chip toggle-chip${filters.starredOnly ? " active" : ""}">★ Starred only</button>
+      <button type="button" id="starred-toggle" class="chip toggle-chip${filters.starredOnly ? " active" : ""}">★ Favorites only</button>
       ${showAllToggleHtml(filters.showAllPlayers, `id="show-all-toggle"`)}
       <button type="button" id="reset-overrides-btn" class="reset-btn"${hasOverrides ? "" : " disabled"}>Reset all overrides</button>
     </div>

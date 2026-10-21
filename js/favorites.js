@@ -1,15 +1,6 @@
-// Favorites tab: every starred player on the loaded slate, drawn with the Rankings table's own head, row
-// and cell rendering (table.js) so the look, the star, click-to-edit Proj/Own% and the note pencil all come
-// along unchanged. It ignores the Rankings filters and the classic projection floor (a starred player always
-// shows, even with a projection of 3 or less or none). The star and edit clicks go through the same
-// callbacks as Rankings, so un-starring here saves through the same overrides API and the row leaves at once.
-import { renderTableHead, renderTableBody } from "./table.js";
-
-export const FAVORITES_NOTE_TEXT = "Starred players for this week's slate. Stars are saved with the week.";
-// Two parts so the public site can hide the second (stars cannot be clicked there).
-export const FAVORITES_EMPTY_LEAD = "No favorites yet.";
-export const FAVORITES_EMPTY_HINT = "Click the star next to a player on the Rankings tab to add him here.";
-export const FAVORITES_EMPTY_TEXT = `${FAVORITES_EMPTY_LEAD} ${FAVORITES_EMPTY_HINT}`;
+// Favorites helper: the starred rows of the loaded slate, in roster order. The Favorites tab is gone (Optimizer-first step 3);
+// "Favorites only" is a filter on Rankings and the Optimizer pool (filterbar.js, state.js filterRows) and keeps the 3.0 projection
+// floor like every other filter. This list is not floored: it counts every starred row, under-floor ones included.
 
 const POS_ORDER = { QB: 0, RB: 1, WR: 2, TE: 3, DST: 4 };
 function posRank(pos) {
@@ -39,31 +30,4 @@ export function favoriteRows(rows) {
       return byName !== 0 ? byName : a.i - b.i;
     })
     .map((x) => x.row);
-}
-
-/** "Favorites (3)", or plain "Favorites" with none. */
-export function favoritesTabLabel(count) {
-  return count > 0 ? `Favorites (${count})` : "Favorites";
-}
-
-/** Draws the panel's contents. `els` = { note, empty, wrap, thead, tbody } (the elements in
- * index.html's #favorites-panel); `rows` = the whole board's rows; `boardNotes` = board.tabNotes.favorites (A5: an
- * unreadable overrides file, which means the stars could not be read), shown after the note line, always. */
-export function renderFavoritesPanel(els, rows, callbacks, hasNoteColumn, boardNotes = []) {
-  const favs = favoriteRows(rows);
-  const none = favs.length === 0;
-  const extra = (boardNotes ?? []).filter(Boolean);
-  els.note.textContent = [none ? "" : FAVORITES_NOTE_TEXT, ...extra].filter(Boolean).join(" ");
-  els.note.hidden = none && !extra.length;
-  els.empty.hidden = !none;
-  els.empty.innerHTML = `<span>${FAVORITES_EMPTY_LEAD}</span> <span class="favorites-empty-hint">${FAVORITES_EMPTY_HINT}</span>`;
-  els.wrap.hidden = none;
-  if (none) {
-    els.thead.innerHTML = "";
-    renderTableBody(els.tbody, [], callbacks, hasNoteColumn);
-    return;
-  }
-  // No sorting in this first version: no column is marked sorted and a header click does nothing.
-  renderTableHead(els.thead, { col: null, dir: "asc" }, () => {}, hasNoteColumn);
-  renderTableBody(els.tbody, favs, callbacks, hasNoteColumn);
 }
