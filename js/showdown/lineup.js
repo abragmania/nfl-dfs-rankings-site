@@ -16,9 +16,10 @@ import { listsHtml, paintLists, wireLists, setListControls } from "./lineup-list
 import { syncOptimizer, optimizerLive, optimizerBandHeadHtml, optimizerBandBoxesHtml, optimizerGoRowHtml, optimizerResultsBlockHtml, optimizerExcludes, poolChipsRowHtml, listControls, wirePoolControls, wireOptimizer } from "./optimizer.js";
 import { handBuild } from "../lineup-builds.js";
 import { requestFailureText } from "./read-json.js";
-import { lineupModeOf, cashBadgeHtml } from "../lineup-cash.js";
-import { showdownPalette, slotLook, slotLogoHtml, controlsHtml as controlsMarkup } from "./lineup-look.js"; // the classic team rows on the slots and saved rows, the two-row controls (Adam 2026-10-18 9:09 PM)
-import { teamColours, teamColourStyle } from "../lineup-card.js";
+import { slotLook, slotLogoHtml, controlsHtml as controlsMarkup } from "./lineup-look.js"; // the classic team rows on the slots and saved rows, the two-row controls (Adam 2026-10-18 9:09 PM)
+// The saved-lineups view lives in ./lineup-saved.js (state stays here); the two pure helpers keep their old exports from this module.
+import { findRow, SALARY_CAP, FLEX_COUNT, savedProjHtml, savedLineupCardHtml as savedCardHtml, savedLineupsSectionHtml as savedSectionHtml, wireSavedCards } from "./lineup-saved.js";
+export { savedLineupSlotHtml, savedProjTotal } from "./lineup-saved.js";
 import { syncSwaps, swapsPanelHtml, wireSwaps } from "./lineup-swaps.js"; // the uniqueness swaps, full width below both columns (Adam 2026-10-18)
 import { showAllToggleHtml, wireShowAllButtons } from "../filterbar.js";
 import { store } from "../state.js";
@@ -26,8 +27,6 @@ import { showdownPerSpotText, shownTotal } from "../totals.js";
 import { syncMeter, meterStripHtml, wireMeter, playerFigures, reasonHtml } from "./lineup-meter.js"; // uniqueness / projection strip under the slots; every figure on the screen is the served board's (Adam 2026-10-20)
 import { builtOnText } from "./figures-label.js"; // the board's sources in words (the retired Figures switch's place)
 
-const SALARY_CAP = 50000;
-const FLEX_COUNT = 5;
 // "Projection minus ownership" was removed and Leverage has no measure (Adam 2026-10-15, Lev measure to be
 // redesigned); the server answers either name by building by projection with an objectiveNote.
 const OBJECTIVES = [
@@ -85,10 +84,6 @@ function loadSavedLineups(key) {
 
 function commit() {
   if (lastContainer) renderShowdownLineupPanel(lastContainer, lastBoard, lastKey);
-}
-
-function findRow(board, id) {
-  return (board?.rows ?? []).find((r) => String(r.id) === String(id));
 }
 
 function isPlacedFlex(id) {
@@ -441,125 +436,13 @@ function listCtx(board) {
   };
 }
 
-function formatSavedAt(iso) {
-  const d = new Date(iso);
-  if (!iso || Number.isNaN(d.getTime())) return "";
-  return d.toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
-}
-
-// `palette`: the Showdown's team colours (lineup-look.js showdownPalette), so a saved row wears the slots' colours as classic's saved rows wear the cards'.
-export function savedLineupSlotHtml(entry, palette = null) {
-  if (!entry) return "";
-  const { slot, row, snap } = entry;
-  const src = row ?? snap;
-  const cptCls = slot === "CPT" ? " sd-saved-cpt" : "";
-  if (!src) return `<div class="saved-lineup-slot saved-lineup-slot-tc saved-lineup-slot-empty${cptCls}"><span class="saved-lineup-slot-pos">${escapeHtml(slot)}</span><span class="saved-lineup-slot-empty-text">Empty</span></div>`;
-  const missingCls = row ? "" : " saved-lineup-slot-missing";
-  const noteHtml = row ? "" : `<span class="saved-lineup-slot-note">not on board</span>`;
-  return `
-    <div class="saved-lineup-slot saved-lineup-slot-tc${missingCls}${cptCls}" style="${teamColourStyle(teamColours(palette, src.team))}" data-card-id="${escapeHtml(String(row?.id ?? snap?.playerId ?? ""))}">
-      <span class="saved-lineup-slot-pos">${escapeHtml(slot)}</span>
-      ${sdLine(src, { nameCls: "saved-lineup-slot-name", tag: row ? "out" : false, chipPlain: true })}
-      <span class="saved-lineup-slot-salary">${money(slot === "CPT" ? row?.cptSalary ?? snap?.salary : row?.salary ?? snap?.salary)}</span>
-      ${noteHtml}
-    </div>`;
-}
-
-// The saved card's projection total (the board row's figures, `figures` = playerFigures by default): null when
-// a man is off the board or has no figure. The salary total is the board's too. The total is the sum of the six
-// figures each rounded to one decimal as a card row prints them (totals.js shownTotal, ChatGPT wish d, Adam 2026-10-17), as a
-// generated card's total is (optimizer-view.js gppTotalsText): 👁 V4 found this card summing the unrounded figures, so the
-// same six men read 105.0 here and 105.1 on their results card.
-export function savedProjTotal(lineup, board, figures = playerFigures) {
-  const projs = [];
-  for (const s of lineup.slots ?? []) {
-    const row = findRow(board, s.playerId);
-    const proj = row ? figures(row, String(s.slot ?? "").toUpperCase() === "CPT").proj : null;
-    if (!Number.isFinite(proj)) return null;
-    projs.push(proj);
-  }
-  return projs.length ? shownTotal(projs) : 0; // no slots at all: 0, as before
-}
-
-function savedProjHtml(lineup, board, figures = playerFigures) {
-  const total = savedProjTotal(lineup, board, figures);
-  return total === null ? "proj unknown (a player has no projection)" : `${dec1(total)} proj`; // the "·" before it is CSS (.saved-lineup-totals), as on classic's card
-}
-
+// The saved card with the panel's open rename box and delete prompt (the card itself is lineup-saved.js's).
 export function savedLineupCardHtml(lineup, board, figures = playerFigures) {
-  const entries = (lineup.slots ?? []).map((s) => ({ slot: s.slot, row: findRow(board, s.playerId), snap: s }));
-  let salaryUsed = 0;
-  for (const e of entries) {
-    const row = e.row;
-    if (!row) {
-      // The snapshot's own "salary" field is already the right one for its slot (CPT or FLEX) — routes.js
-      // resolves that at save time (~line 559); there is no separate snap.cptSalary (🔵 review item 11).
-      salaryUsed += e.snap.salary ?? 0;
-      continue;
-    }
-    salaryUsed += (e.slot === "CPT" ? row.cptSalary : row.salary) ?? 0;
-  }
-  const overCap = salaryUsed > SALARY_CAP;
-  const incomplete = entries.length < FLEX_COUNT + 1;
-  const isRenaming = state.renamingId === lineup.id;
-  const isConfirmingDelete = state.deleteConfirmId === lineup.id;
-  const badges = [
-    lineupModeOf(lineup) === "cash" ? cashBadgeHtml() : "", // a lineup saved from a Cash batch says so, as classic's Saved card does
-    incomplete ? `<span class="saved-lineup-badge saved-lineup-badge-warning">Incomplete</span>` : "",
-    overCap ? `<span class="saved-lineup-badge saved-lineup-badge-danger">Over cap</span>` : "",
-  ].join("");
-  const nameHtml = isRenaming
-    ? `<span class="saved-lineup-rename">
-        <input type="text" class="saved-lineup-rename-input" data-rename-input value="${escapeHtml(lineup.name)}" />
-        <button type="button" class="saved-lineup-mini-btn" data-action="sd-rename-save" data-id="${escapeHtml(lineup.id)}">Save</button>
-        <button type="button" class="saved-lineup-mini-btn" data-action="sd-rename-cancel">Cancel</button>
-      </span>`
-    : `<button type="button" class="saved-lineup-name-btn" data-action="sd-rename-start" data-id="${escapeHtml(lineup.id)}" title="Click to rename">${escapeHtml(lineup.name)}</button>`;
-  const palette = showdownPalette(board);
-  const rowsHtml = entries.map((e) => savedLineupSlotHtml(e, palette)).join("");
-  const salaryLeft = SALARY_CAP - salaryUsed;
-  const salaryText = overCap ? `${money(salaryUsed)} used &middot; ${money(-salaryLeft)} over` : `${money(salaryUsed)} used &middot; ${money(salaryLeft)} left`;
-  const deleteHtml = isConfirmingDelete
-    ? `<span class="saved-lineup-confirm">Delete this lineup?
-        <button type="button" class="saved-lineup-mini-btn danger" data-action="sd-delete-yes" data-id="${escapeHtml(lineup.id)}">Yes</button>
-        <button type="button" class="saved-lineup-mini-btn" data-action="sd-delete-no">No</button>
-      </span>`
-    : `<button type="button" class="saved-lineup-btn danger" data-action="sd-delete-start" data-id="${escapeHtml(lineup.id)}">Delete</button>`;
-  return `
-    <div class="saved-lineup-card">
-      <div class="saved-lineup-card-head">
-        ${nameHtml}
-        <span class="saved-lineup-time">${escapeHtml(formatSavedAt(lineup.savedAt))}</span>
-        ${badges}
-      </div>
-      <div class="saved-lineup-slots">${rowsHtml}</div>
-      <div class="saved-lineup-totals">
-        <span class="${overCap ? "saved-lineup-totals-over" : ""}">${salaryText}</span>
-        <span class="saved-lineup-proj" data-lineup-id="${escapeHtml(lineup.id)}">${savedProjHtml(lineup, board, figures)}</span>
-      </div>
-      <div class="saved-lineup-actions">
-        <button type="button" class="saved-lineup-btn" data-action="sd-load" data-id="${escapeHtml(lineup.id)}">Load</button>
-        ${deleteHtml}
-      </div>
-    </div>`;
+  return savedCardHtml(lineup, board, figures, { renamingId: state.renamingId, deleteConfirmId: state.deleteConfirmId });
 }
 
 function savedLineupsSectionHtml(board) {
-  let body;
-  if (!state.savedLoaded) {
-    body = `<div class="saved-lineups-loading">Loading…</div>`;
-  } else if (state.savedError) {
-    body = `<div class="saved-lineups-empty saved-lineups-error">${escapeHtml(state.savedError)}</div>`;
-  } else if (state.savedLineups.length === 0) {
-    body = `<div class="saved-lineups-empty">No saved lineups yet.</div>`;
-  } else {
-    body = `<div class="saved-lineups-list">${state.savedLineups.map((l) => savedLineupCardHtml(l, board)).join("")}</div>`;
-  }
-  return `
-    <div class="saved-lineups" id="sd-saved-lineups">
-      <h3 class="saved-lineups-title">Saved lineups</h3>
-      ${body}
-    </div>`;
+  return savedSectionHtml(board, { loaded: state.savedLoaded, error: state.savedError, lineups: state.savedLineups }, (l) => savedLineupCardHtml(l, board));
 }
 
 function panelHtml(board) {
@@ -665,43 +548,28 @@ function wire(container, board, key) {
     const nameInput = container.querySelector("#sd-lineup-save-name");
     doSaveLineup(key, nameInput ? nameInput.value : "");
   });
-  container.querySelectorAll("[data-action='sd-rename-start']").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      state.renamingId = btn.dataset.id;
+  wireSavedCards(container, {
+    renameStart: (id) => {
+      state.renamingId = id;
       state.deleteConfirmId = null;
       commit();
-    });
-  });
-  container.querySelectorAll("[data-action='sd-rename-cancel']").forEach((btn) => {
-    btn.addEventListener("click", () => {
+    },
+    renameCancel: () => {
       state.renamingId = null;
       commit();
-    });
-  });
-  container.querySelectorAll("[data-action='sd-rename-save']").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      const input = container.querySelector("[data-rename-input]");
-      doRenameLineup(key, btn.dataset.id, input ? input.value : "");
-    });
-  });
-  container.querySelectorAll("[data-action='sd-delete-start']").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      state.deleteConfirmId = btn.dataset.id;
+    },
+    renameSave: (id, name) => doRenameLineup(key, id, name),
+    deleteStart: (id) => {
+      state.deleteConfirmId = id;
       state.renamingId = null;
       commit();
-    });
-  });
-  container.querySelectorAll("[data-action='sd-delete-no']").forEach((btn) => {
-    btn.addEventListener("click", () => {
+    },
+    deleteNo: () => {
       state.deleteConfirmId = null;
       commit();
-    });
-  });
-  container.querySelectorAll("[data-action='sd-delete-yes']").forEach((btn) => {
-    btn.addEventListener("click", () => doDeleteLineup(key, btn.dataset.id));
-  });
-  container.querySelectorAll("[data-action='sd-load']").forEach((btn) => {
-    btn.addEventListener("click", () => doLoadLineup(btn.dataset.id));
+    },
+    deleteYes: (id) => doDeleteLineup(key, id),
+    load: (id) => doLoadLineup(id),
   });
   wireOptimizer(optCtx(board, key));
 }
