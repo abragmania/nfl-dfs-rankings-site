@@ -3,14 +3,15 @@
 // Split out of entries.js for size (🔵 2026-10-17); entries.js imports and re-exports every name here. Imports only
 // format.js, entries-plan.js, lineup-tags.js and totals.js, never entries.js.
 import { escapeHtml, money, dec1 } from "./format.js";
-import { groupByContest, effectiveClasses, orderedFillLineups, planFill, validProposals, contestKey, lineupModeOf, rowHolds } from "./entries-plan.js";
+import { groupByContest, effectiveClasses, orderedFillLineups, planFill, validProposals, contestKey, lineupModeOf, rowHolds, ENTRIES_STORAGE_NS } from "./entries-plan.js";
 import { numberLineups, lineupLabel, sortLineupsBy } from "./lineup-tags.js";
 import { shownTotal } from "./totals.js";
 
 /** "Name - 152.3 proj - $49,800": how one saved lineup reads in a picker. With `numbers` (numberLineups) the name part
- *  is the "1 · A · name" label (Adam 2026-10-17, plan item 7a). */
-export function lineupOptionLabel(lineup, numbers = null) {
-  const name = numbers ? lineupLabel(lineup, numbers) : String(lineup?.name ?? "").trim() || "Lineup";
+ *  is the "1 · A · name" label (Adam 2026-10-17, plan item 7a). `nameOf(lineup, numbers)` (the Showdown tab adds the Captain) is that label;
+ *  classic's is lineupLabel. */
+export function lineupOptionLabel(lineup, numbers = null, nameOf = lineupLabel) {
+  const name = numbers ? nameOf(lineup, numbers) : String(lineup?.name ?? "").trim() || "Lineup";
   const proj = dec1(shownTotal((lineup?.slots ?? []).map((s) => s?.proj)) ?? lineup?.totalProj); // ChatGPT wish d, Adam 2026-10-17: the sum of the saved players' shown projections
   const cash = lineupModeOf(lineup) === "cash" ? "$ Cash · " : ""; // Cash mode job 3b, 2026-10-17: the one browser mode rule (lineup-cash.js, through entries-plan.js)
   return `${cash}${name} · ${proj == null ? "no proj" : `${proj} proj`} · ${money(lineup?.salaryUsed)}`;
@@ -80,8 +81,8 @@ export function reproposeFill(s, assign = null) {
 }
 
 /** 🔵 2026-10-17 (F1): the localStorage key of one uploaded file's kept rows, beside its picks (a newer upload starts open). */
-export function keepStorageKey(fileName) {
-  return `nfldfs.entries.keep.v1:${fileName}`;
+export function keepStorageKey(fileName, ns = ENTRIES_STORAGE_NS) {
+  return `${ns}.keep.v1:${fileName}`;
 }
 
 /** 🔵 2026-10-17 (F1): kept entry ids read back from storage: a JSON array, pruned to ids still in the file. Returns a Set
@@ -159,25 +160,30 @@ export function tickClassContests(contestIds, model, cls, on) {
 }
 
 /** The slate's saved lineups for the Sort choice: their numbers, the sorted list, the ids in that order and the
- *  complete ones split { cash, gpp } (Adam 2026-10-17, plan items 5 and 7a). */
-export function fillListsOf(lineups, sortBy) {
+ *  complete ones split { cash, gpp } (Adam 2026-10-17, plan items 5 and 7a). `slates`: the second-slates array, or a
+ *  Showdown file-id context function, handed on to orderedFillLineups (Showdown Entries plan step 3). `numberOver` (the Showdown
+ *  tab): the list the numbers run over when `lineups` is only the pickable part of it, so a lineup keeps the number the game's
+ *  saved lineups give it; absent, the numbers run over `lineups` as in classic. */
+export function fillListsOf(lineups, sortBy, slates = [], numberOver = null) {
   const by = sortBy === "letter" ? "letter" : "number";
-  const numbers = numberLineups(lineups);
+  const numbers = numberLineups(numberOver ?? lineups);
   const sorted = sortLineupsBy(lineups, by, numbers);
   const order = sorted.map((l) => l.id);
-  return { by, numbers, sorted, order, ...orderedFillLineups(lineups, order) };
+  return { by, numbers, sorted, order, ...orderedFillLineups(lineups, order, slates) };
 }
 
 /** Everything the strip and the rows show for one file, recomputed on every render and held in memory only (plan item 6):
  *  the ticked state, the contest classes, planFill's answer and its proposals that are still valid. `eff` is every
- *  effective pick of the file. `view`: { fill, classes, sortBy }. */
+ *  effective pick of the file. `view`: { fill, classes, sortBy, numberOver (optional, see fillListsOf) }. `slates`: the
+ *  second-slates array, or a Showdown file-id context function (entries-plan.js showdownFileKeyOf), passed on to every file-key check. */
 export function fillModelOf(entries, slateKey, lineups, eff, slates, view) {
   const fill = { ...FILL_DEFAULT, ...(view?.fill ?? {}) };
-  const lists = fillListsOf(lineups, view?.sortBy);
+  const numberOver = view?.numberOver ?? null;
+  const lists = fillListsOf(lineups, view?.sortBy, slates, numberOver);
   const groups = groupByContest(entries);
   const classes = effectiveClasses(groups, view?.classes);
   // 🔵 2026-10-18: the fill follows the Saved tab's number order whatever the Sort toggle shows (it orders the lists and pickers only).
-  const planOrder = (lists.by === "number" ? lists : fillListsOf(lineups, "number")).order;
+  const planOrder = (lists.by === "number" ? lists : fillListsOf(lineups, "number", slates, numberOver)).order;
   const plan = planFill({ entries, lineups, assigned: eff, classes, overwrite: fill.overwrite, keep: fill.keep, prior: fill.prior, lineupIds: fill.lineupIds, contestIds: fill.contestIds, order: planOrder, slateKey, slates });
   // 🔵 2026-10-17: validProposals sees every pick, Replace and the kept rows, as planFill did and as Confirm will write.
   const valid = validProposals(plan.proposed, entries, lineups, eff, classes, slateKey, slates, { overwrite: fill.overwrite, keep: fill.keep });
@@ -185,15 +191,17 @@ export function fillModelOf(entries, slateKey, lineups, eff, slates, view) {
   // 🔵 2026-10-17 (F3): `keptOpen` is the count the Reopen button shows: kept rows with no effective pick (a hand pick never counts, D75, Adam 2026-10-18).
   // Adam 2026-10-18: rowHolds is the one decision; a proposal for a hand-picked row is dropped here too, so neither the picker nor Confirm can use it.
   const shown = Object.fromEntries(Object.entries(valid).filter(([id, lid]) => rowHolds({ pick: eff?.[id], kept: kept.has(String(id)), proposedId: lid }).state === "proposed"));
-  return { fill, ...lists, lineups, groups, classes, plan, kept, keptOpen: keptOpenCount(kept, entries, eff), proposals: fill.dismissed ? {} : shown };
+  // `lineupLabelOf` (view, the Showdown tab's Captain label) rides on the model for the lineup lists; classic's model has no such key.
+  return { fill, ...lists, lineups, groups, classes, plan, kept, keptOpen: keptOpenCount(kept, entries, eff), proposals: fill.dismissed ? {} : shown, ...(view?.lineupLabelOf ? { lineupLabelOf: view.lineupLabelOf } : {}) };
 }
 
 function fillListHtml(file, title, which, list, m, empty) {
   const f = escapeHtml(file);
   const ticked = m.fill.lineupIds == null ? null : new Set(m.fill.lineupIds.map(String));
   const on = (l) => ticked === null || ticked.has(String(l.id));
+  const nameOf = m.lineupLabelOf ?? lineupLabel;
   const boxes = list
-    .map((l) => `<label class="entries-check"><input type="checkbox" data-fill="lineup" data-list="${which}" data-file="${f}" value="${escapeHtml(l.id)}"${on(l) ? " checked" : ""} /><span title="${escapeHtml(lineupOptionLabel(l, m.numbers))}">${escapeHtml(lineupLabel(l, m.numbers))}</span></label>`)
+    .map((l) => `<label class="entries-check"><input type="checkbox" data-fill="lineup" data-list="${which}" data-file="${f}" value="${escapeHtml(l.id)}"${on(l) ? " checked" : ""} /><span title="${escapeHtml(lineupOptionLabel(l, m.numbers, nameOf))}">${escapeHtml(nameOf(l, m.numbers))}</span></label>`)
     .join("");
   const btn = (set, text) => `<button type="button" class="saved-lineup-btn" data-action="entries-fill-lineups" data-file="${f}" data-which="${which}" data-set="${set}">${text}</button>`;
   return `

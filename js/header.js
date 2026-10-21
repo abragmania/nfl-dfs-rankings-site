@@ -256,6 +256,9 @@ export function entriesUploadedHandler({ upload, showdownOn, clearHash, showEntr
   };
 }
 
+/** What a Showdown entries export gets while the page passes wireUpload no Showdown entries handler (Showdown Entries plan step 3). */
+export const SHOWDOWN_ENTRIES_NOT_CONNECTED = "This is a DraftKings Showdown entries file, and this page cannot take Showdown entries files yet, so it was not uploaded.";
+
 // Wires the upload flow (a salary file is still raw CSV text to POST /api/slate/upload).
 // `onUploaded(data)` fires with the raw response so the caller can reload the board and re-render pills
 // with real source labels once it lands.
@@ -263,8 +266,10 @@ export function entriesUploadedHandler({ upload, showdownOn, clearHash, showEntr
 // headers. `onShowdownText(text)` ({ ok, message }) and `onEntriesText(text)` ({ ok, entries, contests } or { ok: false, message })
 // come from app.js, as does `setStatus(text, isError)`, the one place a status line is written (🔵 2026-10-18: #sd-status while
 // a showdown is on screen, else #status; see uploadStatusSetter). Returns { handleFile }, the same routing for the Entries and
-// Showdown buttons; handleFile answers { ok, kind, message }.
-export function wireUpload({ csvInput, uploadInfo, slateLine, pillsRow }, { onUploaded, onShowdownText, onEntriesText, setStatus }) {
+// Showdown buttons; handleFile answers { ok, kind, message }. Showdown Entries plan 2026-10-20 (step 3): `onShowdownEntriesText(text)`
+// takes a Showdown game's entries export and answers as onEntriesText does; without it such a file is refused with a plain
+// sentence (SHOWDOWN_ENTRIES_NOT_CONNECTED), never sent to the classic entries upload.
+export function wireUpload({ csvInput, uploadInfo, slateLine, pillsRow }, { onUploaded, onShowdownText, onEntriesText, onShowdownEntriesText, setStatus }) {
   const fail = (kind, message) => {
     setStatus(`Upload failed: ${message}`, true);
     return { ok: false, kind, message };
@@ -313,6 +318,14 @@ export function wireUpload({ csvInput, uploadInfo, slateLine, pillsRow }, { onUp
           const message = `Entries file loaded: ${r.entries} entr${r.entries === 1 ? "y" : "ies"} in ${r.contests} contest${r.contests === 1 ? "" : "s"} · see the Entries tab`;
           setStatus(message, false);
           return { ok: true, kind: "entries", message };
+        },
+        showdownEntries: async (text) => {
+          if (typeof onShowdownEntriesText !== "function") return fail("showdownEntries", SHOWDOWN_ENTRIES_NOT_CONNECTED);
+          const r = await onShowdownEntriesText(text);
+          if (!r?.ok) return fail("showdownEntries", r?.message ?? "unknown error");
+          const message = `Showdown entries file loaded: ${r.entries} entr${r.entries === 1 ? "y" : "ies"} in ${r.contests} contest${r.contests === 1 ? "" : "s"} · see the game's Entries tab`;
+          setStatus(message, false);
+          return { ok: true, kind: "showdownEntries", message };
         },
         unknown: (firstLine) => fail("unknown", `This is not a DraftKings salary, showdown or entries export (first line: ${firstLine.slice(0, 80)})`),
       });

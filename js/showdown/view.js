@@ -14,7 +14,7 @@ import { applyGrades } from "../grade.js";
 import { showAllToggleHtml, wireShowAllButtons } from "../filterbar.js";
 import { store } from "../state.js";
 import { renderShowdownTableHead, renderShowdownTableBody, shownRows } from "./table.js";
-import { renderShowdownTabs, renderShowdownProjectionsPanel, renderShowdownOwnershipPanel, renderShowdownLineupPanel } from "./tabs.js";
+import { renderShowdownTabs, renderShowdownProjectionsPanel, renderShowdownOwnershipPanel, renderShowdownLineupPanel, renderShowdownEntriesPanel } from "./tabs.js";
 import { figuresPillHtml } from "./figures-label.js"; // the header pill naming the sources this game's board reads (Adam 2026-10-20)
 
 const state = {
@@ -87,6 +87,7 @@ const els = {
   projectionsPanel: document.getElementById("sd-projections-panel"),
   ownershipPanel: document.getElementById("sd-ownership-panel"),
   lineupPanel: document.getElementById("sd-lineup-panel"),
+  entriesPanel: document.getElementById("sd-entries-panel"),
   emptyState: document.getElementById("sd-empty-state"),
 };
 
@@ -320,11 +321,7 @@ function renderLegend() {
 
 function renderEmpty() {
   els.emptyState.hidden = false;
-  els.rankingsPanel.hidden = true;
-  els.sourcesPanel.hidden = true;
-  els.projectionsPanel.hidden = true;
-  els.ownershipPanel.hidden = true;
-  els.lineupPanel.hidden = true;
+  for (const p of [els.rankingsPanel, els.sourcesPanel, els.projectionsPanel, els.ownershipPanel, els.lineupPanel, els.entriesPanel]) p.hidden = true;
   els.band.innerHTML = "";
   els.emptyState.textContent = state.loading ? "Loading the showdown board…" : state.error ?? "Could not load this showdown.";
 }
@@ -481,6 +478,7 @@ function render() {
   els.projectionsPanel.hidden = state.activeTab !== "projections";
   els.ownershipPanel.hidden = state.activeTab !== "ownership";
   els.lineupPanel.hidden = state.activeTab !== "lineup";
+  els.entriesPanel.hidden = state.activeTab !== "entries";
 
   // The gold band and stale/failed source pills show on both tabs and the Sources view (brief).
   renderBand();
@@ -495,6 +493,8 @@ function render() {
     renderSourcesView();
   } else if (state.activeTab === "lineup") {
     renderShowdownLineupPanel(els.lineupPanel, state.board, state.boardKey, { onOpenSources: openSources });
+  } else if (state.activeTab === "entries") {
+    renderShowdownEntriesPanel(els.entriesPanel, state.board, state.boardKey);
   }
 }
 
@@ -578,6 +578,12 @@ export async function renderShowdownView(key) {
   } else if (state.board) {
     render();
   }
+}
+
+// Exported for app-showdown.js: a Showdown entries upload opens that game's tab; another game's board draws it when its hashchange load lands.
+export function openShowdownTab(tab) {
+  state.activeTab = tab;
+  if (state.boardKey === showdownKeyFromHash()) render();
 }
 
 // Exported for app.js (🔵 finding): after a successful CSV upload of the showdown already on screen, the

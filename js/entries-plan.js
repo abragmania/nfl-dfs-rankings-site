@@ -24,8 +24,14 @@ export function cellId(cell) {
 
 /** The ids the entries file uses for a saved lineup's nine players, sorted and joined: the main slate's ids are the
  *  board's own; a second slate's come through its `dkIds` map (board.slates). Null when the lineup is not nine
- *  players or any player has no id in that slate's file. */
+ *  players or any player has no id in that slate's file. Showdown Entries plan 2026-10-20 (step 3): `slates` may instead
+ *  be a file-id context, a function fileKeyOf(lineup) giving the lineup's file ids or null (showdownFileKeyOf below); the
+ *  key is then those ids sorted and joined, `slateKey` unused. An array keeps the classic path above unchanged. */
 export function lineupFileKey(lineup, slateKey, slates) {
+  if (typeof slates === "function") {
+    const fileIds = slates(lineup);
+    return Array.isArray(fileIds) && fileIds.length ? [...fileIds].map(String).sort().join(",") : null;
+  }
   const slots = Array.isArray(lineup?.slots) ? lineup.slots : [];
   if (slots.length !== 9) return null;
   const map = !slateKey || slateKey === "main" ? null : ((slates ?? []).find((s) => s?.key === slateKey)?.dkIds ?? {});
@@ -37,6 +43,40 @@ export function lineupFileKey(lineup, slateKey, slates) {
     ids.push(id);
   }
   return ids.sort().join(",");
+}
+
+/** Showdown Entries plan 2026-10-20 (step 3): the file-id context of one Showdown game, built from its board `rows`. The
+ *  answer, fileKeyOf(lineup), gives a saved lineup's six DraftKings file ids, Captain first: the Captain slot's man by his
+ *  CPT row's id (row.cptId), each FLEX slot's man by his FLEX row's id (row.id). A slot may name its man by either id (the
+ *  batch save sends the Captain under his FLEX id; buildShowdownSnapshot reads both the same way, D13). Null when the
+ *  lineup is not one Captain and five FLEX, a man is on no row or twice, or the Captain has no CPT row. */
+export function showdownFileKeyOf(rows) {
+  const rowOf = new Map();
+  for (const r of Array.isArray(rows) ? rows : []) {
+    if (r?.id == null) continue;
+    rowOf.set(String(r.id).trim(), r);
+    if (r.cptId != null && String(r.cptId).trim() !== "") rowOf.set(String(r.cptId).trim(), r);
+  }
+  return (lineup) => {
+    const slots = Array.isArray(lineup?.slots) ? lineup.slots : [];
+    if (slots.length !== 6) return null;
+    const cpt = [];
+    const flex = [];
+    const men = new Set();
+    for (const s of slots) {
+      const row = rowOf.get(String(s?.playerId ?? "").trim());
+      if (!row || men.has(String(row.id))) return null;
+      men.add(String(row.id));
+      const slot = String(s?.slot ?? "").trim().toUpperCase();
+      const cptId = row.cptId == null ? "" : String(row.cptId).trim();
+      if (slot === "CPT" && cptId !== "") cpt.push(cptId);
+      // A man with only a Captain row has id === cptId (server/showdown/parse.js person()); he has no FLEX row, as the server's
+      // showdownSlotsFor refuses (🔵 step 3 review), so his lineup has no key and is never proposed.
+      else if (slot === "FLEX" && !(cptId !== "" && String(row.id).trim() === cptId)) flex.push(String(row.id).trim());
+      else return null;
+    }
+    return cpt.length === 1 && flex.length === 5 ? [...cpt, ...flex] : null;
+  };
 }
 
 /** What the server will treat as already in each contest: the lineup sitting in every entry that is NOT being
@@ -119,8 +159,12 @@ function classFor(classes, contestId, contestName) {
   return CLASSES.has(classes?.[contestId]) ? classes[contestId] : classifyContest(contestName);
 }
 
-export function classesStorageKey(fileName) {
-  return `nfldfs.entries.classes.v1:${fileName}`;
+/** The localStorage namespace of the classic Entries tab; a second Entries tab passes its own (Showdown Entries plan step 3),
+ *  so neither tab's pruning reaches the other's keys. Every storage key function takes it last, classic by default. */
+export const ENTRIES_STORAGE_NS = "nfldfs.entries";
+
+export function classesStorageKey(fileName, ns = ENTRIES_STORAGE_NS) {
+  return `${ns}.classes.v1:${fileName}`;
 }
 
 /** D75: stored class overrides, only contests still in the file and only cash or gpp; unreadable gives {}. */
@@ -146,12 +190,15 @@ export function effectiveClasses(groups, overrides) {
   return out;
 }
 
-/** D75: complete lineups in the screen's `order` of ids when given (unlisted ones after), else oldest saved first. */
-export function orderedFillLineups(lineups, order = null) {
+/** D75: complete lineups in the screen's `order` of ids when given (unlisted ones after), else oldest saved first.
+ *  `slates` (Showdown Entries plan step 3): a file-id context function judges completeness instead; an array (or none)
+ *  keeps the classic main-slate check. */
+export function orderedFillLineups(lineups, order = null, slates = []) {
   const rank = Array.isArray(order) ? new Map(order.map((id, i) => [String(id), i])) : null;
   const r = (l) => rank.get(String(l.id)) ?? Infinity;
+  const context = typeof slates === "function" ? slates : [];
   // 🔵 2026-10-17: complete = lineupFileKey on the main slate; the stable sort by the screen's order keeps byAge within a rank.
-  const aged = byAge((Array.isArray(lineups) ? lineups : []).filter((l) => l && l.id != null && lineupFileKey(l, "main", []) !== null));
+  const aged = byAge((Array.isArray(lineups) ? lineups : []).filter((l) => l && l.id != null && lineupFileKey(l, "main", context) !== null));
   const sorted = rank ? aged.sort((a, b) => (r(a) === r(b) ? 0 : r(a) < r(b) ? -1 : 1)) : aged;
   return { cash: sorted.filter(isCashLineup), gpp: sorted.filter((l) => !isCashLineup(l)) };
 }
@@ -210,8 +257,8 @@ export function planFill({ entries, lineups, assigned, classes, overwrite = fals
   const usable = all.filter((l) => lineupFileKey(l, slateKey, slates) !== null);
   const tickL = lineupIds == null ? null : new Set(Array.from(lineupIds, String));
   const tickC = contestIds == null ? null : new Set(Array.from(contestIds, String));
-  const saved = orderedFillLineups(usable, order);
-  const pool = orderedFillLineups(usable.filter((l) => !tickL || tickL.has(String(l.id))), order);
+  const saved = orderedFillLineups(usable, order, slates);
+  const pool = orderedFillLineups(usable.filter((l) => !tickL || tickL.has(String(l.id))), order, slates);
   const groups = groupByContest(list).filter((g) => !tickC || tickC.has(g.contestId));
   const classOf = new Map(groups.map((g) => [g.contestId, classFor(classes, g.contestId, g.contestName)]));
   const picks = effectiveAssignments(list, all, assigned);
@@ -248,7 +295,7 @@ export function planFill({ entries, lineups, assigned, classes, overwrite = fals
     if (!pool[cls].length) continue;
     for (const e of g.entries) if (open(e)) place(e, cls, pool[cls], g.entries.length > 1);
   }
-  const existing = orderedFillLineups(all, order);
+  const existing = orderedFillLineups(all, order, slates);
   return { proposed, notes: fillNotes(groups, classOf, existing, saved, pool, left), counts };
 }
 

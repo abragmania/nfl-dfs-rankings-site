@@ -12,7 +12,7 @@ import { escapeHtml, dec1, localStamp } from "../format.js";
 import { shownRows, ownTitleText, sdLine } from "./table.js";
 import { showAllToggleHtml, wireShowAllButtons } from "../filterbar.js";
 import { store, sortRows, defaultDirFor } from "../state.js";
-import { sortableHeadHtml, unusedColumn } from "../tabs.js"; // the classic sortable header (also imported by lineup-lists.js) and its dimmed unused-source column
+import { sortableHeadHtml, unusedColumn, onSitePage } from "../tabs.js"; // the classic sortable header (also imported by lineup-lists.js) and its dimmed unused-source column
 import { sourceIsTicked } from "../sources-page-html.js"; // the one tick predicate the Sources page and this table share
 import { snapPanelMaxHeight } from "../lineup.js"; // the classic tables' sizing step, the copy the Optimizer lists already import (lineup-lists.js)
 
@@ -28,11 +28,16 @@ function fitScrollPanel(container) {
 export const SHOWDOWN_TABS = Object.freeze([
   Object.freeze({ key: "rankings", label: "Rankings" }),
   Object.freeze({ key: "lineup", label: "Optimizer" }),
+  Object.freeze({ key: "entries", label: "Entries" }), // Showdown Entries plan 2026-10-20: Adam's private entries files, so the app only (visibleShowdownTabs)
 ]);
-const TABS = SHOWDOWN_TABS;
+
+/** The tabs to draw: all of them in the app, all but Entries on the public site (as tabs.js visibleTabs does for classic). */
+export function visibleShowdownTabs(onSite = onSitePage()) {
+  return SHOWDOWN_TABS.filter((t) => !(onSite && t.key === "entries"));
+}
 
 export function renderShowdownTabs(container, activeTab, onTabClick) {
-  container.innerHTML = TABS.map(
+  container.innerHTML = visibleShowdownTabs().map(
     (t) => `<button type="button" class="tab-btn${t.key === activeTab ? " active" : ""}" data-tab="${t.key}">${escapeHtml(t.label)}</button>`
   ).join("");
   container.querySelectorAll(".tab-btn").forEach((el) => {
@@ -407,3 +412,4 @@ export function renderShowdownOwnershipPanel(container, board, opts = {}) {
 }
 
 export { renderShowdownLineupPanel } from "./lineup.js";
+export { renderShowdownEntriesPanel } from "./entries.js";

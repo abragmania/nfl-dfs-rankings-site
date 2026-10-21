@@ -57,6 +57,19 @@ export function postShowdownProjectionsPaste() {
   return readOnly();
 }
 
+// The Showdown Entries tab holds Adam's private entries files and is not on the site (showdown/tabs.js visibleShowdownTabs); all three refuse.
+export function getShowdownEntries() {
+  return readOnly();
+}
+
+export function postShowdownEntriesUpload() {
+  return readOnly();
+}
+
+export function postShowdownEntriesExport() {
+  return readOnly();
+}
+
 // Body and answer as POST /api/showdown/<key>/lineup/optimize. Never throws: there is no server on the site, so a
 // failure is answered as the route's own LINEUP_OPTIMIZE_FAILED, never as an unreachable server.
 export async function postShowdownLineupOptimize(key, payload) {

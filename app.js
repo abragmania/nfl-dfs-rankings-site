@@ -25,7 +25,7 @@ import {
 import { renderPills, renderSlateLine, wireUpload, wireRefresh, wireThemeToggle, secondSlateSavedText, renderModeBox, uploadStatusSetter, entriesUploadedHandler, paintSourcesLink, wireSourcesLink, wireTrackedLink } from "./js/header.js";
 import { uploadEntriesText, setUploadRouter } from "./js/entries-wire.js"; // Adam 2026-10-18: one upload for every DraftKings export
 import { showdownKeyFromHash, showdownRowById, showdownBoardAsOf } from "./js/showdown/view.js";
-import { configureShowdown, setRouteDkFile, uploadShowdownText, renderModeRowNow, renderShowdownTabNow, loadShowdownList, applyMode } from "./js/app-showdown.js";
+import { configureShowdown, setRouteDkFile, uploadShowdownText, uploadShowdownEntriesText, renderModeRowNow, renderShowdownTabNow, loadShowdownList, applyMode } from "./js/app-showdown.js";
 import { adjustScrollPanels } from "./js/scroll-panels.js";
 import { normalizeBoard } from "./js/normalize.js";
 import { applyGrades, rowsGradedForView } from "./js/grade.js";
@@ -457,6 +457,7 @@ const { handleFile } = wireUpload(
   {
     setStatus: setUploadStatus,
     onShowdownText: uploadShowdownText,
+    onShowdownEntriesText: uploadShowdownEntriesText, // Showdown Entries plan 2026-10-20 (step 4): the game's Entries tab, not classic's
     // Adam 2026-10-18: an entries file loaded from any button shows the Entries tab (🔵: from a showdown screen, the main page first).
     onEntriesText: entriesUploadedHandler({
       upload: uploadEntriesText,

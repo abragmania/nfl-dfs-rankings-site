@@ -18,6 +18,12 @@ const FLEX_POSITIONS = new Set(["RB", "WR", "TE"]);
 const POSITION_MINIMUMS = Object.freeze({ QB: 1, RB: 2, WR: 3, TE: 1, DST: 1 });
 const BOM = "﻿";
 
+/** A roster layout (parseEntriesCsv's default; Showdown's is in ./dk-showdown-entries.js): the slot names in file order,
+ *  the roster's `start` and `end` (one past the last) columns, the sentences' count word, the structure check of ids in
+ *  slot order and the sentence refusing a file of another layout. */
+export const CLASSIC_LAYOUT = Object.freeze({ slots: DK_CLASSIC_SLOTS, start: ROSTER_START, end: ROSTER_END, countWord: "nine", structureErrors,
+  wrongFile: "This is not a DraftKings classic entries file: the first line must start with Entry ID and carry the roster columns QB, RB, RB, WR, WR, WR, TE, FLEX, DST." });
+
 /**
  * Splits CSV text into records. Each record keeps its raw text, its line ending, its decoded cells and the raw
  * text of each cell (so a cell can be written back byte for byte). Handles quoted fields, doubled quotes, commas
@@ -115,18 +121,19 @@ function inSet(setOrArray, id) {
   return Array.isArray(setOrArray) && setOrArray.includes(id);
 }
 
-function describe(pool, id) {
+/** A player as the sentences name him: `Name (id)` from the file's player list, or `id <id>` when it has no row. */
+export function describe(pool, id) {
   const p = pool.get(id);
   return p ? `${p.name} (${id})` : `id ${id}`;
 }
 
 /**
- * Parses a DraftKings entries file.
+ * Parses a DraftKings entries file of the given roster layout (classic by default).
  * Returns { header, lines, entries, pool } as documented at the top of this file, plus what the writer needs to
- * reproduce the file exactly: `bom` (true when the text began with one), `eols` (each line's own ending) and
- * `rawCells` (each line's cells as the exact original text).
+ * reproduce the file exactly: `bom` (true when the text began with one), `eols` (each line's own ending),
+ * `rawCells` (each line's cells as the exact original text), `layout` and `rosterEnd` (the layout's end column).
  */
-export function parseEntriesCsv(text) {
+export function parseEntriesCsv(text, layout = CLASSIC_LAYOUT) {
   if (typeof text !== "string") throw new Error("The entries file text must be a string.");
   const bom = text.startsWith(BOM);
   const body = bom ? text.slice(1) : text;
@@ -139,38 +146,39 @@ export function parseEntriesCsv(text) {
   }
 
   const header = records[0].cells;
-  const headerSlots = header.slice(ROSTER_START, ROSTER_END).map(c => c.trim().toUpperCase());
-  if (header[0]?.trim() !== "Entry ID" || headerSlots.join(",") !== DK_CLASSIC_SLOTS.join(",")) {
-    throw new Error(
-      "This is not a DraftKings classic entries file: the first line must start with Entry ID and carry the roster columns QB, RB, RB, WR, WR, WR, TE, FLEX, DST."
-    );
-  }
+  const { start, end } = layout;
+  const headerSlots = header.slice(start, end).map(c => c.trim().toUpperCase());
+  if (header[0]?.trim() !== "Entry ID" || headerSlots.join(",") !== layout.slots.join(",")) throw new Error(layout.wrongFile);
 
   const entries = [];
   for (let i = 1; i < records.length; i++) {
     const cells = records[i].cells;
     if (!/^\d+$/.test(cells[0].trim())) continue;
-    if (cells.length < ROSTER_END) {
-      throw new Error(`Line ${i + 1} looks like an entry (${cells[0]}) but has fewer than ${ROSTER_END} cells.`);
-    }
-    entries.push({
-      lineIndex: i,
-      entryId: cells[0],
-      contestName: cells[1],
-      contestId: cells[2],
-      entryFee: cells[3],
-      roster: cells.slice(ROSTER_START, ROSTER_END),
-      rest: cells.slice(ROSTER_END)
-    });
+    if (cells.length < end) throw new Error(`Line ${i + 1} looks like an entry (${cells[0]}) but has fewer than ${end} cells.`);
+    entries.push({ lineIndex: i, entryId: cells[0], contestName: cells[1], contestId: cells[2], entryFee: cells[3], roster: cells.slice(start, end), rest: cells.slice(end) });
   }
 
-  // The player list: find its header (a "Position" cell directly followed by "Name + ID"), then read the rows below.
+  return {
+    header,
+    lines: records.map(r => r.raw),
+    entries,
+    pool: readPlayerList(records, end),
+    bom,
+    eols: records.map(r => r.eol),
+    rawCells: records.map(r => r.rawCells),
+    layout, rosterEnd: end
+  };
+}
+
+/** The player list: find its header (a "Position" cell directly followed by "Name + ID") to the right of the roster
+ *  columns (from `rosterEnd`), then read the rows below. */
+function readPlayerList(records, rosterEnd) {
   const pool = new Map();
   let listLine = -1;
   let listCol = -1;
   for (let i = 0; i < records.length && listLine < 0; i++) {
     const cells = records[i].cells;
-    for (let j = ROSTER_END; j + 1 < cells.length; j++) {
+    for (let j = rosterEnd; j + 1 < cells.length; j++) {
       if (cells[j].trim() === "Position" && cells[j + 1].trim() === "Name + ID") {
         listLine = i;
         listCol = j;
@@ -218,16 +226,7 @@ export function parseEntriesCsv(text) {
       });
     }
   }
-
-  return {
-    header,
-    lines: records.map(r => r.raw),
-    entries,
-    pool,
-    bom,
-    eols: records.map(r => r.eol),
-    rawCells: records.map(r => r.rawCells)
-  };
+  return pool;
 }
 
 /**
@@ -368,11 +367,7 @@ export function validateLineup(slots, pool, { statusById, sidelinedIds, revived,
   const complete = errors.length === 0;
 
   const salary = known.reduce((sum, id) => sum + pool.get(id).salary, 0);
-  if (complete && salary > salaryCap) {
-    errors.push(`The salary is $${salary.toLocaleString("en-US")}, over the $${salaryCap.toLocaleString("en-US")} cap.`);
-  } else if (complete && salary < 49000) {
-    warnings.push(`The salary is $${salary.toLocaleString("en-US")}, which leaves $${(salaryCap - salary).toLocaleString("en-US")} unspent.`);
-  }
+  if (complete) addNotes(errors, warnings, salaryNotes(salary, salaryCap));
 
   const games = new Set();
   let gameUnknown = false;
@@ -389,125 +384,155 @@ export function validateLineup(slots, pool, { statusById, sidelinedIds, revived,
     }
   }
 
-  for (const id of known) {
+  addNotes(errors, warnings, injuryNotes(known, pool, { statusById, sidelinedIds, revived }));
+  return { errors, warnings, salary, games: [...games] };
+}
+
+const addNotes = (errors, warnings, notes) => (errors.push(...notes.errors), warnings.push(...notes.warnings));
+const dollars = n => `$${n.toLocaleString("en-US")}`;
+
+/** A complete lineup's salary sentences (validateLineup's, shared with Showdown): over the cap an error, under $49,000 a warning. */
+export function salaryNotes(salary, salaryCap = 50000) {
+  if (salary > salaryCap) return { errors: [`The salary is ${dollars(salary)}, over the ${dollars(salaryCap)} cap.`], warnings: [] };
+  return { errors: [], warnings: salary < 49000 ? [`The salary is ${dollars(salary)}, which leaves ${dollars(salaryCap - salary)} unspent.`] : [] };
+}
+
+/** The injury sentences for `ids` (validateLineup's, shared with Showdown; options as validateLineup's, keyed by the
+ *  file's ids): sidelined is an error, questionable or revived (typed in after he was ruled out) a warning. */
+export function injuryNotes(ids, pool, { statusById, sidelinedIds, revived } = {}) {
+  const errors = [];
+  const warnings = [];
+  for (const id of ids) {
     const status = lookup(statusById, id);
     const statusText = status === null || status === undefined ? "" : String(status).trim();
     const typed = lookup(revived, id);
     if (typed !== undefined && typed !== null) {
       warnings.push(`${describe(pool, id)} is listed ${statusText || "injured"}; kept because you typed ${typed} after he was ruled out.`);
-      continue;
-    }
-    if (isSidelined(statusText) || inSet(sidelinedIds, id)) {
+    } else if (isSidelined(statusText) || inSet(sidelinedIds, id)) {
       errors.push(`${describe(pool, id)} is sidelined${statusText ? ` (status ${statusText})` : " (flagged injured on the board)"}.`);
     } else if (["Q", "QUESTIONABLE"].includes(statusText.toUpperCase())) {
       warnings.push(`${describe(pool, id)} is listed questionable.`);
     }
   }
-
-  return { errors, warnings, salary, games: [...games] };
+  return { errors, warnings };
 }
 
 /**
- * Builds the file to upload: the ORIGINAL file, line for line, with only the nine roster cells of each entry
- * row replaced. `groups` is groupPlaceholders(parsed.entries); `lineups` holds one lineup per group in the same
- * order (lineup i replaces group i), each an array of nine ids in slot order (or an object with `slots`).
- * Roster cells are written as the player list's exact "Name + ID" text. Every other cell and line is the
- * original text, the line endings are the input's, and a BOM is kept when the input had one.
- * Throws when the lineup count is wrong, a lineup is not a legal classic layout, two lineups hold the same nine
- * players, or the finished text fails the re-parse checks.
- *
- * Option `byEntry` (the Optimizer's per-entry assignment, PROJECT.md Part 4 "Optimizer"): a Map or object of
- * entry id -> nine ids in slot order (or an object with `slots`). Pass `groups` and `lineups` as null with it.
- * Each named entry row gets its own lineup; every entry row not named keeps its original text untouched. The same
- * nine players may go into different contests but never twice into one contest (same Contest ID), counting the
- * lineup an untouched entry row of that contest already holds. Without the
- * option the function behaves exactly as before.
+ * Builds the file to upload: the ORIGINAL file, line for line, with only the roster cells (nine in classic; the
+ * layout parseEntriesCsv stored) of each entry row replaced. `groups` is groupPlaceholders(parsed.entries); `lineups`
+ * holds one lineup per group in the same order (lineup i replaces group i), each an array of ids in slot order (or
+ * an object with `slots`). Roster cells are written as the player list's exact "Name + ID" text. Every other cell and
+ * line is the original text, the line endings are the input's, and a BOM is kept when the input had one. Throws when
+ * the lineup count is wrong, a lineup is not a legal layout, two lineups hold the same players, or the finished text
+ * fails the re-parse checks.
+ * Option `byEntry` (the Optimizer's per-entry assignment, PROJECT.md Part 4 "Optimizer"): a Map or object of entry id
+ * -> ids in slot order (or an object with `slots`); pass `groups` and `lineups` as null with it. Each named entry row
+ * gets its own lineup; every row not named keeps its original text. The same players may go into different contests
+ * but never twice into one contest (same Contest ID), counting the lineup an untouched row of that contest holds.
  */
 export function buildUpload(parsed, groups, lineups, { byEntry } = {}) {
-  const { pool } = parsed;
-  // slotsOfLine: entry row line index -> the nine ids it takes. Rows not in it are written as their original text.
-  const slotsOfLine = new Map();
-  if (byEntry !== undefined && byEntry !== null) {
-    if (groups != null || lineups != null) throw new Error("buildUpload takes either placeholder groups and lineups or byEntry, not both.");
-    const pairs = typeof byEntry.entries === "function" && !Array.isArray(byEntry) ? [...byEntry.entries()] : Object.entries(byEntry);
-    if (pairs.length === 0) throw new Error("No entry was given a lineup, so there is nothing to write.");
-    const entryById = new Map();
-    for (const entry of parsed.entries) {
-      if (entryById.has(entry.entryId)) throw new Error(`Entry ${entry.entryId} appears on more than one line of the entries file.`);
-      entryById.set(entry.entryId, entry);
-    }
-    const seenInContest = new Map(); // contest id + sorted ids -> entry id
-    // Entry rows not given a lineup keep theirs: seed them so no new lineup repeats one in the same contest. A blank
-    // row, or one whose nine cells do not all name players in the file's list, is skipped.
-    const assigned = new Set(pairs.map(([id]) => String(id).trim()));
-    for (const entry of parsed.entries) {
-      if (assigned.has(entry.entryId)) continue;
-      const ids = entry.roster.map(idOfCell);
-      if (ids.some(id => id === "" || !pool.has(id))) continue;
-      seenInContest.set(`${entry.contestId.trim()}|${ids.slice().sort(compareIds).join(",")}`, `${entry.entryId} (not given a new lineup)`);
-    }
-    for (const [rawEntryId, lineup] of pairs) {
-      const entryId = String(rawEntryId).trim();
-      const entry = entryById.get(entryId);
-      if (!entry) throw new Error(`Entry ${entryId} is not in the entries file.`);
-      const raw = Array.isArray(lineup) ? lineup : lineup?.slots;
-      if (!Array.isArray(raw)) throw new Error(`The lineup for entry ${entryId} is not a list of nine player ids.`);
-      const slots = raw.map(id => String(id).trim());
-      const problems = structureErrors(slots, pool);
-      if (problems.length > 0) throw new Error(`Entry ${entryId}: ${problems.join(" ")}`);
-      const key = `${entry.contestId.trim()}|${slots.slice().sort(compareIds).join(",")}`;
-      if (seenInContest.has(key)) {
-        throw new Error(`Entry ${entryId} has the same nine players as entry ${seenInContest.get(key)} in the same contest (${entry.contestName}); a contest never gets the same lineup twice.`);
-      }
-      seenInContest.set(key, entryId);
-      slotsOfLine.set(entry.lineIndex, slots);
-    }
-  } else {
-    if (!Array.isArray(groups) || !Array.isArray(lineups)) throw new Error("buildUpload needs the placeholder groups and the new lineups.");
-    if (lineups.length !== groups.length) {
-      throw new Error(`The entries file holds ${groups.length} different placeholder lineups but ${lineups.length} new lineups were given; the two counts must match.`);
-    }
-    const slotsList = lineups.map((lineup, i) => {
-      const raw = Array.isArray(lineup) ? lineup : lineup?.slots;
-      if (!Array.isArray(raw)) throw new Error(`Lineup ${i + 1} is not a list of nine player ids.`);
-      const slots = raw.map(id => String(id).trim());
-      const problems = structureErrors(slots, pool);
-      if (problems.length > 0) throw new Error(`Lineup ${i + 1}: ${problems.join(" ")}`);
-      return slots;
-    });
-    const seenSets = new Map();
-    slotsList.forEach((slots, i) => {
-      const key = slots.slice().sort(compareIds).join(",");
-      if (seenSets.has(key)) throw new Error(`Lineup ${i + 1} has the same nine players as lineup ${seenSets.get(key) + 1}; every lineup must be different.`);
-      seenSets.set(key, i);
-    });
-
-    // Which lineup each entry row takes. Every entry row must belong to exactly one group.
-    groups.forEach((group, g) => {
-      for (const entry of group.entries) {
-        if (slotsOfLine.has(entry.lineIndex)) throw new Error(`Entry ${entry.entryId} is in more than one placeholder group.`);
-        slotsOfLine.set(entry.lineIndex, slotsList[g]);
-      }
-    });
-    for (const entry of parsed.entries) {
-      if (!slotsOfLine.has(entry.lineIndex)) throw new Error(`Entry ${entry.entryId} is in no placeholder group.`);
-    }
-    if (slotsOfLine.size !== parsed.entries.length) throw new Error("The placeholder groups do not match the entry rows of this file.");
-  }
+  const { pool, layout = CLASSIC_LAYOUT } = parsed; // the layout parseEntriesCsv stored; classic for one made without
+  const { start, end } = layout;
+  // slotsOfLine: entry row line index -> the ids it takes. Rows not in it are written as their original text.
+  const slotsOfLine =
+    byEntry !== undefined && byEntry !== null ? slotsByEntry(parsed, groups, lineups, byEntry) : slotsByGroup(parsed, groups, lineups);
 
   const outLines = parsed.lines.map((line, i) => {
     if (!slotsOfLine.has(i)) return line;
     const rawCells = parsed.rawCells[i];
     const roster = slotsOfLine.get(i).map(id => quoteCell(pool.get(id).nameId));
-    return [...rawCells.slice(0, ROSTER_START), ...roster, ...rawCells.slice(ROSTER_END)].join(",");
+    return [...rawCells.slice(0, start), ...roster, ...rawCells.slice(end)].join(",");
   });
   const text = (parsed.bom ? BOM : "") + outLines.map((line, i) => line + parsed.eols[i]).join("");
+  checkUpload(parsed, text, slotsOfLine, byEntry);
+  return text;
+}
 
-  // Re-parse what was built and prove it is the original file with only the roster cells changed.
+/** buildUpload's byEntry path: entry row line index -> the ids each named entry row takes. */
+function slotsByEntry(parsed, groups, lineups, byEntry) {
+  const { pool, layout = CLASSIC_LAYOUT } = parsed;
+  const slotsOfLine = new Map();
+  if (groups != null || lineups != null) throw new Error("buildUpload takes either placeholder groups and lineups or byEntry, not both.");
+  const pairs = typeof byEntry.entries === "function" && !Array.isArray(byEntry) ? [...byEntry.entries()] : Object.entries(byEntry);
+  if (pairs.length === 0) throw new Error("No entry was given a lineup, so there is nothing to write.");
+  const entryById = new Map();
+  for (const entry of parsed.entries) {
+    if (entryById.has(entry.entryId)) throw new Error(`Entry ${entry.entryId} appears on more than one line of the entries file.`);
+    entryById.set(entry.entryId, entry);
+  }
+  const seenInContest = new Map(); // contest id + sorted ids -> entry id
+  // Entry rows not given a lineup keep theirs: seed them so no new lineup repeats one in the same contest. A blank
+  // row, or one whose roster cells do not all name players in the file's list, is skipped.
+  const assigned = new Set(pairs.map(([id]) => String(id).trim()));
+  for (const entry of parsed.entries) {
+    if (assigned.has(entry.entryId)) continue;
+    const ids = entry.roster.map(idOfCell);
+    if (ids.some(id => id === "" || !pool.has(id))) continue;
+    seenInContest.set(`${entry.contestId.trim()}|${ids.slice().sort(compareIds).join(",")}`, `${entry.entryId} (not given a new lineup)`);
+  }
+  for (const [rawEntryId, lineup] of pairs) {
+    const entryId = String(rawEntryId).trim();
+    const entry = entryById.get(entryId);
+    if (!entry) throw new Error(`Entry ${entryId} is not in the entries file.`);
+    const raw = Array.isArray(lineup) ? lineup : lineup?.slots;
+    if (!Array.isArray(raw)) throw new Error(`The lineup for entry ${entryId} is not a list of ${layout.countWord} player ids.`);
+    const slots = raw.map(id => String(id).trim());
+    const problems = layout.structureErrors(slots, pool);
+    if (problems.length > 0) throw new Error(`Entry ${entryId}: ${problems.join(" ")}`);
+    const key = `${entry.contestId.trim()}|${slots.slice().sort(compareIds).join(",")}`;
+    if (seenInContest.has(key)) {
+      throw new Error(`Entry ${entryId} has the same ${layout.countWord} players as entry ${seenInContest.get(key)} in the same contest (${entry.contestName}); a contest never gets the same lineup twice.`);
+    }
+    seenInContest.set(key, entryId);
+    slotsOfLine.set(entry.lineIndex, slots);
+  }
+  return slotsOfLine;
+}
+
+/** buildUpload's placeholder path: entry row line index -> the ids of its group's new lineup, for every row. */
+function slotsByGroup(parsed, groups, lineups) {
+  const { pool, layout = CLASSIC_LAYOUT } = parsed;
+  const slotsOfLine = new Map();
+  if (!Array.isArray(groups) || !Array.isArray(lineups)) throw new Error("buildUpload needs the placeholder groups and the new lineups.");
+  if (lineups.length !== groups.length) {
+    throw new Error(`The entries file holds ${groups.length} different placeholder lineups but ${lineups.length} new lineups were given; the two counts must match.`);
+  }
+  const slotsList = lineups.map((lineup, i) => {
+    const raw = Array.isArray(lineup) ? lineup : lineup?.slots;
+    if (!Array.isArray(raw)) throw new Error(`Lineup ${i + 1} is not a list of ${layout.countWord} player ids.`);
+    const slots = raw.map(id => String(id).trim());
+    const problems = layout.structureErrors(slots, pool);
+    if (problems.length > 0) throw new Error(`Lineup ${i + 1}: ${problems.join(" ")}`);
+    return slots;
+  });
+  const seenSets = new Map();
+  slotsList.forEach((slots, i) => {
+    const key = slots.slice().sort(compareIds).join(",");
+    if (seenSets.has(key)) throw new Error(`Lineup ${i + 1} has the same ${layout.countWord} players as lineup ${seenSets.get(key) + 1}; every lineup must be different.`);
+    seenSets.set(key, i);
+  });
+
+  // Which lineup each entry row takes. Every entry row must belong to exactly one group.
+  groups.forEach((group, g) => {
+    for (const entry of group.entries) {
+      if (slotsOfLine.has(entry.lineIndex)) throw new Error(`Entry ${entry.entryId} is in more than one placeholder group.`);
+      slotsOfLine.set(entry.lineIndex, slotsList[g]);
+    }
+  });
+  for (const entry of parsed.entries) {
+    if (!slotsOfLine.has(entry.lineIndex)) throw new Error(`Entry ${entry.entryId} is in no placeholder group.`);
+  }
+  if (slotsOfLine.size !== parsed.entries.length) throw new Error("The placeholder groups do not match the entry rows of this file.");
+  return slotsOfLine;
+}
+
+/** buildUpload's self-check: re-parse what was built and prove it is the original file with only the roster cells changed. */
+function checkUpload(parsed, text, slotsOfLine, byEntry) {
+  const { pool, layout = CLASSIC_LAYOUT } = parsed;
   const fail = why => {
     throw new Error(`The upload file failed its own check and was not produced: ${why}`);
   };
-  const check = parseEntriesCsv(text);
+  const check = parseEntriesCsv(text, layout);
   if (check.bom !== parsed.bom) fail("the byte order mark changed.");
   if (check.lines.length !== parsed.lines.length) fail(`it has ${check.lines.length} lines, the original has ${parsed.lines.length}.`);
   if (check.entries.length !== parsed.entries.length) fail(`it has ${check.entries.length} entry rows, the original has ${parsed.entries.length}.`);
@@ -529,16 +554,15 @@ export function buildUpload(parsed, groups, lineups, { byEntry } = {}) {
     const rawAfter = check.rawCells[line];
     if (rawAfter.length !== rawBefore.length) fail(`line ${line + 1} has a different number of cells.`);
     for (let c = 0; c < rawBefore.length; c++) {
-      if ((c < ROSTER_START || c >= ROSTER_END) && rawAfter[c] !== rawBefore[c]) fail(`cell ${c + 1} of line ${line + 1} is not a roster cell but changed.`);
+      if ((c < layout.start || c >= layout.end) && rawAfter[c] !== rawBefore[c]) fail(`cell ${c + 1} of line ${line + 1} is not a roster cell but changed.`);
     }
     const want = slotsOfLine.get(line);
     if (!want) return; // an entry row with no lineup given (byEntry only): its whole line was checked unchanged above
     after.roster.forEach((cell, s) => {
       if (idOfCell(cell) !== want[s] || cell !== pool.get(want[s]).nameId) {
-        fail(`the ${DK_CLASSIC_SLOTS[s]} cell of entry ${before.entryId} does not hold the assigned player.`);
+        fail(`the ${layout.slots[s]} cell of entry ${before.entryId} does not hold the assigned player.`);
       }
     });
   });
   if (check.pool.size !== parsed.pool.size) fail("the player list changed.");
-  return text;
 }

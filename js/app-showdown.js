@@ -2,7 +2,8 @@
 import { store, slateKeyFromHashString } from "./state.js";
 import { renderModeRow } from "./header.js";
 import { getShowdowns, postShowdownUpload } from "./showdown/api.js";
-import { renderShowdownView, showdownKeyFromHash, forceReloadShowdown, showUploadPills } from "./showdown/view.js";
+import { renderShowdownView, showdownKeyFromHash, forceReloadShowdown, showUploadPills, openShowdownTab } from "./showdown/view.js";
+import { uploadShowdownEntries, setShowdownEntriesUploadRouter } from "./showdown/entries.js";
 import { renderShowdownTab } from "./showdown-tab.js";
 import { shownTab, onSitePage } from "./tabs.js";
 import { syncExpandUi } from "./expand.js";
@@ -37,6 +38,7 @@ function mainSlateLabel() {
 let routeDkFile = null;
 export function setRouteDkFile(fn) {
   routeDkFile = fn;
+  setShowdownEntriesUploadRouter(fn); // the Showdown Entries tab's own Upload button takes any DraftKings export too (its instance has its own router)
 }
 async function uploadShowdownCsv(file) {
   await routeDkFile?.(file);
@@ -65,6 +67,18 @@ export async function uploadShowdownText(text) {
   } catch (e) {
     return { ok: false, message: `Showdown upload failed: ${e.message}` };
   }
+}
+
+// A Showdown entries file from any upload button (Showdown Entries plan 2026-10-20, step 4): the server matches it to a loaded game; the
+// Showdown Entries instance posts it and reloads its list when that tab has been drawn, then the page shows that game's Entries tab
+// (the hash first, so a game not on screen loads, with the tab already chosen). Answers as uploadEntriesText does: { ok, entries, contests } or { ok: false, message }.
+export async function uploadShowdownEntriesText(text) {
+  const r = await uploadShowdownEntries(text);
+  if (!r.ok) return r;
+  if (!r.key) return { ok: false, message: "The server saved the file but did not say which game it belongs to; open the game's Entries tab." };
+  if (r.key !== showdownKeyFromHash()) window.location.hash = `sd=${encodeURIComponent(r.key)}`;
+  openShowdownTab("entries");
+  return r;
 }
 
 export function renderModeRowNow() {
