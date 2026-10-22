@@ -37,14 +37,14 @@ export function playerTagHtml(row) {
 
 /**
  * One player's identity, in the one order: logo, name (always class player-name), status tag, team abbreviation (Adam 2026-10-18 Q3: the tag
- * sits right after the name), then the position chip when `opts.pos` (a list sets it from showPos). Options: logo false, nameCls, nameHtml, titled, chipPlain, posHtml, tagCls, and `tag`: false for none,
+ * sits right after the name), then the position chip when `opts.pos` (a list sets it from showPos). Options: logo false, chip false (no team abbreviation while the logo names the team: the Showdown exposure tables, Adam 2026-10-22; a row with no logo keeps its chip), nameCls, nameHtml, titled, chipPlain, posHtml, tagCls, and `tag`: false for none,
  * "out" for the red OUT alone (lineups), "main" for TwoGun's OUT rule plus the status badges (main-slate lists), else R82's OUT or the badges.
  */
 export function playerIdentityHtml(row, opts = {}) {
   const r = row ?? {};
   const logo = opts.logo === false ? "" : teamLogoHtml(r.team, "player-logo", 20);
   const name = `<span class="player-name${opts.nameCls ? ` ${opts.nameCls}` : ""}"${opts.titled ? ` title="${escapeHtml(r.name ?? "")}"` : ""}>${opts.nameHtml ?? escapeHtml(r.name ?? "")}</span>`;
-  const chip = teamChipHtml(r.team, { plain: opts.chipPlain });
+  const chip = opts.chip === false && logo ? "" : teamChipHtml(r.team, { plain: opts.chipPlain });
   const tagInner = opts.tag === false ? "" : opts.tag === "out" ? lineupOutTagHtml(r) : opts.tag === "main" ? outTagHtml(r) || statusTagsHtml(r) : playerTagHtml(r);
   const tag = tagInner && opts.tagCls ? `<span class="${opts.tagCls}">${tagInner}</span>` : tagInner;
   const pos = opts.pos ? posChipHtml(r.pos, opts.posHtml) : "";
