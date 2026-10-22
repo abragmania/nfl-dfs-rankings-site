@@ -160,33 +160,33 @@ export function tickClassContests(contestIds, model, cls, on) {
 }
 
 /** The slate's saved lineups for the Sort choice: their numbers, the sorted list, the ids in that order and the
- *  complete ones split { cash, gpp } (Adam 2026-10-17, plan items 5 and 7a). `slates`: the second-slates array, or a
+ *  complete ones split { cash, gpp } (Adam 2026-10-17, plan items 5 and 7a). `fileContext`: the second-slates array, or a
  *  Showdown file-id context function, handed on to orderedFillLineups (Showdown Entries plan step 3). `numberOver` (the Showdown
  *  tab): the list the numbers run over when `lineups` is only the pickable part of it, so a lineup keeps the number the game's
  *  saved lineups give it; absent, the numbers run over `lineups` as in classic. */
-export function fillListsOf(lineups, sortBy, slates = [], numberOver = null) {
+export function fillListsOf(lineups, sortBy, fileContext = [], numberOver = null) {
   const by = sortBy === "letter" ? "letter" : "number";
   const numbers = numberLineups(numberOver ?? lineups);
   const sorted = sortLineupsBy(lineups, by, numbers);
   const order = sorted.map((l) => l.id);
-  return { by, numbers, sorted, order, ...orderedFillLineups(lineups, order, slates) };
+  return { by, numbers, sorted, order, ...orderedFillLineups(lineups, order, fileContext) };
 }
 
 /** Everything the strip and the rows show for one file, recomputed on every render and held in memory only (plan item 6):
  *  the ticked state, the contest classes, planFill's answer and its proposals that are still valid. `eff` is every
- *  effective pick of the file. `view`: { fill, classes, sortBy, numberOver (optional, see fillListsOf) }. `slates`: the
+ *  effective pick of the file. `view`: { fill, classes, sortBy, numberOver (optional, see fillListsOf) }. `fileContext`: the
  *  second-slates array, or a Showdown file-id context function (entries-plan.js showdownFileKeyOf), passed on to every file-key check. */
-export function fillModelOf(entries, slateKey, lineups, eff, slates, view) {
+export function fillModelOf(entries, slateKey, lineups, eff, fileContext, view) {
   const fill = { ...FILL_DEFAULT, ...(view?.fill ?? {}) };
   const numberOver = view?.numberOver ?? null;
-  const lists = fillListsOf(lineups, view?.sortBy, slates, numberOver);
+  const lists = fillListsOf(lineups, view?.sortBy, fileContext, numberOver);
   const groups = groupByContest(entries);
   const classes = effectiveClasses(groups, view?.classes);
   // 🔵 2026-10-18: the fill follows the Saved tab's number order whatever the Sort toggle shows (it orders the lists and pickers only).
-  const planOrder = (lists.by === "number" ? lists : fillListsOf(lineups, "number", slates, numberOver)).order;
-  const plan = planFill({ entries, lineups, assigned: eff, classes, overwrite: fill.overwrite, keep: fill.keep, prior: fill.prior, lineupIds: fill.lineupIds, contestIds: fill.contestIds, order: planOrder, slateKey, slates });
+  const planOrder = (lists.by === "number" ? lists : fillListsOf(lineups, "number", fileContext, numberOver)).order;
+  const plan = planFill({ entries, lineups, assigned: eff, classes, overwrite: fill.overwrite, keep: fill.keep, prior: fill.prior, lineupIds: fill.lineupIds, contestIds: fill.contestIds, order: planOrder, slateKey, fileContext });
   // 🔵 2026-10-17: validProposals sees every pick, Replace and the kept rows, as planFill did and as Confirm will write.
-  const valid = validProposals(plan.proposed, entries, lineups, eff, classes, slateKey, slates, { overwrite: fill.overwrite, keep: fill.keep });
+  const valid = validProposals(plan.proposed, entries, lineups, eff, classes, slateKey, fileContext, { overwrite: fill.overwrite, keep: fill.keep });
   const kept = new Set(Array.from(fill.keep ?? [], String));
   // 🔵 2026-10-17 (F3): `keptOpen` is the count the Reopen button shows: kept rows with no effective pick (a hand pick never counts, D75, Adam 2026-10-18).
   // Adam 2026-10-18: rowHolds is the one decision; a proposal for a hand-picked row is dropped here too, so neither the picker nor Confirm can use it.

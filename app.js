@@ -29,6 +29,7 @@ import { configureShowdown, setRouteDkFile, uploadShowdownText, uploadShowdownEn
 import { adjustScrollPanels } from "./js/scroll-panels.js";
 import { normalizeBoard } from "./js/normalize.js";
 import { applyGrades, rowsGradedForView } from "./js/grade.js";
+import { favoriteRows } from "./js/favorites.js";
 import { renderGameStrip, getGamestripCollapsed, setGamestripCollapsed } from "./js/gamestrip.js";
 import { renderFilterBar, updateFilterSummary } from "./js/filterbar.js";
 import { renderTableHead, renderTableBody, updateRow } from "./js/table.js";
@@ -378,6 +379,7 @@ function renderRankedParts(board, filters, sort, slateRows) {
   updateFilterSummary(el.filterbar, {
     filteredCount: filtered.length,
     totalCount: allRows.length,
+    starredCount: favoriteRows(allRows).length, // the one copy of "starred": unfiltered and unfloored (D53; 🔵 2026-10-21)
     activeGameLabel: activeGame ? `${activeGame.away} @ ${activeGame.home}` : null,
     onClearGame: () => store.setFilters({ gameId: null }),
   });

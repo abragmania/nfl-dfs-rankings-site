@@ -7,15 +7,17 @@
    site the rows are read-only and there is no Mark column. */
 .tp-wrap { max-width: 920px; margin: 0 auto; }
 a.tp-back { display: inline-block; text-decoration: none; }
-/* The chip bar (lists, filters, search, key hint) stays pinned while the table scrolls (Adam 2026-10-20 2:09 PM: "easy to scroll
-   through"); it is opaque on the page background in both themes. tracked-players.js sets --tp-bar-h to its height, which is where
-   the table's header row pins (no gap, no overlap), and --tp-stick-h to the bar plus the header row, which a row scrolls clear of. */
-.tp-bar { position: sticky; top: 0; z-index: 3; background: var(--bg); padding: var(--sp-2) 0 var(--sp-1); border-bottom: 1px solid var(--border); }
+/* The chip bar (lists, filters, search, key hint) sits above the table box and never scrolls away, because the page itself does not
+   scroll (Adam 2026-10-21: "without endless scrolling"): the table is a fixed-height box with its own scroll, the Optimizer's ranked-list
+   standard. tracked-players.js sets the box's height (the window's bottom edge less the page's bottom padding, 420px at least) and
+   --tp-stick-h to the header row's height, which a row scrolled into view clears. */
+.tp-bar { background: var(--bg); padding: var(--sp-2) 0 var(--sp-1); border-bottom: 1px solid var(--border); }
+.tp-box { width: 100%; }
 .tp-controls { margin-bottom: var(--sp-1); }
 .tp-keys { margin: 0; color: var(--text-dim); }
 .tp-sep { width: 1px; align-self: stretch; background: var(--border); margin: 0 var(--sp-1); }
 .tp-search { margin-left: auto; }
-.tp-search input { width: 220px; }
+.tp-search input { width: 160px; } /* narrow enough that the chips ("Cash games", the counts), Hide marked and the box fit one 920px row */
 .tp-list-count { margin-left: 2px; font-weight: 400; opacity: 0.8; font-variant-numeric: tabular-nums; }
 .tp-source { margin-bottom: var(--sp-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .tp-readonly { margin-bottom: var(--sp-2); }
@@ -32,7 +34,7 @@ a.tp-back { display: inline-block; text-decoration: none; }
 }
 .tp-error[hidden] { display: none; }
 .tp-table { width: 100%; border-collapse: collapse; font-size: 14px; table-layout: fixed; }
-.tp-table thead { position: sticky; top: var(--tp-bar-h, 0px); z-index: 2; background: var(--bg-elevated-2); }
+.tp-table thead { position: sticky; top: 0; z-index: 2; background: var(--bg-elevated-2); } /* pinned at the top of the box; opaque in both themes */
 .tp-table th {
   text-align: left;
   padding: 6px 10px;
@@ -81,5 +83,3 @@ a.tp-back { display: inline-block; text-decoration: none; }
 .tp-name { font-weight: 600; }
 .tp-saving { margin-left: var(--sp-1); color: var(--text-dim); font-size: 12px; line-height: 20px; vertical-align: middle; }
 .tp-empty td { color: var(--text-muted); cursor: default; }
-.tp-foot { display: flex; align-items: center; gap: var(--sp-3); margin: var(--sp-3) 0 var(--sp-5); color: var(--text-muted); font-size: var(--fs-sm); }
-.tp-foot .chip[hidden] { display: none; }

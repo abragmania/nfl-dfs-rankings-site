@@ -345,7 +345,7 @@ export function renderEntriesPanel(container) {
   wireEntries(container, {
     weekKey: entriesWeekKey(board),
     getSaved: () => state.savedLineups,
-    getSlates: () => store.get().board?.slates ?? [],
+    getFileContext: () => store.get().board?.slates ?? [],
   });
 }
 

@@ -24,17 +24,17 @@ export function cellId(cell) {
 
 /** The ids the entries file uses for a saved lineup's nine players, sorted and joined: the main slate's ids are the
  *  board's own; a second slate's come through its `dkIds` map (board.slates). Null when the lineup is not nine
- *  players or any player has no id in that slate's file. Showdown Entries plan 2026-10-20 (step 3): `slates` may instead
+ *  players or any player has no id in that slate's file. Showdown Entries plan 2026-10-20 (step 3): `fileContext` may instead
  *  be a file-id context, a function fileKeyOf(lineup) giving the lineup's file ids or null (showdownFileKeyOf below); the
  *  key is then those ids sorted and joined, `slateKey` unused. An array keeps the classic path above unchanged. */
-export function lineupFileKey(lineup, slateKey, slates) {
-  if (typeof slates === "function") {
-    const fileIds = slates(lineup);
+export function lineupFileKey(lineup, slateKey, fileContext) {
+  if (typeof fileContext === "function") {
+    const fileIds = fileContext(lineup);
     return Array.isArray(fileIds) && fileIds.length ? [...fileIds].map(String).sort().join(",") : null;
   }
   const slots = Array.isArray(lineup?.slots) ? lineup.slots : [];
   if (slots.length !== 9) return null;
-  const map = !slateKey || slateKey === "main" ? null : ((slates ?? []).find((s) => s?.key === slateKey)?.dkIds ?? {});
+  const map = !slateKey || slateKey === "main" ? null : ((fileContext ?? []).find((s) => s?.key === slateKey)?.dkIds ?? {});
   const ids = [];
   for (const s of slots) {
     const main = String(s?.playerId ?? "");
@@ -97,9 +97,9 @@ export function heldLineupKeys(entries, assigned, exceptEntryId = null) {
 
 /** True when `lineup` cannot go on `entry`: another picked row of the contest has it, or an untouched row of the
  *  contest already holds that exact lineup in the file. */
-export function lineupBlockedFor(entries, assigned, entry, lineup, slateKey, slates) {
+export function lineupBlockedFor(entries, assigned, entry, lineup, slateKey, fileContext) {
   if (lineupUsedElsewhere(entries, assigned, entry, lineup.id)) return true;
-  const key = lineupFileKey(lineup, slateKey, slates);
+  const key = lineupFileKey(lineup, slateKey, fileContext);
   if (key === null) return false;
   return heldLineupKeys(entries, assigned, entry.entryId).has(`${String(entry.contestId).trim()}|${key}`);
 }
@@ -191,12 +191,12 @@ export function effectiveClasses(groups, overrides) {
 }
 
 /** D75: complete lineups in the screen's `order` of ids when given (unlisted ones after), else oldest saved first.
- *  `slates` (Showdown Entries plan step 3): a file-id context function judges completeness instead; an array (or none)
+ *  `fileContext` (Showdown Entries plan step 3): a file-id context function judges completeness instead; an array (or none)
  *  keeps the classic main-slate check. */
-export function orderedFillLineups(lineups, order = null, slates = []) {
+export function orderedFillLineups(lineups, order = null, fileContext = []) {
   const rank = Array.isArray(order) ? new Map(order.map((id, i) => [String(id), i])) : null;
   const r = (l) => rank.get(String(l.id)) ?? Infinity;
-  const context = typeof slates === "function" ? slates : [];
+  const context = typeof fileContext === "function" ? fileContext : [];
   // 🔵 2026-10-17: complete = lineupFileKey on the main slate; the stable sort by the screen's order keeps byAge within a rank.
   const aged = byAge((Array.isArray(lineups) ? lineups : []).filter((l) => l && l.id != null && lineupFileKey(l, "main", context) !== null));
   const sorted = rank ? aged.sort((a, b) => (r(a) === r(b) ? 0 : r(a) < r(b) ? -1 : 1)) : aged;
@@ -228,15 +228,15 @@ export function rowHolds({ pick = null, kept = false, proposedId = null } = {}) 
 }
 
 // D75: lineupBlockedFor, or a different saved lineup with the same nine players already in the contest.
-function fillBlocked(entries, merged, entry, lineup, byId, slateKey, slates) {
-  if (lineupBlockedFor(entries, merged, entry, lineup, slateKey, slates)) return true;
-  const key = lineupFileKey(lineup, slateKey, slates);
+function fillBlocked(entries, merged, entry, lineup, byId, slateKey, fileContext) {
+  if (lineupBlockedFor(entries, merged, entry, lineup, slateKey, fileContext)) return true;
+  const key = lineupFileKey(lineup, slateKey, fileContext);
   if (key === null) return false;
   const c = contestKey(entry);
   for (const e of entries) {
     if (e.entryId === entry.entryId || contestKey(e) !== c || !merged[e.entryId]) continue;
     const other = byId.get(String(merged[e.entryId]));
-    if (other && other.id !== lineup.id && lineupFileKey(other, slateKey, slates) === key) return true;
+    if (other && other.id !== lineup.id && lineupFileKey(other, slateKey, fileContext) === key) return true;
   }
   return false;
 }
@@ -250,15 +250,15 @@ function plural(n, one, many) {
  *  `keep`: entry ids never opened, even with Replace; a kept row with no pick holds its file lineup (🔵 2026-10-17).
  *  `prior`: the last proposal { entryId: lineupId }; a row of a multi-entry contest takes its prior lineup first when still a
  *  candidate and not blocked, so one hand change never reshuffles the untouched rows (👁 2026-10-17). */
-export function planFill({ entries, lineups, assigned, classes, overwrite = false, keep = null, prior: priorIn = null, lineupIds = null, contestIds = null, order = null, slateKey = "main", slates = [] } = {}) {
+export function planFill({ entries, lineups, assigned, classes, overwrite = false, keep = null, prior: priorIn = null, lineupIds = null, contestIds = null, order = null, slateKey = "main", fileContext = [] } = {}) {
   const list = Array.isArray(entries) ? entries : [];
   const all = (Array.isArray(lineups) ? lineups : []).filter((l) => l && l.id != null);
   const byId = new Map(all.map((l) => [String(l.id), l]));
-  const usable = all.filter((l) => lineupFileKey(l, slateKey, slates) !== null);
+  const usable = all.filter((l) => lineupFileKey(l, slateKey, fileContext) !== null);
   const tickL = lineupIds == null ? null : new Set(Array.from(lineupIds, String));
   const tickC = contestIds == null ? null : new Set(Array.from(contestIds, String));
-  const saved = orderedFillLineups(usable, order, slates);
-  const pool = orderedFillLineups(usable.filter((l) => !tickL || tickL.has(String(l.id))), order, slates);
+  const saved = orderedFillLineups(usable, order, fileContext);
+  const pool = orderedFillLineups(usable.filter((l) => !tickL || tickL.has(String(l.id))), order, fileContext);
   const groups = groupByContest(list).filter((g) => !tickC || tickC.has(g.contestId));
   const classOf = new Map(groups.map((g) => [g.contestId, classFor(classes, g.contestId, g.contestName)]));
   const picks = effectiveAssignments(list, all, assigned);
@@ -278,12 +278,12 @@ export function planFill({ entries, lineups, assigned, classes, overwrite = fals
   const place = (e, cls, candidates, usePrior) => {
     const was = usePrior ? priorIn?.[e.entryId] : null;
     const p = was == null ? -1 : candidates.findIndex((l) => String(l.id) === String(was));
-    if (p >= 0 && !fillBlocked(list, merged, e, candidates[p], byId, slateKey, slates)) {
+    if (p >= 0 && !fillBlocked(list, merged, e, candidates[p], byId, slateKey, fileContext)) {
       take(e, cls, candidates[p]);
       return;
     }
     for (const l of candidates) {
-      if (fillBlocked(list, merged, e, l, byId, slateKey, slates)) continue;
+      if (fillBlocked(list, merged, e, l, byId, slateKey, fileContext)) continue;
       take(e, cls, l);
       return;
     }
@@ -295,7 +295,7 @@ export function planFill({ entries, lineups, assigned, classes, overwrite = fals
     if (!pool[cls].length) continue;
     for (const e of g.entries) if (open(e)) place(e, cls, pool[cls], g.entries.length > 1);
   }
-  const existing = orderedFillLineups(all, order, slates);
+  const existing = orderedFillLineups(all, order, fileContext);
   return { proposed, notes: fillNotes(groups, classOf, existing, saved, pool, left), counts };
 }
 
@@ -333,7 +333,7 @@ function fillNotes(groups, classOf, existing, saved, pool, left) {
 /** D75: the proposals still valid at render (row, saved lineup, its class, its file key, no twin in the contest).
  *  🔵 2026-10-17: `assigned` is ALL the picks and `merged` starts as them, so a dropped proposal keeps its old pick and later
  *  rows are judged as Confirm's { ...picks, ...proposals } writes them; `overwrite` opens picked rows, `keep` rows never. */
-export function validProposals(proposed, entries, lineups, assigned, classes = null, slateKey = "main", slates = [], { overwrite = false, keep = null } = {}) {
+export function validProposals(proposed, entries, lineups, assigned, classes = null, slateKey = "main", fileContext = [], { overwrite = false, keep = null } = {}) {
   const list = Array.isArray(entries) ? entries : [];
   const byId = new Map((Array.isArray(lineups) ? lineups : []).filter((l) => l && l.id != null).map((l) => [String(l.id), l]));
   const picks = effectiveAssignments(list, lineups, assigned);
@@ -345,7 +345,7 @@ export function validProposals(proposed, entries, lineups, assigned, classes = n
     if (typeof id !== "string" || id === "" || (picks[e.entryId] && !overwrite) || kept.has(String(e.entryId))) continue;
     const l = byId.get(id);
     if (!l || lineupModeOf(l) !== classFor(classes, contestKey(e), e.contestName)) continue;
-    if (lineupFileKey(l, slateKey, slates) === null || fillBlocked(list, merged, e, l, byId, slateKey, slates)) continue;
+    if (lineupFileKey(l, slateKey, fileContext) === null || fillBlocked(list, merged, e, l, byId, slateKey, fileContext)) continue;
     merged[e.entryId] = id;
     out[e.entryId] = id;
   }

@@ -1,7 +1,7 @@
 // Filter bar: position chips, team multi-select chips (one per team on the slate, in team colours),
 // salary range, search, favorites-only toggle, reset-all-overrides. Rendered once per board load; after
 // that only class names are toggled (never innerHTML) so the salary/search inputs never lose focus
-// or cursor position while Adam is typing.
+// or cursor position while Adam is typing. The "Favorites only" chip carries the starred count of the slate on screen (Adam, 2026-10-21; D53).
 import { escapeHtml } from "./format.js";
 import { textColourFor } from "./format.js";
 import { TEAM_BY_ABBR } from "./teams-data.js";
@@ -11,7 +11,16 @@ import { POSITION_CHIPS, CLASSIC_PROJ_FLOOR, store } from "./state.js";
 // count and the removable active-game chip, without touching the rest of the bar — the position chips,
 // search box and salary inputs are only fully re-rendered on a board load or an explicit "Clear
 // filters", so a keystroke in the search box never loses focus.
-export function updateFilterSummary(container, { filteredCount, totalCount, activeGameLabel, onClearGame }) {
+/** The "Favorites only" chip's text: "★ Favorites only (3)", "(0)" included. A missing or non-finite count gives the label with no
+ *  parenthesis. Pure; the one place the chip's text is built (renderFilterBar draws it, updateFilterSummary patches it). */
+export function favoritesChipLabel(count) {
+  return Number.isFinite(count) ? `★ Favorites only (${count})` : "★ Favorites only";
+}
+
+export function updateFilterSummary(container, { filteredCount, totalCount, activeGameLabel, onClearGame, starredCount }) {
+  // The starred count of the slate on screen, unfiltered and unfloored (D53). Text only: the chip and its active class stay as they are.
+  const starredEl = container.querySelector("#starred-toggle");
+  if (starredEl) starredEl.textContent = favoritesChipLabel(starredCount);
   const countEl = container.querySelector("#filter-count");
   if (countEl) {
     // While the three-point floor is applying (Show all players off, no search text), say why the count is short.
@@ -78,7 +87,7 @@ export function renderFilterBar(container, teamAbbrs, filters, callbacks, hasOve
         <span>-</span>
         <label><input id="salary-max" type="number" step="100" placeholder="max" value="${filters.salaryMax ?? ""}" /></label>
       </div>
-      <button type="button" id="starred-toggle" class="chip toggle-chip${filters.starredOnly ? " active" : ""}">★ Favorites only</button>
+      <button type="button" id="starred-toggle" class="chip toggle-chip${filters.starredOnly ? " active" : ""}">${favoritesChipLabel()}</button>
       ${showAllToggleHtml(filters.showAllPlayers, `id="show-all-toggle"`)}
       <button type="button" id="reset-overrides-btn" class="reset-btn"${hasOverrides ? "" : " disabled"}>Reset all overrides</button>
     </div>

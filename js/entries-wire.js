@@ -43,7 +43,7 @@ export function createEntriesWire(config = {}) {
     busyFile: null,
     storageWarning: null, // set once when localStorage throws; kept across weeks (it is the browser, not the file)
   };
-  let ctx = { getSaved: () => [], getSlates: () => [], container: null };
+  let ctx = { getSaved: () => [], getFileContext: () => [], container: null };
   let loadSeq = 0; // only the newest file-list request may change the screen
 
   /** Storage threw (private browsing, quota, disabled): the section says so once (🔵 2026-10-17). */
@@ -56,12 +56,12 @@ export function createEntriesWire(config = {}) {
   const lineupsOf = (f) => cfg.lineupsFor(ctx.getSaved(), f);
 
   function model() {
-    return { ...ent, saved: ctx.getSaved(), slates: ctx.getSlates(), noWeek: ent.weekKey === null, ...shape };
+    return { ...ent, saved: ctx.getSaved(), fileContext: ctx.getFileContext(), noWeek: ent.weekKey === null, ...shape };
   }
 
   /** The section's HTML for the current state; lineup.js drops it under the saved lineups. */
-  function renderEntriesSection(saved, slates, weekKey) {
-    return entriesSectionHtml({ ...ent, saved, slates, noWeek: !weekKey, ...shape });
+  function renderEntriesSection(saved, fileContext, weekKey) {
+    return entriesSectionHtml({ ...ent, saved, fileContext, noWeek: !weekKey, ...shape });
   }
 
   function refresh() {
@@ -142,7 +142,7 @@ export function createEntriesWire(config = {}) {
     const lineups = lineupsOf(f);
     if (!lineups.length) return null;
     const eff = effectiveAssignments(f.entries, lineups, ent.assign[fileName]);
-    return { f, lineups, model: fillModelOf(f.entries, f.slate.key, lineups, eff, ctx.getSlates(), { fill: ent.fill[fileName], classes: ent.classes[fileName], sortBy: ent.sortBy, numberOver: cfg.numberOverFor?.(ctx.getSaved(), f) }) };
+    return { f, lineups, model: fillModelOf(f.entries, f.slate.key, lineups, eff, ctx.getFileContext(), { fill: ent.fill[fileName], classes: ent.classes[fileName], sortBy: ent.sortBy, numberOver: cfg.numberOverFor?.(ctx.getSaved(), f) }) };
   }
 
   /** Any change to the ticks, a class or Replace clears "Discard" so the proposal comes back (spec C),
@@ -424,8 +424,8 @@ export function createEntriesWire(config = {}) {
   }
 
   /** Called by lineup.js after every render of the panel: binds the section and loads the week's files once. */
-  function wireEntries(container, { weekKey, getSaved, getSlates }) {
-    ctx = { container, getSaved, getSlates: getSlates ?? (() => []) };
+  function wireEntries(container, { weekKey, getSaved, getFileContext }) {
+    ctx = { container, getSaved, getFileContext: getFileContext ?? (() => []) };
     let redraw = false;
     if (!ent.sortRead) {
       ent.sortRead = true;

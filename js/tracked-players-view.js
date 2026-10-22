@@ -10,14 +10,13 @@
 // as they were when the page loaded, so ticking a name never moves it out of the list being worked through; the Hide marked filter
 // and the counts use the live marks. Crossover is the rule Adam worked from on 2026-10-19 (65 names): two or more of the top 100,
 // the high-dollar games, the double-up and his marks.
-
-export const PAGE_SIZE = 300;
+// Adam 2026-10-21: no paging; the page draws every row of the chosen list (the largest is 1,517 names) inside a fixed-height scrolling box.
 
 // The list chips, in order. High $ is either high-dollar game; the others read their column.
 export const LIST_CHOICES = [
   { id: "all", label: "All" },
   { id: "top100", label: "Top 100" },
-  { id: "highdollar", label: "High $" },
+  { id: "highdollar", label: "Cash games" },
   { id: "doubleup", label: "Double-up" },
   { id: "crossover", label: "Crossover" },
 ];
@@ -44,16 +43,29 @@ export function orderedContests(contests) {
 /**
  * The table's columns: mark, name, top 100 (the RotoGrinders rank), then one YES column per contest (id = the contest's id, label
  * = its short name, a contest column opens YES first, the rank opens lowest first). On the public site, where marking runs
- * in the app, no Mark column.
+ * in the app, no Mark column. `counts` (columnCounts of the model; optional) puts the player count in the Top 100 and contest
+ * headers, "Cash game · 46" (Adam 2026-10-21: "show total players in the header / top of column of each"); a contest's title
+ * then carries its full label, its entries and its players.
  */
-export function columnsFor(site, contests) {
+export function columnsFor(site, contests, counts = null) {
+  const withCount = (label, id) => (counts && Number.isInteger(counts[id]) ? `${label} · ${counts[id].toLocaleString("en-US")}` : label);
   const cols = [
     { id: "mark", label: "Mark", dir: "desc" },
     { id: "name", label: "Name", dir: "asc" },
-    { id: "top100", label: "Top 100", dir: "asc", title: "RotoGrinders overall rank (blank when not in the top 100)" },
-    ...contests.map((c) => ({ id: c.id, label: c.short ?? c.id, dir: "desc", title: `${c.label}: YES when he entered it, blank when not` })),
+    { id: "top100", label: withCount("Top 100", "top100"), dir: "asc", title: "RotoGrinders overall rank (blank when not in the top 100)" },
+    ...contests.map((c) => {
+      const more = counts && Number.isInteger(counts[c.id]) && Number.isInteger(c.entries) ? `; ${c.entries.toLocaleString("en-US")} entries, ${counts[c.id].toLocaleString("en-US")} players` : "";
+      return { id: c.id, label: withCount(c.short ?? c.id, c.id), dir: "desc", title: `${c.label}: YES when he entered it, blank when not${more}` };
+    }),
   ];
   return site ? cols.filter((c) => c.id !== "mark") : cols;
+}
+
+/** The players per column, for the headers: { top100, [contest id]: distinct usernames that entered it } over every row of the model. */
+export function columnCounts(model) {
+  const counts = { top100: model.rows.filter((r) => r.top100).length };
+  for (const c of model.contests) counts[c.id] = model.rows.filter((r) => r.contests[c.id]).length;
+  return counts;
 }
 
 /**
@@ -122,14 +134,25 @@ export function snapshotText(live, at, timeText = () => null) {
   return t ? `live snapshot, ${t}` : "live snapshot (time not recorded)";
 }
 
-/** The source line's contest part: contests grouped by snapshotText, "High $ 675, Double-up: live snapshot ...; High $ 714: final". */
-export function snapshotSummary(contests, timeText = () => null) {
+/**
+ * The source line's contest part: contests grouped by snapshotText, each distinct short name once, pluralised ("s") when it covers
+ * more than one contest, and with each contest's player count when `counts` (columnCounts) is given:
+ * "Cash games (46, 88), $5 Double-up (1,379): live snapshot ...; DAL@GB: final" (Adam 2026-10-21).
+ */
+export function snapshotSummary(contests, timeText = () => null, counts = null) {
   const groups = new Map();
   for (const c of contests) {
     const text = snapshotText(c.liveSnapshot === true, c.snapshotAt, timeText);
-    groups.set(text, [...(groups.get(text) ?? []), c.short]);
+    const byShort = groups.get(text) ?? new Map();
+    byShort.set(c.short, [...(byShort.get(c.short) ?? []), c]);
+    groups.set(text, byShort);
   }
-  return [...groups].map(([text, shorts]) => `${shorts.join(", ")}: ${text}`).join("; ");
+  const part = (short, of) => {
+    const name = of.length > 1 ? `${short}s` : short;
+    const figures = counts ? of.map((c) => counts[c.id]).filter(Number.isInteger).map((n) => n.toLocaleString("en-US")) : [];
+    return figures.length > 0 ? `${name} (${figures.join(", ")})` : name;
+  };
+  return [...groups].map(([text, byShort]) => `${[...byShort].map(([short, of]) => part(short, of)).join(", ")}: ${text}`).join("; ");
 }
 
 /** Every value a row sorts by: the mark, the name, the RG rank and, per contest, 1 for YES (null for none, so YES rows come first either way); null sorts last in both directions. */
@@ -184,12 +207,6 @@ export function viewRows(model, view) {
   return sortRows(rows, sort.col, sort.dir, (r) => values.get(r));
 }
 
-/** The first `limit` rows and the "showing X of Y" figures: { shown, showing, total, more }. */
-export function page(rows, limit = PAGE_SIZE) {
-  const shown = rows.slice(0, Math.max(0, limit));
-  return { shown, showing: shown.length, total: rows.length, more: rows.length > shown.length };
-}
-
 /** The live marks as lower-case keys, from a registry's `adam` list. */
 export function markedFrom(adam) {
   return new Set(adam.map(lower));
@@ -238,11 +255,4 @@ export function cursorAfter(keys, key, prevKeys = []) {
   if (keys.includes(key)) return key;
   const at = prevKeys.indexOf(key);
   return keys[at < 0 ? 0 : Math.min(at, keys.length - 1)] ?? null;
-}
-
-/** The row limit that draws `key`: `limit` itself when it is already within it, else raised by whole `pageSize` steps until it is. */
-export function limitToShow(keys, key, limit, pageSize) {
-  const at = key === null ? -1 : keys.indexOf(key);
-  if (at < 0 || at < limit) return limit;
-  return limit + Math.ceil((at + 1 - limit) / pageSize) * pageSize;
 }

@@ -1,15 +1,15 @@
 {
-  "publishedAt": "2026-10-21T16:21:29.926Z",
+  "publishedAt": "2026-10-22T01:22:17.942Z",
   "season": 2026,
   "week": 6,
-  "boardGeneratedAt": "2026-10-21T14:39:02.517Z",
-  "latestBoardAt": "2026-10-21T14:39:11.739Z",
+  "boardGeneratedAt": "2026-10-22T01:22:05.884Z",
+  "latestBoardAt": "2026-10-22T01:22:16.636Z",
   "defaultMode": "current",
   "showdowns": [
     "2026-w07-NECHI"
   ],
-  "sourceCommit": "a58538dcfe79eb4396ae32a2f4a69f70bd7b168a",
-  "appCommit": "a18b721817c65603da6638f4b7d498e61a6bf708",
+  "sourceCommit": "f8c9187752c4ea10a8f944267e0a7da3e6d5733d",
+  "appCommit": "f8c9187752c4ea10a8f944267e0a7da3e6d5733d",
   "machine": "this machine",
   "matchups": false
 }

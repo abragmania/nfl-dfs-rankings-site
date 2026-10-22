@@ -8,9 +8,10 @@
 import { escapeHtml, localStamp } from "./format.js";
 import { sortArrowHtml } from "./table.js";
 import { cameFromApp, backTarget } from "./showdown/salary-used.js";
+import { makeFilterDebounce } from "./filter-debounce.js";
 import {
-  PAGE_SIZE, LIST_CHOICES, DEFAULT_SORT, buildModel, listCounts, viewRows, page, nextSort, withMark, namesInContests,
-  columnsFor, snapshotSummary, keyStep, stepKey, cursorAfter, limitToShow,
+  LIST_CHOICES, DEFAULT_SORT, buildModel, listCounts, viewRows, nextSort, withMark, namesInContests,
+  columnsFor, columnCounts, snapshotSummary, keyStep, stepKey, cursorAfter,
 } from "./tracked-players-view.js";
 
 const TRACKED_URL = "baked/tracked-players.json";
@@ -28,19 +29,16 @@ const els = {
   source: document.getElementById("tp-source"),
   thead: document.getElementById("tp-thead"),
   tbody: document.getElementById("tp-tbody"),
-  showing: document.getElementById("tp-showing"),
-  more: document.getElementById("tp-more"),
-  foot: document.getElementById("tp-foot"),
+  box: document.getElementById("tp-box"),
   bar: document.getElementById("tp-bar"),
   keys: document.getElementById("tp-keys"),
 };
-const view = { list: "all", query: "", hideMarked: false, sort: { ...DEFAULT_SORT }, limit: PAGE_SIZE };
+const typedSearch = makeFilterDebounce({ apply: (patch) => { view.query = patch.query; renderBody(); } }); // 150 ms, as the Optimizer's filter bar
+const view = { list: "all", query: "", hideMarked: false, sort: { ...DEFAULT_SORT } };
 let model = null;
 let counts = null;
 let cursor = null; // the keyboard row's name key, or null until an arrow key or a click picks one
-let shownKeys = []; // every row of the current list, in order (not just the loaded page): where the arrow keys step
-let hasMore = false; // rows beyond the loaded page
-let footObserver = null;
+let shownKeys = []; // every row of the current list, in order: where the arrow keys step
 const saving = new Map(); // key -> the state being saved (true = marking)
 let saves = Promise.resolve(); // marks are posted one at a time, in click order
 
@@ -55,10 +53,12 @@ function when(iso) {
 function showError(message) {
   els.error.textContent = message;
   els.error.hidden = false;
+  layout(); // the banner moves the box's top edge
 }
 function clearError() {
   els.error.hidden = true;
   els.error.textContent = "";
+  layout();
 }
 
 function renderCounts() {
@@ -115,31 +115,20 @@ function rowHtml(row) {
   );
 }
 
-/** Redraws the rows, the "showing X of Y" line and the More button; keeps keyboard focus on the row that had it. */
+/** Redraws every row of the chosen list (no paging; the box scrolls); keeps keyboard focus on the row that had it. */
 function renderBody() {
   if (!model) return; // typing in search or clicking Hide marked before the data loads, or after a failed load
   const focusedKey = document.activeElement?.closest?.("tr.tp-row")?.dataset.key ?? null;
   const all = viewRows(model, view);
   const prevKeys = shownKeys;
   shownKeys = all.map((r) => r.key);
-  // The same name stays the keyboard row while it is listed, else the row that took its place; the rows drawn always reach it,
-  // so Enter never marks a name that is not on screen.
+  // The same name stays the keyboard row while it is listed, else the row that took its place; every row is drawn,
+  // so Enter never marks a name that is not in the table.
   cursor = cursorAfter(shownKeys, cursor, prevKeys);
-  view.limit = limitToShow(shownKeys, cursor, view.limit, PAGE_SIZE);
-  const p = page(all, view.limit);
-  hasMore = p.more;
-  els.tbody.innerHTML = p.shown.length
-    ? p.shown.map(rowHtml).join("")
+  els.tbody.innerHTML = all.length
+    ? all.map(rowHtml).join("")
     : `<tr class="tp-empty"><td colspan="${cols.length}">No names match.</td></tr>`;
-  els.showing.textContent = `showing ${fmt(p.showing)} of ${fmt(p.total)}`;
-  els.more.hidden = !p.more;
-  els.more.textContent = `Show ${fmt(Math.min(PAGE_SIZE, p.total - p.showing))} more`;
   if (focusedKey !== null) els.tbody.querySelector(`tr[data-key="${CSS.escape(focusedKey)}"]`)?.focus({ preventScroll: true });
-  // Observing again makes the observer report the footer's present state, so a footer still in view after a load loads the next page.
-  if (footObserver) {
-    footObserver.unobserve(els.foot);
-    footObserver.observe(els.foot);
-  }
 }
 
 /** Moves the keyboard row to `key` without redrawing: the old row loses its highlight, the new one gains it (and the focus, and the view if asked). */
@@ -150,17 +139,12 @@ function setCursor(key, reveal) {
   tr?.classList.add("is-cursor");
   if (reveal && tr) {
     tr.focus({ preventScroll: true });
-    tr.scrollIntoView({ block: "nearest" }); // the row's scroll-margin keeps it clear of the pinned bar and header
+    tr.scrollIntoView({ block: "nearest" }); // scrolls the table box (the page does not scroll); the row's scroll-margin keeps it clear of the pinned header
   }
 }
 
-/** Makes `key` the keyboard row and brings it into view, drawing more rows first when it lies past those drawn. */
+/** Makes `key` the keyboard row and brings it into view inside the box. */
 function showRow(key) {
-  view.limit = limitToShow(shownKeys, key, view.limit, PAGE_SIZE);
-  if (els.tbody.querySelector(`tr[data-key="${CSS.escape(key)}"]`) === null) {
-    cursor = key;
-    renderBody();
-  }
   setCursor(key, true);
 }
 
@@ -170,20 +154,33 @@ function moveCursor(delta) {
   if (key !== null) showRow(key);
 }
 
-/** True when the keyboard row is drawn and on screen (below the pinned bar and header): the only time Enter or Space may mark it. */
+/** True when the keyboard row is drawn and visible in the box (below the pinned header): the only time Enter or Space may mark it. */
 function cursorOnScreen() {
   const tr = cursor === null ? null : els.tbody.querySelector(`tr[data-key="${CSS.escape(cursor)}"]`);
   if (!tr) return false;
   const r = tr.getBoundingClientRect();
-  return r.bottom > els.thead.getBoundingClientRect().bottom && r.top < window.innerHeight;
+  // Bounded by the window too: at the 420px floor the box can run past the window's edge.
+  return r.bottom > Math.max(els.thead.getBoundingClientRect().bottom, 0) && r.top < Math.min(els.box.getBoundingClientRect().bottom, window.innerHeight);
 }
 
-/** Pins the table header just under the chip bar: publishes the bar's and the bar-plus-header heights as CSS variables. */
-function measureStick() {
-  const bar = els.bar.getBoundingClientRect().height;
+/**
+ * Sizes the table box (Adam 2026-10-21): the room from its top edge to the window's bottom edge less the page's bottom padding
+ * (420px at least), cut down to whole rows (RULES.md D21: header height + n drawn rows + the box's border allowance, the largest n
+ * that fits), so the page never scrolls and no row is cut at the bottom. A fixed height, not a max-height, so a short list leaves
+ * the box full. Measured from the box's place in the document, so it holds whatever the page's scroll. scroll-panels.js's
+ * snapPanelMaxHeight is not exported, sets a max-height from the rows drawn and reads the Optimizer's own floors, so it is not reused.
+ * Also publishes the header row's height as --tp-stick-h, which a row scrolled into view clears.
+ */
+function layout() {
+  const pad = parseFloat(getComputedStyle(document.querySelector("main")).paddingBottom) || 0;
+  const top = els.box.getBoundingClientRect().top + window.scrollY;
+  const room = Math.max(420, Math.floor(window.innerHeight - top - pad));
   const head = els.thead.getBoundingClientRect().height;
-  document.documentElement.style.setProperty("--tp-bar-h", `${bar}px`);
-  document.documentElement.style.setProperty("--tp-stick-h", `${bar + head}px`);
+  const rowH = els.tbody.querySelector("tr")?.getBoundingClientRect().height ?? 0; // every row is one line of the same height
+  const allowance = els.box.offsetHeight - els.box.clientHeight; // the box's border (and a sideways scrollbar, if any)
+  const fit = rowH > 0 ? Math.floor((room - allowance - head) / rowH) : 0;
+  els.box.style.height = `${fit > 0 ? Math.ceil(head + fit * rowH + allowance) : room}px`;
+  document.documentElement.style.setProperty("--tp-stick-h", `${els.thead.getBoundingClientRect().height}px`);
 }
 
 function replaceRow(key) {
@@ -224,7 +221,10 @@ async function save(key, on) {
   } else {
     showError(result.message);
   }
-  renderBody();
+  // Redrawing all 1,517 rows measured 66-101 ms in headless Chrome, so one name's row is replaced instead, unless the mark can move
+  // or hide it (Hide marked on, or the table sorted by the Mark column), which needs the full redraw.
+  if (view.hideMarked || view.sort.col === "mark") renderBody();
+  else replaceRow(key);
 }
 
 function toggle(key) {
@@ -250,21 +250,16 @@ function wireBack() {
 
 function wire() {
   wireBack();
-  els.search.addEventListener("input", () => {
-    view.query = els.search.value;
-    view.limit = PAGE_SIZE;
-    renderBody();
-  });
+  els.search.addEventListener("input", () => typedSearch.schedule("search", { query: els.search.value })); // the redraw waits for a pause in typing
   els.lists.addEventListener("click", (e) => {
     const b = e.target.closest("[data-list]");
     if (!b || b.dataset.list === view.list) return;
     view.list = b.dataset.list;
-    view.limit = PAGE_SIZE;
     renderLists();
     renderToggles();
     renderBody();
   });
-  els.hideMarked.addEventListener("click", () => { view.hideMarked = !view.hideMarked; view.limit = PAGE_SIZE; renderToggles(); renderBody(); });
+  els.hideMarked.addEventListener("click", () => { view.hideMarked = !view.hideMarked; renderToggles(); renderBody(); });
   els.thead.addEventListener("click", (e) => {
     const th = e.target.closest("th[data-col]");
     if (!th) return;
@@ -282,22 +277,7 @@ function wire() {
     const tr = e.target.closest("tr.tp-row");
     if (tr && tr.dataset.key !== cursor) setCursor(tr.dataset.key, false);
   });
-  els.more.addEventListener("click", loadMore);
   wireKeys();
-  wireScrollLoad();
-}
-
-function loadMore() {
-  if (!hasMore) return;
-  view.limit += PAGE_SIZE;
-  renderBody();
-}
-
-/** Rows load as the footer scrolls into view; the Show more button stays as the fallback where there is no IntersectionObserver. */
-function wireScrollLoad() {
-  if (typeof IntersectionObserver === "undefined") return;
-  footObserver = new IntersectionObserver((entries) => { if (entries.some((x) => x.isIntersecting)) loadMore(); }, { rootMargin: "400px 0px" });
-  footObserver.observe(els.foot);
 }
 
 /**
@@ -311,18 +291,18 @@ function wireKeys() {
     if (e.ctrlKey || e.metaKey || e.altKey || on("input, textarea, select, [contenteditable]")) return;
     const step = keyStep(e.key);
     if (step !== 0) {
-      e.preventDefault(); // the arrow keys would scroll the page
+      e.preventDefault(); // the arrow keys would scroll the box
       moveCursor(step);
     } else if ((e.key === "Enter" || e.key === " ") && cursor !== null && !SITE && !on("button, a")) {
-      e.preventDefault(); // Space would scroll the page
+      e.preventDefault(); // Space would scroll the box
       if (e.repeat) return; // a held key marks once, not on every finished save
       if (cursorOnScreen()) toggle(cursor);
       else showRow(cursor);
     }
   });
-  measureStick();
-  if (typeof ResizeObserver !== "undefined") new ResizeObserver(measureStick).observe(els.bar);
-  window.addEventListener("resize", measureStick);
+  layout();
+  if (typeof ResizeObserver !== "undefined") new ResizeObserver(layout).observe(els.bar); // the chips wrapping moves the box's top edge
+  window.addEventListener("resize", layout);
   if (SITE) els.keys.textContent = "↑ ↓ move";
 }
 
@@ -333,7 +313,7 @@ function renderSource(data) {
   const rg = rgSource ? `<span class="tp-hint" title="${escapeHtml(rgSource)}">RG rank: RotoGrinders overall rankings</span>` : "RG rank: source not recorded";
   els.source.innerHTML =
     `<span class="tp-hint" title="${escapeHtml(`${data.listsFolder ?? "lists"}, built ${built ?? "at an unknown time"}`)}">DraftKings standings</span> &middot; ` +
-    `${escapeHtml(snapshotSummary(model.contests, when))} &middot; ${rg}`;
+    `${escapeHtml(snapshotSummary(model.contests, when, columnCounts(model)))} &middot; ${rg}`;
 }
 
 async function init() {
@@ -351,14 +331,14 @@ async function init() {
   }
   model = buildModel(data.registry, data.lists);
   counts = listCounts(model);
-  cols = columnsFor(SITE, model.contests);
+  cols = columnsFor(SITE, model.contests, columnCounts(model));
   renderSource(data);
   renderCounts();
   renderLists();
   renderToggles();
   renderHead();
-  measureStick(); // the header row now has its height
   renderBody();
+  layout(); // the header row now has its height
 }
 
 if (typeof document !== "undefined" && els.tbody) {

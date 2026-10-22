@@ -221,7 +221,7 @@ export function statusLineText(ms, board) {
 
 // ---------- the request ----------
 
-/** Whether any board row carries TwoGun's `field` ("median" or "ceil") on row.tg (board-view.js withTwoGunTg puts them there while
+/** Whether any board row carries TwoGun's `field` ("median" or "ceil") on row.tg (generate-request.js withTwoGunFigures, applied in board-view.js, puts them there while
  *  his file is posted), read as classic's boardHasCeilings (state.js) reads a ceiling. */
 export function boardHasTg(board, field) {
   return (board?.rows ?? []).some((r) => typeof r?.tg?.[field] === "number" && Number.isFinite(r.tg[field]));

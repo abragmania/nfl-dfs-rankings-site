@@ -201,7 +201,7 @@ export function exportResultOf(res, count) {
 
 // `extra` (from fileBlockHtml): { proposedId, numbers, proposals, kept }. A proposed lineup shows pre-selected in the picker
 // until Adam confirms it or picks by hand (D75 as amended 2026-10-17, entries fill plan item 6).
-function pickerHtml(file, entry, lineups, assigned, entries, slateKey, slates, extra = null, nameOf = lineupLabel) {
+function pickerHtml(file, entry, lineups, assigned, entries, slateKey, fileContext, extra = null, nameOf = lineupLabel) {
   if (!lineups.length) return `<select class="entries-pick" disabled aria-label="Lineup for entry ${escapeHtml(entry.entryId)}"><option>No saved lineups</option></select>`;
   const cur = rowHolds({ pick: assigned?.[entry.entryId], kept: extra?.kept, proposedId: extra?.proposedId }).lineupId ?? ""; // Adam 2026-10-18: a hand pick is never shown under a proposal
   // 🔵 2026-10-17: a lineup proposed for another row of the contest is marked (still selectable), so no silent reshuffle.
@@ -211,7 +211,7 @@ function pickerHtml(file, entry, lineups, assigned, entries, slateKey, slates, e
   );
   const opts = lineups
     .map((l) => {
-      const taken = l.id !== cur && lineupBlockedFor(entries, assigned, entry, l, slateKey, slates);
+      const taken = l.id !== cur && lineupBlockedFor(entries, assigned, entry, l, slateKey, fileContext);
       const mark = taken ? " (already in this contest)" : l.id !== cur && elsewhere.has(String(l.id)) ? " (proposed for another entry)" : "";
       return `<option value="${escapeHtml(l.id)}"${l.id === cur ? " selected" : ""}${taken ? " disabled" : ""}>${escapeHtml(lineupOptionLabel(l, extra?.numbers, nameOf))}${mark}</option>`;
     })
@@ -221,7 +221,7 @@ function pickerHtml(file, entry, lineups, assigned, entries, slateKey, slates, e
 
 /** `labels` (the Showdown tab; classic passes none): { summaryOf(current) -> { text, title } for "In the file now", lineupLabelOf(lineup, numbers) for
  *  the lineup's name in the picker and the held tag }, ENTRIES_TAB_DEFAULTS' classic functions when absent. */
-export function entryRowHtml(file, entry, lineups, assigned, entries, slateKey = "main", slates = [], extra = null, labels = null) {
+export function entryRowHtml(file, entry, lineups, assigned, entries, slateKey = "main", fileContext = [], extra = null, labels = null) {
   const sum = (labels?.summaryOf ?? currentSummary)(entry.current);
   const nameOf = labels?.lineupLabelOf ?? lineupLabel;
   const picked = assigned?.[entry.entryId];
@@ -243,7 +243,7 @@ export function entryRowHtml(file, entry, lineups, assigned, entries, slateKey =
       <tr class="entries-row${set ? " assigned" : ""}${proposed ? " proposed" : ""}">
         <td class="entries-id">${escapeHtml(entry.entryId)}</td>
         <td class="entries-now${sum.text === "Blank" ? " blank" : ""}"${sum.title ? ` title="${escapeHtml(sum.title)}"` : ""}>${escapeHtml(sum.text)}</td>
-        ${lineups.length ? `<td class="entries-pick-cell"><div class="entries-pick-wrap">${pickerHtml(file, entry, lineups, assigned, entries, slateKey, slates, extra, nameOf)}${tag}</div></td>` : ""}
+        ${lineups.length ? `<td class="entries-pick-cell"><div class="entries-pick-wrap">${pickerHtml(file, entry, lineups, assigned, entries, slateKey, fileContext, extra, nameOf)}${tag}</div></td>` : ""}
       </tr>`;
 }
 
@@ -265,9 +265,9 @@ export function resultHtml(result) {
 /** One uploaded file's block. `view`: { fill, classes, sortBy, fold, tab, adjust } (the fill strip's ticks, the contest class
  *  overrides, the Sort choice; see fillModelOf; `fold`, a Set of contest ids whose rows are folded away, Adam 2026-10-17;
  *  `tab` "gpp" (default) or "cash" and `adjust`, whether the Adjust fold is open, Adam 2026-10-18; `lineupsFor`, the tab's
- *  lineups-for-file function, classic's fileSlateLineups when absent, Showdown Entries plan step 3). `slates`: the second-slates
+ *  lineups-for-file function, classic's fileSlateLineups when absent, Showdown Entries plan step 3). `fileContext`: the second-slates
  *  array, or a Showdown file-id context function (entries-plan.js showdownFileKeyOf). */
-export function fileBlockHtml(f, saved, assigned, result, busy, slates = [], view = null) {
+export function fileBlockHtml(f, saved, assigned, result, busy, fileContext = [], view = null) {
   const entries = f.entries ?? [];
   const slateKey = f.slate?.key ?? null;
   const label = f.slate?.label ?? "Unknown slate";
@@ -285,7 +285,7 @@ export function fileBlockHtml(f, saved, assigned, result, busy, slates = [], vie
   }
   const numberOver = view?.numberOverFor && slateKey ? view.numberOverFor(saved, f) : null; // Showdown: numbers over all the game's lineups, the pickers list the complete ones
   const labels = { summaryOf: view?.summaryOf, lineupLabelOf: view?.lineupLabelOf }; // each absent one is classic's (entryRowHtml)
-  const m = lineups.length ? fillModelOf(entries, slateKey, lineups, eff, slates, numberOver ? { ...view, numberOver } : view) : null;
+  const m = lineups.length ? fillModelOf(entries, slateKey, lineups, eff, fileContext, numberOver ? { ...view, numberOver } : view) : null;
   const ticked = m && (m.fill.contestIds == null ? null : new Set(m.fill.contestIds.map(String)));
   const rows = m ? m.sorted : lineups; // the pickers list lineups in the Sort order
   // Adam 2026-10-18: a contest's rows are drawn under its own tab (GPP or Cash) when lineups exist, all of them, plain, when none do.
@@ -294,7 +294,7 @@ export function fileBlockHtml(f, saved, assigned, result, busy, slates = [], vie
     // 🔵 2026-10-17: the kept tag's title names the control the strip shows (reopenLabel).
     const extraOf = (e) => (m ? { proposedId: m.proposals[e.entryId], numbers: m.numbers, proposals: m.proposals, kept: m.kept.has(String(e.entryId)), reopen: reopenLabel(m.fill, m.keptOpen), dismissed: m.fill.dismissed } : null);
     const folded = Boolean(view?.fold?.has(g.contestId));
-    const body = folded ? "" : g.entries.map((e) => entryRowHtml(f.file, e, rows, eff, entries, slateKey, slates, extraOf(e), labels)).join("");
+    const body = folded ? "" : g.entries.map((e) => entryRowHtml(f.file, e, rows, eff, entries, slateKey, fileContext, extraOf(e), labels)).join("");
     return `<tbody class="entries-contest-group${folded ? " folded" : ""}">${contestHeadHtml(f.file, g, eff, ctx, m?.proposals, folded, !m)}${body}</tbody>`;
   };
   const tableOf = (groups, plain) => `
@@ -339,7 +339,7 @@ export function fileBlockHtml(f, saved, assigned, result, busy, slates = [], vie
 }
 
 /** The whole section's inside. `m`: { loaded, loadError, uploading, uploadError, files, assign, results, busyFile,
- *  fill, classes, sortBy, saved, slates, noWeek, storageWarning }, plus the tab's own fileInputId, emptyText and lineupsFor
+ *  fill, classes, sortBy, saved, fileContext, noWeek, storageWarning }, plus the tab's own fileInputId, emptyText and lineupsFor
  *  (each ENTRIES_TAB_DEFAULTS' classic value when absent). With no week loaded there is nothing to upload against,
  *  so only a plain line shows. */
 export function entriesInnerHtml(m) {
@@ -354,7 +354,7 @@ export function entriesInnerHtml(m) {
   if (!m.loaded) body = `<div class="entries-empty">Loading…</div>`;
   else if (m.loadError) body = `<div class="lineup-status lineup-status-error">${escapeHtml(m.loadError)}</div>`;
   else if (!m.files?.length) body = `<div class="entries-empty">${escapeHtml(m.emptyText ?? ENTRIES_TAB_DEFAULTS.emptyText)}</div>`;
-  else body = m.files.map((f) => fileBlockHtml(f, m.saved, m.assign?.[f.file], m.results?.[f.file], m.busyFile === f.file, m.slates, { fill: m.fill?.[f.file], classes: m.classes?.[f.file], sortBy: m.sortBy, fold: m.fold?.[f.file], tab: m.tab?.[f.file], adjust: m.adjust?.[f.file], lineupsFor: m.lineupsFor, noLineupsText: m.noLineupsText, numberOverFor: m.numberOverFor, summaryOf: m.summaryOf, lineupLabelOf: m.lineupLabelOf })).join("");
+  else body = m.files.map((f) => fileBlockHtml(f, m.saved, m.assign?.[f.file], m.results?.[f.file], m.busyFile === f.file, m.fileContext, { fill: m.fill?.[f.file], classes: m.classes?.[f.file], sortBy: m.sortBy, fold: m.fold?.[f.file], tab: m.tab?.[f.file], adjust: m.adjust?.[f.file], lineupsFor: m.lineupsFor, noLineupsText: m.noLineupsText, numberOverFor: m.numberOverFor, summaryOf: m.summaryOf, lineupLabelOf: m.lineupLabelOf })).join("");
   const upErr = m.uploadError ? `<div class="lineup-status lineup-status-error entries-error">${escapeHtml(m.uploadError)}</div>` : "";
   return `
       <h3 class="entries-title">Entries <span class="opt-sub">saved lineups are proposed for the entries, you confirm, then download the file to upload to DraftKings</span></h3>${storage}

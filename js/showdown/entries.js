@@ -86,7 +86,7 @@ export async function uploadShowdownEntries(text) {
 /** Binds the wire to the game on screen: a new key resets its state and starts its list read, so an answer for a game left behind is
  *  ignored by the wire's own key check (🔵 step 4 review). `current.lineups` is empty until the lineup read lands; stored picks cope. */
 function wireTo(container) {
-  wire.wireEntries(container, { weekKey: current.key, getSaved: () => current.lineups, getSlates: () => showdownFileKeyOf(current.board?.rows) });
+  wire.wireEntries(container, { weekKey: current.key, getSaved: () => current.lineups, getFileContext: () => showdownFileKeyOf(current.board?.rows) });
 }
 
 function draw(container) {

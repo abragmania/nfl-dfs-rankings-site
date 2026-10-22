@@ -1,6 +1,7 @@
 // Favorites helper: the starred rows of the loaded slate, in roster order. The Favorites tab is gone (Optimizer-first step 3);
 // "Favorites only" is a filter on Rankings and the Optimizer pool (filterbar.js, state.js filterRows) and keeps the 3.0 projection
-// floor like every other filter. This list is not floored: it counts every starred row, under-floor ones included.
+// floor like every other filter. This list is not floored: it counts every starred row, under-floor ones included. The chip carries
+// that count, "★ Favorites only (3)" (Adam, 2026-10-21; D53).
 
 const POS_ORDER = { QB: 0, RB: 1, WR: 2, TE: 3, DST: 4 };
 function posRank(pos) {
