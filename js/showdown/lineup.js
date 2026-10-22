@@ -8,15 +8,15 @@
 // keeps Build unchanged). The Optimizer's band heads the left column, its Make row ends it, and its batch is drawn full
 // width below both columns, above the swaps and the saved lineups.
 import { escapeHtml, money, dec1 } from "../format.js";
-import { matchupPillHtml } from "../player-row.js";
 import { postShowdownLineupOptimize, getShowdownLineups, postShowdownLineup, deleteShowdownLineup, putShowdownLineupName, putShowdownLineupTag } from "./api.js";
-import { sdLine, SD_PILL } from "./table.js";
 import { listsHtml, paintLists, wireLists, setListControls } from "./lineup-lists.js"; // the Captain list and the FLEX list, each sortable (Adam 2026-10-18)
 // The Showdown Optimizer (Adam 2026-10-19, sketch A): its band over the builder, its Make row under it, its batch full width below, its controls on the pool rows.
 import { syncOptimizer, optimizerLive, optimizerBandHeadHtml, optimizerBandBoxesHtml, optimizerGoRowHtml, optimizerResultsBlockHtml, optimizerExcludes, optimizerSavedFilter, poolChipsRowHtml, listControls, wirePoolControls, wireOptimizer } from "./optimizer.js";
 import { handBuild } from "../lineup-builds.js";
 import { requestFailureText } from "./read-json.js";
-import { slotLook, slotLogoHtml, controlsHtml as controlsMarkup } from "./lineup-look.js"; // the classic team rows on the slots and saved rows, the two-row controls (Adam 2026-10-18 9:09 PM)
+import { controlsHtml as controlsMarkup } from "./lineup-look.js"; // the two-row controls (Adam 2026-10-18 9:09 PM)
+import { slotsHtml as slotsMarkup, repaintSlots } from "./lineup-slots.js"; // the six slots' markup and figure repaint (Adam 2026-10-21 Q3 option A split)
+export { slotPlayerHtml } from "./lineup-slots.js"; // tests import it from here
 // The saved-lineups view lives in ./lineup-saved.js (state stays here); the two pure helpers keep their old exports from this module.
 import { findRow, SALARY_CAP, FLEX_COUNT, savedProjHtml, savedLineupCardHtml as savedCardHtml, savedLineupsSectionHtml as savedSectionHtml, wireSavedCards, cardPutGuard } from "./lineup-saved.js";
 import { onSitePage } from "../tabs.js"; // the public site marks the page is-site: its saved cards draw no letter select (it can only be refused there)
@@ -25,7 +25,7 @@ import { syncSwaps, swapsPanelHtml, wireSwaps } from "./lineup-swaps.js"; // the
 import { showAllToggleHtml, wireShowAllButtons } from "../filterbar.js";
 import { store } from "../state.js";
 import { showdownPerSpotText, shownTotal } from "../totals.js";
-import { syncMeter, meterStripHtml, wireMeter, playerFigures, reasonHtml } from "./lineup-meter.js"; // uniqueness / projection strip under the slots; every figure on the screen is the served board's (Adam 2026-10-20)
+import { syncMeter, meterStripHtml, wireMeter, playerFigures } from "./lineup-meter.js"; // uniqueness / projection strip under the slots; every figure on the screen is the served board's (Adam 2026-10-20)
 import { builtOnText } from "./figures-label.js"; // the board's sources in words (the retired Figures switch's place)
 
 // "Projection minus ownership" was removed and Leverage has no measure (Adam 2026-10-15, Lev measure to be
@@ -313,32 +313,11 @@ function doLoadLineup(id) {
 // Render
 // --------------------------------------------------------------------------------------------------------
 
-function ownParen(own) {
-  return own == null ? "" : ` (${Math.round(own)}% own)`;
-}
-
-// The slot's "$ · proj · (own)" line: the board row's projection and ownership (playerFigures) and salary. A missing figure
-// reads "no proj" / no "% own", never zero (D29); a man not on TwoGun's board reads "(not on TwoGun's board, 0%)" (Q8).
-function slotDetailHtml(row, isCpt) {
-  const salary = isCpt ? row.cptSalary : row.salary;
-  const { proj, own, notOnBoard, missingReason, projNote } = playerFigures(row, isCpt);
-  const projText = proj == null ? "no proj" : `${dec1(proj)} proj`;
-  const projHtml = projNote ? `<span title="${escapeHtml(projNote)}">${projText}</span>` : projText; // listed Out: TwoGun's own figure on hover
-  const ownText = notOnBoard ? " (not on TwoGun's board, 0%)" : ownParen(own);
-  return `${money(salary)} &middot; ${projHtml}${escapeHtml(ownText)}${missingReason ? ` &middot; ${reasonHtml(missingReason)}` : ""}`;
-}
-
 // Repaints only the six slots' figure lines and the total projection line under them (the panel is not redrawn, so a
 // typed lineup name survives); the meter calls it when its modes answer (each man's notes) lands.
 function repaintSlotFigures() {
   if (!lastContainer || !lastBoard) return;
-  const paint = (slotEl, placed, isCpt) => {
-    const row = placed ? findRow(lastBoard, placed.id) : null;
-    const el = slotEl?.querySelector?.(".lineup-slot-detail");
-    if (row && el) el.innerHTML = slotDetailHtml(row, isCpt);
-  };
-  paint(lastContainer.querySelector(".sd-cpt-slot"), state.cpt, true);
-  lastContainer.querySelectorAll("[data-flex-index]").forEach((el) => paint(el, state.flex[Number(el.dataset.flexIndex)], false));
+  repaintSlots(lastContainer, lastBoard, state);
   const totalsEl = lastContainer.querySelector(".lineup-totals");
   if (totalsEl) totalsEl.innerHTML = totalsLineHtml(computeTotals(lastBoard));
   // Both player lists (Captain and FLEX) and the saved cards' projection totals carry the same notes, repainted in place.
@@ -349,51 +328,7 @@ function repaintSlotFigures() {
   });
 }
 
-export function slotPlayerHtml(row, isCpt) {
-  return `
-    <span class="lineup-slot-player lineup-slot-player-2" data-card-id="${escapeHtml(String(row.id))}">
-      ${slotLogoHtml(row)}
-      <span class="lineup-slot-body">
-        <span class="lineup-slot-top">${sdLine(row, { nameCls: "lineup-slot-name", pill: false, tag: "out", logo: false })}</span>
-        ${SD_PILL ? matchupPillHtml(row) : ""}
-        <span class="lineup-slot-detail">${slotDetailHtml(row, isCpt)}</span>
-      </span>
-    </span>`;
-}
-
-function slotsHtml(board) {
-  const cptRow = state.cpt ? findRow(board, state.cpt.id) : null;
-  const cptBody = !state.cpt
-    ? `<span class="lineup-slot-player lineup-slot-empty">Empty</span>`
-    : cptRow
-      ? slotPlayerHtml(cptRow, true)
-      : `<span class="lineup-slot-player lineup-slot-missing">Not on this board</span>`;
-  const cptLook = slotLook(cptRow);
-  const cptHtml = `
-    <div class="lineup-slot lineup-slot-tall sd-cpt-slot${cptLook.cls}"${cptLook.attr}>
-      <span class="lineup-slot-label">CPT</span>
-      ${cptBody}
-      <button type="button" class="lineup-slot-clear" data-action="clear-cpt"${state.cpt ? "" : " disabled"}>Clear</button>
-    </div>`;
-  const flexHtml = state.flex
-    .map((s, i) => {
-      const row = s ? findRow(board, s.id) : null;
-      const body = !s
-        ? `<span class="lineup-slot-player lineup-slot-empty">Empty</span>`
-        : row
-          ? slotPlayerHtml(row, false)
-          : `<span class="lineup-slot-player lineup-slot-missing">Not on this board</span>`;
-      const look = slotLook(row);
-      return `
-        <div class="lineup-slot lineup-slot-tall${look.cls}"${look.attr} data-flex-index="${i}">
-          <span class="lineup-slot-label">FLEX</span>
-          ${body}
-          <button type="button" class="lineup-slot-clear" data-action="clear-flex" data-flex="${i}"${s ? "" : " disabled"}>Clear</button>
-        </div>`;
-    })
-    .join("");
-  return cptHtml + flexHtml;
-}
+const slotsHtml = (board) => slotsMarkup(board, state); // the placed slots go in as parameters (lineup-slots.js)
 
 function controlsHtml() {
   const hasAnySlot = Boolean(state.cpt) || state.flex.some(Boolean);
