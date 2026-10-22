@@ -211,7 +211,7 @@ export function reasonHtml(reason, max = 44) {
   return `<span class="sd-reason"${cut === text ? "" : ` title="${escapeHtml(text)}"`}>${escapeHtml(cut)}</span>`;
 }
 
-/** The words for a man TwoGun's board has no row for (Q8), shared by the meter's note and the swaps; the slots' own line (lineup.js) says the same. */
+/** The words for a man TwoGun's board has no row for (Q8), shared by the meter's note and the swaps; the slots' line 2 (lineup-slots.js notesHtml) says the same. */
 export const NOT_ON_BOARD_WORDS = "not on TwoGun's board, 0%";
 
 /** "A Smith, B Jones: not on TwoGun's board, 0%" for the lineup men counted at TwoGun's 0% (Q8, only while TwoGun is ticked); null when none. */

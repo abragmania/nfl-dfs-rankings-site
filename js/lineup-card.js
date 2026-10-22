@@ -93,13 +93,16 @@ export function cardDecor(lineup, rowById, palette = null) {
 // longest that are never cut, so a name that would be cut is always shown short (a few that would fit, mostly tagged ones, are shown short too).
 export const NAME_FIT = 18;
 export const NAME_FIT_TAGGED = 11;
+// D81: a Showdown slot (opts.pos) adds the position chip (about 44px) to line 1 but its slot is wider (the left column, about 786px at 1920). Measured in Chrome over the 525 names of the 2026 week 6
+// board with the chip placed, plus a 30, 45 and 60 letter control that must be cut: at 1920, 1600 and 1366px no name of up to 24 letters is cut, with the chip alone or with the chip and an OUT tag; at 1100px
+// chip and OUT tag together cut names from 19 letters (1 of 5 at 19, all of 21), the chip alone none. So the two limits above already hold for a Showdown slot and need no chip term.
 export function bigNameNeedsShort(name, tagged) {
   return String(name ?? "").trim().length > (tagged ? NAME_FIT_TAGGED : NAME_FIT);
 }
 export function cardPlayerRowHtml(p, slotName, decor, opts = null) {
   const big = opts?.big === true;
   const row = decor?.rowFor ? decor.rowFor(p) : p;
-  const line1 = playerIdentityHtml(row, { logo: false, nameCls: "opt-p-name", nameHtml: cardNameHtml(p), chipPlain: true, tagCls: "opt-p-tags", tag: "out" });
+  const line1 = playerIdentityHtml(row, { logo: false, nameCls: "opt-p-name", nameHtml: cardNameHtml(p), chipPlain: true, tagCls: "opt-p-tags", tag: "out", pos: opts?.pos === true, posHtml: opts?.posHtml }); // pos, posHtml: Showdown's slots only (D81: every slot is FLEX, so the row names the position, as the pool does); classic's rows stay off
   const shorten = big && bigNameNeedsShort(p.name, line1.includes('class="opt-p-tags"'));
   return `
       <div class="opt-p${big ? " opt-p-big" : ""}${shorten ? " opt-p-short" : ""}" style="${teamColourStyle(decor ? decor.coloursFor(p.team) : teamColours(null, p.team))}"${p.id != null ? ` data-card-id="${escapeHtml(String(p.id))}"` : ""}>

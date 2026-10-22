@@ -1,81 +1,69 @@
-// The Showdown builder's six slots (one Captain, five FLEX), moved out of ./lineup.js unchanged (file cap, Adam 2026-10-21 Q3 option A).
-// lineup.js owns the placed slots; every function here takes them as { cpt, flex } ({id} or null each) and reads no module state.
-import { escapeHtml, money, dec1 } from "../format.js";
-import { matchupPillHtml } from "../player-row.js";
-import { sdLine, SD_PILL } from "./table.js";
-import { slotLook, slotLogoHtml } from "./lineup-look.js";
+// The Showdown builder's six slots (one Captain, five FLEX). D81 counterpart of classic's step 5 (Adam 2026-10-18: the slots "formatted the same way as the
+// smaller ones ... just bigger"): a filled slot is the shared card row at the big size (lineup-card.js cardPlayerRowHtml, the same call as classic's lineup-view.js
+// slotPlayerHtml) in the game's team colours (lineup-look.js showdownPalette, the palette the saved rows wear). Every function takes the placed slots as
+// { cpt, flex } ({id} or null each); lineup.js owns them.
+import { escapeHtml } from "../format.js";
+import { cardPlayerRowHtml, teamColours } from "../lineup-card.js";
+import { showdownPalette } from "./lineup-look.js";
+import { posPillHtml, SD_PILL } from "./table.js";
 import { findRow } from "./lineup-saved.js";
-import { playerFigures, reasonHtml } from "./lineup-meter.js";
+import { playerFigures, reasonHtml, NOT_ON_BOARD_WORDS } from "./lineup-meter.js";
 
-function ownParen(own) {
-  return own == null ? "" : ` (${Math.round(own)}% own)`;
+// The card row's line 2 carries what the old "$ · proj · own" line carried after the figures (D29: a missing figure reads missing, never zero): a man not on
+// TwoGun's board reads "(not on TwoGun's board, 0%)" (Q8), a blank ownership its reason, a listed-Out projection TwoGun's own figure on hover.
+export function notesHtml({ notOnBoard, missingReason, projNote }) {
+  return (notOnBoard ? `<span>${escapeHtml(`(${NOT_ON_BOARD_WORDS})`)}</span>` : "")
+    + (missingReason ? reasonHtml(missingReason) : "")
+    + (projNote ? `<span title="${escapeHtml(projNote)}">note</span>` : "");
 }
 
-// The slot's "$ · proj · (own)" line: the board row's projection and ownership (playerFigures) and salary. A missing figure
-// reads "no proj" / no "% own", never zero (D29); a man not on TwoGun's board reads "(not on TwoGun's board, 0%)" (Q8).
-function slotDetailHtml(row, isCpt) {
-  const salary = isCpt ? row.cptSalary : row.salary;
-  const { proj, own, notOnBoard, missingReason, projNote } = playerFigures(row, isCpt);
-  const projText = proj == null ? "no proj" : `${dec1(proj)} proj`;
-  const projHtml = projNote ? `<span title="${escapeHtml(projNote)}">${projText}</span>` : projText; // listed Out: TwoGun's own figure on hover
-  const ownText = notOnBoard ? " (not on TwoGun's board, 0%)" : ownParen(own);
-  return `${money(salary)} &middot; ${projHtml}${escapeHtml(ownText)}${missingReason ? ` &middot; ${reasonHtml(missingReason)}` : ""}`;
+// The one big card row of a placed man: salary, projection and ownership are the board row's own (playerFigures, the Captain's included); a missing
+// figure stays null so the row prints "—" / no parenthesis. D80: a Showdown row has no pill, so the matchup fields the pill reads are blanked.
+export function slotPlayerHtml(row, isCpt, palette = null) {
+  const figs = playerFigures(row, isCpt);
+  const p = { ...row, salary: isCpt ? row.cptSalary : row.salary, proj: figs.proj, own: figs.notOnBoard ? null : figs.own };
+  const decor = {
+    rowFor: (r) => (SD_PILL ? r : { ...r, gameId: null, opp: null, impliedTotal: null, total: null, spread: null }), // D80: no pill while SD_PILL is off
+    rolesFor: () => notesHtml(figs),
+    coloursFor: (team) => teamColours(palette, team),
+  };
+  return cardPlayerRowHtml(p, isCpt ? "CPT" : "FLEX", decor, { big: true, pos: true, posHtml: posPillHtml }).trim(); // every slot is FLEX, so the row names his position, as the pool does
 }
 
-// Repaints only the six slots' figure lines (the panel is not redrawn, so a typed lineup name survives); lineup.js's
-// repaintSlotFigures calls it when the meter's modes answer (each man's notes) lands.
+// Repaints only the placed slots' big rows (the Clear button is the row's sibling and survives; the panel is not redrawn, so a typed lineup name survives);
+// lineup.js's repaintSlotFigures calls it when the meter's modes answer (each man's notes) lands. An empty or missing slot has no row and is left alone.
 export function repaintSlots(container, board, { cpt, flex }) {
+  const palette = showdownPalette(board);
   const paint = (slotEl, placed, isCpt) => {
     const row = placed ? findRow(board, placed.id) : null;
-    const el = slotEl?.querySelector?.(".lineup-slot-detail");
-    if (row && el) el.innerHTML = slotDetailHtml(row, isCpt);
+    const el = slotEl?.querySelector?.(".opt-p");
+    if (row && el) el.outerHTML = slotPlayerHtml(row, isCpt, palette);
   };
   paint(container.querySelector(".sd-cpt-slot"), cpt, true);
   container.querySelectorAll("[data-flex-index]").forEach((el) => paint(el, flex[Number(el.dataset.flexIndex)], false));
 }
 
-export function slotPlayerHtml(row, isCpt) {
+// One slot, classic's shapes (lineup-view.js slotsHtml): filled is the card row (it carries the slot name) and Clear; Empty and "Not on this board" keep the
+// label and the same 64px (style.css .lineup-slot-big).
+function slotHtml({ label, placed, row, palette, attrs, clearAttrs }) {
+  const body = !placed
+    ? `<span class="lineup-slot-player lineup-slot-empty">Empty</span>`
+    : row
+      ? slotPlayerHtml(row, label === "CPT", palette)
+      : `<span class="lineup-slot-player lineup-slot-missing">Not on this board</span>`;
   return `
-    <span class="lineup-slot-player lineup-slot-player-2" data-card-id="${escapeHtml(String(row.id))}">
-      ${slotLogoHtml(row)}
-      <span class="lineup-slot-body">
-        <span class="lineup-slot-top">${sdLine(row, { nameCls: "lineup-slot-name", pill: false, tag: "out", logo: false })}</span>
-        ${SD_PILL ? matchupPillHtml(row) : ""}
-        <span class="lineup-slot-detail">${slotDetailHtml(row, isCpt)}</span>
-      </span>
-    </span>`;
+    <div class="lineup-slot lineup-slot-big${row ? " lineup-slot-card" : ""}${attrs.cls}"${attrs.data}>
+      ${row ? "" : `<span class="lineup-slot-label">${label}</span>`}
+      ${body}
+      <button type="button" class="lineup-slot-clear" ${clearAttrs}${placed ? "" : " disabled"}>Clear</button>
+    </div>`;
 }
 
 export function slotsHtml(board, { cpt, flex }) {
-  const cptRow = cpt ? findRow(board, cpt.id) : null;
-  const cptBody = !cpt
-    ? `<span class="lineup-slot-player lineup-slot-empty">Empty</span>`
-    : cptRow
-      ? slotPlayerHtml(cptRow, true)
-      : `<span class="lineup-slot-player lineup-slot-missing">Not on this board</span>`;
-  const cptLook = slotLook(cptRow);
-  const cptHtml = `
-    <div class="lineup-slot lineup-slot-tall sd-cpt-slot${cptLook.cls}"${cptLook.attr}>
-      <span class="lineup-slot-label">CPT</span>
-      ${cptBody}
-      <button type="button" class="lineup-slot-clear" data-action="clear-cpt"${cpt ? "" : " disabled"}>Clear</button>
-    </div>`;
+  const palette = showdownPalette(board);
+  const cptHtml = slotHtml({ label: "CPT", placed: cpt, row: cpt ? findRow(board, cpt.id) : null, palette, attrs: { cls: " sd-cpt-slot", data: "" }, clearAttrs: `data-action="clear-cpt"` });
   const flexHtml = flex
-    .map((s, i) => {
-      const row = s ? findRow(board, s.id) : null;
-      const body = !s
-        ? `<span class="lineup-slot-player lineup-slot-empty">Empty</span>`
-        : row
-          ? slotPlayerHtml(row, false)
-          : `<span class="lineup-slot-player lineup-slot-missing">Not on this board</span>`;
-      const look = slotLook(row);
-      return `
-        <div class="lineup-slot lineup-slot-tall${look.cls}"${look.attr} data-flex-index="${i}">
-          <span class="lineup-slot-label">FLEX</span>
-          ${body}
-          <button type="button" class="lineup-slot-clear" data-action="clear-flex" data-flex="${i}"${s ? "" : " disabled"}>Clear</button>
-        </div>`;
-    })
+    .map((s, i) => slotHtml({ label: "FLEX", placed: s, row: s ? findRow(board, s.id) : null, palette, attrs: { cls: "", data: ` data-flex-index="${i}"` }, clearAttrs: `data-action="clear-flex" data-flex="${i}"` }))
     .join("");
   return cptHtml + flexHtml;
 }

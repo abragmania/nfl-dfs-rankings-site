@@ -1,10 +1,9 @@
-// The Showdown Optimizer's look (Adam 2026-10-18 9:09 PM: "does not use the team colors that we decided on"): the six slots are classic's own
-// slots (lineup.js slotsHtml, the same in both themes), the saved rows classic's team rows (lineup-card.js teamColours / teamColourStyle,
-// team-palette.js slatePalette), and the controls laid out in two rows. Markup helpers only; lineup.js owns the lineup. No colour scale of its
-// own: the saved rows' palette is classic's, built for the two teams of the game on screen so they always read apart.
+// The Showdown Optimizer's look (Adam 2026-10-18 9:09 PM: "does not use the team colors that we decided on"): the game's two-team palette that the six slots
+// (lineup-slots.js, D81) and the saved rows (lineup-card.js teamColours / teamColourStyle, team-palette.js slatePalette) wear, and the controls laid out in
+// two rows. Markup helpers only; lineup.js owns the lineup. No colour scale of its own: the palette is classic's, built for the two teams of the game on
+// screen so they always read apart.
 import { escapeHtml } from "../format.js";
 import { slatePalette } from "../team-palette.js";
-import { teamColours, teamLogoHtml, badgeHtml } from "../lineup-card.js";
 
 const palettes = new Map(); // "DAL,GB" to its palette (one entry per game viewed in this page's life, each a small palette of two teams, so it grows slowly and is not pruned)
 
@@ -17,17 +16,6 @@ export function showdownPalette(board) {
   const key = list.join(",");
   if (!palettes.has(key)) palettes.set(key, slatePalette(list));
   return palettes.get(key);
-}
-
-/** A filled slot's extra class and style attribute, exactly classic's slot (lineup.js slotsHtml: style.css .lineup-slot-filled, --tc the team's
- *  colour, teamColours' own fallback), the same in both themes; nothing for an empty or missing slot. */
-export function slotLook(row) {
-  return row ? { cls: " lineup-slot-filled", attr: ` style="--tc:${teamColours(null, row.team).colour}"` } : { cls: "", attr: "" };
-}
-
-/** The 38px team logo the classic card rows show, the initials badge only for a team with no logo. */
-export function slotLogoHtml(row) {
-  return teamLogoHtml(row.team, "opt-p-logo", 38) || badgeHtml(row.name, row.pos, row.team);
 }
 
 /** The controls: Objective, Build and Clear all on the first row, Save as and Save lineup on the second (each row the column's full width). */

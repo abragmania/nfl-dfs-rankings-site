@@ -1306,8 +1306,6 @@ tr:last-child .cell-edit-hint { top: auto; bottom: 100%; margin-top: 0; margin-b
 .lineup-slot-player { flex: 1; min-width: 0; display: flex; align-items: center; gap: var(--sp-2); color: var(--text); }
 .lineup-slot-player.lineup-slot-empty { color: var(--text-dim); font-style: italic; }
 .lineup-slot-player.lineup-slot-missing { color: var(--danger); font-style: italic; }
-.lineup-slot-name { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.lineup-slot-detail { color: var(--text-muted); font-size: var(--fs-sm); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .lineup-slot-clear {
   cursor: pointer;
   background: var(--bg-elevated-2);
@@ -2077,7 +2075,7 @@ select.opt-input { text-align: left; padding: 3px 4px; }
 .saved-lineup-slot .player-logo { box-sizing: content-box; margin: -2px; }
 /* Optimizer-first step 5 (Adam 2026-10-18: "formatted the same way as the smaller ones ... just bigger"; D54, D70): the builder's nine slots draw the card row at 64px
    (the cards' 50px): logo 48px, name 16px, line 2 13px, figures 15px. A filled classic slot (.lineup-slot-card) is just that row and the Clear button; an Empty or
-   "Not on this slate" slot keeps its label and the same 64px, so the column does not jump. Scoped to classic's .lineup-slot-big; Showdown's slots are unchanged. */
+   "Not on this slate" slot keeps its label and the same 64px, so the column does not jump. Scoped to .lineup-slot-big: classic's nine slots and, since D81, Showdown's six. */
 .lineup-slots .lineup-slot.lineup-slot-big { box-sizing: border-box; min-height: 64px; }
 /* One geometry for both states: the filled row spans the whole slot (the empty box's outer edges) and its Clear sits inside it at the empty state's x (12px padding plus the 1px border from
    the right edge, a fixed 49px wide in both states); the row's figures end a slot gap (12px) before Clear, as the empty state's text does. */
@@ -2179,25 +2177,13 @@ td.opt-exp-opp { color: var(--text-muted); } /* the cells only: the Matchup head
 .opt-must-label { font-size: var(--fs-sm); font-weight: 600; color: var(--text-muted); }
 .opt-must-count { margin-left: auto; }
 
-/* Placed-player rows in the nine slots: the name, matchup (D43) and ownership (D32) are never cut off; the second
-   line carries salary, projection and own%. The Classic and Showdown builders both use the -2 modifier. */
-.lineup-slot-player.lineup-slot-player-2 { flex-direction: row; align-items: center; gap: var(--sp-2); }
-.lineup-slot-body { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; }
-/* D54: the nine slots are 50px at least. */
-.lineup-slot-tall { min-height: 50px; padding-top: 4px; padding-bottom: 4px; }
-.lineup-slot-filled { border-left: 4px solid var(--tc); background: color-mix(in srgb, var(--tc) 22%, var(--bg-elevated)); } /* flat, no gradient (🔵 2026-10-18 series review); this slot's text stays the page text colour, so the tint stays at the old gradient's start strength */
-.lineup-slot-top { display: flex; align-items: center; gap: var(--sp-2); min-width: 0; max-width: 100%; }
-.lineup-slot-player-2 .lineup-slot-name { white-space: normal; overflow: visible; text-overflow: clip; }
-.lineup-slot-player-2 .lineup-slot-detail { white-space: normal; overflow: visible; text-overflow: clip; }
-
 /* ---------- Showdown Optimizer rows (Adam 2026-10-18 9:09 PM: "does not use the team colors that we decided on") ----------
-   The six slots are classic's own slots (lineup.js slotsHtml): .lineup-slot-filled with --tc the team's colour (lineup-look.js slotLook), so in
-   both themes they look as classic's nine do (a team tint over the card, the page's text colour, the coloured team chip, the 38px team logo)
-   and none of the rules below restyle them. The saved rows are classic's .saved-lineup-slot-tc as is, in the palette of the game's two teams.
-   The Captain keeps its gold: the CPT label is a gold tag (and the slot a gold edge, .sd-cpt-slot above) on the team colour. */
-.sd-cpt-slot.lineup-slot-filled .lineup-slot-label, .saved-lineup-slot.saved-lineup-slot-tc.sd-saved-cpt .saved-lineup-slot-pos { background: var(--amber); color: var(--bg-elevated); border-radius: 3px; text-align: center; font-weight: 700; letter-spacing: 0.04em; }
-.sd-cpt-slot.lineup-slot-filled .lineup-slot-label { padding: 1px 0; font-size: var(--fs-sm); }
-.saved-lineup-slot-tc .sd-pos { background: var(--tcchip); color: var(--tct); text-shadow: none; }
+   The six slots are classic's big card row (D81, lineup-slots.js; its rules are at "Optimizer-first step 5" above),
+   in the palette of the game's two teams, and none of the rules below restyle them. The saved rows are classic's .saved-lineup-slot-tc as is, in the same palette.
+   The Captain keeps its gold: the CPT tag is gold on the team colour (and the empty slot a gold edge, .sd-cpt-slot above). */
+.sd-cpt-slot .opt-p-slot, .saved-lineup-slot.saved-lineup-slot-tc.sd-saved-cpt .saved-lineup-slot-pos { background: var(--amber); color: var(--bg-elevated); border-radius: 3px; text-align: center; font-weight: 700; letter-spacing: 0.04em; }
+.sd-cpt-slot .opt-p-slot { padding: 1px 0; }
+.saved-lineup-slot-tc .sd-pos, .lineup-slots .opt-p .sd-pos { background: var(--tcchip); color: var(--tct); text-shadow: none; } /* the slots' position chip wears the team chip's colours (D81) */
 
 /* The Showdown controls in two rows of the column's width: Objective, Build, Clear all, then Save as and Save lineup; every control 32px tall, the buttons 96px so their right edges line up. */
 .lineup-controls.sd-controls { flex-direction: column; align-items: stretch; gap: var(--sp-2); }
