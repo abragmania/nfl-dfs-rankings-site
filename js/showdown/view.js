@@ -411,6 +411,32 @@ function applyBoardResponse(raw, key, token) {
   return true;
 }
 
+// A write from the Lineup tab that answers this game's board (the ± bump, Adam 2026-10-22): `send(key)` makes the request; the answer
+// is applied as a refresh's, and a refusal or a failure puts the server's sentence in the status line, as a failed refresh does.
+// The load token is read, not taken (🔵 2026-10-22): a Refresh or load already out keeps its answer, and this answer is applied only
+// when no other request started since. Resolves true when the server took the write, false when it did not.
+async function writeBoard(send, label) {
+  const key = state.boardKey;
+  const token = loadToken;
+  const failed = `Could not save ${label}: `;
+  try {
+    const r = await send(key);
+    if (!r || r.ok === false) throw new Error(r?.error?.message ?? "unknown error");
+    applyBoardResponse(r, key, token);
+    if (els.status.textContent.startsWith(failed)) { // this write's earlier refusal is over; any other line stays
+      els.status.textContent = "";
+      els.status.className = "status";
+    }
+    return true;
+  } catch (e) {
+    if (state.boardKey === key) { // the same game is still on screen
+      els.status.textContent = `${failed}${e.message}`;
+      els.status.className = "status error";
+    }
+    return false;
+  }
+}
+
 // Never rejects. Returns null when the board was read (or a newer request took over), else the plain reason it could not be, which the
 // Sources page shows under the row it just saved (onChanged in renderSourcesView).
 async function loadBoard(key) {
@@ -492,7 +518,7 @@ function render() {
   } else if (isSourcesTab(state.activeTab)) {
     renderSourcesView();
   } else if (state.activeTab === "lineup") {
-    renderShowdownLineupPanel(els.lineupPanel, state.board, state.boardKey, { onOpenSources: openSources });
+    renderShowdownLineupPanel(els.lineupPanel, state.board, state.boardKey, { onOpenSources: openSources, onBoardWrite: writeBoard });
   } else if (state.activeTab === "entries") {
     renderShowdownEntriesPanel(els.entriesPanel, state.board, state.boardKey);
   }

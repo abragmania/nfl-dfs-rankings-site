@@ -1060,7 +1060,7 @@ function prepare(rows, opts, notes) {
     }
     byKey.set(cand.key, cand);
   }
-  if (figureWord) ceilingNotes(noCeilingLeftOut, typedIgnored, notes, figureWord);
+  if (figureWord) ceilingNotes(noCeilingLeftOut, typedIgnored, notes, figureWord, [...byKey.values()].filter((c) => byId.get(c.id)?.override?.bump).length);
   for (const [name, reason] of revivedLeftOut) notes.push(`${name} ${REVIVED_OUT_WORDS[reason](figureWord).replace(/^he /, "")}; include him by locking him.`);
 
   const all = [...byKey.values()];

@@ -39,6 +39,7 @@ import { teamsSampleHtml } from "./js/teams-sample.js"; // Temporary (Adam 2026-
 import { initExpand, syncExpandUi } from "./js/expand.js";
 import { makeFilterDebounce } from "./js/filter-debounce.js";
 import { initPlayerCard } from "./js/player-card.js";
+import { delegateBumpClicks, bumpPatch } from "./js/bump-control.js"; // Adam 2026-10-22: ± bump
 
 const el = {
   modeRow: document.getElementById("mode-row"),
@@ -231,7 +232,12 @@ const tableCallbacks = {
   onEditNote: async (id, text) => {
     await runWrite(() => putOverrides({ notes: { [id]: text } }), { rowId: id });
   },
+  // Adam 2026-10-22: ± bump from an Optimizer pool row (bumpPatch: 0 steps is sent as null, which removes it). Applied as a star
+  // toggle's answer is; the answer (null when refused) goes back so the pair is re-enabled only after a refusal.
+  onBump: (id, steps) => runWrite(() => putOverrides(bumpPatch(id, steps)), { label: "the projection bump" }),
 };
+// The pool's ± pairs are redrawn with the Optimizer's mount, so one listener on the mount serves them all (bump-control.js).
+delegateBumpClicks(el.lineupMount, { rowOf: findRow, onBump: tableCallbacks.onBump });
 
 // The Sources page saves its own choices (public/js/sources-page.js); this is the board repaint it asks for afterwards: a plain
 // board read, so nothing is re-downloaded from a source. A board that cannot be read leaves the one on screen and says so under the row.

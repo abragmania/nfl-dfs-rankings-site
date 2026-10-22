@@ -33,13 +33,17 @@ export function ceilingOf(row) {
   return ceil !== null && rowIsOut(row) ? 0 : ceil;
 }
 
-/** A ceiling build's notes: how many were left out for want of a ceiling, and that typed projections do not move it.
- *  `word` names the figure ("median" for a cash median build, FIGURE_BUILDS). */
-export function ceilingNotes(leftOut, typed, notes, word = "ceiling") {
+/** A ceiling build's notes: how many were left out for want of a ceiling, that typed projections do not move it, and how
+ *  many pool players' figures carry Adam's ± bump (`bumped`; Adam 2026-10-22, 5% a step, merge.js bumpFigures), in which
+ *  case the figures are no longer as he publishes them. `word` names the figure ("median" for a cash median build, FIGURE_BUILDS). */
+export function ceilingNotes(leftOut, typed, notes, word = "ceiling", bumped = 0) {
   if (leftOut > 0) {
     notes.push(`${leftOut} player${leftOut === 1 ? "" : "s"} with no TwoGun ${word} ${leftOut === 1 ? "was" : "were"} left out of this ${word} build.`);
   }
   if (typed > 0) {
-    notes.push(`${typed} typed projection${typed === 1 ? "" : "s"} ${typed === 1 ? "does" : "do"} not change a ${word} build; it ranks by TwoGun's ${word}s as he publishes them.`);
+    notes.push(`${typed} typed projection${typed === 1 ? "" : "s"} ${typed === 1 ? "does" : "do"} not change a ${word} build; it ranks by TwoGun's ${word}s${bumped > 0 ? "" : " as he publishes them"}.`);
+  }
+  if (bumped > 0) {
+    notes.push(`${bumped} player${bumped === 1 ? "'s" : "s'"} TwoGun ${word}${bumped === 1 ? " carries" : "s carry"} Adam's ± adjustment.`);
   }
 }

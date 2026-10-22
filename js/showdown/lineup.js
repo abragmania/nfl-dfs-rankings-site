@@ -56,6 +56,7 @@ let lastContainer = null;
 let lastBoard = null;
 let lastKey = null;
 let openSources = null; // view.js's opener of the Sources page, for the meter's figures label (kept across commit's redraws)
+let boardWrite = null; // view.js's writer that applies the board a write answers (the ± bump, Adam 2026-10-22; kept across commit's redraws)
 let savedFetchInFlightKey = null;
 const cardPuts = cardPutGuard(); // the saved cards' PUTs in flight and their refusals
 
@@ -431,6 +432,7 @@ function optCtx(board, key) {
     getSaved: () => state.savedLineups,
     setSaved: (list) => { state.savedLineups = list; },
     repaintPool: () => { if (lastContainer) paintLists(lastContainer, listCtx(board)); },
+    boardWrite: (send, label) => (boardWrite ? boardWrite(send, label) : console.error("A Showdown board write was asked for, but view.js passed no board writer.")), // the ± bump (Adam 2026-10-22)
   };
 }
 
@@ -511,11 +513,13 @@ function wire(container, board, key) {
 let lastValidatedKey = null;
 
 // `onOpenSources`: what the meter's figures label's Sources link does (view.js: the Showdown header's Sources button's opener).
-export function renderShowdownLineupPanel(container, board, key, { onOpenSources = openSources } = {}) {
+// `onBoardWrite(send, label)`: view.js's runner of a write that answers this game's board, which it applies as a refresh's (the ± bump).
+export function renderShowdownLineupPanel(container, board, key, { onOpenSources = openSources, onBoardWrite = boardWrite } = {}) {
   lastContainer = container;
   lastBoard = board;
   lastKey = key;
   openSources = onOpenSources;
+  boardWrite = onBoardWrite;
   if (key !== lastValidatedKey) {
     lastValidatedKey = key;
     state.savedLoaded = false;

@@ -4,8 +4,9 @@
 //
 // What is stored is the visitor's CHANGES, in the shape PUT /api/overrides takes (server/overrides/merge.js
 // applyOverrideChanges): { proj: {id: number | null}, own: {id: number | null}, stars: {id: true | false},
-// notes: {id: text | null} }, where null clears a number or note and false un-stars, plus cleared: {proj: {id: n},
-// own: {id: n}}, the published number each null cleared. They are applied over Adam's published overrides (read back
+// notes: {id: text | null}, bump: {id: steps | null} }, where null clears a number, note or bump (Adam 2026-10-22, the
+// ± bump, 5% a step; a 0 is kept as null) and false un-stars, plus cleared: {proj: {id: n},
+// own: {id: n}, bump: {id: steps}}, the published number or bump each null cleared. They are applied over Adam's published overrides (read back
 // off the baked board's rows, which carry every one of them), so a visitor can change or clear what Adam typed or
 // starred, and Adam's later publishes of the same week still show through wherever the visitor has not touched a
 // player. A cleared number whose published value has since changed is dropped on reading, so Adam's revision shows.
@@ -22,7 +23,7 @@
 // site-lineups.js). Saved data that is not well formed is ignored entry by entry; a write the browser refuses is a
 // plain refusal and the board is left as it was. `storage` is passed in (the page's localStorage or a test double);
 // null means unavailable. Pure apart from that: no network, no page.
-import { applyOverrideChanges, validateOverrides } from "../server/overrides/merge.js";
+import { applyOverrideChanges, validateOverrides, BUMP_MAX_STEPS } from "../server/overrides/merge.js";
 import { remergeOverrides } from "../server/rank/remerge.js";
 import { sidelinedIdsOf } from "../server/rank/sidelined.js";
 
@@ -35,23 +36,25 @@ export function storageKey(season, week) {
 }
 
 const NUMBER_FIELDS = ["proj", "own"];
-const emptyEdits = () => ({ proj: {}, own: {}, stars: {}, notes: {}, cleared: { proj: {}, own: {} } });
+const emptyEdits = () => ({ proj: {}, own: {}, stars: {}, notes: {}, bump: {}, cleared: { proj: {}, own: {}, bump: {} } });
 
 function isEmpty(edits) {
-  return ["proj", "own", "stars", "notes"].every((k) => Object.keys(edits[k]).length === 0);
+  return ["proj", "own", "stars", "notes", "bump"].every((k) => Object.keys(edits[k]).length === 0);
 }
 
-const hasTypedNumbers = (edits) => NUMBER_FIELDS.some((f) => Object.keys(edits[f]).length > 0);
+// A bump is a number change too, so Reset all undoes it.
+const hasTypedNumbers = (edits) => [...NUMBER_FIELDS, "bump"].some((f) => Object.keys(edits[f]).length > 0);
 
 const isObject = (v) => typeof v === "object" && v !== null && !Array.isArray(v);
 const isFiniteNumber = (v) => typeof v === "number" && Number.isFinite(v);
 const validProj = (v) => isFiniteNumber(v);
 const validOwn = (v) => isFiniteNumber(v) && v >= 0 && v <= 100;
+const validBump = (v) => Number.isInteger(v) && v !== 0 && Math.abs(v) <= BUMP_MAX_STEPS;
 
 function copyEdits(edits) {
   return {
-    proj: { ...edits.proj }, own: { ...edits.own }, stars: { ...edits.stars }, notes: { ...edits.notes },
-    cleared: { proj: { ...edits.cleared.proj }, own: { ...edits.cleared.own } },
+    proj: { ...edits.proj }, own: { ...edits.own }, stars: { ...edits.stars }, notes: { ...edits.notes }, bump: { ...edits.bump },
+    cleared: { proj: { ...edits.cleared.proj }, own: { ...edits.cleared.own }, bump: { ...edits.cleared.bump } },
   };
 }
 
@@ -64,9 +67,11 @@ function cleanEdits(raw) {
   for (const [id, v] of section(raw, "own")) if (v === null || validOwn(v)) out.own[id] = v;
   for (const [id, v] of section(raw, "stars")) if (typeof v === "boolean" && id !== "") out.stars[id] = v;
   for (const [id, v] of section(raw, "notes")) if (v === null || (typeof v === "string" && v.length < 500)) out.notes[id] = v;
+  for (const [id, v] of section(raw, "bump")) if (v === null || validBump(v)) out.bump[id] = v;
   const cleared = isObject(raw.cleared) ? raw.cleared : {};
   for (const [id, v] of section(cleared, "proj")) if (validProj(v)) out.cleared.proj[id] = v;
   for (const [id, v] of section(cleared, "own")) if (validOwn(v)) out.cleared.own[id] = v;
+  for (const [id, v] of section(cleared, "bump")) if (validBump(v)) out.cleared.bump[id] = v;
   return out;
 }
 
@@ -84,6 +89,11 @@ function reconcile(edits, published) {
     }
     for (const id of Object.keys(out.cleared[f])) if (out[f][id] !== null) delete out.cleared[f][id];
   }
+  // A cleared bump stands, as a cleared number does, only while Adam still publishes the bump the visitor cleared.
+  for (const [id, v] of Object.entries(out.bump)) {
+    if (v === null && (out.cleared.bump[id] === undefined || out.cleared.bump[id] !== published.bump[id])) delete out.bump[id];
+  }
+  for (const id of Object.keys(out.cleared.bump)) if (out.bump[id] !== null) delete out.cleared.bump[id];
   return out;
 }
 
@@ -113,11 +123,12 @@ function writeEdits(storage, season, week, edits) {
 
 /** Adam's published overrides, read back off the baked board's rows (mergeOverridesIntoRows put every one there). */
 export function publishedOverrides(board) {
-  const out = { proj: {}, own: {}, stars: [], notes: {}, revive: [], updatedAt: null };
+  const out = { proj: {}, own: {}, stars: [], notes: {}, revive: [], bump: {}, updatedAt: null };
   for (const row of board?.rows ?? []) {
     if (!row || row.id == null) continue;
     const id = String(row.id);
     if (row.override?.proj != null) out.proj[id] = row.override.proj;
+    if (row.override?.bump != null) out.bump[id] = row.override.bump; // Adam 2026-10-22: his ± bump survives a visitor's edit
     if (row.override?.revive === true) out.revive.push(id);
     if (row.override?.own != null) out.own[id] = row.override.own;
     if (row.starred === true && !out.stars.includes(id)) out.stars.push(id);
@@ -145,6 +156,16 @@ function recordChanges(edits, changes, published) {
   }
   for (const [id, v] of Object.entries(changes?.stars ?? {})) next.stars[id] = Boolean(v); // truthy stars, as the app
   for (const [id, v] of Object.entries(changes?.notes ?? {})) next.notes[id] = v;
+  // The ± bump: the new total of steps, as the app takes it; null or 0 clears Adam's published bump (kept as null, the
+  // cleared bump recorded) or drops the visitor's own when Adam has none.
+  for (const [id, v] of Object.entries(changes?.bump ?? {})) {
+    delete next.cleared.bump[id];
+    if (v !== null && v !== 0) next.bump[id] = v;
+    else if (published.bump[id] !== undefined) {
+      next.bump[id] = null;
+      next.cleared.bump[id] = published.bump[id];
+    } else delete next.bump[id];
+  }
   return next;
 }
 
@@ -200,9 +221,10 @@ export function putEdits(storage, season, week, board, slate, changes) {
   return write(storage, season, week, board, slate, (edits, published) => recordChanges(edits, isObject(changes) ? changes : {}, published));
 }
 
-/** DELETE /api/overrides/:id: each of the player's two numbers as the cell's reset x; star and note stay (D72). */
+/** DELETE /api/overrides/:id: each of the player's two numbers as the cell's reset x, and his bump cleared as the app's
+ *  reset clears it; star and note stay (D72). */
 export function resetPlayerEdits(storage, season, week, board, slate, id) {
-  return write(storage, season, week, board, slate, (edits, published) => recordChanges(edits, { proj: { [id]: null }, own: { [id]: null } }, published));
+  return write(storage, season, week, board, slate, (edits, published) => recordChanges(edits, { proj: { [id]: null }, own: { [id]: null }, bump: { [id]: null } }, published));
 }
 
 /**

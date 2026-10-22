@@ -25,7 +25,8 @@ const KIND_KEY = "nfldfs-sd-list-kind";
 const sorts = { cpt: { ...START_SORT }, flex: { ...START_SORT } };
 
 // The Showdown Optimizer's additions to each row (optimizer.js listControls, Adam 2026-10-19): {headCells(kind), cells(row, kind),
-// actions(row, kind), rowClass(row, kind), rows(all, shown), addLabel()}, each optional (an answer of null or undefined keeps the
+// actions(row, kind), rowClass(row, kind), rows(all, shown), addLabel(), projCell(row, kind, proj) (the whole projection cell's
+// inside for the list's own figure `proj`, Adam 2026-10-22: the ± bump)}, each optional (an answer of null or undefined keeps the
 // list's own); none set leaves the lists exactly as they were.
 let controls = null;
 export function setListControls(next) {
@@ -160,7 +161,7 @@ export function listRowHtml(row, kind, placement, figures = playerFigures, grade
   const projTitle = f.projNote ? `${projBase}${projBase && !/\s$/.test(projBase) ? " " : ""}${f.projNote}` : projBase;
   const ownTitle = f.notOnBoard ? "Not on TwoGun's board, 0%" : f.own == null && f.missingReason ? f.missingReason : ownTitleText(f.own, row.ownHow, isCpt ? "Captain" : "FLEX");
   const num = (title, text) => `<td class="sd-num"${title ? ` title="${escapeHtml(title)}"` : ""}>${text}</td>`;
-  const figureCells = [num(projTitle, f.proj == null ? "no proj" : dec1(f.proj)), num(ownTitle, f.own == null ? "—" : `${dec1(f.own)}%`), `<td class="sd-num">${gradedCellHtml(f.value, grade)}</td>`];
+  const figureCells = [num(projTitle, controls?.projCell?.(row, kind, f.proj) ?? (f.proj == null ? "no proj" : dec1(f.proj))), num(ownTitle, f.own == null ? "—" : `${dec1(f.own)}%`), `<td class="sd-num">${gradedCellHtml(f.value, grade)}</td>`];
   // The Optimizer's row look (excluded, locked) beside the builder's placed tint, each class once.
   const classes = [...new Set([placed ? "lineup-row-locked" : "", ...String(controls?.rowClass?.(row, kind) ?? "").trim().split(/\s+/)].filter(Boolean))];
   return `
@@ -243,7 +244,7 @@ export function wireList(listEl, ctx) {
   });
   listEl.querySelectorAll("tr[data-id]").forEach((tr) => {
     tr.addEventListener("click", (e) => {
-      if (e?.target?.closest?.("button, input, .player-name")) return; // the Optimizer's Min % / Max % boxes take their own clicks
+      if (e?.target?.closest?.("button, input, .player-name, .bump-ctl")) return; // the Optimizer's Min % / Max % boxes and the ± pair (a disabled end too) take their own clicks
       ctx.onPick(kind, tr.dataset.id);
     });
   });

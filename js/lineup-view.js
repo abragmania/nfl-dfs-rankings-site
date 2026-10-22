@@ -7,6 +7,7 @@ import { store, matchesPosition, filterRows, sortRows, passesProjFloor, activeSl
 import { sortableHeadHtml } from "./tabs.js";
 import { matchupText, gradedCellHtml, rowIsOut } from "./table.js"; // D43: the one copy of "vs DAL" / "@ DET"
 import { playerLineHtml, showPos } from "./player-row.js";
+import { bumpProjHtml } from "./bump-control.js"; // Adam 2026-10-22: ± bump on the pool's Proj cell, disabled like the star when no write is wired
 import { shownTotal, lineupCeilTotal, perSpotText } from "./totals.js";
 import { buildTypeText, groupByBuild } from "./lineup-builds.js";
 import { lineupFigures, geoOwn, geoText, medianText, sortKeysFor, sortLineups, effectiveSort, sortRowHtml } from "./lineup-sort.js"; // Adam 2026-10-17: sort options; geo own = geometric mean of ownership, his multiplicative uniqueness
@@ -516,7 +517,7 @@ function rightRowHtml(row, placedSet, posShown, maxMap = {}, minMap = {}, cashWa
         <span class="player-cell">${playerLineHtml(row, { pos: posShown })}</span>
       </td>
       <td>${money(row.salary)}</td>
-      <td>${row.proj == null ? "no proj" : dec1(row.proj)}</td>
+      <td>${bumpProjHtml(row, row.proj, { enabled: Boolean(poolCallbacks?.onBump) })}</td>
       <td>${row.own == null ? "—" : `${dec1(row.own)}%`}</td>
       <td>${gradedCellHtml(row.value, row.valueGrade)}</td>
       ${cashWant

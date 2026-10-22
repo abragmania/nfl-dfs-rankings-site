@@ -5,7 +5,8 @@
 // pure settings and request rules, optimizer-view.js the markup. lineup.js calls syncOptimizer before each draw, puts the pieces
 // in its panel and calls wireOptimizer after; lineup-lists.js asks listControls for each pool row's boxes and buttons.
 // Live app only (as the meter): the published site and sample mode have no generate route, so nothing here is drawn there.
-import { isSampleMode } from "../api.js";
+import { isSampleMode, sampleRefusal } from "../api.js";
+import { bumpProjHtml, wireBumpButtons, bumpPatch } from "../bump-control.js"; // Adam 2026-10-22: ± bump on the pool rows' projection
 import { store } from "../state.js";
 import { onSitePage } from "../tabs.js"; // the one is-site check
 import { parsePct, uniqueSavedName, duplicateSaveStatus } from "../lineup.js";
@@ -130,6 +131,14 @@ export async function pruneGoneShowdowns(currentKey, list = listShowdowns) {
 export async function postShowdownGenerate(key, body, fetchImpl = fetch) {
   const url = `/api/showdown/${encodeURIComponent(key)}/lineup/generate`;
   const res = await fetchImpl(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  return readJson(res);
+}
+
+/** PUT /api/showdown/<key>/overrides, body as classic's PUT /api/overrides (Adam 2026-10-22: the ± bump sends {bump: {id: steps | null}});
+ *  answers this game's recomputed board. Kept here for the same reason as postShowdownGenerate; sample mode refuses as every write does (A7). */
+export async function putShowdownOverrides(key, patch, fetchImpl = fetch) {
+  if (isSampleMode()) return sampleRefusal();
+  const res = await fetchImpl(`/api/showdown/${encodeURIComponent(key)}/overrides`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(patch) });
   return readJson(res);
 }
 
@@ -343,6 +352,7 @@ export const listControls = {
   rowClass: (row, kind) => (optimizerLive() ? V.poolRowClass(row, kind, modeState()) : ""),
   rows: (all, shown) => (optimizerLive() ? V.poolRows(all, shown, modeState(), opt.pos) : shown),
   addLabel: () => (optimizerLive() ? "Add" : null),
+  projCell: (row, kind, proj) => (optimizerLive() ? bumpProjHtml(row, proj, { kind }) : null), // the ± bump (Adam 2026-10-22) before the list's own figure, both lists; the Captain list's hover reads his Captain figures
 };
 
 // ---------- wiring ----------
@@ -369,12 +379,14 @@ function clearFormError(container) {
 }
 
 /**
- * Wires one drawn list's row controls (called for each list as it is drawn or repainted). `ctx` = {container, board, repaintPool()}:
- * a lock, In or exclude click changes this mode's settings, saves them and repaints both lists and the lines in place.
+ * Wires one drawn list's row controls (called for each list as it is drawn or repainted). `ctx` = {container, board, repaintPool(),
+ * boardWrite(send, label)}: a lock, In or exclude click changes this mode's settings, saves them and repaints both lists and the lines
+ * in place; a ± press (Adam 2026-10-22) sends the new steps through ctx.boardWrite, view.js's applier of an answered board.
  */
 export function wirePoolControls(listEl, ctx) {
   if (!optimizerLive()) return;
   const rowOf = (id) => (ctx.board?.rows ?? []).find((r) => String(r.id) === String(id));
+  wireBumpButtons(listEl, { rowOf, onBump: (id, steps) => ctx.boardWrite?.((key) => putShowdownOverrides(key, bumpPatch(id, steps)), "the projection bump") }); // true once taken, false when refused
   listEl.querySelectorAll("[data-sd-opt]").forEach((btn) => {
     btn.addEventListener("click", () => {
       const row = rowOf(btn.dataset.id);

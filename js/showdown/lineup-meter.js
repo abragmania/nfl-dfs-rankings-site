@@ -191,12 +191,14 @@ const finiteOrNull = (v) => (typeof v === "number" && Number.isFinite(v) ? v : n
  * row's, which stays the figure before the answer lands. Ownership is the row's. The map also adds what the row cannot say:
  * notOnBoard for a slot whose figure is TwoGun's 0% for a man his posted board has no row for (Q8), projNote (a man listed Out
  * counts as 0; what TwoGun projects) and missingReason (why a blank stays blank). Missing is missing: null, never zero (D29).
+ * `rowProj` true keeps the row's projection while still taking the map's notes: the map was read for an older board (🔵 2026-10-22,
+ * the ± bump: a bumped row's proj is newer than the answer's).
  */
-export function figuresFor(row, isCpt, players = null) {
+export function figuresFor(row, isCpt, players = null, { rowProj = false } = {}) {
   if (!row) return { proj: null, own: null };
   const p = players?.[String(row.id)];
   const projKey = isCpt ? "cptProj" : "proj";
-  const proj = p && Object.hasOwn(p, projKey) ? p[projKey] : row[projKey];
+  const proj = !rowProj && p && Object.hasOwn(p, projKey) ? p[projKey] : row[projKey];
   const out = { proj: finiteOrNull(proj), own: finiteOrNull(isCpt ? row.ownCpt : row.ownFlex) };
   if ((isCpt ? p?.notOnBoardCpt : p?.notOnBoardFlex) === true) out.notOnBoard = true;
   if (typeof p?.projNote === "string" && p.projNote) out.projNote = p.projNote;
@@ -313,6 +315,7 @@ const m = { sig: null, status: null, data: null, message: null, timer: null, mod
 let modesInfo = null; // last good GET .../modes answer for modesKey: the "not posted yet" lines and each man's notes
 let modesKey = null; // the showdown modesInfo is for
 let modesAsked = null; // what the last modes read was for (showdown and board.figures.key); null asks again
+let modesReadFor = null; // what modesInfo was read for (as modesAsked); its projections count only while it is the board's on screen
 let modesError = null; // why the last read for modesKey failed, in plain words; null once a read succeeds
 let modesSeq = 0; // numbers each modes read: only the latest read's answer or failure is taken
 
@@ -339,10 +342,16 @@ export function meterState() {
   return { sig: m.sig, status: m.status, data: m.data, message: m.message, modesInfo, modesError };
 }
 
-/** What a slot shows for this board row (see figuresFor); off the live app (the site, sample mode) there is no modes answer, so no notes. */
+/** What a slot shows for this board row (see figuresFor); off the live app (the site, sample mode) there is no modes answer, so no notes.
+ *  An answer read for another figures key than the board's on screen (a ± bump, a typed number or a Sources save since, its re-read not
+ *  yet in or failed) gives its notes but not its projections: the row's are newer (🔵 2026-10-22). */
 export function playerFigures(row, isCpt) {
-  return figuresFor(row, isCpt, isLive() ? modesInfo?.modes?.current?.players : null);
+  if (!isLive()) return figuresFor(row, isCpt, null);
+  return figuresFor(row, isCpt, modesInfo?.modes?.current?.players, { rowProj: modesReadFor !== modesAskedOf(last.key, last.board) });
 }
+
+/** What a modes read is for: the showdown and its board's figures key (board-view.js figuresKeyOf). */
+const modesAskedOf = (key, board) => `${key}|${board?.figures?.key ?? ""}`;
 
 /** The one line shown when the last modes read failed (instead of silently missing notes, or silently keeping an earlier answer); null otherwise. */
 function modesNoteText() {
@@ -455,6 +464,7 @@ function readModes(key, asked, getModes) {
       const players = info.modes?.current?.players;
       if (!players || typeof players !== "object") return fail("the answer had no per-player figures.");
       modesInfo = info;
+      modesReadFor = asked;
       modesError = null;
       repaint();
     })
@@ -477,12 +487,13 @@ export function syncMeter({ board, key, cpt, flex, container = null, post = post
   if (live && key !== modesKey) {
     modesKey = key; // another showdown: the last one's notes and failure are not this one's
     modesInfo = null;
+    modesReadFor = null;
     modesAsked = null;
     modesError = null;
   }
   // Read as soon as a showdown is on show, again whenever its figures key moves (a Sources save, a typed number, TwoGun's files:
   // board-view.js figuresKeyOf), and for a new complete lineup.
-  const asked = `${key}|${board?.figures?.key ?? ""}`;
+  const asked = modesAskedOf(key, board);
   const wantModes = live && modesAsked !== asked;
   const body = live ? meterRequestBody(board, cpt, flex, excludes) : null;
   if (!body) {
