@@ -1467,13 +1467,22 @@ tr:last-child .cell-edit-hint { top: auto; bottom: 100%; margin-top: 0; margin-b
    the pool reuses the Rankings rows read-only (🔵 finding 8). */
 .lineup-rows-table tbody tr.row-dimmed { color: var(--row-dim-text); }
 .lineup-rows-table tbody tr.row-dimmed .team-chip-mini { opacity: 0.6; }
-/* Adam 2026-10-22: the ± bump in both Optimizer pools' projection cell (bump-control.js bumpProjHtml): two 16px squares, then the figure
-   in a fixed 4-digit slot, so every figure ends at the cell's right edge under the Proj header and the column keeps its width (👁); a
-   bumped figure wears the tag tints (.tag-value up, .tag-chalk down), its percent in the hover. */
-.bump-ctl { display: inline-flex; align-items: center; gap: 1px; margin-right: 2px; vertical-align: middle; }
-.bump-btn { width: 16px; height: 16px; padding: 0; border: 1px solid var(--border); border-radius: 3px; background: var(--bg-elevated-2); color: var(--text-muted); font-size: 12px; font-weight: 600; line-height: 1; cursor: pointer; }
+/* Adam 2026-10-22: the thumbs bump in both Optimizer pools' projection cell (bump-control.js bumpProjHtml): a thumbs-down and a
+   thumbs-up button (16px tall, 11px thumbs, one filled thumb per step, green up and red down, one grey outline thumb when the side is
+   off, several fanned over each other so the thumbs span at most 23px and a button, with its 1px padding and border, 27px; the pair sits right-aligned in a fixed 43px slot, the widest pair, so a press never shifts a column), then the figure in a fixed 4-digit slot, so every figure
+   ends at the cell's right edge under the Proj header and the column keeps its width (👁); a bumped figure wears the tag tints
+   (.tag-value up, .tag-chalk down), its percent in the hover. */
+.bump-ctl { display: inline-flex; justify-content: flex-end; width: 43px; align-items: center; gap: 1px; margin-right: 2px; vertical-align: middle; }
+.bump-btn { display: inline-flex; align-items: center; justify-content: center; height: 16px; padding: 0 1px; border: 1px solid var(--border); border-radius: 3px; background: var(--bg-elevated-2); color: var(--text-muted); line-height: 1; cursor: pointer; }
 .bump-btn:hover:not(:disabled) { color: var(--text); border-color: var(--accent); }
 .bump-btn:disabled { opacity: 0.4; cursor: default; }
+.bump-btn.is-on:disabled { opacity: 1; }
+.bump-btn .thumb { width: 11px; height: 11px; flex: none; fill: none; stroke: currentColor; stroke-width: 2; pointer-events: none; }
+.bump-btn[data-action="bump-down"] .thumb { transform: rotate(180deg); }
+.bump-btn .thumb + .thumb { margin-left: calc(var(--fan, 0px) - 11px); }
+.bump-btn.is-on .thumb { stroke: var(--bg-elevated-2); stroke-width: 6.5; paint-order: stroke; } /* 6.5 viewBox units at 11px/24 is about 3px, half of it visible: a 1.5px ring */
+.bump-btn.is-on[data-action="bump-up"] .thumb { fill: var(--success); }
+.bump-btn.is-on[data-action="bump-down"] .thumb { fill: var(--danger); }
 .bump-fig { display: inline-block; min-width: 4ch; padding: 0 1px; border-radius: 3px; text-align: right; font-variant-numeric: tabular-nums; vertical-align: middle; }
 .bump-fig.bump-up { background: var(--grade-v1-bg); color: var(--success); }
 .bump-fig.bump-down { background: var(--grade-v5-bg); color: var(--danger); }

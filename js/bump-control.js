@@ -1,6 +1,6 @@
-// Adam 2026-10-22: ± bump. Every Optimizer pool row (classic and Showdown, Cash and GPP) carries a − and + pair: each press moves
-// that player's projection and his other point projections by 5% on the server, presses stack (+ twice = +10%), − undoes the same
-// way, from -10 to +10 steps. The browser sends only the new step count (PUT .../overrides {bump: {id: steps}}, 0 sent as null to
+// Adam 2026-10-22: ± bump. Every Optimizer pool row (classic and Showdown, Cash and GPP) carries a thumbs-up and thumbs-down pair
+// (Adam 12:45 PM: one filled thumb per step, green up, red down): each press moves that player's projection and his other point
+// projections by 5% on the server, presses stack (up twice = +10%), down undoes the same way, from -10 to +10 steps. The browser sends only the new step count (PUT .../overrides {bump: {id: steps}}, 0 sent as null to
 // remove it) and redraws from the board the server answers; the board row carries override.bump (absent when none), proj already
 // bumped and projBase. This file is the one copy of the pair's and the projection cell's markup and of the click; each pool supplies
 // the request.
@@ -9,6 +9,8 @@ import { escapeHtml, dec1 } from "./format.js";
 export const BUMP_STEP_PCT = 5;
 export const BUMP_MAX_STEPS = 10;
 const MINUS = "−"; // a real minus sign, never a hyphen
+const THUMB_PATH = "M1 21h4V9H1v12zm22-11c0-1.1-.9-2-2-2h-6.31l.95-4.57.03-.32c0-.41-.17-.79-.44-1.06L14.17 1 7.59 7.59C7.22 7.95 7 8.45 7 9v10c0 1.1.9 2 2 2h9c.83 0 1.54-.5 1.84-1.22l3.02-7.05c.09-.23.14-.47.14-.73v-2z"; // Material thumb_up, 24x24
+const THUMB_SVG = `<svg class="thumb" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="${THUMB_PATH}"/></svg>`;
 
 /** The row's bump in steps: row.override.bump, 0 when it has none (the server sends no key then, never null). */
 export function bumpStepsOf(row) {
@@ -36,8 +38,21 @@ export function bumpPatch(id, steps) {
 const CPT_MULT = 1.5;
 
 /**
- * The pair alone (no chip, 👁 2026-10-22: a chip widened the column). `enabled` false draws both buttons disabled (no write is
- * wired); a row with no projection draws them disabled too (nothing to move). `kind` "cpt" is the Showdown Captain list.
+ * The thumbs inside one button: `count` filled thumbs when that side is on, otherwise one outline thumb. Several thumbs fan out
+ * like a hand, `fan` px apart (6px for two or three, then 12px shared among the gaps: 4px at four, 3px at five, 1.33px at ten), so
+ * the thumbs never span more than 23px (27px with the button's padding and border; the .bump-ctl slot holds that, so nothing shifts).
+ */
+function thumbsHtml(count) {
+  const n = Math.max(1, count);
+  const fan = n <= 1 ? 0 : n <= 3 ? 6 : (12 / (n - 1));
+  return { svgs: THUMB_SVG.repeat(n), style: n <= 1 ? "" : ` style="--fan:${Math.floor(fan * 100) / 100}px"` };
+}
+
+/**
+ * The pair alone (no chip, 👁 2026-10-22: a chip widened the column): a thumbs-down and a thumbs-up button, each showing one
+ * filled thumb per step on its side (green up, red down) and one outline thumb when its side is off. `enabled` false draws both
+ * buttons disabled (no write is wired); a row with no projection draws them disabled too (nothing to move). `kind` "cpt" is the
+ * Showdown Captain list.
  */
 export function bumpControlHtml(row, { enabled = true, kind = null } = {}) {
   const id = escapeHtml(String(row?.id ?? ""));
@@ -45,7 +60,15 @@ export function bumpControlHtml(row, { enabled = true, kind = null } = {}) {
   const steps = bumpStepsOf(row);
   const live = enabled && (kind === "cpt" ? row?.cptProj : row?.proj) != null;
   const off = (atLimit) => (!live || atLimit ? " disabled" : "");
-  return `<span class="bump-ctl"><button type="button" class="bump-btn" data-action="bump-down" data-id="${id}" aria-label="Lower ${name}'s projection ${BUMP_STEP_PCT}%" title="${MINUS}${BUMP_STEP_PCT}%"${off(steps <= -BUMP_MAX_STEPS)}>${MINUS}</button><button type="button" class="bump-btn" data-action="bump-up" data-id="${id}" aria-label="Raise ${name}'s projection ${BUMP_STEP_PCT}%" title="+${BUMP_STEP_PCT}%"${off(steps >= BUMP_MAX_STEPS)}>+</button></span>`;
+  const side = (count) => {
+    const t = thumbsHtml(count);
+    return { cls: count > 0 ? " is-on" : "", count: Math.max(1, count), style: t.style, svgs: t.svgs };
+  };
+  const down = side(steps < 0 ? -steps : 0);
+  const up = side(steps > 0 ? steps : 0);
+  const downTitle = `${MINUS}${BUMP_STEP_PCT}% a press${steps < 0 ? ` · now ${bumpPctText(steps)}` : ""}`;
+  const upTitle = `+${BUMP_STEP_PCT}% a press${steps > 0 ? ` · now ${bumpPctText(steps)}` : ""}`;
+  return `<span class="bump-ctl"><button type="button" class="bump-btn${down.cls}" data-action="bump-down" data-id="${id}" data-count="${down.count}"${down.style} aria-label="Lower ${name}'s projection ${BUMP_STEP_PCT}%" title="${downTitle}"${off(steps <= -BUMP_MAX_STEPS)}>${down.svgs}</button><button type="button" class="bump-btn${up.cls}" data-action="bump-up" data-id="${id}" data-count="${up.count}"${up.style} aria-label="Raise ${name}'s projection ${BUMP_STEP_PCT}%" title="${upTitle}"${off(steps >= BUMP_MAX_STEPS)}>${up.svgs}</button></span>`;
 }
 
 /**
@@ -84,6 +107,7 @@ export function bumpsInFlight() {
  * early re-enable let a second press read the old steps and send them again).
  */
 export async function bumpPress(btn, { rowOf, onBump }) {
+  if (btn.disabled) return; // a click that lands on a disabled button's thumb must not re-send the old steps
   const id = String(btn.dataset.id);
   if (inFlight.has(id)) return;
   const row = rowOf(id);
