@@ -1,7 +1,8 @@
 // Adam 2026-10-22: ± bump. Every Optimizer pool row (classic and Showdown, Cash and GPP) carries a thumbs-up and thumbs-down pair
 // (Adam 12:45 PM: one filled thumb per step, green up, red down): each press moves that player's projection and his other point
-// projections by 5% on the server, presses stack (up twice = +10%), down undoes the same way, from -10 to +10 steps. The browser sends only the new step count (PUT .../overrides {bump: {id: steps}}, 0 sent as null to
-// remove it) and redraws from the board the server answers; the board row carries override.bump (absent when none), proj already
+// projections by 5% on the server, presses stack (up twice = +10%) from -10 to +10 steps, and the opposite thumb clears the
+// adjustment to 0 (Adam 3:20 PM). The browser sends only the new step count (PUT .../overrides {bump: {id: steps}}, 0 sent as null
+// to remove it) and redraws from the board the server answers; the board row carries override.bump (absent when none), proj already
 // bumped and projBase. This file is the one copy of the pair's and the projection cell's markup and of the click; each pool supplies
 // the request.
 import { escapeHtml, dec1 } from "./format.js";
@@ -18,8 +19,9 @@ export function bumpStepsOf(row) {
   return Number.isInteger(n) ? n : 0;
 }
 
-/** The steps one press leaves: one up or down, kept within -10..10. */
+/** The steps one press leaves: one more in the same direction; the opposite thumb clears the adjustment to 0 (Adam 2026-10-22 3:20 PM), kept within -10..10. */
 export function nextBumpSteps(current, dir) {
+  if ((current > 0 && dir < 0) || (current < 0 && dir > 0)) return 0;
   return Math.max(-BUMP_MAX_STEPS, Math.min(BUMP_MAX_STEPS, current + (dir > 0 ? 1 : -1)));
 }
 
@@ -66,9 +68,14 @@ export function bumpControlHtml(row, { enabled = true, kind = null } = {}) {
   };
   const down = side(steps < 0 ? -steps : 0);
   const up = side(steps > 0 ? steps : 0);
-  const downTitle = `${MINUS}${BUMP_STEP_PCT}% a press${steps < 0 ? ` · now ${bumpPctText(steps)}` : ""}`;
-  const upTitle = `+${BUMP_STEP_PCT}% a press${steps > 0 ? ` · now ${bumpPctText(steps)}` : ""}`;
-  return `<span class="bump-ctl"><button type="button" class="bump-btn${down.cls}" data-action="bump-down" data-id="${id}" data-count="${down.count}"${down.style} aria-label="Lower ${name}'s projection ${BUMP_STEP_PCT}%" title="${downTitle}"${off(steps <= -BUMP_MAX_STEPS)}>${down.svgs}</button><button type="button" class="bump-btn${up.cls}" data-action="bump-up" data-id="${id}" data-count="${up.count}"${up.style} aria-label="Raise ${name}'s projection ${BUMP_STEP_PCT}%" title="${upTitle}"${off(steps >= BUMP_MAX_STEPS)}>${up.svgs}</button></span>`;
+  // The thumb opposite the active side clears the adjustment (Adam 2026-10-22 3:20 PM): its title and label say so.
+  const clearTitle = `Clear the ${bumpPctText(steps)} adjustment`;
+  const clearLabel = `Clear ${name}'s adjustment`;
+  const downTitle = steps > 0 ? clearTitle : `${MINUS}${BUMP_STEP_PCT}% a press${steps < 0 ? ` · now ${bumpPctText(steps)}` : ""}`;
+  const upTitle = steps < 0 ? clearTitle : `+${BUMP_STEP_PCT}% a press${steps > 0 ? ` · now ${bumpPctText(steps)}` : ""}`;
+  const downLabel = steps > 0 ? clearLabel : `Lower ${name}'s projection ${BUMP_STEP_PCT}%`;
+  const upLabel = steps < 0 ? clearLabel : `Raise ${name}'s projection ${BUMP_STEP_PCT}%`;
+  return `<span class="bump-ctl"><button type="button" class="bump-btn${down.cls}" data-action="bump-down" data-id="${id}" data-count="${down.count}"${down.style} aria-label="${downLabel}" title="${downTitle}"${off(steps <= -BUMP_MAX_STEPS)}>${down.svgs}</button><button type="button" class="bump-btn${up.cls}" data-action="bump-up" data-id="${id}" data-count="${up.count}"${up.style} aria-label="${upLabel}" title="${upTitle}"${off(steps >= BUMP_MAX_STEPS)}>${up.svgs}</button></span>`;
 }
 
 /**
