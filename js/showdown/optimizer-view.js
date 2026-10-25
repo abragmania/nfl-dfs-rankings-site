@@ -257,7 +257,7 @@ export function exposureHtml(lineups, board, sortDir, marks, pick = null, of = n
   const subtitle = `${lead}; Captain and FLEX counted apart, never summed`;
   return optExposureHtml(null, subtitle, sortDir, pick, marks, {
     title: "Exposure",
-    rowOpts: { chip: false, pos: true, posHtml: posPillHtml }, // Adam 2026-10-22: the logo already names the team, so the position pill takes the team chip's place
+    rowOpts: { pos: true, posHtml: posPillHtml }, // Adam 2026-10-22: the position pill follows the name; the logo names the team, so no team chip (player-row.js, Adam 2026-10-25)
     groups: [
       { title: "Captain exposure", rows: rowsOf("cpt", t.cpt), keyOf: (r) => r.id },
       { title: "FLEX exposure", rows: rowsOf("flex", t.flex), keyOf: (r) => r.id },

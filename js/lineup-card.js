@@ -102,7 +102,7 @@ export function bigNameNeedsShort(name, tagged) {
 export function cardPlayerRowHtml(p, slotName, decor, opts = null) {
   const big = opts?.big === true;
   const row = decor?.rowFor ? decor.rowFor(p) : p;
-  const line1 = playerIdentityHtml(row, { logo: false, nameCls: "opt-p-name", nameHtml: cardNameHtml(p), chipPlain: true, tagCls: "opt-p-tags", tag: "out", pos: opts?.pos === true, posHtml: opts?.posHtml }); // pos, posHtml: Showdown's slots only (D81: every slot is FLEX, so the row names the position, as the pool does); classic's rows stay off
+  const line1 = playerIdentityHtml(row, { logo: false, logoShown: Boolean(teamLogoHtml(p.team, "opt-p-logo", 38)), nameCls: "opt-p-name", nameHtml: cardNameHtml(p), chipPlain: true, tagCls: "opt-p-tags", tag: "out", pos: opts?.pos === true, posHtml: opts?.posHtml }); // pos, posHtml: Showdown's slots only (D81: every slot is FLEX, so the row names the position, as the pool does); classic's rows stay off
   const shorten = big && bigNameNeedsShort(p.name, line1.includes('class="opt-p-tags"'));
   return `
       <div class="opt-p${big ? " opt-p-big" : ""}${shorten ? " opt-p-short" : ""}" style="${teamColourStyle(decor ? decor.coloursFor(p.team) : teamColours(null, p.team))}"${p.id != null ? ` data-card-id="${escapeHtml(String(p.id))}"` : ""}>

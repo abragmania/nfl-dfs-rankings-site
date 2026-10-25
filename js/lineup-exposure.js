@@ -67,7 +67,7 @@ export function zeroMinRows(exposure, marks, playerOf, inBatch) {
 
 // D55: exposure by position, columns Exposure, Player (the D80 shared cell, so no Team column), Matchup (the pill), Own% (D32); D74: over the new batch or the saved lineups.
 // `custom` (Showdown, optional): {title, groups: [{title, rows, keyOf}], rowOpts} replaces the position boxes and the heading; each group is its own table, never summed with another.
-// `custom.rowOpts` (optional) holds presentation options only (chip, pos), spread under the fixed ones (pick button, no pill, the OUT rule) so it can never override them (Showdown: {chip: false, pos: true}, Adam 2026-10-22); classic passes none.
+// `custom.rowOpts` (optional) holds presentation options only (pos, posHtml), spread under the fixed ones (pick button, no pill, the OUT rule) so it can never override them (Showdown: {pos: true}, Adam 2026-10-22); classic passes none. Neither draws a team chip while the logo is there (Adam 2026-10-25).
 export function optExposureHtml(exposure, subtitle = "", sortDir = "desc", pick = null, marks = null, custom = null) {
   const dir = sortDir === "asc" ? "asc" : "desc";
   const arrow = dir === "asc" ? " ▲" : " ▼";

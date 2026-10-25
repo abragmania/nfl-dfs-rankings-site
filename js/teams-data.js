@@ -1,5 +1,7 @@
 // Team display data (abbr, name, colours, logo paths) copied once from data/static/teams.json
 // for use in the browser (the static server only exposes public/). Re-copy by hand if teams.json changes.
+// logoTone (added here only, not in teams.json; 2026-10-25): the tone of the team's logoDark art (mean luminance over its opaque pixels, measured), set only where it is extreme:
+// "light" (above 0.75: DEN, LA, NYG, NYJ) vanishes on the white plate of a lineup card, "dark" (below 0.25: CAR) vanishes on a dark pool row. See teamLogoHtml in player-row.js.
 export const TEAMS = [
   {
     "abbr": "BUF",
@@ -35,7 +37,8 @@ export const TEAMS = [
     "colourPrimary": "#003f2d",
     "colourSecondary": "#ffffff",
     "logo": "img/logos/NYJ.png",
-    "logoDark": "img/logos/NYJ-dark.png"
+    "logoDark": "img/logos/NYJ-dark.png",
+    "logoTone": "light"
   },
   {
     "abbr": "BAL",
@@ -116,7 +119,8 @@ export const TEAMS = [
     "colourPrimary": "#002244",
     "colourSecondary": "#fb4f14",
     "logo": "img/logos/DEN.png",
-    "logoDark": "img/logos/DEN-dark.png"
+    "logoDark": "img/logos/DEN-dark.png",
+    "logoTone": "light"
   },
   {
     "abbr": "KC",
@@ -161,7 +165,8 @@ export const TEAMS = [
     "colourPrimary": "#0b2265",
     "colourSecondary": "#a71930",
     "logo": "img/logos/NYG.png",
-    "logoDark": "img/logos/NYG-dark.png"
+    "logoDark": "img/logos/NYG-dark.png",
+    "logoTone": "light"
   },
   {
     "abbr": "PHI",
@@ -233,7 +238,8 @@ export const TEAMS = [
     "colourPrimary": "#0085ca",
     "colourSecondary": "#000000",
     "logo": "img/logos/CAR.png",
-    "logoDark": "img/logos/CAR-dark.png"
+    "logoDark": "img/logos/CAR-dark.png",
+    "logoTone": "dark"
   },
   {
     "abbr": "NO",
@@ -270,7 +276,8 @@ export const TEAMS = [
     "colourPrimary": "#003594",
     "colourSecondary": "#ffd100",
     "logo": "img/logos/LA.png",
-    "logoDark": "img/logos/LA-dark.png"
+    "logoDark": "img/logos/LA-dark.png",
+    "logoTone": "light"
   },
   {
     "abbr": "SEA",

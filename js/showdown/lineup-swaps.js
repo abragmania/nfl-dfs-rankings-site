@@ -10,7 +10,7 @@
 import { escapeHtml, money, dec1 } from "../format.js";
 import { sigFig2, copiesText, meterRequestBody, meterState, lineupSig, NOT_ON_BOARD_WORDS } from "./lineup-meter.js";
 import { posPillHtml } from "./table.js";
-import { teamChipHtml } from "../player-row.js"; // the coloured team chip the six slots and both lists wear
+import { teamChipHtml } from "../player-row.js"; // this panel's own team chip: the swaps row draws no logo (D80 as amended 2026-10-25)
 import { readJson, requestFailureText } from "./read-json.js"; // the one JSON reader (🔵 866b0ce B3, B4)
 
 const MINUS = "−";
@@ -78,7 +78,7 @@ export function scriptTitle(script) {
   return script.broken ? "A WR or TE Captain's story needs his own QB in the lineup; he is not placed" : `His QB in the lineup: ${names}`;
 }
 
-/** A man as the panel shows him: position chip, name, team chip, and his injury status when he has one. */
+/** A man as the panel shows him: position chip, name, team chip, and his injury status when he has one. This row draws no logo, so it keeps its chip (Adam 2026-10-25: the chip goes only where a logo names the team). */
 function manHtml(m) {
   const state = m.status ? `<span class="sd-swaps-state">${escapeHtml(m.status)}</span>` : "";
   return `${posPillHtml(m.pos)}<b class="sd-swaps-name">${escapeHtml(m.name)}</b>${teamChipHtml(m.team)}${state}`;
