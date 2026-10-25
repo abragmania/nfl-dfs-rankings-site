@@ -7,7 +7,7 @@ import { store, matchesPosition, filterRows, sortRows, passesProjFloor, activeSl
 import { sortableHeadHtml } from "./tabs.js";
 import { matchupText, gradedCellHtml, rowIsOut } from "./table.js"; // D43: the one copy of "vs DAL" / "@ DET"
 import { playerLineHtml, showPos } from "./player-row.js";
-import { bumpProjHtml } from "./bump-control.js"; // Adam 2026-10-22: ± bump on the pool's Proj cell, disabled like the star when no write is wired
+import { bumpProjHtml, bumpCeilHtml } from "./bump-control.js"; // Adam 2026-10-22: ± bump on the pool's Proj cell, disabled like the star when no write is wired
 import { shownTotal, lineupCeilTotal, perSpotText } from "./totals.js";
 import { buildTypeText, groupByBuild } from "./lineup-builds.js";
 import { lineupFigures, geoOwn, geoText, medianText, sortKeysFor, sortLineups, effectiveSort, sortRowHtml } from "./lineup-sort.js"; // Adam 2026-10-17: sort options; geo own = geometric mean of ownership, his multiplicative uniqueness
@@ -469,11 +469,13 @@ export function rightColumnHtml(rows, rowById) {
   // salary, proj, own, value, star are the ones state.js sortRows reads); the shared sortableHeadHtml draws them.
   // Max % is a plain header, not sortable (Adam 2026-10-11); Adam 2026-10-17: it follows Value, a star column leads,
   // and Pos and Status are no longer columns (the position chip and the status tag sit in the Player cell).
+  const tgOn = isTwoGunMode(store.get().board) && boardHasCeilings(activeSlateRows(store.get().board)); // Adam 2026-10-25: a Ceil column after Proj while this pool can build by ceiling (the Ceiling chip's own test), so the figure (and a bump's effect) is visible
   const headBefore = [
     { key: "star", label: "★", cls: "lineup-star-col" },
     { key: "player", label: "Player" },
     { key: "salary", label: "Sal" },
     { key: "proj", label: "Proj" },
+    ...(tgOn ? [{ key: "tgCeil", label: "Ceil", headTitle: "TwoGun's ceiling, DraftKings points as he publishes them; a − / + bump scales it with the projection" }] : []),
     { key: "own", label: "Own%" },
     { key: "value", label: "Proj/$", title: "Proj/$: projection per $1,000 of salary" },
   ];
@@ -485,11 +487,11 @@ export function rightColumnHtml(rows, rowById) {
   const slateKey = slateKeyOf(store.get().board);
   const maxMap = playerMaxFor(slateKey);
   const minMap = playerMinFor(slateKey);
-  const bodyRows = sorted.map((row) => rightRowHtml(row, placed, showPos(filters.pos), maxMap, minMap, cash ? wantSet : null)).join("");
+  const bodyRows = sorted.map((row) => rightRowHtml(row, placed, showPos(filters.pos), maxMap, minMap, cash ? wantSet : null, tgOn)).join("");
   const emptyRow = sorted.length === 0 && filters.starredOnly ? poolEmptyRowHtml(graded, filters.pos, headBefore.length + (cash ? 2 : 3)) : "";
   return `
     <div class="lineup-rows-wrap scroll-panel">
-      <table class="lineup-rows-table lineup-pool-table">
+      <table class="lineup-rows-table lineup-pool-table${tgOn ? " pool-ceil" : ""}">
         <thead>${headHtml}</thead>
         <tbody>${bodyRows}${emptyRow}</tbody>
       </table>
@@ -497,7 +499,7 @@ export function rightColumnHtml(rows, rowById) {
     <div class="table-legend">&mdash; = nobody has published one</div>`;
 }
 
-function rightRowHtml(row, placedSet, posShown, maxMap = {}, minMap = {}, cashWant = null) { // cashWant: a Set of Want ids in cash mode, else null
+function rightRowHtml(row, placedSet, posShown, maxMap = {}, minMap = {}, cashWant = null, tgOn = false) { // cashWant: a Set of Want ids in cash mode, else null; tgOn: TwoGun mode, which adds the Ceil cell
   const id = String(row.id);
   const maxText = maxMap[id] ?? "";
   const maxBad = Number.isNaN(parsePct(maxText));
@@ -518,6 +520,7 @@ function rightRowHtml(row, placedSet, posShown, maxMap = {}, minMap = {}, cashWa
       </td>
       <td>${money(row.salary)}</td>
       <td>${bumpProjHtml(row, row.proj, { enabled: Boolean(poolCallbacks?.onBump) })}</td>
+      ${tgOn ? `<td>${bumpCeilHtml(row, Number.isFinite(row.tg?.ceil) ? (rowIsOut(row) ? 0 : row.tg.ceil) : null, { out: rowIsOut(row) })}</td>` : ""}
       <td>${row.own == null ? "—" : `${dec1(row.own)}%`}</td>
       <td>${gradedCellHtml(row.value, row.valueGrade)}</td>
       ${cashWant

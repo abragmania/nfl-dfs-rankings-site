@@ -37,7 +37,7 @@ export function bumpPatch(id, steps) {
 }
 
 /** The Captain's projection is 1.5x the man's (DraftKings Showdown), so the Captain list's hover reads his Captain figures (bumpProjHtml). */
-const CPT_MULT = 1.5;
+export const CPT_MULT = 1.5;
 
 /**
  * The thumbs inside one button: `count` filled thumbs when that side is on, otherwise one outline thumb. Several thumbs fan out
@@ -87,16 +87,35 @@ export function bumpControlHtml(row, { enabled = true, kind = null } = {}) {
  */
 export function bumpProjHtml(row, figure, { enabled = true, kind = null, none = "no proj" } = {}) {
   if (figure == null || Number.isNaN(Number(figure))) return escapeHtml(none);
-  const steps = bumpStepsOf(row);
   const isCpt = kind === "cpt";
+  const base = row?.projBase == null ? null : isCpt ? Number(row.projBase) * CPT_MULT : row.projBase;
+  const shown = isCpt ? row?.cptProj : row?.proj;
+  return `${bumpControlHtml(row, { enabled, kind })}${bumpFigureHtml(row, dec1(figure), base, shown)}`;
+}
+
+/** The one copy of the bump tint: a figure's span, plain at 0 steps, else .bump-up / .bump-down with the hover "Base 20.0 → 22.0 (+10%)"
+ *  (`base`, `shown`: the numbers the hover names; a missing base reads "—"). Both the Proj cell and the Ceil cell use it. */
+function bumpFigureHtml(row, text, base, shown) {
+  const steps = bumpStepsOf(row);
   let attrs = `class="bump-fig"`;
   if (steps) {
-    const base = row?.projBase == null ? null : isCpt ? Number(row.projBase) * CPT_MULT : row.projBase;
-    const shown = isCpt ? row?.cptProj : row?.proj;
     const title = `Base ${dec1(base) ?? "—"} → ${dec1(shown) ?? "—"} (${bumpPctText(steps)})`;
     attrs = `class="bump-fig ${steps > 0 ? "bump-up" : "bump-down"}" title="${escapeHtml(title)}"`;
   }
-  return `${bumpControlHtml(row, { enabled, kind })}<span ${attrs}>${dec1(figure)}</span>`;
+  return `<span ${attrs}>${text}</span>`;
+}
+
+/**
+ * A pool row's Ceil cell (Adam 2026-10-25: a ceiling build needs the ceiling visible): `figure` is the number shown, one decimal (the
+ * caller has already made an out man's 0 and the Captain list's 1.5x); "—" when there is none. A bumped row wears the same tint and hover
+ * as the Proj cell, the base being TwoGun's pre-bump ceiling (row.tg.bumpBase.ceil, merge.js bumpFigures; x1.5 for `kind` "cpt").
+ * `out`: the figure is 0 because the man is out, not because of a bump, so it is drawn plain (no tint, no hover).
+ */
+export function bumpCeilHtml(row, figure, { kind = null, out = false } = {}) {
+  if (figure == null || Number.isNaN(Number(figure))) return "—";
+  if (out) return `<span class="bump-fig">${dec1(figure)}</span>`;
+  const base = row?.tg?.bumpBase?.ceil == null ? null : Number(row.tg.bumpBase.ceil) * (kind === "cpt" ? CPT_MULT : 1);
+  return bumpFigureHtml(row, dec1(figure), base, figure);
 }
 
 const inFlight = new Set(); // the ids whose bump request is out: a press for one of them is ignored until it is answered

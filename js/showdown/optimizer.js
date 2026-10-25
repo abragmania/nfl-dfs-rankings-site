@@ -352,6 +352,7 @@ export const listControls = {
   rowClass: (row, kind) => (optimizerLive() ? V.poolRowClass(row, kind, modeState()) : ""),
   rows: (all, shown) => (optimizerLive() ? V.poolRows(all, shown, modeState(), opt.pos) : shown),
   addLabel: () => (optimizerLive() ? "Add" : null),
+  ceilColumn: (board) => optimizerLive() && S.boardHasTg(board, "ceil"), // Adam 2026-10-25 (D81): a Ceil column after Proj while any row of the board carries TwoGun's ceiling
   projCell: (row, kind, proj) => (optimizerLive() ? bumpProjHtml(row, proj, { kind }) : null), // the ± bump (Adam 2026-10-22) before the list's own figure, both lists; the Captain list's hover reads his Captain figures
 };
 

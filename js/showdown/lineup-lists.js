@@ -7,7 +7,8 @@
 // isCpt)`, the Lineup tab's playerFigures (lineup-meter.js): the board row's own, so both lists read this game's ticked sources
 // (Adam 2026-10-20); salary is the board's. This file only draws, sorts and wires the lists; lineup.js owns the lineup.
 import { escapeHtml, money, dec1 } from "../format.js";
-import { gradedCellHtml } from "../table.js";
+import { gradedCellHtml, rowIsOut } from "../table.js";
+import { bumpCeilHtml, CPT_MULT } from "../bump-control.js";
 import { sortRows, defaultDirFor } from "../state.js";
 import { sortableHeadHtml } from "../tabs.js";
 import { shownRows, sdLine, projTitleText, ownTitleText } from "./table.js";
@@ -26,7 +27,7 @@ const sorts = { cpt: { ...START_SORT }, flex: { ...START_SORT } };
 
 // The Showdown Optimizer's additions to each row (optimizer.js listControls, Adam 2026-10-19): {headCells(kind), cells(row, kind),
 // actions(row, kind), rowClass(row, kind), rows(all, shown), addLabel(), projCell(row, kind, proj) (the whole projection cell's
-// inside for the list's own figure `proj`, Adam 2026-10-22: the ± bump)}, each optional (an answer of null or undefined keeps the
+// inside for the list's own figure `proj`, Adam 2026-10-22: the ± bump), ceilColumn(board) (true: a Ceil column after Proj, Adam 2026-10-25)}, each optional (an answer of null or undefined keeps the
 // list's own); none set leaves the lists exactly as they were.
 let controls = null;
 export function setListControls(next) {
@@ -34,6 +35,13 @@ export function setListControls(next) {
 }
 
 export function listSort(kind) {
+  return sorts[kind];
+}
+
+/** The sort a list draws with for `board`: a sort left on Ceil goes back to the start sort once the column is gone (the board no longer
+ *  carries a ceiling, or the app is not live), as classic's sortForBoard does; the kept sort is reset too, so the next click starts from it. */
+function sortOf(kind, board) {
+  if (sorts[kind].col === "tgCeil" && controls?.ceilColumn?.(board) !== true) sorts[kind] = { ...START_SORT };
   return sorts[kind];
 }
 
@@ -79,12 +87,14 @@ export function setShownListKind(next, getStorage = browserStorage) {
 // ---------- columns, figures, sort ----------
 
 /** The header cells of one list: the keys the classic pool sorts on (player, salary, proj, own, value). Team and position are in the Player cell. */
-export function listColumns(kind) {
+export function listColumns(kind, withCeil = false) {
   const p = kind === "cpt" ? "CPT" : "FLEX";
   return [
     { key: "player", label: "Player" },
     { key: "salary", label: `${p} $`, cls: "sd-num" },
     { key: "proj", label: `${p} proj`, cls: "sd-num" },
+    // Adam 2026-10-25 (D81, as classic's pool): TwoGun's ceiling after Proj when the Optimizer says the board carries one; the Captain list shows 1.5x of it, as its Proj is 1.5x
+    ...(withCeil ? [{ key: "tgCeil", label: "Ceil", cls: "sd-num", headTitle: `TwoGun's ceiling, DraftKings points as he publishes them${kind === "cpt" ? " (Captain: 1.5x)" : ""}; a − / + bump scales it with the projection` }] : []),
     { key: "own", label: `${p} own`, cls: "sd-num" }, // Adam 2026-10-18: "CPT own" is Captain ownership alone (ownCpt), "FLEX own" FLEX ownership alone (ownFlex); never one in the other's column
     { key: "value", label: "Proj/$", cls: "sd-num" },
   ];
@@ -110,7 +120,8 @@ export function listFigures(row, kind, figures = playerFigures) {
   const f = figures(row, isCpt);
   const salary = isCpt ? row.cptSalary : row.salary;
   const num = (v) => (typeof v === "number" && Number.isFinite(v) ? v : null);
-  return { salary: num(salary), proj: num(f.proj), own: num(f.own), value: valuePer1k(num(f.proj), num(salary)), projNote: f.projNote ?? null, notOnBoard: f.notOnBoard === true, missingReason: f.missingReason ?? null };
+  const tgCeil = num(row.tg?.ceil) === null ? null : rowIsOut(row) ? 0 : row.tg.ceil * (isCpt ? CPT_MULT : 1); // out = 0, as the engine scores it (objective.js ceilingOf)
+  return { salary: num(salary), proj: num(f.proj), tgCeil, own: num(f.own), value: valuePer1k(num(f.proj), num(salary)), projNote: f.projNote ?? null, notOnBoard: f.notOnBoard === true, missingReason: f.missingReason ?? null };
 }
 
 const READERS = {
@@ -145,7 +156,7 @@ function isPlacedAnywhere(placement, id) {
 
 /** One row of one list. `grade` is the Proj/$ band (v1..v5) or null: the board row's own (view.js applyGrades, D33; the Captain's
  *  value equals his FLEX value, his Captain salary and projection being both 1.5x). */
-export function listRowHtml(row, kind, placement, figures = playerFigures, grade = row.valueGrade ?? null) {
+export function listRowHtml(row, kind, placement, figures = playerFigures, grade = row.valueGrade ?? null, withCeil = false) {
   const id = String(row.id);
   const isCpt = kind === "cpt";
   const f = listFigures(row, kind, figures);
@@ -161,7 +172,8 @@ export function listRowHtml(row, kind, placement, figures = playerFigures, grade
   const projTitle = f.projNote ? `${projBase}${projBase && !/\s$/.test(projBase) ? " " : ""}${f.projNote}` : projBase;
   const ownTitle = f.notOnBoard ? "Not on TwoGun's board, 0%" : f.own == null && f.missingReason ? f.missingReason : ownTitleText(f.own, row.ownHow, isCpt ? "Captain" : "FLEX");
   const num = (title, text) => `<td class="sd-num"${title ? ` title="${escapeHtml(title)}"` : ""}>${text}</td>`;
-  const figureCells = [num(projTitle, controls?.projCell?.(row, kind, f.proj) ?? (f.proj == null ? "no proj" : dec1(f.proj))), num(ownTitle, f.own == null ? "—" : `${dec1(f.own)}%`), `<td class="sd-num">${gradedCellHtml(f.value, grade)}</td>`];
+  const ceilCell = withCeil ? [`<td class="sd-num">${bumpCeilHtml(row, f.tgCeil, { kind, out: rowIsOut(row) })}</td>`] : [];
+  const figureCells = [num(projTitle, controls?.projCell?.(row, kind, f.proj) ?? (f.proj == null ? "no proj" : dec1(f.proj))), ...ceilCell, num(ownTitle, f.own == null ? "—" : `${dec1(f.own)}%`), `<td class="sd-num">${gradedCellHtml(f.value, grade)}</td>`];
   // The Optimizer's row look (excluded, locked) beside the builder's placed tint, each class once.
   const classes = [...new Set([placed ? "lineup-row-locked" : "", ...String(controls?.rowClass?.(row, kind) ?? "").trim().split(/\s+/)].filter(Boolean))];
   return `
@@ -174,17 +186,18 @@ export function listRowHtml(row, kind, placement, figures = playerFigures, grade
 }
 
 /** The head row of one list (the classic pool's header markup), with the Optimizer's Min % / Max % heads when it adds them. */
-export function listHeadHtml(kind, sort = sorts[kind]) {
-  return sortableHeadHtml(listColumns(kind), sort).replace(/<\/tr>$/, `${controls?.headCells?.(kind) ?? ""}<th></th></tr>`); // the last, plain cell is the buttons' column
+export function listHeadHtml(kind, sort = null, board = null) {
+  return sortableHeadHtml(listColumns(kind, controls?.ceilColumn?.(board) === true), sort ?? sortOf(kind, board)).replace(/<\/tr>$/, `${controls?.headCells?.(kind) ?? ""}<th></th></tr>`); // the last, plain cell is the buttons' column
 }
 
 /** The body rows of one list in its sort order; `rows` are the board's rows (Out players are left out unless Show all players is on;
  *  the Optimizer's position chip and its locked / included / excluded men through controls.rows). */
-export function listBodyHtml(board, kind, placement, sort = sorts[kind], figures = playerFigures) {
+export function listBodyHtml(board, kind, placement, sort = sortOf(kind, board), figures = playerFigures) {
   const all = board?.rows ?? [];
   const shown = shownRows(all);
   const rows = sortListRows(controls?.rows ? controls.rows(all, shown) : shown, kind, sort, figures);
-  return rows.map((r) => listRowHtml(r, kind, placement, figures)).join("");
+  const withCeil = controls?.ceilColumn?.(board) === true;
+  return rows.map((r) => listRowHtml(r, kind, placement, figures, r.valueGrade ?? null, withCeil)).join("");
 }
 
 function listHtml(board, kind, placement, shown) {
@@ -193,8 +206,8 @@ function listHtml(board, kind, placement, shown) {
     <div class="sd-list" data-kind="${kind}"${shown ? "" : " hidden"}>
       <div class="sd-list-sub">${escapeHtml(sub)}</div>
       <div class="lineup-rows-wrap scroll-panel">
-        <table class="lineup-rows-table sd-list-table">
-          <thead>${listHeadHtml(kind)}</thead>
+        <table class="lineup-rows-table sd-list-table${controls?.ceilColumn?.(board) === true ? " pool-ceil" : ""}">
+          <thead>${listHeadHtml(kind, sortOf(kind, board), board)}</thead>
           <tbody>${listBodyHtml(board, kind, placement)}</tbody>
         </table>
       </div>
@@ -256,8 +269,10 @@ export function paintList(listEl, ctx) {
   const head = listEl.querySelector("thead");
   const body = listEl.querySelector("tbody");
   if (!LIST_KINDS.includes(kind) || !head || !body) return;
-  head.innerHTML = listHeadHtml(kind);
-  body.innerHTML = listBodyHtml(ctx.board, kind, ctx.placement(), sorts[kind], ctx.figures ?? playerFigures);
+  const sort = sortOf(kind, ctx.board);
+  head.innerHTML = listHeadHtml(kind, sort, ctx.board);
+  listEl.querySelector("table")?.classList?.toggle("pool-ceil", controls?.ceilColumn?.(ctx.board) === true);
+  body.innerHTML = listBodyHtml(ctx.board, kind, ctx.placement(), sort, ctx.figures ?? playerFigures);
   wireList(listEl, ctx);
   ctx.onRepaint?.(listEl);
   sizeShownList(listEl.parentElement); // a redraw can change the rows (a Show all players flip, a sort), so the shown box is fitted again

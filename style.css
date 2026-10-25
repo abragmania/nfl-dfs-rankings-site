@@ -1444,6 +1444,9 @@ tr:last-child .cell-edit-hint { top: auto; bottom: 100%; margin-top: 0; margin-b
    (3 to 6) and the Lock / Exclude / Add buttons pack tighter, and the table fits its panel at 1920 and 2560 with the buttons whole. */
 .lineup-pool-table th:nth-child(n+3):nth-child(-n+6), .lineup-pool-table td:nth-child(n+3):nth-child(-n+6) { padding-left: 5px; padding-right: 5px; }
 .lineup-pool-table th:nth-child(2), .lineup-pool-table td:nth-child(2) { padding-left: 6px; padding-right: 6px; }
+/* Adam 2026-10-25: TwoGun mode adds a Ceil column after Proj (lineup-view.js, .pool-ceil), so Own% is column 6 and Proj/$ column 7: they take the same treatment the old 5 and 6 had. */
+.lineup-pool-table.pool-ceil th:nth-child(7), .lineup-pool-table.pool-ceil td:nth-child(7) { text-align: right; font-variant-numeric: tabular-nums; padding-left: 5px; padding-right: 5px; }
+.lineup-pool-table.pool-ceil td:nth-child(6) { font-size: 13px; font-weight: 700; }
 .lineup-pool-table .player-cell { gap: 6px; }
 .lineup-pool-table .lineup-row-actions { gap: 3px; }
 .lineup-pool-table .lineup-row-btn { padding: 2px 5px; }
@@ -2416,6 +2419,10 @@ td.opt-exp-opp { color: var(--text-muted); } /* the cells only: the Matchup head
 .sd-list-table:has(.sd-row-ico) :is(th, td) { padding-left: 3px; padding-right: 3px; }
 /* 👁 V-N1: Proj/$ (the fifth column of both lists, head and cells alike) gives up 1px a side so the longest tagged name fits whole at 1920. */
 .sd-list-table:has(.sd-row-ico) :is(th, td):nth-child(5) { padding-left: 2px; padding-right: 2px; }
+/* Adam 2026-10-25: with the Ceil column (.pool-ceil, lineup-lists.js) Own is column 5 and Proj/$ column 6: the bold and the tighter padding move with them. */
+.lineup-rows-table.sd-list-table.pool-ceil td.sd-num:nth-child(5) { font-size: 13px; font-weight: 700; }
+.sd-list-table.pool-ceil:has(.sd-row-ico) :is(th, td):nth-child(5) { padding-left: 3px; padding-right: 3px; }
+.sd-list-table.pool-ceil:has(.sd-row-ico) :is(th, td):nth-child(6) { padding-left: 2px; padding-right: 2px; }
 .sd-list-table td.lineup-row-actions { white-space: nowrap; }
 .sd-list-table .opt-input.lineup-min-input, .sd-list-table .opt-input.lineup-max-input { width: 2.5em; }
 /* 👁 V5: the Showdown saved list mixes GPP and Cash cards, and the "$ Cash" badge (13px text plus 1px padding, 19px) is 2px taller
