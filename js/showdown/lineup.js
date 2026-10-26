@@ -9,9 +9,9 @@
 // width below both columns, above the swaps and the saved lineups.
 import { escapeHtml, money, dec1 } from "../format.js";
 import { postShowdownLineupOptimize, getShowdownLineups, postShowdownLineup, deleteShowdownLineup, putShowdownLineupName, putShowdownLineupTag } from "./api.js";
-import { listsHtml, paintLists, wireLists, setListControls } from "./lineup-lists.js"; // the Captain list and the FLEX list, each sortable (Adam 2026-10-18)
+import { poolHtml, poolVisibleRows, paintPool, wirePool, setPoolControls } from "./pool.js"; // the one player pool, the Rankings table with both roles on each row (Adam 2026-10-26)
 // The Showdown Optimizer (Adam 2026-10-19, sketch A): its band over the builder, its Make row under it, its batch full width below, its controls on the pool rows.
-import { syncOptimizer, optimizerLive, optimizerBandHeadHtml, optimizerBandBoxesHtml, optimizerGoRowHtml, optimizerResultsBlockHtml, optimizerExcludes, optimizerSavedFilter, poolChipsRowHtml, listControls, wirePoolControls, wireOptimizer } from "./optimizer.js";
+import { syncOptimizer, optimizerLive, optimizerBandHeadHtml, optimizerBandBoxesHtml, optimizerGoRowHtml, optimizerResultsBlockHtml, optimizerExcludes, optimizerSavedFilter, poolControls, wirePoolControls, wireOptimizer } from "./optimizer.js";
 import { handBuild } from "../lineup-builds.js";
 import { requestFailureText } from "./read-json.js";
 import { controlsHtml as controlsMarkup } from "./lineup-look.js"; // the two-row controls (Adam 2026-10-18 9:09 PM)
@@ -22,8 +22,6 @@ import { findRow, SALARY_CAP, FLEX_COUNT, savedProjHtml, savedLineupCardHtml as 
 import { onSitePage } from "../tabs.js"; // the public site marks the page is-site: its saved cards draw no letter select (it can only be refused there)
 export { savedLineupSlotHtml, savedProjTotal } from "./lineup-saved.js";
 import { syncSwaps, swapsPanelHtml, wireSwaps } from "./lineup-swaps.js"; // the uniqueness swaps, full width below both columns (Adam 2026-10-18)
-import { showAllToggleHtml, wireShowAllButtons } from "../filterbar.js";
-import { store } from "../state.js";
 import { showdownPerSpotText, shownTotal } from "../totals.js";
 import { syncMeter, meterStripHtml, wireMeter, playerFigures } from "./lineup-meter.js"; // uniqueness / projection strip under the slots; every figure on the screen is the served board's (Adam 2026-10-20)
 import { builtOnText } from "./figures-label.js"; // the board's sources in words (the retired Figures switch's place)
@@ -57,10 +55,12 @@ let lastBoard = null;
 let lastKey = null;
 let openSources = null; // view.js's opener of the Sources page, for the meter's figures label (kept across commit's redraws)
 let boardWrite = null; // view.js's writer that applies the board a write answers (the ± bump, Adam 2026-10-22; kept across commit's redraws)
+let poolCount = null; // view.js's writer of the filter bar's "N of M players" (the pool's rows, the one call; kept across commit's redraws)
+let afterDraw = null; // view.js's step after each draw of this panel: the pool's Expand bar, its height and the sticky bar's (kept across commit's redraws)
 let savedFetchInFlightKey = null;
 const cardPuts = cardPutGuard(); // the saved cards' PUTs in flight and their refusals
 
-setListControls(listControls); // the pool rows' Min % / Max % boxes and lock / In / exclude buttons (live app only)
+setPoolControls(poolControls); // the pool rows' Min % / Max % boxes and lock / In / exclude buttons (live app only)
 
 function loadSavedLineups(key) {
   if (savedFetchInFlightKey === key) return;
@@ -321,8 +321,8 @@ function repaintSlotFigures() {
   repaintSlots(lastContainer, lastBoard, state);
   const totalsEl = lastContainer.querySelector(".lineup-totals");
   if (totalsEl) totalsEl.innerHTML = totalsLineHtml(computeTotals(lastBoard));
-  // Both player lists (Captain and FLEX) and the saved cards' projection totals carry the same notes, repainted in place.
-  paintLists(lastContainer, listCtx(lastBoard));
+  // The pool and the saved cards' projection totals carry the same notes, repainted in place.
+  paintPool(lastContainer, poolCtx(lastBoard));
   lastContainer.querySelectorAll(".saved-lineup-proj").forEach((el) => {
     const lineup = state.savedLineups.find((l) => l.id === el.dataset.lineupId);
     if (lineup) el.innerHTML = savedProjHtml(lineup, lastBoard);
@@ -349,24 +349,25 @@ function buildStatusHtml(board) {
   return parts.join("");
 }
 
-// What the two player lists need from the lineup: who is placed (a placed man's row is tinted in both lists, and his Add FLEX
-// is disabled) and what a click does. A row click is the Add button's click (the Captain list's puts him in the Captain
-// slot, the FLEX list's in the next open FLEX slot); the rules stay in addCaptain and addFlex.
+// What the pool needs from the lineup: who is placed (a placed man's row is tinted, and his Add FLEX is disabled); its Add CPT and
+// Add FLEX buttons run addCaptain and addFlex (wireRowButtons), where the rules stay.
 function listPlacement() {
   return { cptId: state.cpt ? String(state.cpt.id) : null, flexIds: new Set(state.flex.filter(Boolean).map((s) => String(s.id))) };
 }
 
-function listCtx(board) {
+function poolCtx(board) {
   return {
     board,
     placement: listPlacement,
-    onPick: (kind, id) => {
-      if (kind === "cpt") addCaptain(findRow(board, id));
-      else addFlex(findRow(board, id));
-      commit();
-    },
-    onRepaint: (listEl) => wireRowButtons(listEl, board), // a repainted list's buttons are new
+    repaint: () => paintPool(lastContainer, poolCtx(board)), // a header click: only the pool's head and body
+    onRepaint: (poolEl) => wireRowButtons(poolEl, board), // a repainted pool's buttons are new
+    onCount: (shown, total) => poolCount?.(shown, total),
   };
+}
+
+/** Redraws the pool alone, for the filter bar above the builder (view.js): a chip or a typed filter never redraws the builder. */
+export function repaintShowdownPool() {
+  if (lastContainer && lastBoard) paintPool(lastContainer, poolCtx(lastBoard));
 }
 
 // The saved card with the panel's rename box, delete prompt and PUT state (lineup-saved.js draws it); `numbers`: numberLineups of this game's saved lineups.
@@ -379,7 +380,8 @@ function savedLineupsSectionHtml(board) {
   return savedSectionHtml(board, { loaded: state.savedLoaded, error: state.savedError, lineups: state.savedLineups }, (l, numbers) => savedLineupCardHtml(l, board, undefined, numbers), optimizerSavedFilter(board));
 }
 
-function panelHtml(board) {
+// `poolRows`: the pool's rows (pool.js poolVisibleRows), read once per draw so the filter bar's count is the same list.
+function panelHtml(board, poolRows) {
   const totals = computeTotals(board);
   const salaryKnown = totals.salaryUsed !== null;
   const overCap = salaryKnown && totals.salaryUsed > SALARY_CAP;
@@ -391,14 +393,18 @@ function panelHtml(board) {
     : totals.salaryLeft < 0
       ? `${money(totals.salaryUsed)} used · ${money(-totals.salaryLeft)} over`
       : `${money(totals.salaryUsed)} used · ${money(totals.salaryLeft)} left${perSpot ? ` · ${perSpot}` : ""}`;
-  // The Optimizer (sketch A, Adam 2026-10-19): its band head heads the left column (wider then, .sd-opt-left), the builder sits under
-  // it unchanged, then the Pool and Build boxes (Adam 2026-10-20: "I can't see the main lineup that I'm building", so the six slots
-  // and the meter come before the boxes) and the Make row (sticky, as classic's footer) ends it; the batch is full width below both columns, its cards four
-  // across (Adam 2026-10-19 11:17 PM: "generated lineups should go 4 across"). Off the live app the pieces are empty, as before.
+  // The Optimizer (sketch A, Adam 2026-10-19): its band head over the builder (the left column, wider then, .sd-opt-left), whose
+  // Make row (sticky, as classic's footer) ends it; the Pool and Build boxes come after the six slots and the meter (Adam 2026-10-20:
+  // "I can't see the main lineup that I'm building"). The player pool sits beside it (below; Adam 2026-10-26: the Rankings table as
+  // the pool, its filter bar above the builder, view.js), then the batch, its cards four
+  // across (Adam 2026-10-19 11:17 PM: "generated lineups should go 4 across"). Off the live app the Optimizer's pieces are empty, as before.
+  // Adam 2026-10-26 3:59 PM: "i like the list to the side of the optimizer not beneath": the player pool is the right column, beside the
+  // builder, on the live app and the public site alike; both columns start under the band's head (the Objective row and the pool's
+  // heading level). Below 1100px of window the pool wraps under the builder (style.css .sd-pool-col).
   return `
-    <div class="lineup-layout">
+    ${optimizerBandHeadHtml(board)}
+    <div class="lineup-layout sd-pool-layout">
       <div class="lineup-left${optimizerLive() ? " sd-opt-left" : ""}">
-        ${optimizerBandHeadHtml(board)}
         ${controlsHtml()}
         <div class="lineup-slots">${slotsHtml(board)}</div>
         ${meterStripHtml()}
@@ -411,18 +417,14 @@ function panelHtml(board) {
         ${optimizerBandBoxesHtml(board)}
         ${optimizerGoRowHtml(board)}
       </div>
-      <div class="lineup-right">
-        <h3 class="lineup-right-title">Showdown players (click a column to sort)</h3>
-        ${optimizerLive() ? "" : `<div class="chip-group lineup-pos-chips">${showAllToggleHtml(store.get().filters.showAllPlayers, `data-action="show-all"`)}</div>`}
-        ${listsHtml(board, listPlacement(), poolChipsRowHtml())}
-      </div>
+      <div class="lineup-right sd-pool-col">${poolHtml(board, listPlacement(), poolRows)}</div>
     </div>
     ${optimizerResultsBlockHtml(board, state.savedLineups)}
     ${swapsPanelHtml()}
     ${savedLineupsSectionHtml(board)}`;
 }
 
-// The Optimizer's hands into this panel: the redraw, the saved list (its Saved ✓ marks and its saves), and a repaint of both pool lists in place.
+// The Optimizer's hands into this panel: the redraw, the saved list (its Saved ✓ marks and its saves), and a repaint of the pool in place.
 function optCtx(board, key) {
   return {
     container: lastContainer,
@@ -431,12 +433,12 @@ function optCtx(board, key) {
     commit,
     getSaved: () => state.savedLineups,
     setSaved: (list) => { state.savedLineups = list; },
-    repaintPool: () => { if (lastContainer) paintLists(lastContainer, listCtx(board)); },
+    repaintPool: () => { if (lastContainer) paintPool(lastContainer, poolCtx(board)); },
     boardWrite: (send, label) => (boardWrite ? boardWrite(send, label) : console.error("A Showdown board write was asked for, but view.js passed no board writer.")), // the ± bump (Adam 2026-10-22)
   };
 }
 
-// `container`: the whole panel, or one list's element when only that list was repainted.
+// `container`: the whole panel, or the pool's element when only the pool was repainted.
 function wireRowButtons(container, board) {
   wirePoolControls(container, optCtx(board, lastKey));
   container.querySelectorAll("[data-action='add-cpt']").forEach((btn) => {
@@ -454,7 +456,6 @@ function wireRowButtons(container, board) {
 }
 
 function wire(container, board, key) {
-  wireShowAllButtons(container);
   wireMeter(container);
   wireSwaps(container);
   container.querySelector("#sd-lineup-objective")?.addEventListener("change", (e) => {
@@ -478,7 +479,8 @@ function wire(container, board, key) {
     });
   });
   wireRowButtons(container, board);
-  wireLists(container, listCtx(board));
+  const pool = container.querySelector("#sd-pool");
+  if (pool) wirePool(pool, poolCtx(board));
   container.querySelector("#sd-lineup-save-btn")?.addEventListener("click", () => {
     const nameInput = container.querySelector("#sd-lineup-save-name");
     doSaveLineup(key, nameInput ? nameInput.value : "");
@@ -514,12 +516,17 @@ let lastValidatedKey = null;
 
 // `onOpenSources`: what the meter's figures label's Sources link does (view.js: the Showdown header's Sources button's opener).
 // `onBoardWrite(send, label)`: view.js's runner of a write that answers this game's board, which it applies as a refresh's (the ± bump).
-export function renderShowdownLineupPanel(container, board, key, { onOpenSources = openSources, onBoardWrite = boardWrite } = {}) {
+// `onPoolCount(shown, total)`: view.js's writer of the filter bar's count. `onDrawn()`: view.js's step after each draw (the pool's Expand
+// bar and height, the sticky bar's height). `container` is the Optimizer tab's mount (#sd-lineup-mount): the game line and the filter bar
+// sit outside it, so a redraw here never replaces a box Adam is typing in.
+export function renderShowdownLineupPanel(container, board, key, { onOpenSources = openSources, onBoardWrite = boardWrite, onPoolCount = poolCount, onDrawn = afterDraw } = {}) {
   lastContainer = container;
   lastBoard = board;
   lastKey = key;
   openSources = onOpenSources;
   boardWrite = onBoardWrite;
+  poolCount = onPoolCount;
+  afterDraw = onDrawn;
   if (key !== lastValidatedKey) {
     lastValidatedKey = key;
     state.savedLoaded = false;
@@ -537,6 +544,12 @@ export function renderShowdownLineupPanel(container, board, key, { onOpenSources
   syncOptimizer(key, board); // this showdown's Optimizer settings; another showdown's batch is dropped (first: the meter reads its excludes)
   syncMeter({ board, key, cpt: state.cpt, flex: state.flex, container, excludes: optimizerExcludes(), onSources: openSources, onModes: repaintSlotFigures }); // the meter repaints only its own strip and the slots' notes; the on-screen mode's excludes, as a batch card's meter has them (🔵 866b0ce B1)
   syncSwaps({ board, key, cpt: state.cpt, flex: state.flex, container, excludes: optimizerExcludes() }); // after the meter: the swaps exist while it has a complete live lineup; the meter's excludes, so no excluded man is offered
-  container.innerHTML = panelHtml(board);
+  const poolRows = poolVisibleRows(board);
+  const poolScroll = container.querySelector?.("#sd-pool .scroll-panel")?.scrollTop ?? 0; // an Add click redraws the panel: the pool keeps its place
+  container.innerHTML = panelHtml(board, poolRows);
   wire(container, board, key);
+  poolCount?.(poolRows.length, (board?.rows ?? []).length);
+  afterDraw?.();
+  const poolPanel = poolScroll ? container.querySelector?.("#sd-pool .scroll-panel") : null;
+  if (poolPanel) poolPanel.scrollTop = poolScroll;
 }

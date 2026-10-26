@@ -3,11 +3,10 @@
 // which stays as it is. This file holds the page state (the settings per showdown key, the batch on screen, busy flags), the two
 // requests (POST .../lineup/generate here; saves through ./api.js postShowdownLineup) and the wiring; optimizer-state.js has the
 // pure settings and request rules, optimizer-view.js the markup. lineup.js calls syncOptimizer before each draw, puts the pieces
-// in its panel and calls wireOptimizer after; lineup-lists.js asks listControls for each pool row's boxes and buttons.
+// in its panel and calls wireOptimizer after; the player pool (pool.js) asks poolControls for each row's boxes and buttons.
 // Live app only (as the meter): the published site and sample mode have no generate route, so nothing here is drawn there.
 import { isSampleMode, sampleRefusal } from "../api.js";
 import { bumpProjHtml, wireBumpButtons, bumpPatch } from "../bump-control.js"; // Adam 2026-10-22: ± bump on the pool rows' projection
-import { store } from "../state.js";
 import { onSitePage } from "../tabs.js"; // the one is-site check
 import { parsePct, uniqueSavedName, duplicateSaveStatus } from "../lineup.js";
 import { newBuildId, batchBuild } from "../lineup-builds.js";
@@ -27,7 +26,6 @@ const BUSY_TEXT = "Lineups are already being made; try again when that finishes.
 const opt = {
   key: null, // the showdown these settings and this batch belong to
   ks: S.defaultKeyState(), // {mode, gpp, cash} for opt.key, mirrored to localStorage on every change
-  pos: "All", // the pool's position chip, for this page view
   generating: false,
   saving: false,
   error: null, // the server's sentence for a refused or failed Make
@@ -92,7 +90,6 @@ export function syncOptimizer(key, board) {
   if (key !== opt.key) {
     opt.key = key;
     opt.ks = key ? S.readKeyState(storage, key) : S.defaultKeyState();
-    opt.pos = "All";
     opt.results = null;
     clearMustHave();
     opt.error = null;
@@ -339,21 +336,21 @@ export function optimizerSavedFilter(board) {
   };
 }
 
-/** The pool's position chips row on the live app (drawn between the Captain | FLEX toggle and the lists, as the sketch has it); "" elsewhere. */
-export function poolChipsRowHtml() {
-  return optimizerLive() ? V.poolChipsHtml(opt.pos, store.get().filters.showAllPlayers) : "";
-}
-
-/** What lineup-lists.js asks for each list (see setListControls there); every answer is the list's own when not live. */
-export const listControls = {
-  headCells: (kind) => (optimizerLive() ? V.poolHeadCells(kind, opt.ks.mode) : ""),
-  cells: (row, kind) => (optimizerLive() ? V.poolCapCells(row, kind, modeState(), opt.ks.mode, parsePct) : ""),
-  actions: (row, kind) => (optimizerLive() ? V.poolActionButtons(row, kind, modeState()) : ""),
-  rowClass: (row, kind) => (optimizerLive() ? V.poolRowClass(row, kind, modeState()) : ""),
-  rows: (all, shown) => (optimizerLive() ? V.poolRows(all, shown, modeState(), opt.pos) : shown),
-  addLabel: () => (optimizerLive() ? "Add" : null),
-  ceilColumn: (board) => optimizerLive() && S.boardHasTg(board, "ceil"), // Adam 2026-10-25 (D81): a Ceil column after Proj while any row of the board carries TwoGun's ceiling
-  projCell: (row, kind, proj) => (optimizerLive() ? bumpProjHtml(row, proj, { kind }) : null), // the ± bump (Adam 2026-10-22) before the list's own figure, both lists; the Captain list's hover reads his Captain figures
+/**
+ * What the one player pool (pool.js setPoolControls; Adam 2026-10-26, the Rankings table as the pool) asks for each row: the rows it
+ * lists, the Min % / Max % heads and boxes of each role, each role's lock and exclude and the In button, the row's look, whether a Ceil
+ * column shows and the projection cell's ± bump. Off the live app every answer is the pool's own (its rows, nothing added).
+ */
+export const poolControls = {
+  live: () => optimizerLive(),
+  rows: (all, shown) => (optimizerLive() ? V.poolRows(all, shown, modeState(), "All") : shown), // locked, included and excluded men stay listed so they can be undone; the filter bar's position chip applies after (pool.js)
+  capHeads: (kind) => (optimizerLive() ? V.poolHeadCells(kind, opt.ks.mode, { gold: kind === "cpt" }) : ""),
+  capCells: (row, kind) => (optimizerLive() ? V.poolCapCells(row, kind, modeState(), opt.ks.mode, parsePct) : ""),
+  button: (row, kind, action) => (optimizerLive() ? V.poolButtonHtml(row, kind, action, modeState()) : ""), // "lock", "include" (In: the same for both roles) or "exclude"
+  // Excluded from every lineup dims the row; a lock at either role tints it (a Captain-only exclude leaves the row as it is: he can still be FLEX).
+  rowClass: (row) => (optimizerLive() ? V.poolRowClass(row, "flex", modeState()) || (S.isLocked(modeState(), row, "cpt") ? " lineup-row-locked" : "") : ""),
+  ceilColumn: (board) => optimizerLive() && S.boardHasTg(board, "ceil"), // Adam 2026-10-25 (D81): a Ceil column while any row of the board carries TwoGun's ceiling
+  projCell: (row, proj) => (optimizerLive() ? bumpProjHtml(row, proj) : null), // the ± bump (Adam 2026-10-22) before the Proj figure; one pair per man moves both his figures
 };
 
 // ---------- wiring ----------
@@ -380,8 +377,8 @@ function clearFormError(container) {
 }
 
 /**
- * Wires one drawn list's row controls (called for each list as it is drawn or repainted). `ctx` = {container, board, repaintPool(),
- * boardWrite(send, label)}: a lock, In or exclude click changes this mode's settings, saves them and repaints both lists and the lines
+ * Wires the pool's row controls (called as the pool is drawn or repainted). `ctx` = {container, board, repaintPool(),
+ * boardWrite(send, label)}: a lock, In or exclude click changes this mode's settings, saves them and repaints the pool and the lines
  * in place; a ± press (Adam 2026-10-22) sends the new steps through ctx.boardWrite, view.js's applier of an answered board.
  */
 export function wirePoolControls(listEl, ctx) {
@@ -491,7 +488,7 @@ function wirePickButtons(root, ctx) {
 }
 
 /**
- * Wires the band, the pool chips, the Make row and the batch. `ctx` = {container, board, key, commit(), getSaved(), setSaved(list),
+ * Wires the band, the Make row and the batch. `ctx` = {container, board, key, commit(), getSaved(), setSaved(list),
  * repaintPool(), and for tests post(key, body) / save(key, body) in place of the two requests}.
  */
 export function wireOptimizer(ctx) {
@@ -501,13 +498,6 @@ export function wireOptimizer(ctx) {
     const piece = c.querySelector(id);
     if (piece) wireBand(piece, ctx);
   }
-  c.querySelectorAll("[data-sd-pool-pos]").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      opt.pos = btn.dataset.sdPoolPos;
-      c.querySelectorAll("[data-sd-pool-pos]").forEach((b) => b.classList.toggle("active", b.dataset.sdPoolPos === opt.pos));
-      ctx.repaintPool();
-    });
-  });
   c.querySelector("#sd-opt-go-btn")?.addEventListener("click", () => doGenerate(ctx));
   c.querySelectorAll("[data-sd-opt-save]").forEach((btn) => btn.addEventListener("click", () => saveCards([btn.dataset.sdOptSave], ctx)));
   c.querySelector("[data-sd-opt-save-all]")?.addEventListener("click", () => saveCards(shownUids(), ctx)); // the shown lineups only while filtered (D77)

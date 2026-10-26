@@ -51,11 +51,11 @@ function snapPanelMaxHeight(panelEl, top, reserve) {
 // Ownership tabs' tables) gets the same treatment.
 export function adjustScrollPanels() {
   document.querySelectorAll(".scroll-panel").forEach((panelEl) => {
-    if (panelEl.closest(".sd-list")) return; // the Showdown Captain | FLEX list box is sized by public/js/showdown/lineup-lists.js, not here
     const top = panelEl.getBoundingClientRect().top;
     // Optimizer-first step 4: the ranked list under the builder is not sized to the room below it (that is the whole page) but
     // to 60% of the window, 420px at least, snapped to whole rows: the reserve is chosen so the room snapPanelMaxHeight sees is that height.
-    if (panelEl.closest("#ranked-list")) {
+    // The Showdown Optimizer's player pool under its builder (#sd-pool, 2026-10-26, D81) is sized the same way.
+    if (panelEl.closest("#ranked-list") || panelEl.closest("#sd-pool")) {
       const target = Math.max(420, window.innerHeight * 0.6);
       snapPanelMaxHeight(panelEl, top, window.innerHeight - (top + window.scrollY) - target);
       return;

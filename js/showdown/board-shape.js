@@ -85,12 +85,13 @@ export function normalizeBoard(raw) {
 // Filter / sort
 // --------------------------------------------------------------------------------------------------------
 
-const DESC_FIRST = new Set(["salary", "cptSalary", "proj", "cptProj", "value", "ownFlex", "ownCpt", "levFlex", "levCpt"]);
+const DESC_FIRST = new Set(["salary", "cptSalary", "proj", "cptProj", "tgCeil", "tgCeilCpt", "value", "ownFlex", "ownCpt", "levFlex", "levCpt"]);
 export function defaultDirFor(col) {
   return DESC_FIRST.has(col) ? "desc" : "asc";
 }
 
-function sortValue(row, col) {
+/** A column's sort value from the board row (the Optimizer's pool passes its own reader for the figures it shows, pool.js). */
+export function sortValue(row, col) {
   switch (col) {
     case "player":
       return row.name ?? null;
@@ -120,12 +121,12 @@ function sortValue(row, col) {
 }
 
 // Same null-sorts-last rule as public/js/state.js's sortRows, so a blank Own% or CPT $ always drops to
-// the bottom of the table regardless of sort direction.
-export function sortRows(rows, col, dir) {
+// the bottom of the table regardless of sort direction. `valueOf(row, col)`: the value read, sortValue by default.
+export function sortRows(rows, col, dir, valueOf = sortValue) {
   const withIndex = rows.map((row, i) => ({ row, i }));
   withIndex.sort((a, b) => {
-    const va = sortValue(a.row, col);
-    const vb = sortValue(b.row, col);
+    const va = valueOf(a.row, col);
+    const vb = valueOf(b.row, col);
     const aNull = va == null || va === "";
     const bNull = vb == null || vb === "";
     if (aNull && bNull) return a.i - b.i;
@@ -138,16 +139,19 @@ export function sortRows(rows, col, dir) {
   return withIndex.map((x) => x.row);
 }
 
-export function filterRows(rows, filters, game) {
+// `projOf(row)`: the FLEX projection Min FLEX pts compares, the row's own by default (the Optimizer's pool passes the figure its Proj cell shows).
+export function filterRows(rows, filters, game, projOf = (row) => row.proj) {
   return rows.filter((row) => {
     if (filters.team === "away" && row.team !== game?.away) return false;
     if (filters.team === "home" && row.team !== game?.home) return false;
     if (filters.pos !== "All" && (row.pos ?? "").trim().toUpperCase() !== filters.pos) return false;
+    // Min FLEX salary (Adam 2026-10-26 3:26 PM: min first, then max, as classic's salary range): a missing salary is below any floor.
+    if (filters.minSalary != null && (row.salary ?? -Infinity) < filters.minSalary) return false;
     if (filters.maxSalary != null && (row.salary ?? Infinity) > filters.maxSalary) return false;
     // "Min FLEX pts" always compares against the FLEX projection (row.proj), never cptProj, even though
     // the row also carries a Captain projection (Adam, confirmed) — a player with no projection at all
     // is treated as below any floor, same as the salary filter treats a missing salary as above any cap.
-    if (filters.minProj != null && (row.proj ?? -Infinity) < filters.minProj) return false;
+    if (filters.minProj != null && (projOf(row) ?? -Infinity) < filters.minProj) return false;
     return true;
   });
 }

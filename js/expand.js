@@ -11,6 +11,7 @@
 // holds the pool's scroll panel, which is not expandable; Optimizer-first step 4 put the ranked list there). Default: the first.
 export const EXPAND_TARGETS = [
   { panelId: "lineup-panel", title: "Rankings", scrollSelector: "#ranked-list > .scroll-panel" },
+  { panelId: "sd-lineup-panel", title: "Player pool", scrollSelector: "#sd-pool > .scroll-panel" }, // the Showdown Optimizer's pool (2026-10-26, D81)
   { panelId: "projections-panel", title: "Projections" },
   { panelId: "ownership-panel", title: "Projected Ownership" },
 ];
@@ -43,11 +44,10 @@ export function phoneMinHeight(win = window) {
   return win.matchMedia("(max-width: 700px)").matches ? Math.round(win.innerHeight * 0.7) : 0;
 }
 
-/** The Optimizer pool's least height (px): the slot column's height or 60% of the window; 0 for any other panel, and for the
- * Showdown Captain | FLEX list box (inside .sd-list), which must end on screen (public/js/showdown/lineup-lists.js sizes it). */
+/** The Optimizer pool's least height (px): the slot column's height or 60% of the window; 0 for any other panel (the Showdown pool,
+ * a .table-wrap, is sized by scroll-panels.js to 60% of the window). */
 export function panelMinHeight(panelEl, top, win = window) {
   if (!panelEl?.classList?.contains("lineup-rows-wrap")) return 0;
-  if (panelEl.parentElement?.classList?.contains("sd-list")) return 0; // the list box is the direct child of .sd-list
   const left = panelEl.closest(".lineup-layout")?.querySelector(".lineup-left");
   const slotColumn = left ? left.getBoundingClientRect().bottom - top : 0;
   return Math.round(Math.max(win.innerHeight * 0.6, slotColumn));

@@ -128,21 +128,18 @@
 
     <nav id="sd-tabs" class="tabs"></nav>
 
-    <div id="sd-rankings-panel" class="panel sd-rankings-panel">
+    <!-- The Optimizer tab, the Showdown's main screen (Adam 2026-10-26: the Rankings tab folded in here, D81, as classic's #lineup-panel).
+         The game line and the filter bar (sticky) are drawn by showdown/view.js; #sd-lineup-mount is the only part showdown/lineup.js
+         redraws (the builder, the player pool with #sd-table, #sd-thead, #sd-tbody and #sd-legend, the batch and the saved lineups),
+         so a redraw never replaces a filter box Adam is typing in. -->
+    <div id="sd-lineup-panel" class="panel sd-lineup-panel">
       <div id="sd-gameline" class="sd-gameline"></div>
       <div id="sd-filterbar" class="sd-filterbar"></div>
-      <div class="table-wrap scroll-panel">
-        <table id="sd-table" class="rankings-table sd-table">
-          <thead id="sd-thead"></thead>
-          <tbody id="sd-tbody"></tbody>
-        </table>
-      </div>
-      <div id="sd-legend" class="table-legend"></div>
+      <div id="sd-lineup-mount" class="sd-lineup-mount"></div>
     </div>
     <div id="sd-sources-panel" class="panel sources-panel" hidden></div>
     <div id="sd-projections-panel" class="panel" hidden></div>
     <div id="sd-ownership-panel" class="panel" hidden></div>
-    <div id="sd-lineup-panel" class="panel" hidden></div>
     <div id="sd-entries-panel" class="panel" hidden></div>
     <div id="sd-empty-state" class="empty-state" hidden></div>
   </main>

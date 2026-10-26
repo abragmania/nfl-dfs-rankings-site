@@ -2,27 +2,30 @@
 // panels), fetches and normalizes the showdown board, and renders whichever tab is active. Mounted from
 // app.js, which owns the mode row and the classic-vs-showdown visibility toggle (app.js reads/writes
 // location.hash's "#sd=<key>" itself); this module reacts to whatever key it is told to show.
-// Two tabs (Rankings, Optimizer) plus the Sources view: ONE Sources page (public/js/sources-page.js, the same file classic uses) with
-// the Projections or Ownership player table under it, picked by a switch on the page (Adam 2026-10-18; tabs.js SOURCE_TABS keys).
+// Two tabs (Optimizer, Entries; the Rankings tab folded into the Optimizer 2026-10-26) plus the Sources view: ONE Sources page
+// (public/js/sources-page.js, the same file classic uses) with the Projections or Ownership player table under it, picked by a switch on
+// the page (Adam 2026-10-18; tabs.js SOURCE_TABS keys). The Optimizer tab (Adam 2026-10-26 3:22 PM, D81, as classic's step 4): the game
+// line and the filter bar (sticky at the window's top) are drawn here, outside #sd-lineup-mount, which lineup.js redraws; the filter bar
+// filters the pool (pool.js poolState), so a keystroke in its boxes never destroys a box.
 import { getShowdownBoard, postShowdownRefresh, postShowdownProjectionsPaste } from "./api.js";
 import { renderPills, kickoffDateAndClock, paintSourcesLink, wireSourcesLink, modePillHtml } from "../header.js";
 import { isSourcesTab, sourcesTabToOpen } from "../tabs.js";
 import { renderSourcesPage, sectionSources } from "../sources-page.js";
 import { escapeHtml, dec1 } from "../format.js";
-import { showAllToggleHtml, wireShowAllButtons } from "../filterbar.js";
 import { store } from "../state.js";
-import { renderShowdownTableHead, renderShowdownTableBody, shownRows } from "./table.js";
-import { renderShowdownTabs, renderShowdownProjectionsPanel, renderShowdownOwnershipPanel, renderShowdownLineupPanel, renderShowdownEntriesPanel } from "./tabs.js";
+import { makeFilterDebounce } from "../filter-debounce.js"; // the typed boxes wait out classic's 150 ms pause
+import { syncExpandUi } from "../expand.js";
+import { adjustScrollPanels } from "../scroll-panels.js";
+import { renderShowdownTabs, renderShowdownProjectionsPanel, renderShowdownOwnershipPanel, renderShowdownLineupPanel, renderShowdownEntriesPanel, shownShowdownTab } from "./tabs.js";
+import { repaintShowdownPool } from "./lineup.js";
+import { poolState, poolCountText } from "./pool.js";
+import { filterBarHtml, wireFilterBar } from "./filter-bar.js"; // the filter bar above the builder (team and position chips, FLEX salary range, Min FLEX pts)
 import { figuresPillHtml } from "./figures-label.js"; // the header pill naming the sources this game's board reads (Adam 2026-10-20)
-import { normalizeBoard, defaultDirFor, sortRows, filterRows, teamFullName, joinWords } from "./board-shape.js"; // the board's pure shaping (moved for the 600-line cap)
+import { normalizeBoard, teamFullName } from "./board-shape.js"; // the board's pure shaping (moved for the 600-line cap)
 
 const state = {
-  activeTab: "rankings",
+  activeTab: "lineup", // the Optimizer (the Rankings tab is retired, tabs.js RETIRED_SHOWDOWN_TABS)
   lastSourcesTab: null, // the Sources page's table (projections or ownership) shown last, which the Sources button reopens (Adam 2026-10-18)
-  // Default sort is Proj descending, matching the hosted sheet (coordinator fix) — Val stays sortable by
-  // clicking its header, same as any other column; a null projection always sorts last (board-shape.js sortRows).
-  sort: { col: "proj", dir: "desc" },
-  filters: { team: "both", pos: "All", maxSalary: null, minProj: null },
   board: null, // the last successfully loaded board; never cleared just because a reload or a switch to
   // a different key is in flight (🔵 finding: the page must never blank a good board out from under Adam).
   boardKey: null, // the key `board` actually belongs to
@@ -77,32 +80,28 @@ const els = {
   pillsRow: document.getElementById("sd-pills-row"),
   figuresPill: document.getElementById("sd-figures-pill"),
   refreshBtn: document.getElementById("sd-refresh-btn"),
-  rankingsPanel: document.getElementById("sd-rankings-panel"),
   gameline: document.getElementById("sd-gameline"),
   filterbar: document.getElementById("sd-filterbar"),
-  thead: document.getElementById("sd-thead"),
-  tbody: document.getElementById("sd-tbody"),
-  legend: document.getElementById("sd-legend"),
   projectionsPanel: document.getElementById("sd-projections-panel"),
   ownershipPanel: document.getElementById("sd-ownership-panel"),
   lineupPanel: document.getElementById("sd-lineup-panel"),
+  lineupMount: document.getElementById("sd-lineup-mount"), // the Optimizer's redrawn part inside #sd-lineup-panel; the game line and the filter bar around it are not
   entriesPanel: document.getElementById("sd-entries-panel"),
   emptyState: document.getElementById("sd-empty-state"),
 };
 
 // --------------------------------------------------------------------------------------------------------
-// Filter / sort (the pure sort and filter live in board-shape.js)
+// Filter (the state and the one call that applies it live in pool.js; the pure filter and sort in board-shape.js)
 // --------------------------------------------------------------------------------------------------------
 
-// Position chips, same six positions the showdown board actually carries (server/showdown/board.js rows:
-// QB/RB/WR/TE/K/DST — no FLEX chip here, unlike the classic filter bar, since a showdown pool has no FLEX
-// position of its own to combine RB/WR/TE into). Colours match the sd-pos-<pos> pill classes (style.css).
-const SD_POSITION_CHIPS = ["All", "QB", "RB", "WR", "TE", "K", "DST"];
+// The typed boxes (Min and Max FLEX salary, Min FLEX pts) reach the pool once typing pauses (classic's filter-debounce.js, 150 ms): one
+// waiting change per box, the last value wins; Clear filters cancels them and a filter bar rebuild flushes them first.
+const typedFilters = makeFilterDebounce({ apply: (patch) => { Object.assign(poolState.filters, patch); repaintShowdownPool(); } });
 
-function computeVisibleRows() {
-  const rows = state.board?.rows ?? [];
-  const filtered = filterRows(shownRows(rows), state.filters, state.board?.game);
-  return sortRows(filtered, state.sort.col, state.sort.dir);
+// The filter bar's count, written by the pool after every draw from the same rows it shows (pool.js poolVisibleRows).
+function setPoolCount(shown, total) {
+  const countEl = els.filterbar?.querySelector("#sd-filter-count");
+  if (countEl) countEl.textContent = poolCountText(shown, total);
 }
 
 // --------------------------------------------------------------------------------------------------------
@@ -117,7 +116,7 @@ function renderBand() {
   els.band.innerHTML = `<span class="sd-band-text">SHOWDOWN &middot; ${escapeHtml(away)} at ${escapeHtml(home)}${when ? ` &middot; ${escapeHtml(when)} ET` : ""}</span>`;
 }
 
-// Four small boxes above the Rankings table (👁 visual-qa: like the hosted sheet's Total/Line/implied
+// Four small boxes at the top of the Optimizer tab (once above the Rankings table; 👁 visual-qa: like the hosted sheet's Total/Line/implied
 // boxes), built from payload.game — never re-derived, just the numbers the board already computed.
 function renderGameLine() {
   if (!els.gameline) return;
@@ -137,109 +136,46 @@ function renderGameLine() {
     <div class="sd-gameline-box"><span class="sd-gameline-label">${escapeHtml(g.home ?? "Home")} implied</span><span class="sd-gameline-value">${escapeHtml(homeImplied)}</span></div>`;
 }
 
-// D40: the legend names its actual sources instead of a hard-coded sentence, read straight off the board
-// payload so it always matches whatever sources actually fed this week's numbers (the words joined by board-shape.js joinWords).
-function renderLegend() {
-  if (!els.legend) return;
-  const sources = state.board?.sources ?? [];
-  const projLabels = joinWords(sources.filter((s) => s.kind === "projection").map((s) => s.label));
-  const hasKickerCard = sources.some((s) => s.kind === "kicker");
-  // R85: only the sources in board.ownershipUsedIds fed the numbers (a set-aside source is not named); an older board without the list names them all.
-  const ownSources = state.board?.ownershipSources ?? [];
-  const usedIds = state.board?.ownershipUsedIds;
-  const usedOwn = Array.isArray(usedIds) ? ownSources.filter((s) => usedIds.includes(s.id)) : ownSources;
-  const ownLabels = joinWords(usedOwn.map((s) => s.label));
-  const projText = projLabels ? `Proj from ${projLabels}${hasKickerCard ? " (kickers as consolidated)" : ""}` : "";
-  const ownText = ownLabels
-    ? `Own from ${ownLabels}; a dash where nobody has published one`
-    : ownSources.some((s) => (s.rows ?? []).length) ? "Own: no source in use names enough of the main players" : "Own: no source has published showdown ownership yet";
-  const sourceSentence = [projText, ownText].filter(Boolean).join("; ");
-  const legendText = [
-    sourceSentence,
-    "hover any Proj or Own cell for exactly how that number was made",
-  ]
-    .filter(Boolean)
-    .join(" · ");
-  els.legend.textContent = legendText;
-}
-
 function renderEmpty() {
   els.emptyState.hidden = false;
-  for (const p of [els.rankingsPanel, els.sourcesPanel, els.projectionsPanel, els.ownershipPanel, els.lineupPanel, els.entriesPanel]) p.hidden = true;
+  for (const p of [els.sourcesPanel, els.projectionsPanel, els.ownershipPanel, els.lineupPanel, els.entriesPanel]) p.hidden = true;
   els.band.innerHTML = "";
   els.emptyState.textContent = state.loading ? "Loading the showdown board…" : state.error ?? "Could not load this showdown.";
 }
 
-function onSortClick(col) {
-  if (state.sort.col === col) state.sort = { col, dir: state.sort.dir === "asc" ? "desc" : "asc" };
-  else state.sort = { col, dir: defaultDirFor(col) };
-  renderRankingsTable();
-}
-
-function renderRankingsTable() {
-  const visible = computeVisibleRows();
-  renderShowdownTableHead(els.thead, state.sort, onSortClick);
-  renderShowdownTableBody(els.tbody, visible);
-  const countEl = els.filterbar.querySelector("#sd-filter-count");
-  if (countEl) countEl.textContent = `${visible.length} of ${(state.board?.rows ?? []).length} players`;
-}
-
+// Drawn on a board load, a tab switch, a chip click or Clear filters, never on a keystroke: the typed boxes only patch the pool
+// (through the pause), so a box never loses its caret. A rebuild first flushes the boxes' waiting changes, so it never redraws a box
+// from older text. The markup and the wiring are filter-bar.js's.
 function renderFilterBar() {
-  const g = state.board?.game ?? {};
-  const posChipsHtml = SD_POSITION_CHIPS.map(
-    (pos) => `<button type="button" class="chip pos-chip sd-pos-chip${pos === state.filters.pos ? " active" : ""}" data-pos-filter="${pos}" data-pos="${pos}">${pos}</button>`
-  ).join("");
-  els.filterbar.innerHTML = `
-    <div class="filter-row">
-      <div class="chip-group">
-        <button type="button" class="chip pos-chip${state.filters.team === "both" ? " active" : ""}" data-team-filter="both">Both</button>
-        <button type="button" class="chip pos-chip${state.filters.team === "away" ? " active" : ""}" data-team-filter="away">${escapeHtml(g.away ?? "Away")}</button>
-        <button type="button" class="chip pos-chip${state.filters.team === "home" ? " active" : ""}" data-team-filter="home">${escapeHtml(g.home ?? "Home")}</button>
-      </div>
-      <div class="chip-group" id="sd-pos-chips">${posChipsHtml}</div>
-      <div class="filter-salary">
-        <label>Max FLEX salary <input id="sd-max-salary" type="number" step="200" placeholder="any" value="${state.filters.maxSalary ?? ""}" /></label>
-        <label>Min FLEX pts <input id="sd-min-proj" type="number" step="1" placeholder="any" value="${state.filters.minProj ?? ""}" /></label>
-      </div>
-      ${showAllToggleHtml(store.get().filters.showAllPlayers, `data-action="show-all"`)}
-      <span id="sd-filter-count" class="filter-count"></span>
-      <button type="button" id="sd-clear-filters-btn" class="link-btn">Clear filters</button>
-    </div>`;
-  wireShowAllButtons(els.filterbar);
-  els.filterbar.querySelectorAll("[data-team-filter]").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      state.filters.team = btn.dataset.teamFilter;
-      renderFilterBar();
-      renderRankingsTable();
-    });
+  typedFilters.flush();
+  els.filterbar.innerHTML = filterBarHtml(poolState.filters, state.board?.game, store.get().filters.showAllPlayers);
+  wireFilterBar(els.filterbar, {
+    typed: typedFilters,
+    rebuild: renderFilterBar,
+    repaint: repaintShowdownPool,
+    clearShowAll: () => {
+      document.querySelector("#show-all-toggle")?.classList.remove("active");
+      store.setFilters({ showAllPlayers: false });
+    },
   });
-  els.filterbar.querySelectorAll("[data-pos-filter]").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      state.filters.pos = btn.dataset.posFilter;
-      renderFilterBar();
-      renderRankingsTable();
-    });
-  });
-  // Same as classic's "Clear filters": a deliberate click, so a full rebuild of the bar is fine.
-  els.filterbar.querySelector("#sd-clear-filters-btn")?.addEventListener("click", () => {
-    state.filters = { team: "both", pos: "All", maxSalary: null, minProj: null };
-    document.querySelector("#show-all-toggle")?.classList.remove("active");
-    store.setFilters({ showAllPlayers: false });
-    renderFilterBar();
-    renderRankingsTable();
-  });
-  // Patches the table only (not the whole filter bar) on every keystroke, same reasoning as the classic
-  // filter bar's salary inputs (public/js/filterbar.js): rebuilding the input itself would steal focus.
-  const maxInput = els.filterbar.querySelector("#sd-max-salary");
-  maxInput?.addEventListener("input", () => {
-    state.filters.maxSalary = maxInput.value === "" ? null : Number(maxInput.value);
-    renderRankingsTable();
-  });
-  const minProjInput = els.filterbar.querySelector("#sd-min-proj");
-  minProjInput?.addEventListener("input", () => {
-    state.filters.minProj = minProjInput.value === "" ? null : Number(minProjInput.value);
-    renderRankingsTable();
-  });
+}
+
+// The sticky filter bar covers the top of the window, so a scroll to an element of the Optimizer's part (Make's results, the saved
+// lineups) lands below it: style.css gives every element with an id in #sd-lineup-mount a scroll margin of --filterbar-h, kept here to
+// the bar's height while it sticks (0 where it does not: another tab, or a phone, where it is static). Classic app.js syncFilterbarHeight's rule.
+function syncFilterbarHeight() {
+  if (!els.lineupPanel || !els.filterbar) return;
+  const sticky = !els.lineupPanel.hidden && getComputedStyle(els.filterbar).position === "sticky";
+  els.lineupPanel.style.setProperty("--filterbar-h", `${sticky ? Math.ceil(els.filterbar.getBoundingClientRect().height) : 0}px`);
+}
+window.addEventListener("resize", syncFilterbarHeight);
+
+// After each draw of the Optimizer's part (lineup.js calls it on its own redraws too): the pool's Expand bar (expand.js), its height
+// (60% of the window, whole rows, scroll-panels.js) and the sticky bar's height.
+function afterLineupDraw() {
+  syncExpandUi();
+  adjustScrollPanels();
+  syncFilterbarHeight();
 }
 
 // Applies an already-fetched, already-ok board response as the new current board, gated by the same
@@ -334,16 +270,17 @@ function onTabClick(tab) {
 }
 
 function render() {
+  state.activeTab = shownShowdownTab(state.activeTab); // a retired key ("rankings") or a tab not drawn here opens the Optimizer
   if (isSourcesTab(state.activeTab)) state.lastSourcesTab = state.activeTab;
   renderShowdownTabs(els.tabs, state.activeTab, onTabClick);
   paintSourcesLink(els.sourcesBtn, isSourcesTab(state.activeTab));
   if (els.figuresPill) els.figuresPill.hidden = !(els.figuresPill.innerHTML = figuresPillHtml(state.board, modePillHtml)); // none for no board or one with no figures
   if (!state.board) {
     renderEmpty();
+    syncExpandUi(); // the pool's panel is hidden: an expanded pool closes
     return;
   }
   els.emptyState.hidden = true;
-  els.rankingsPanel.hidden = state.activeTab !== "rankings";
   els.sourcesPanel.hidden = !isSourcesTab(state.activeTab);
   els.projectionsPanel.hidden = state.activeTab !== "projections";
   els.ownershipPanel.hidden = state.activeTab !== "ownership";
@@ -354,18 +291,17 @@ function render() {
   renderBand();
   renderPills(els.pillsRow, { staleIds: state.board.stale ?? [], sources: state.board.sources ?? null, warnings: [], injuryReport: state.board.injuryReport });
 
-  if (state.activeTab === "rankings") {
+  if (state.activeTab === "lineup") {
+    // One screen (Adam 2026-10-26, D81): the game line and the filter bar, then the Optimizer's own part, with the pool, in its mount.
     renderGameLine();
     renderFilterBar();
-    renderRankingsTable();
-    renderLegend();
+    renderShowdownLineupPanel(els.lineupMount, state.board, state.boardKey, { onOpenSources: openSources, onBoardWrite: writeBoard, onPoolCount: setPoolCount, onDrawn: afterLineupDraw });
   } else if (isSourcesTab(state.activeTab)) {
     renderSourcesView();
-  } else if (state.activeTab === "lineup") {
-    renderShowdownLineupPanel(els.lineupPanel, state.board, state.boardKey, { onOpenSources: openSources, onBoardWrite: writeBoard });
   } else if (state.activeTab === "entries") {
     renderShowdownEntriesPanel(els.entriesPanel, state.board, state.boardKey);
   }
+  if (state.activeTab !== "lineup") syncExpandUi(); // the pool's panel is hidden: an expanded pool closes
 }
 
 // The Sources view: the one Sources page, then the Projections or Ownership player table under its Players heading.

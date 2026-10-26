@@ -1,6 +1,6 @@
 // The Showdown Optimizer's markup (Adam 2026-10-19, sketch A: one screen under the Showdown Optimizer tab, GPP | Cash): the
 // heading and the two settings boxes, the Make row, the generated cards with their meter strip, the Captain and FLEX exposure
-// tables, the pool's position chips and each pool row's Min % / Max % boxes and lock / In / exclude buttons. Markup only, from
+// tables, and each pool row's Min % / Max % boxes and lock / In / exclude buttons. Markup only, from
 // the classic Optimizer's own helpers and classes (public/js/lineup.js optimizerControlsHtml, cashControlsHtml,
 // optimizerFooterHtml, newLineupsTabHtml, optLineupCardHtml, rightRowHtml); optimizer.js owns the state and the requests.
 import { escapeHtml, money, dec1 } from "../format.js";
@@ -9,7 +9,6 @@ import { modeSwitchHtml, cashChipHtml, cashTotalsText, unusedCapText, builtInTex
 import { cardPlayerRowHtml, teamColours } from "../lineup-card.js";
 import { optExposureHtml } from "../lineup-exposure.js";
 import { optNotesHtml, bendsLineHtml } from "../lineup.js";
-import { showAllToggleHtml } from "../filterbar.js";
 import { shownTotal } from "../totals.js";
 import { showdownPalette } from "./lineup-look.js";
 import { posPillHtml } from "./table.js"; // 👁 2026-10-22: the exposure rows wear the lists' coloured position pill, not the grey classic chip
@@ -22,11 +21,7 @@ import { filterLineups, bulkLabel, filterBarHtml } from "../lineup-filter.js";
 // Classic's words (lineup-view.js NO_MATCH_TEXT) for a filter no lineup passes.
 export const NO_MATCH_TEXT = "No lineups here have all of the chosen players."; // the saved section's too (optimizer.js optimizerSavedFilter)
 
-// The Showdown pool's position chips (D41): the six positions a Showdown board carries, K included and no FLEX chip, as the
-// Rankings filter bar's (view.js SD_POSITION_CHIPS), in the classic pool's row with Show all players. Classic's Starred only is
-// not drawn: Showdown players cannot be starred, so it could never work (lead's call on 🔵 866b0ce B9); it returns as
-// "Favorites only" when they can be.
-export const SD_POOL_POSITIONS = Object.freeze(["All", "QB", "RB", "WR", "TE", "K", "DST"]);
+// The pool's own position chips are gone (2026-10-26, as classic's step 4): the filter bar above the builder (view.js) filters the pool.
 const NO_FIGURES_TITLE = { median: "Median needs TwoGun's medians, and this game's board has none (TwoGun is not ticked for its projections on the Sources page, or his file is not posted).", ceil: "Ceiling needs TwoGun's ceilings, and this game's board has none (TwoGun is not ticked for its projections on the Sources page, or his file is not posted)." };
 const OBJECTIVE_TITLE = { proj: "Build the lineups with the highest total projection", median: "Build the lineups with the highest total of TwoGun's medians", ceil: "Build the lineups with the highest total of TwoGun's ceilings" };
 const OBJECTIVE_WORD = { proj: "projection", median: "median", ceil: "ceiling" };
@@ -102,7 +97,7 @@ export function bandBoxesHtml(v) {
         settingRowHtml("Min unique players", numberBoxHtml(`type="number" min="1" max="${MAX_UNIQUE}" class="opt-input opt-input-num" id="sd-opt-min-unique" value="${escapeHtml(v.ms.minUnique)}" aria-label="Minimum unique players between lineups"`), "Between any two lineups"),
         settingRowHtml("Build by", `<span class="opt-chips">${objectiveChipsHtml(v.ms.objective, v.board)}</span>`),
         settingSubtitleHtml("Max share of lineups"),
-        `<div class="opt-set-hint">Each man's Min % and Max % are on the pool rows: the Captain list sets his Captain share, the FLEX list his FLEX share.</div>`,
+        `<div class="opt-set-hint">Each man's Min % and Max % are on the pool rows: the plain pair sets his FLEX share, the gold pair his Captain share.</div>`,
       ].join("");
   return `
     <div class="opt-panel opt-settings sd-opt-panel" id="sd-opt-panel">
@@ -333,12 +328,6 @@ export function resultsHtml(v) {
 
 // ---------- the pool ----------
 
-/** The position chips row (classic poolPosChipsHtml): All, QB, RB, WR, TE, K, DST, Show all players. */
-export function poolChipsHtml(pos, showAll) {
-  const chips = SD_POOL_POSITIONS.map((p) => `<button type="button" class="chip pos-chip sd-pos-chip${p === pos ? " active" : ""}" data-sd-pool-pos="${p}" data-pos="${p}">${p}</button>`).join("");
-  return `<div class="chip-group lineup-pos-chips">${chips}${showAllToggleHtml(showAll, `data-action="show-all"`)}</div>`;
-}
-
 /** The pool rows a list shows: the rows the lists show today (`shown`: Out men hidden unless Show all players), plus any man locked,
  *  included or excluded (so he can be undone, classic rightColumnHtml's rule), at the chosen position, in board order. */
 export function poolRows(all, shown, ms, pos) {
@@ -349,10 +338,11 @@ export function poolRows(all, shown, ms, pos) {
 
 /** The extra head cells of one list in GPP: Min % and Max % for that role (Cash has none). Both lists head them "Min %" and
  *  "Max %" (👁 V1: "CPT Min %" pushed the Captain table past its box); the toggle and the list's caption name the role, the hover too. */
-export function poolHeadCells(kind, mode) {
+export function poolHeadCells(kind, mode, { gold = false } = {}) {
   if (mode !== "gpp") return "";
   const role = kind === "cpt" ? "Captain" : "FLEX";
-  return `<th class="lineup-min-head" title="Fewest of the new lineups he must be in at ${role}; blank = none">Min %</th><th class="lineup-max-head" title="Most of the new lineups he may be in at ${role}; blank = no cap">Max %</th>`;
+  const g = gold ? " sd-cpt-col" : ""; // the one pool (2026-10-26): the Captain pair heads in the Captain columns' gold
+  return `<th class="lineup-min-head${g}" title="Fewest of the new lineups he must be in at ${role}; blank = none">Min %</th><th class="lineup-max-head${g}" title="Most of the new lineups he may be in at ${role}; blank = no cap">Max %</th>`;
 }
 
 /** One row's Min % and Max % boxes in GPP (classic rightRowHtml's cells), for the list's role. */
@@ -367,22 +357,25 @@ export function poolCapCells(row, kind, ms, mode, parsePct) {
   return kind === "cpt" ? cell("cptMin", "lineup-min", "Min %") + cell("cptMax", "lineup-max", "Max %") : cell("flexMin", "lineup-min", "Min %") + cell("flexMax", "lineup-max", "Max %");
 }
 
-/** One row's lock, In and exclude buttons (Adam 2026-10-19: In sits between lock and exclude). */
-export function poolActionButtons(row, kind, ms) {
+/** One row's lock, In or exclude button for a role (`action` "lock", "include" or "exclude"), alone: the one pool (2026-10-26) draws In
+ *  once and each role's lock and exclude in that role's own cells. */
+export function poolButtonHtml(row, kind, action, ms) {
   const id = escapeHtml(String(row.id));
   const role = kind === "cpt" ? "Captain" : "FLEX";
-  const locked = isLocked(ms, row, kind);
-  const inc = isIncluded(ms, row);
   const ex = excludeState(ms, row, kind);
   const noCpt = kind === "cpt" && row.cptId == null;
-  const btn = (action, on, extraCls, title, inner, disabled) =>
+  const btn = (on, extraCls, title, inner, disabled) =>
     `<button type="button" class="lineup-row-btn sd-row-ico${extraCls}${on ? " active" : ""}" data-sd-opt="${action}" data-kind="${kind}" data-id="${id}" aria-pressed="${on}" title="${escapeHtml(title)}" aria-label="${escapeHtml(title)}"${disabled ? " disabled" : ""}>${inner}</button>`;
-  const lockTitle = locked ? `Locked at ${role} in every lineup` : `Lock at ${role} in every lineup`;
-  const inTitle = inc ? "Included: in every lineup at Captain or FLEX, the optimizer picks the role" : "Include: in every lineup at Captain or FLEX, the optimizer picks the role";
-  const exTitle = kind === "cpt" ? (ex.whole ? "Excluded from every lineup (the FLEX list's exclude)" : ex.on ? "Excluded as Captain; he can still be FLEX" : "Exclude as Captain; he can still be FLEX") : ex.on ? "Excluded from every lineup" : "Exclude from every lineup";
-  return btn("lock", locked, "", lockTitle, LOCK_SVG, ex.whole || noCpt)
-    + btn("include", inc, " sd-row-in", inTitle, "In", ex.whole)
-    + btn("exclude", ex.on, ex.on ? " danger" : "", exTitle, "&times;", (kind === "cpt" && ex.whole) || noCpt);
+  if (action === "lock") {
+    const locked = isLocked(ms, row, kind);
+    return btn(locked, "", locked ? `Locked at ${role} in every lineup` : `Lock at ${role} in every lineup`, LOCK_SVG, ex.whole || noCpt);
+  }
+  if (action === "include") {
+    const inc = isIncluded(ms, row);
+    return btn(inc, " sd-row-in", inc ? "Included: in every lineup at Captain or FLEX, the optimizer picks the role" : "Include: in every lineup at Captain or FLEX, the optimizer picks the role", "In", ex.whole);
+  }
+  const exTitle = kind === "cpt" ? (ex.whole ? "Excluded from every lineup (the FLEX exclude)" : ex.on ? "Excluded as Captain; he can still be FLEX" : "Exclude as Captain; he can still be FLEX") : ex.on ? "Excluded from every lineup" : "Exclude from every lineup";
+  return btn(ex.on, ex.on ? " danger" : "", exTitle, "&times;", (kind === "cpt" && ex.whole) || noCpt);
 }
 
 /** The row's look: excluded (dimmed) over locked (tinted). */

@@ -1,7 +1,7 @@
-// Showdown tabs: Rankings and Optimizer, as classic keeps its own (Adam 2026-10-18). The header's Sources button opens ONE Sources page
+// Showdown tabs: Optimizer and Entries (the Rankings tab folded into the Optimizer, 2026-10-26). The header's Sources button opens ONE Sources page
 // (public/js/sources-page.js, shared with classic: which sources, their weights, when each was pulled); under its Players heading a
 // Projections | Ownership switch picks one of the two panels in this file (view.js draws them, with public/js/tabs.js SOURCE_TABS).
-// Rankings is rendered by view.js/table.js; the Optimizer's real implementation lives in lineup.js (its key stays "lineup")
+// The Optimizer's real implementation lives in lineup.js (its key stays "lineup")
 // and is re-exported at the bottom of this file, mirroring how public/js/tabs.js re-exports its own
 // renderLineupPanel from public/js/lineup.js.
 //
@@ -12,9 +12,9 @@ import { escapeHtml, dec1, localStamp } from "../format.js";
 import { shownRows, ownTitleText, sdLine } from "./table.js";
 import { showAllToggleHtml, wireShowAllButtons } from "../filterbar.js";
 import { store, sortRows, defaultDirFor } from "../state.js";
-import { sortableHeadHtml, unusedColumn, onSitePage } from "../tabs.js"; // the classic sortable header (also imported by lineup-lists.js) and its dimmed unused-source column
+import { sortableHeadHtml, unusedColumn, onSitePage, isSourcesTab } from "../tabs.js"; // the classic sortable header and its dimmed unused-source column
 import { sourceIsTicked } from "../sources-page-html.js"; // the one tick predicate the Sources page and this table share
-import { snapPanelMaxHeight } from "../lineup.js"; // the classic tables' sizing step, the copy the Optimizer lists already import (lineup-lists.js)
+import { snapPanelMaxHeight } from "../lineup.js"; // the classic tables' sizing step
 
 // Fits the table's scroll box to the room below its top edge, as app.js adjustScrollPanels does for classic's tables (the last whole row that
 // fits), so the page does not scroll beside the box. Needed here because the Sources page reads its selection after the first draw and then
@@ -25,15 +25,26 @@ function fitScrollPanel(container) {
   if (panel) snapPanelMaxHeight(panel, panel.getBoundingClientRect().top, 16);
 }
 
+// Adam 2026-10-26 3:22 PM: the Rankings tab is gone, folded into the Optimizer (its game line, filter bar and table are the Optimizer
+// tab's now, pool.js; D81, as classic's step 4 did), so the Optimizer is first and the default.
 export const SHOWDOWN_TABS = Object.freeze([
-  Object.freeze({ key: "rankings", label: "Rankings" }),
   Object.freeze({ key: "lineup", label: "Optimizer" }),
   Object.freeze({ key: "entries", label: "Entries" }), // Showdown Entries plan 2026-10-20: Adam's private entries files, so the app only (visibleShowdownTabs)
 ]);
 
+/** Retired Showdown tab keys and the tab that shows in their place (classic tabs.js RETIRED_TABS's rule). */
+export const RETIRED_SHOWDOWN_TABS = Object.freeze({ rankings: "lineup" });
+
 /** The tabs to draw: all of them in the app, all but Entries on the public site (as tabs.js visibleTabs does for classic). */
 export function visibleShowdownTabs(onSite = onSitePage()) {
   return SHOWDOWN_TABS.filter((t) => !(onSite && t.key === "entries"));
+}
+
+/** The tab to show for a key: a drawn tab or a Sources table as it is, a retired key's replacement, anything else (Entries on the
+ *  site, an unknown key) the Optimizer. */
+export function shownShowdownTab(key, tabs = visibleShowdownTabs()) {
+  const k = Object.prototype.hasOwnProperty.call(RETIRED_SHOWDOWN_TABS, key) ? RETIRED_SHOWDOWN_TABS[key] : key;
+  return tabs.some((t) => t.key === k) || isSourcesTab(k) ? k : "lineup";
 }
 
 export function renderShowdownTabs(container, activeTab, onTabClick) {
