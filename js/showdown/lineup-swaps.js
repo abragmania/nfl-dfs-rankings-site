@@ -3,18 +3,23 @@
 // When the meter has a complete lineup it asks POST /api/showdown/<key>/lineup/swaps once (same body as the meter's, so it
 // reads this game's served board, its ticked sources) and lists, in a grid of seat cards, the first three swaps of each seat's frontier
 // (no other swap is both more unique and higher projected; highest projection first) with a "Show all N" button for the rest.
-// Each swap is one line of aligned columns: the man in with his position and team chips, how many times more (or less)
-// unique, the expected copies before and after, the points change, the salary change and chips (a game-script tag, a man not
-// on TwoGun's board); the seat's best-projection swap is the last card. Nothing is hidden by a tag. Pure helpers are exported
+// Each swap is one line of aligned columns: the man in with his position and team chips, the salary change, the points change,
+// the expected copies before and after in the "about" rounding, how many times more (or less) unique, and chips (a game-script
+// tag, a man not on TwoGun's board); a row wears one "estimate" label after its fold when a figure on it is under 10 copies (field-explain.js, RULES.md D82);
+// the seat's best-projection swap is the last card. Nothing is hidden by a tag. Pure helpers are exported
 // for tests; lineup.js calls syncSwaps (before a draw), swapsPanelHtml (inside the draw) and wireSwaps (after it).
 import { escapeHtml, money, dec1 } from "../format.js";
-import { sigFig2, copiesText, meterRequestBody, meterState, lineupSig, NOT_ON_BOARD_WORDS } from "./lineup-meter.js";
+import { sigFig2, meterRequestBody, meterState, lineupSig, onMeterAnswer, NOT_ON_BOARD_WORDS } from "./lineup-meter.js";
+import { aboutCopies, aboutCopiesWords, bestWords, answerBasis, isEstimate, swapEstimateTitle, estimateLabelHtml } from "./field-explain.js"; // the field model's words (D82)
 import { posPillHtml } from "./table.js";
 import { teamChipHtml } from "../player-row.js"; // this panel's own team chip: the swaps row draws no logo (D80 as amended 2026-10-25)
 import { readJson, requestFailureText } from "./read-json.js"; // the one JSON reader (🔵 866b0ce B3, B4)
 
 const MINUS = "−";
 const DELAY_MS = 250; // after the meter's own pause, so a quick run of clicks asks once
+// A fold with no estimate label keeps the label's place: an invisible copy of the same word (visibility hidden, hidden from
+// screen readers, no hover) so the fold figures of a seat end at one x whether or not the row is labelled.
+const LABEL_SLOT = `<span class="sd-est sd-est-slot" aria-hidden="true">estimate</span>`;
 const SUBTITLE_HOVER = "Each seat lists its trades that no other swap beats on both uniqueness and projection (a swap is dropped when another for the same seat is at least as unique and at least as high projected, one strictly), highest projection first.";
 
 // ---------- pure helpers ----------
@@ -38,11 +43,38 @@ export function foldText(swap) {
   return `${sigFig2(r)}× ${word} unique`;
 }
 
-/** "4.1 → 1.3 copies" from the server's unrounded copies, written as the meter writes them. */
+/** "about 40 → about 6 copies" from the server's unrounded copies, in the "about" rounding (field-explain.js: under 1 reads
+ *  "under 1", 1 to 9.9 whole numbers, 10 and up one significant figure); "copy" when the figure after is 1 or under 1. */
 export function copiesChangeText(swap) {
-  const a = copiesText(swap?.copiesBefore);
-  const b = copiesText(swap?.copiesAfter);
-  return a === null || b === null ? null : `${a} → ${b} copies`;
+  const a = aboutCopies(swap?.copiesBefore);
+  const b = aboutCopies(swap?.copiesAfter);
+  if (a === null || b === null) return null;
+  return `${a} → ${aboutCopiesWords(swap.copiesAfter)}`;
+}
+
+const finiteNum = (v) => (typeof v === "number" && Number.isFinite(v) ? v : null);
+
+/**
+ * Each side of a swap's salary left (dollars) and its points under the best, as the swap row carries them (`leftBefore`,
+ * `leftAfter`, `gapPtsBefore`, `gapPtsAfter`; the gap is signed, negative under the field's best). A piece the row does not
+ * carry is null. The gap is read as a size (points under the best lineup), never a sign.
+ */
+export function swapSides(w) {
+  const side = (suffix) => {
+    const g = finiteNum(w?.[`gapPts${suffix}`]);
+    return { left: finiteNum(w?.[`left${suffix}`]), gap: g === null ? null : Math.abs(g) };
+  };
+  return { before: side("Before"), after: side("After") };
+}
+
+/** The row hover's added words: "salary left $300 → $800; 1.4 → 4.4 points under the best"; "" when the answer carries neither.
+ *  `best`: whose best the gap is under (field-explain.js bestWords: " the best", or " the slate's best (104.2, before your excludes)"). */
+export function swapSidesText(w, best = " the best") {
+  const { before, after } = swapSides(w);
+  const bits = [];
+  if (before.left !== null && after.left !== null) bits.push(`salary left ${money(before.left)} → ${money(after.left)}`);
+  if (before.gap !== null && after.gap !== null) bits.push(`${dec1(before.gap)} → ${dec1(after.gap)} points under${best}`);
+  return bits.join("; ");
 }
 
 /** "−2.4 pts" / "+1.2 pts" with a real minus sign; "0.0 pts" at zero (short, so the figures column stays one width); null when missing. */
@@ -99,26 +131,33 @@ export function tagChipText(tag) {
 }
 
 /**
- * One swap, one line of aligned columns (the seat card's grid gives each its width): the man in (→, position chip, name,
- * team chip), how many times more or less unique, the expected copies before and after, the points change, the salary
- * change, then chips: the Captain-story tag, and "not on TwoGun's board, 0%" for a man TwoGun's board has no row for (Q8).
- * The man out is the seat's head above; his figures are in the row's hover.
+ * One swap, one line of aligned columns (the seat card's grid gives each its width), in the order Adam asked for (the plan
+ * 2026-10-25 section 8, "minus $500 and minus 3 points ... make the lineup potentially unique"): the man in (→, position chip,
+ * name, team chip), the salary change, the points change, the expected copies before and after ("about 40 → about 6 copies"),
+ * how many times more or less unique, then chips: the Captain-story tag, and "not on TwoGun's board, 0%" for a man TwoGun's
+ * board has no row for (Q8). The man out is the seat's head above; his figures, and the salary left and points under the best
+ * before and after, are in the row's hover. One "estimate" label per row with a figure under 10 copies, after the fold (its hover names the fold and both
+ * copies figures, with the bands behind them). `basis` is answerBasis of the placed lineup's own meter answer (its model, its
+ * field and its two bests): the swaps answer carries none of it.
  */
-function swapRowHtml(w) {
+function swapRowHtml(w, basis = null) {
   const inn = w.in;
   const fold = foldText(w);
   const copies = copiesChangeText(w);
   const pts = projChangeText(w.projChange);
   const sal = salaryChangeText(w.salaryChange);
-  const title = `${inn.name}: ${money(inn.salary)}, ${dec1(inn.proj)} proj, ${ownWords(inn, " in this seat")}; ${w.out.name}: ${money(w.out.salary)}, ${dec1(w.out.proj)} proj, ${ownWords(w.out)}`;
+  const sides = swapSidesText(w, bestWords(basis?.fieldBestProj, basis?.bestProj));
+  const title = `${inn.name}: ${money(inn.salary)}, ${dec1(inn.proj)} proj, ${ownWords(inn, " in this seat")}; ${w.out.name}: ${money(w.out.salary)}, ${dec1(w.out.proj)} proj, ${ownWords(w.out)}${sides ? `; ${sides}` : ""}`;
   const gain = typeof w.projChange === "number" && w.projChange >= 0.05 ? " sd-swaps-gain" : "";
   const chips = (w.tag ? `<span class="sd-swaps-tag" title="${escapeHtml(w.tag)}">${escapeHtml(tagChipText(w.tag))}</span>` : "")
     + (inn.notOnBoard ? `<span class="sd-swaps-tag sd-swaps-off" title="${escapeHtml(`${inn.name}: ${NOT_ON_BOARD_WORDS}`)}">${escapeHtml(NOT_ON_BOARD_WORDS)}</span>` : "");
+  // The label is drawn only when a figure on the row is itself under 10 copies, as on the headline and the card strip; its hover wording is unchanged.
+  const label = isEstimate(w.copiesBefore) || isEstimate(w.copiesAfter) ? estimateLabelHtml(swapEstimateTitle(w.copiesBefore, w.copiesAfter, basis?.model, basis?.field)) : "";
   return `<div class="sd-swaps-row" title="${escapeHtml(title)}"><span class="sd-swaps-in"><span class="sd-swaps-arrow" aria-hidden="true">→</span>${manHtml(inn)}</span>`
-    + `<span class="sd-swaps-fold">${fold ? escapeHtml(fold) : ""}</span>`
-    + `<span class="sd-swaps-copies">${copies ? escapeHtml(copies) : ""}</span>`
-    + `<span class="sd-swaps-pts${gain}">${pts ? escapeHtml(pts) : ""}</span>`
     + `<span class="sd-swaps-sal">${sal ? escapeHtml(sal) : ""}</span>`
+    + `<span class="sd-swaps-pts${gain}">${pts ? escapeHtml(pts) : ""}</span>`
+    + `<span class="sd-swaps-copies">${copies ? escapeHtml(copies) + (fold ? "" : label) : ""}</span>`
+    + `<span class="sd-swaps-fold">${fold ? escapeHtml(fold) + (label || LABEL_SLOT) : ""}</span>`
     + `<span class="sd-swaps-tags">${chips}</span></div>`;
 }
 
@@ -149,14 +188,14 @@ function skippedHtml(skipped) {
  * The panel's inner html for one answer of the swaps route (`d`), or the words saying why there are no swaps. `open` is the
  * set of seat positions (0 to 5) whose whole frontier is shown; any other seat shows its first few and a "Show all N" button.
  */
-export function swapsBodyHtml(d, { open = new Set() } = {}) {
+export function swapsBodyHtml(d, { open = new Set(), basis = null } = {}) {
   if (d.available === false) return `<div class="sd-meter-none">${escapeHtml(d.message || "Swaps are not available for this lineup.")}</div>`;
   const seats = (d.seats ?? []).map((s, i) => {
     const more = Array.isArray(s.more) ? s.more : [];
     const expanded = open.has(i);
     const shown = expanded ? [...s.swaps, ...more] : s.swaps;
     const rows = s.swaps.length
-      ? shown.map((w) => swapRowHtml(w)).join("")
+      ? shown.map((w) => swapRowHtml(w, basis)).join("")
       : `<div class="sd-meter-none sd-swaps-empty">${s.legal === 0 ? "No legal swap for this seat." : "No legal swap here makes the lineup more unique."}</div>`;
     const toggle = more.length
       ? `<button type="button" class="sd-swaps-more" data-swaps-toggle="${i}" aria-expanded="${expanded}">${expanded ? `Show top ${s.swaps.length}` : `Show all ${s.swaps.length + more.length}`}</button>`
@@ -165,7 +204,7 @@ export function swapsBodyHtml(d, { open = new Set() } = {}) {
   }).join("");
   const b = d.bestProjection;
   const best = b
-    ? `<div class="sd-swaps-seat"><div class="sd-swaps-seat-head"><b class="sd-swaps-best">Most projection gained</b><span class="sd-swaps-seat-figs">replaces ${slotLabel(b.seat)} ${escapeHtml(b.out.name)}</span></div>${swapRowHtml(b)}</div>`
+    ? `<div class="sd-swaps-seat"><div class="sd-swaps-seat-head"><b class="sd-swaps-best">Most projection gained</b><span class="sd-swaps-seat-figs">replaces ${slotLabel(b.seat)} ${escapeHtml(b.out.name)}</span></div>${swapRowHtml(b, basis)}</div>`
     : `<div class="sd-swaps-seat"><div class="sd-meter-none sd-swaps-empty">No single swap raises this lineup's projection.</div></div>`;
   const script = scriptText(d.before?.script);
   const scriptHover = scriptTitle(d.before?.script);
@@ -179,7 +218,7 @@ export function swapsHtml(st, opts = {}) {
   let body;
   if (st.status === "loading") body = `<div class="sd-meter-none">Working out swaps…</div>`;
   else if (st.status === "error") body = `<div class="sd-meter-error">${escapeHtml(st.message || "Could not work out the swaps.")}</div>`;
-  else body = swapsBodyHtml(st.data, { open: opts.open ?? st.open ?? new Set() });
+  else body = swapsBodyHtml(st.data, { open: opts.open ?? st.open ?? new Set(), basis: opts.basis ?? null });
   return `<div class="sd-swaps" aria-live="polite">${head}${body}</div>`; // not .sd-meter: the meter's repaint looks that class up, and the box look is shared in the stylesheet
 }
 
@@ -222,7 +261,7 @@ export function swapsState() {
 
 /** The panel's current html (call inside the panel draw, right after the meter strip and after syncSwaps). */
 export function swapsPanelHtml() {
-  return swapsHtml(st, { open: st.open });
+  return swapsHtml(st, { open: st.open, basis: answerBasis(meterState().data) }); // the labels' bands and the two bests: the placed lineup's meter answer (the swaps answer has none)
 }
 
 /** Repaints the swaps panel alone: the six slots, the meter strip and a typed lineup name are not touched. */
@@ -230,6 +269,12 @@ function repaint() {
   const el = last?.container?.querySelector?.(".sd-swaps");
   if (el) el.outerHTML = swapsPanelHtml();
 }
+
+// The labels read the meter's model when the panel draws, and the swaps answer can land before the meter's: the meter's repaint
+// tells this panel, which redraws itself only once it has an answer on show.
+onMeterAnswer(() => {
+  if (st.status === "ok") repaint();
+});
 
 /**
  * Called before every panel draw (after syncMeter). The swaps follow the meter: they exist only while it has a complete

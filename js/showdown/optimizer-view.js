@@ -15,6 +15,7 @@ import { showdownPalette } from "./lineup-look.js";
 import { posPillHtml } from "./table.js"; // 👁 2026-10-22: the exposure rows wear the lists' coloured position pill, not the grey classic chip
 import { copiesText, gapText, scaleColour, noUniquenessText, sourceLineText } from "./lineup-meter.js";
 import { likelyRangeText, likelyFactText } from "./likely-copies.js";
+import { calcSentence, modelNote, isEstimate, estimateTitle, estimateLabelHtml } from "./field-explain.js"; // the field model's words (D82)
 import { OBJECTIVES, TEAM_OPTIONS, MAX_COUNT, MAX_UNIQUE, effectiveObjective, boardHasTg, cashBasisText, statusLineText, isLocked, isIncluded, excludeState, exposureTables, sdPlayersOf } from "./optimizer-state.js";
 import { filterLineups, bulkLabel, filterBarHtml } from "../lineup-filter.js";
 
@@ -160,10 +161,15 @@ export function cardMeterHtml(meter) {
   const offPart = off ? `<span class="sd-card-offboard">${escapeHtml(off)}</span>` : "";
   if (none) return `<div class="sd-card-meter"><span>${escapeHtml(none)}</span>${gapPart}${offPart}</div>`;
   const u = meter.uniqueness;
-  const field = finite(u.field) === null ? "" : ` title="Expected copies in a ${escapeHtml(u.field.toLocaleString("en-US"))}-lineup field"`;
-  const likely = likelyRangeText(u.copies);
-  const likelyPart = likely ? `<span title="${escapeHtml(likelyFactText(u.copies))}">${escapeHtml(likely)}</span>` : "";
-  return `<div class="sd-card-meter"><span${field}><b style="color:${scaleColour(u.copies)}">${escapeHtml(copiesText(u.copies))}</b> copies</span>${likelyPart}${gapPart}${offPart}</div>`;
+  // The hover is the field line and, from the field model (D82), the calculation sentence; an estimate label rides the figure when it is one.
+  const head = finite(u.field) === null ? "" : `Expected copies in a ${u.field.toLocaleString("en-US")}-lineup field`;
+  const rest = [calcSentence(u, meter.bestProj), modelNote(u.model)].filter(Boolean).join(" ");
+  const hover = head && rest ? `${head}. ${rest}` : head || rest;
+  const field = hover ? ` title="${escapeHtml(hover)}"` : "";
+  const est = isEstimate(u.copies) ? estimateLabelHtml(estimateTitle(u.copies, u.model, u.field)) : "";
+  const likely = likelyRangeText(u.copies, u.spread);
+  const likelyPart = likely ? `<span title="${escapeHtml(likelyFactText(u.copies, u.spread))}">${escapeHtml(likely)}</span>` : "";
+  return `<div class="sd-card-meter"><span${field}><b style="color:${scaleColour(u.copies, u.scale)}">${escapeHtml(copiesText(u.copies))}</b> copies${est}</span>${likelyPart}${gapPart}${offPart}</div>`;
 }
 
 /** "not on TwoGun's board: A Smith, B Jones" from the lineup's own meter (the server names them only while TwoGun is ticked), else null. */

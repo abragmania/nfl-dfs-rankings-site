@@ -10,10 +10,11 @@ import { escapeHtml, dec1 } from "../format.js";
 import { isSampleMode } from "../api.js";
 import { onSitePage } from "../tabs.js"; // the one is-site check
 import { readJson, requestFailureText, notJsonText, NOT_JSON } from "./read-json.js"; // the one JSON reader (🔵 866b0ce B4)
-import { likelyCopies, likelyFactText } from "./likely-copies.js";
+import { likelyCopies, likelyFactText, likelyBasisText, POISSON_BASIS } from "./likely-copies.js";
 import { figuresLabelHtml, asOfText, halfName, twogunTicked } from "./figures-label.js";
+import { CALC_DIRECTION, sigFig2, copiesText, scaleAnchors, scaleEndNotes, calcSentence, modelNote, isEstimate, estimateTitle, estimateLabelHtml } from "./field-explain.js"; // the field model's words (D82)
 
-export { likelyCopies }; // the most-likely count and its usual range (likely-copies.js: a separate file, this one is near 600 lines)
+export { likelyCopies }; // the most-likely count and its usual range (likely-copies.js: a separate file; this one is about 555 lines, under the 600-line ceiling)
 
 /** The retired Figures switch's remembered choice: cleared once at load, so no old pick lingers in the browser (the board's ticks decide now). */
 export const RETIRED_MODE_KEY = "nfldfs-sd-meter-mode";
@@ -36,24 +37,15 @@ const SCALE_STOPS = [
   [0.5, [224, 165, 38]], // amber
   [1, [47, 143, 91]], // unique: the app's value green
 ];
-// The scale is the lineup's expected copies on a log axis, so 22 and 59 copies sit visibly apart. The ends are
-// where the track stops telling lineups apart: at or below COPIES_UNIQUE_END the marker is at the unique end, at or
-// above COPIES_CHALKY_END at the chalky end. Re-anchored (Adam 2026-10-20, "How is 0.72 / 100k lineups not more unique
-// (visually)?"): the ends were 0.03 and 300, so the whole right third held 0.72 down to 0.03, differences that mean nothing in
-// play. Half a copy or fewer is as unique as the bar needs to show, and 100 copies is fully chalky; the log axis is unchanged,
-// two and a third decades. Positions toward Unique: 0.72 at 93%, 1 copy 87%, 3 copies 66%, 10 copies 43%, 25 copies 26% (Adam's
-// "25 dupes is maybe the cutoff-ish" lands in the red-orange); 22 versus 59 copies still differ by 19% of the track.
-const COPIES_UNIQUE_END = 0.5;
-const COPIES_CHALKY_END = 100;
-const COPIES_FLOOR = 0.01; // below this the headline figure reads "<0.01"
+// The scale is the lineup's expected copies on a log axis, so 22 and 59 copies sit visibly apart. Its two ends are where the
+// track stops telling lineups apart: at or below the unique end the marker is at the unique end, at or above the chalky end at
+// the chalky end. Since the field model (RULES.md D82) the ends come from the answer's `scale` (uniqueEnd, chalkyEnd: the
+// entry-weighted 10th and 90th percentiles of the fitted model's own copies over the fit nights' entries, field-explain.js
+// scaleAnchors); an answer with no anchors falls back to 1 and 100 copies and its end labels read as plain words, as before.
+
+export { sigFig2, copiesText }; // the headline's number words live in field-explain.js (the calculation sentence uses the same two)
 
 // ---------- pure helpers ----------
-
-/** Two significant figures, thousands separated: 2.4 -> "2.4", 0.034 -> "0.034", 41234 -> "41,000". null/NaN -> null. */
-export function sigFig2(n) {
-  if (typeof n !== "number" || !Number.isFinite(n)) return null;
-  return n.toLocaleString("en-US", { maximumSignificantDigits: 2 });
-}
 
 /** "1 in 41,000" from the server's oneIn (1/P); null when there is no finite figure (chance 0 means never alone). */
 export function oneInText(oneIn) {
@@ -61,34 +53,29 @@ export function oneInText(oneIn) {
   return s === null ? null : `1 in ${s}`;
 }
 
-/** The hover on the most-likely fact line: what it is computed from (likely-copies.js). */
-export const LIKELY_BASIS = "From the expected copies, as a Poisson count: the most likely number of other entries with this exact lineup, and the range between its 10% and 90% points.";
+/** The hover on the most-likely fact line when the spread is Poisson: what it is computed from (likely-copies.js likelyBasisText has the wider spread's). */
+export const LIKELY_BASIS = POISSON_BASIS;
 
-/** The headline figure: expected copies written plainly, two significant figures ("0.3", "4.1", "22", "59"), "<0.01" below 0.01. */
-export function copiesText(copies) {
+/** Where a lineup sits on the scale as a fraction, 0 (chalky end) .. 1 (unique end), log in expected copies between the answer's anchors; null if unreadable. */
+function uniqueFraction(copies, scale = null) {
   if (typeof copies !== "number" || !Number.isFinite(copies)) return null;
-  if (copies < COPIES_FLOOR) return "<0.01";
-  return sigFig2(copies);
-}
-
-/** Where a lineup sits on the scale as a fraction, 0 (chalky end) .. 1 (unique end), log in expected copies; null if unreadable. */
-function uniqueFraction(copies) {
-  if (typeof copies !== "number" || !Number.isFinite(copies)) return null;
-  const lo = Math.log10(COPIES_UNIQUE_END);
-  const hi = Math.log10(COPIES_CHALKY_END);
-  const c = Math.min(COPIES_CHALKY_END, Math.max(COPIES_UNIQUE_END, copies));
+  const { unique, chalky } = scaleAnchors(scale);
+  const lo = Math.log10(unique);
+  const hi = Math.log10(chalky);
+  const c = Math.min(chalky, Math.max(unique, copies));
   return (hi - Math.log10(c)) / (hi - lo);
 }
 
-/** Marker position on the track, 0..100 (percent from the left, chalky left): log scale in expected copies, clamped at both ends. */
-export function markerPosition(copies) {
-  const f = uniqueFraction(copies);
+/** Marker position on the track, 0..100 (percent from the left, chalky left): log scale in expected copies, clamped at both ends.
+ *  `scale`: the answer's { uniqueEnd, chalkyEnd } (uniqueness.scale); none falls back to 1 and 100 copies. */
+export function markerPosition(copies, scale = null) {
+  const f = uniqueFraction(copies, scale);
   return f === null ? null : f * 100;
 }
 
 /** The scale's colour at this many expected copies as "rgb(r, g, b)": piecewise-linear red, amber, green along the same log track. */
-export function scaleColour(copies) {
-  const x = uniqueFraction(copies) ?? 0;
+export function scaleColour(copies, scale = null) {
+  const x = uniqueFraction(copies, scale) ?? 0;
   let i = 1;
   while (i < SCALE_STOPS.length - 1 && x > SCALE_STOPS[i][0]) i += 1;
   const [x0, c0] = SCALE_STOPS[i - 1];
@@ -145,7 +132,11 @@ export function sourceTitle(half) {
   return half?.asOf ? `${src}; as of ${half.asOf}` : src;
 }
 
-/** The words that stand in for the scale when uniqueness cannot be measured, or null when it can. */
+/**
+ * The words that stand in for the scale when uniqueness cannot be measured, or null when it can. A man with no ownership gives
+ * uniqueness null plus ownership.unposted (as before); the field model (D82) also needs every man's projection and the curves,
+ * and its blank answer { unposted, unprojected, reason } (no `w`, no copies) carries the server's sentence in `reason`.
+ */
 export function noUniquenessText(d) {
   const own = d?.ownership;
   if (own && own.posted === false && own.error) return String(own.error);
@@ -153,7 +144,9 @@ export function noUniquenessText(d) {
   const names = Array.isArray(own.unposted) ? own.unposted.filter(Boolean) : [];
   if (names.length) return `No ownership from this game's ticked sources for ${names.join(", ")}, so uniqueness can't be measured for this lineup.`;
   const u = d.uniqueness;
-  if (!u || typeof u.aloneChance !== "number" || !Number.isFinite(u.aloneChance) || copiesText(u.copies) === null) return "Uniqueness is not available for this lineup.";
+  const measured = u && typeof u.aloneChance === "number" && Number.isFinite(u.aloneChance) && copiesText(u.copies) !== null;
+  if (!measured && typeof u?.reason === "string" && u.reason.trim()) return u.reason.trim();
+  if (!measured) return "Uniqueness is not available for this lineup.";
   return null;
 }
 
@@ -230,33 +223,48 @@ function notPostedHtml(modesInfo) {
   return line(d.ownership, () => noUniquenessText(d)) + line(d.projection, () => projectionLineText(d));
 }
 
-/** The meter's head line: "Expected copies in a 100,000-lineup field", the figure in the scale's colour, and the figures label. */
-function headHtml(u, label) {
+/**
+ * The meter's head line: "Expected copies in a 100,000-lineup field", the figure in the scale's colour (hover: the calculation
+ * sentence and the model's own note, in both directions of the calculation line), an "estimate" label when the figure is under
+ * 10 copies, and the figures label. `bestProj`: the strip's best (with excludes), to word the calculation's gap.
+ */
+function headHtml(u, label, bestProj) {
   const field = typeof u.field === "number" && Number.isFinite(u.field) ? u.field.toLocaleString("en-US") : null;
+  const hover = [calcSentence(u, bestProj), modelNote(u.model)].filter(Boolean).join(" ");
+  const est = isEstimate(u.copies) ? estimateLabelHtml(estimateTitle(u.copies, u.model, u.field)) : "";
   return `
       <div class="sd-meter-head">
         <span class="sd-meter-label">Expected copies in ${field !== null ? `a ${escapeHtml(field)}-lineup` : "the"} field</span>
-        <span class="sd-meter-big" style="color:${scaleColour(u.copies)}">${escapeHtml(copiesText(u.copies))}</span>
+        <span class="sd-meter-big" style="color:${scaleColour(u.copies, u.scale)}"${hover ? ` title="${escapeHtml(hover)}"` : ""}>${escapeHtml(copiesText(u.copies))}</span>${est}
         ${label}
       </div>`;
 }
 
-/** The scale, the fact lines and the ownership source line of a measured lineup. */
-function uniquenessHtml(u, label, srcLine, own) {
-  const likely = likelyFactText(u.copies);
+/** The scale's two end words, each with its small note from the answer's anchors (none: the words alone, as before). */
+function scaleEndsHtml(scale) {
+  const notes = scaleEndNotes(scale);
+  const end = (word, note) => `<span>${word}${note ? `<span class="sd-meter-end-note">${escapeHtml(note)}</span>` : ""}</span>`;
+  return `<div class="sd-meter-ends">${end("Chalky", notes?.chalky)}${end("Unique", notes?.unique)}</div>`;
+}
+
+/** The scale, the fact lines, the calculation line (direction "A" only) and the ownership source line of a measured lineup. */
+function uniquenessHtml(u, label, srcLine, own, calcDirection, bestProj) {
+  const likely = likelyFactText(u.copies, u.spread);
   const oneIn = oneInText(u.oneIn);
-  const colour = scaleColour(u.copies);
-  return `${headHtml(u, label)}
+  const colour = scaleColour(u.copies, u.scale);
+  const calc = calcDirection === "A" ? calcSentence(u, bestProj) : null;
+  return `${headHtml(u, label, bestProj)}
       <div class="sd-meter-scale" role="img" aria-label="Uniqueness scale in expected copies, chalky to unique">
         <div class="sd-meter-track" style="background:${scaleGradientCss()}">
-          <span class="sd-meter-marker" style="left:${markerPosition(u.copies)}%;background:${colour}"></span>
+          <span class="sd-meter-marker" style="left:${markerPosition(u.copies, u.scale)}%;background:${colour}"></span>
         </div>
-        <div class="sd-meter-ends"><span>Chalky</span><span>Unique</span></div>
+        ${scaleEndsHtml(u.scale)}
       </div>
       <div class="sd-meter-facts">
-        ${likely ? `<span title="${escapeHtml(LIKELY_BASIS)}">${escapeHtml(likely)}</span>` : ""}
+        ${likely ? `<span title="${escapeHtml(likelyBasisText(u.spread))}">${escapeHtml(likely)}</span>` : ""}
         ${oneIn ? `<span><b>${escapeHtml(oneIn)}</b> entries plays this exact lineup</span>` : ""}
       </div>
+      ${calc ? `<div class="sd-meter-calc">${escapeHtml(calc)}</div>` : ""}
       ${srcLine(own, "Ownership")}`;
 }
 
@@ -266,10 +274,12 @@ function uniquenessHtml(u, label, srcLine, own) {
  * modes answer could not be read), notes (the server's reasons: TwoGun's list looks incomplete, why a placed man's ownership is
  * blank, one plain line each), live (the app is live: with nothing measured yet the strip still shows the label and what the
  * ticked sources have not posted, so the sources in use are always on screen, Adam 2026-10-18), names ({ projection, ownership }:
- * figures-label.js halfName, for the source lines) }. The label rides the head line when uniqueness is measured, else its own line.
+ * figures-label.js halfName, for the source lines), calc ("A" a small grey calculation line under the facts, "B" the same sentence
+ * on the headline's hover only; field-explain.js CALC_DIRECTION when not given) }. The label rides the head line when uniqueness is
+ * measured, else its own line.
  */
 export function meterHtml(m, v = {}) {
-  const { label = "", modesInfo = null, modesNote = null, notes = [], live = false, names = {} } = v;
+  const { label = "", modesInfo = null, modesNote = null, notes = [], live = false, names = {}, calc = CALC_DIRECTION } = v;
   const note = (modesNote ? `<div class="sd-meter-error">${escapeHtml(modesNote)}</div>` : "") + notes.map((t) => `<div class="sd-meter-none">${reasonHtml(t, 120)}</div>`).join("");
   const top = (label ? `<div class="sd-meter-figures-line">${label}</div>` : "") + note;
   if (!m || !m.status) {
@@ -282,7 +292,7 @@ export function meterHtml(m, v = {}) {
   const srcLine = (half, what) => `<div class="sd-meter-src" title="${escapeHtml(sourceTitle(half))}">${escapeHtml(sourceLineText(half, what === "Ownership" ? names.ownership : names.projection, what))}</div>`;
   const offBoard = notOnBoardText(d);
   const none = noUniquenessText(d);
-  const uniq = none ? `<div class="${d?.ownership?.error ? "sd-meter-error" : "sd-meter-none"}">${escapeHtml(none)}</div>` : uniquenessHtml(d.uniqueness, label, srcLine, d.ownership);
+  const uniq = none ? `<div class="${d?.ownership?.error ? "sd-meter-error" : "sd-meter-none"}">${escapeHtml(none)}</div>` : uniquenessHtml(d.uniqueness, label, srcLine, d.ownership, calc, d.bestProj);
   const pr = d?.projection;
   return `
     <div class="sd-meter" aria-live="polite">
@@ -389,10 +399,20 @@ let last = null; // the last syncMeter arguments, so an answer landing repaints 
  * Repaints the meter's own strip inside the panel and the slots' figure lines (lineup.js's onModes: the notes from the modes
  * answer), nothing else: the panel is never redrawn from here, so a lineup name being typed and its cursor survive an answer
  * landing. No strip on show: one that now has something to say is put where the panel draws it, right after the six slots.
+ * Then every function registered with onMeterAnswer runs: the swaps panel reads the meter's model (the bands behind its estimate
+ * labels) when it draws, and the swaps answer can land first, so it redraws itself when the meter's lands.
  */
 function repaint() {
   last?.onModes?.();
   repaintStrip();
+  for (const fn of answerListeners) fn();
+}
+
+const answerListeners = [];
+
+/** Registers `fn` to run at the end of every meter repaint (an answer, a failure or a modes read landing); lineup-swaps.js uses it. */
+export function onMeterAnswer(fn) {
+  if (typeof fn === "function" && !answerListeners.includes(fn)) answerListeners.push(fn);
 }
 
 /** The strip alone (repaint's second half): an exclude toggle re-asks without touching the slots or the lists. */
