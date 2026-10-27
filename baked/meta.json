@@ -1,5 +1,5 @@
 {
-  "publishedAt": "2026-10-27T18:32:55.531Z",
+  "publishedAt": "2026-10-27T18:47:21.249Z",
   "season": 2026,
   "week": 7,
   "boardGeneratedAt": "2026-10-26T22:57:26.615Z",
@@ -8,7 +8,7 @@
   "showdowns": [
     "2026-w07-DALPHI"
   ],
-  "sourceCommit": "43dc668509804973f8d542fc02dccd4a36156b6d",
+  "sourceCommit": "284fc10c924217e701d0070b4437edc08e189523",
   "appCommit": "cf0ed2fe6caaef445d4c31885af64d0127873b30",
   "machine": "desktop",
   "matchups": false
