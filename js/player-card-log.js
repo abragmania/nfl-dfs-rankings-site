@@ -15,7 +15,7 @@ export const GAMELOG_FAMILIES = {
     ["CAR", col("carries")], ["R YDS", col("rushing_yards")], ["R TD", col("rushing_tds")], ["FL", col("fumbles_lost_total")]],
   RB: [["ATT", col("carries")], ["YDS", col("rushing_yards")],
     ["AVG", (s) => (s.carries ? (Math.round(((s.rushing_yards ?? 0) / s.carries) * 10) / 10).toFixed(1) : dash)],
-    ["TD", col("rushing_tds")], ["REC", col("receptions")], ["REC YDS", col("receiving_yards")], ["REC TD", col("receiving_tds")], ["FL", col("fumbles_lost_total")]],
+    ["TD", col("rushing_tds")], ["TGT", col("targets")], ["REC", col("receptions")], ["REC YDS", col("receiving_yards")], ["REC TD", col("receiving_tds")], ["FL", col("fumbles_lost_total")]],
   WR_TE: [["TGT", col("targets")], ["REC", col("receptions")], ["YDS", col("receiving_yards")], ["TD", col("receiving_tds")],
     ["CAR", col("carries")], ["R YDS", col("rushing_yards")], ["R TD", col("rushing_tds")], ["FL", col("fumbles_lost_total")]],
 };
