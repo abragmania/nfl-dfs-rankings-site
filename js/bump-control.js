@@ -54,9 +54,10 @@ function thumbsHtml(count) {
  * The pair alone (no chip, 👁 2026-10-22: a chip widened the column): a thumbs-down and a thumbs-up button, each showing one
  * filled thumb per step on its side (green up, red down) and one outline thumb when its side is off. `enabled` false draws both
  * buttons disabled (no write is wired); a row with no projection draws them disabled too (nothing to move). `kind` "cpt" is the
- * Showdown Captain list.
+ * Showdown Captain list. `title` (plain text) replaces both buttons' hover, for a pair that cannot run (the public site's disabled pair, D71);
+ * null keeps each button's own words.
  */
-export function bumpControlHtml(row, { enabled = true, kind = null } = {}) {
+export function bumpControlHtml(row, { enabled = true, kind = null, title = null } = {}) {
   const id = escapeHtml(String(row?.id ?? ""));
   const name = escapeHtml(row?.name ?? "this player");
   const steps = bumpStepsOf(row);
@@ -75,7 +76,7 @@ export function bumpControlHtml(row, { enabled = true, kind = null } = {}) {
   const upTitle = steps < 0 ? clearTitle : `+${BUMP_STEP_PCT}% a press${steps > 0 ? ` · now ${bumpPctText(steps)}` : ""}`;
   const downLabel = steps > 0 ? clearLabel : `Lower ${name}'s projection ${BUMP_STEP_PCT}%`;
   const upLabel = steps < 0 ? clearLabel : `Raise ${name}'s projection ${BUMP_STEP_PCT}%`;
-  return `<span class="bump-ctl"><button type="button" class="bump-btn${down.cls}" data-action="bump-down" data-id="${id}" data-count="${down.count}"${down.style} aria-label="${downLabel}" title="${downTitle}"${off(steps <= -BUMP_MAX_STEPS)}>${down.svgs}</button><button type="button" class="bump-btn${up.cls}" data-action="bump-up" data-id="${id}" data-count="${up.count}"${up.style} aria-label="${upLabel}" title="${upTitle}"${off(steps >= BUMP_MAX_STEPS)}>${up.svgs}</button></span>`;
+  return `<span class="bump-ctl"><button type="button" class="bump-btn${down.cls}" data-action="bump-down" data-id="${id}" data-count="${down.count}"${down.style} aria-label="${downLabel}" title="${title == null ? downTitle : escapeHtml(title)}"${off(steps <= -BUMP_MAX_STEPS)}>${down.svgs}</button><button type="button" class="bump-btn${up.cls}" data-action="bump-up" data-id="${id}" data-count="${up.count}"${up.style} aria-label="${upLabel}" title="${title == null ? upTitle : escapeHtml(title)}"${off(steps >= BUMP_MAX_STEPS)}>${up.svgs}</button></span>`;
 }
 
 /**
@@ -85,12 +86,12 @@ export function bumpControlHtml(row, { enabled = true, kind = null } = {}) {
  * the bumped figure and the percent ("Base 20.0 → 22.0 (+10%)"); `kind` "cpt" reads the Captain figures, cptProj against 1.5x
  * projBase, as the Captain cell shows (🔵 2026-10-22). A row with no figure shows `none` alone: no pair, nothing to move.
  */
-export function bumpProjHtml(row, figure, { enabled = true, kind = null, none = "no proj" } = {}) {
+export function bumpProjHtml(row, figure, { enabled = true, kind = null, none = "no proj", title = null } = {}) {
   if (figure == null || Number.isNaN(Number(figure))) return escapeHtml(none);
   const isCpt = kind === "cpt";
   const base = row?.projBase == null ? null : isCpt ? Number(row.projBase) * CPT_MULT : row.projBase;
   const shown = isCpt ? row?.cptProj : row?.proj;
-  return `${bumpControlHtml(row, { enabled, kind })}${bumpFigureHtml(row, dec1(figure), base, shown)}`;
+  return `${bumpControlHtml(row, { enabled, kind, title })}${bumpFigureHtml(row, dec1(figure), base, shown)}`;
 }
 
 /** The one copy of the bump tint: a figure's span, plain at 0 steps, else .bump-up / .bump-down with the hover "Base 20.0 → 22.0 (+10%)"

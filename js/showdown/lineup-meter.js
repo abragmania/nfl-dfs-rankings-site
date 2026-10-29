@@ -1,20 +1,24 @@
 // Showdown Lineup Builder: the uniqueness / projection meter strip under the six slots (Adam 2026-10-18: "being
 // unique is more important than any projection optimization"). When Captain plus five FLEX are all placed it asks
-// POST /api/showdown/<key>/lineup/meter once and shows, uniqueness first, the lineup's expected copies in the field on
-// a log colour scale (with how many other entries most likely hold it beside), then the projection against the best possible one.
-// Every figure is this game's served board's (Adam 2026-10-20 10:03 AM: "change sources to anything for any game, classic,
-// cash, showdown, make it uniform across everything"): the old TwoGun | Our sources switch is gone, and the head line names the
-// sources the board reads (./figures-label.js) with a link to the Sources page, where Adam picks them. Pure helpers are
+// POST /api/showdown/<key>/lineup/meter once and shows two verdicts (Adam 2026-10-29 5:08 PM: "is this a good lineup / is
+// this a unique lineup, get down to the point of it"): Unique (from the expected copies) and Good (from the gap to the best
+// possible), then the copies figure on a log colour scale. Every figure is this game's served board's (Adam 2026-10-20 10:03 AM:
+// "change sources to anything for any game ... make it uniform across everything"); the sources and the calculation are on the
+// panel's hover (meterHover), and the Sources page is the Showdown header's Sources button. Pure helpers are
 // exported for tests; lineup.js only calls syncMeter (before a draw), meterStripHtml (inside the draw) and wireMeter (after it).
-import { escapeHtml, dec1 } from "../format.js";
+import { escapeHtml } from "../format.js";
 import { isSampleMode } from "../api.js";
 import { onSitePage } from "../tabs.js"; // the one is-site check
-import { readJson, requestFailureText, notJsonText, NOT_JSON } from "./read-json.js"; // the one JSON reader (🔵 866b0ce B4)
-import { likelyCopies, likelyFactText, likelyBasisText, POISSON_BASIS } from "./likely-copies.js";
-import { figuresLabelHtml, asOfText, halfName, twogunTicked } from "./figures-label.js";
-import { CALC_DIRECTION, sigFig2, copiesText, scaleAnchors, scaleEndNotes, calcSentence, modelNote, isEstimate, estimateTitle, estimateLabelHtml } from "./field-explain.js"; // the field model's words (D82)
+import { requestFailureText, notJsonText, NOT_JSON } from "./read-json.js"; // the one JSON reader's sentences (🔵 866b0ce B4)
+import { postShowdownLineupMeter, getShowdownModes, supports } from "./api.js"; // the requests; on the public site its stand-in answers them in the browser (D71)
+import { likelyCopies, POISSON_BASIS } from "./likely-copies.js";
+import { twogunTicked } from "./figures-label.js";
+import { sigFig2, copiesText, uniqueVerdict } from "./field-explain.js"; // the field model's words (D82) and the Unique verdict
+import { projectionLineText, verdictHtml, uniqueSubHtml, goodHtml, scaleHtml, meterHover } from "./meter-face.js"; // the panel's face (split out at the 600-line ceiling)
 
-export { likelyCopies }; // the most-likely count and its usual range (likely-copies.js: a separate file; this one is about 555 lines, under the 600-line ceiling)
+export { likelyCopies }; // the most-likely count and its usual range (likely-copies.js)
+// The face's public names, handed on so every importer of this file (optimizer-view.js, the tests) is unchanged.
+export { markerPosition, scaleColour, scaleGradientCss, gapText, projectionLineText, sourceLineText, sourceTitle, toneColour, meterHover } from "./meter-face.js";
 
 /** The retired Figures switch's remembered choice: cleared once at load, so no old pick lingers in the browser (the board's ticks decide now). */
 export const RETIRED_MODE_KEY = "nfldfs-sd-meter-mode";
@@ -27,21 +31,9 @@ export function clearRetiredMode(getStorage) {
 }
 if (typeof window !== "undefined") clearRetiredMode(() => window.localStorage);
 
-const MINUS = "−";
 const lowerFirst = (s) => s.charAt(0).toLowerCase() + s.slice(1); // a shared sentence placed after a colon
 const DELAY_MS = 150; // double clicks and quick slot swaps collapse into one request
-const NO_PROJECTIONS = "No projections from this game's ticked sources yet";
 const NO_OWNERSHIP = "No ownership from this game's ticked sources yet";
-const SCALE_STOPS = [
-  [0, [200, 50, 59]], // chalky: the app's chalk red
-  [0.5, [224, 165, 38]], // amber
-  [1, [47, 143, 91]], // unique: the app's value green
-];
-// The scale is the lineup's expected copies on a log axis, so 22 and 59 copies sit visibly apart. Its two ends are where the
-// track stops telling lineups apart: at or below the unique end the marker is at the unique end, at or above the chalky end at
-// the chalky end. Since the field model (RULES.md D82) the ends come from the answer's `scale` (uniqueEnd, chalkyEnd: the
-// entry-weighted 10th and 90th percentiles of the fitted model's own copies over the fit nights' entries, field-explain.js
-// scaleAnchors); an answer with no anchors falls back to 1 and 100 copies and its end labels read as plain words, as before.
 
 export { sigFig2, copiesText }; // the headline's number words live in field-explain.js (the calculation sentence uses the same two)
 
@@ -55,82 +47,6 @@ export function oneInText(oneIn) {
 
 /** The hover on the most-likely fact line when the spread is Poisson: what it is computed from (likely-copies.js likelyBasisText has the wider spread's). */
 export const LIKELY_BASIS = POISSON_BASIS;
-
-/** Where a lineup sits on the scale as a fraction, 0 (chalky end) .. 1 (unique end), log in expected copies between the answer's anchors; null if unreadable. */
-function uniqueFraction(copies, scale = null) {
-  if (typeof copies !== "number" || !Number.isFinite(copies)) return null;
-  const { unique, chalky } = scaleAnchors(scale);
-  const lo = Math.log10(unique);
-  const hi = Math.log10(chalky);
-  const c = Math.min(chalky, Math.max(unique, copies));
-  return (hi - Math.log10(c)) / (hi - lo);
-}
-
-/** Marker position on the track, 0..100 (percent from the left, chalky left): log scale in expected copies, clamped at both ends.
- *  `scale`: the answer's { uniqueEnd, chalkyEnd } (uniqueness.scale); none falls back to 1 and 100 copies. */
-export function markerPosition(copies, scale = null) {
-  const f = uniqueFraction(copies, scale);
-  return f === null ? null : f * 100;
-}
-
-/** The scale's colour at this many expected copies as "rgb(r, g, b)": piecewise-linear red, amber, green along the same log track. */
-export function scaleColour(copies, scale = null) {
-  const x = uniqueFraction(copies, scale) ?? 0;
-  let i = 1;
-  while (i < SCALE_STOPS.length - 1 && x > SCALE_STOPS[i][0]) i += 1;
-  const [x0, c0] = SCALE_STOPS[i - 1];
-  const [x1, c1] = SCALE_STOPS[i];
-  const t = (x - x0) / (x1 - x0);
-  const ch = c0.map((v, k) => Math.round(v + (c1[k] - v) * t));
-  return `rgb(${ch[0]}, ${ch[1]}, ${ch[2]})`;
-}
-
-/** The CSS gradient the track paints; same stops as scaleColour so the marker's colour matches the track under it. */
-export function scaleGradientCss() {
-  const stops = SCALE_STOPS.map(([at, c]) => `rgb(${c[0]}, ${c[1]}, ${c[2]}) ${at * 100}%`);
-  return `linear-gradient(90deg, ${stops.join(", ")})`;
-}
-
-/** "-14.2 (-12.6%)" with a real minus sign; null when the gap is missing. */
-export function gapText(gapPts, gapPct) {
-  if (typeof gapPts !== "number" || !Number.isFinite(gapPts)) return null;
-  const sign = (v) => (v < 0 ? MINUS : v > 0 ? "+" : "");
-  const pts = `${sign(gapPts)}${dec1(Math.abs(gapPts))}`;
-  if (typeof gapPct !== "number" || !Number.isFinite(gapPct)) return pts;
-  return `${pts} (${sign(gapPct)}${dec1(Math.abs(gapPct))}%)`;
-}
-
-/**
- * "Projection 98.4 · best possible 112.6 · -14.2 (-12.6%)" (the sources are named on the head line and the source line).
- * Pieces the server did not send are left out; no projections posted from the ticked sources says so with no numbers, a
- * refused file shows the refusal; a lineup with an unprojected player says that.
- */
-export function projectionLineText(d) {
-  if (d?.projection && d.projection.posted === false) return d.projection.error ? String(d.projection.error) : NO_PROJECTIONS;
-  if (!d || typeof d.proj !== "number" || !Number.isFinite(d.proj)) return "Projection unknown (a player has no projection)";
-  const parts = [`Projection ${dec1(d.proj)}`];
-  if (typeof d.bestProj === "number" && Number.isFinite(d.bestProj)) parts.push(`best possible ${dec1(d.bestProj)}`);
-  const gap = gapText(d.gapPts, d.gapPct);
-  if (gap) parts.push(gap);
-  return parts.join(" · ");
-}
-
-/**
- * "Ownership: TwoGun, Oct 18, 2:30 PM" (or "Projections: ..."): the board's short name for the half's sources (figures-label.js
- * halfName) and the half's as-of, kept to one line (the full source goes in sourceTitle). A file's own time reads "saved <time>",
- * the board's build time "board built <time>"; an as-of that is not a date is shown as written without a trailing "(...)", a
- * missing one says so.
- */
-export function sourceLineText(half, name, what = "Ownership") {
-  const label = typeof name === "string" && name ? name : "this game's sources";
-  return `${what}: ${label}, ${asOfText(half) ?? "as-of date missing"}`;
-}
-
-/** The hover text behind a source line: the server's full source name and as-of, as sent. */
-export function sourceTitle(half) {
-  const src = typeof half?.source === "string" && half.source.trim() ? half.source.trim() : "Source not named";
-  return half?.asOf ? `${src}; as of ${half.asOf}` : src;
-}
 
 /**
  * The words that stand in for the scale when uniqueness cannot be measured, or null when it can. A man with no ownership gives
@@ -224,99 +140,51 @@ function notPostedHtml(modesInfo) {
 }
 
 /**
- * The meter's head line: "Expected copies in a 100,000-lineup field", the figure in the scale's colour (hover: the calculation
- * sentence and the model's own note, in both directions of the calculation line), an "estimate" label when the figure is under
- * 10 copies, and the figures label. `bestProj`: the strip's best (with excludes), to word the calculation's gap.
- */
-function headHtml(u, label, bestProj) {
-  const field = typeof u.field === "number" && Number.isFinite(u.field) ? u.field.toLocaleString("en-US") : null;
-  const hover = [calcSentence(u, bestProj), modelNote(u.model)].filter(Boolean).join(" ");
-  const est = isEstimate(u.copies) ? estimateLabelHtml(estimateTitle(u.copies, u.model, u.field)) : "";
-  return `
-      <div class="sd-meter-head">
-        <span class="sd-meter-label">Expected copies in ${field !== null ? `a ${escapeHtml(field)}-lineup` : "the"} field</span>
-        <span class="sd-meter-big" style="color:${scaleColour(u.copies, u.scale)}"${hover ? ` title="${escapeHtml(hover)}"` : ""}>${escapeHtml(copiesText(u.copies))}</span>${est}
-        ${label}
-      </div>`;
-}
-
-/** The scale's two end words, each with its small note from the answer's anchors (none: the words alone, as before). */
-function scaleEndsHtml(scale) {
-  const notes = scaleEndNotes(scale);
-  const end = (word, note) => `<span>${word}${note ? `<span class="sd-meter-end-note">${escapeHtml(note)}</span>` : ""}</span>`;
-  return `<div class="sd-meter-ends">${end("Chalky", notes?.chalky)}${end("Unique", notes?.unique)}</div>`;
-}
-
-/** The scale, the fact lines, the calculation line (direction "A" only) and the ownership source line of a measured lineup. */
-function uniquenessHtml(u, label, srcLine, own, calcDirection, bestProj) {
-  const likely = likelyFactText(u.copies, u.spread);
-  const oneIn = oneInText(u.oneIn);
-  const colour = scaleColour(u.copies, u.scale);
-  const calc = calcDirection === "A" ? calcSentence(u, bestProj) : null;
-  return `${headHtml(u, label, bestProj)}
-      <div class="sd-meter-scale" role="img" aria-label="Uniqueness scale in expected copies, chalky to unique">
-        <div class="sd-meter-track" style="background:${scaleGradientCss()}">
-          <span class="sd-meter-marker" style="left:${markerPosition(u.copies, u.scale)}%;background:${colour}"></span>
-        </div>
-        ${scaleEndsHtml(u.scale)}
-      </div>
-      <div class="sd-meter-facts">
-        ${likely ? `<span title="${escapeHtml(likelyBasisText(u.spread))}">${escapeHtml(likely)}</span>` : ""}
-        ${oneIn ? `<span><b>${escapeHtml(oneIn)}</b> entries plays this exact lineup</span>` : ""}
-      </div>
-      ${calc ? `<div class="sd-meter-calc">${escapeHtml(calc)}</div>` : ""}
-      ${srcLine(own, "Ownership")}`;
-}
-
-/**
- * The strip's html for one meter state ({status: "loading"|"error"|"ok", data, message}). `v` = { label (figures-label.js
- * figuresLabelHtml: the board's sources and the Sources link), modesInfo (GET .../modes), modesNote (the one line saying the
- * modes answer could not be read), notes (the server's reasons: TwoGun's list looks incomplete, why a placed man's ownership is
- * blank, one plain line each), live (the app is live: with nothing measured yet the strip still shows the label and what the
- * ticked sources have not posted, so the sources in use are always on screen, Adam 2026-10-18), names ({ projection, ownership }:
- * figures-label.js halfName, for the source lines), calc ("A" a small grey calculation line under the facts, "B" the same sentence
- * on the headline's hover only; field-explain.js CALC_DIRECTION when not given) }. The label rides the head line when uniqueness is
- * measured, else its own line.
+ * The strip's html for one meter state ({status: "loading"|"error"|"ok", data, message}). `v` = { modesInfo (GET .../modes),
+ * modesNote (the one line saying the modes answer could not be read), notes (the server's reasons: TwoGun's list looks
+ * incomplete, why a placed man's ownership is blank, one plain line each), live (the meter runs: with nothing measured yet the
+ * strip says what the ticked sources have not posted) }. A measured lineup reads (Adam 2026-10-29 5:08 PM: "more 'is this a
+ * good lineup / is this a unique lineup', get down to the point of it"): the Unique verdict with its small line, the Good
+ * verdict with its figures, then the copies figure on its scale (./meter-face.js); the sources (each half's own source line,
+ * as-of and refusal), the calculation and the model's note are on the panel's hover only (meterHover).
  */
 export function meterHtml(m, v = {}) {
-  const { label = "", modesInfo = null, modesNote = null, notes = [], live = false, names = {}, calc = CALC_DIRECTION } = v;
+  const { modesInfo = null, modesNote = null, notes = [], live = false } = v;
   const note = (modesNote ? `<div class="sd-meter-error">${escapeHtml(modesNote)}</div>` : "") + notes.map((t) => `<div class="sd-meter-none">${reasonHtml(t, 120)}</div>`).join("");
-  const top = (label ? `<div class="sd-meter-figures-line">${label}</div>` : "") + note;
   if (!m || !m.status) {
-    const idle = live ? top + notPostedHtml(modesInfo) : note; // a board with no figures and nothing to say draws no empty box
+    const idle = live ? note + notPostedHtml(modesInfo) : note; // nothing to say draws no empty box
     return idle ? `<div class="sd-meter" aria-live="polite">${idle}</div>` : "";
   }
-  if (m.status === "loading") return `<div class="sd-meter" aria-live="polite">${top}<div class="sd-meter-none">Measuring uniqueness…</div></div>`;
-  if (m.status === "error") return `<div class="sd-meter" aria-live="polite">${top}<div class="sd-meter-error">${escapeHtml(m.message || "Could not measure this lineup.")}</div></div>`;
+  if (m.status === "loading") return `<div class="sd-meter" aria-live="polite">${note}<div class="sd-meter-none">Measuring uniqueness…</div></div>`;
+  if (m.status === "error") return `<div class="sd-meter" aria-live="polite">${note}<div class="sd-meter-error">${escapeHtml(m.message || "Could not measure this lineup.")}</div></div>`;
   const d = m.data;
-  const srcLine = (half, what) => `<div class="sd-meter-src" title="${escapeHtml(sourceTitle(half))}">${escapeHtml(sourceLineText(half, what === "Ownership" ? names.ownership : names.projection, what))}</div>`;
   const offBoard = notOnBoardText(d);
   const none = noUniquenessText(d);
-  const uniq = none ? `<div class="${d?.ownership?.error ? "sd-meter-error" : "sd-meter-none"}">${escapeHtml(none)}</div>` : uniquenessHtml(d.uniqueness, label, srcLine, d.ownership, calc, d.bestProj);
-  const pr = d?.projection;
+  const u = d?.uniqueness;
+  const uniq = none
+    ? `<div class="${d?.ownership?.error ? "sd-meter-error" : "sd-meter-none"}">${escapeHtml(none)}</div>`
+    : `${verdictHtml(uniqueVerdict(u.copies), "unique")}${uniqueSubHtml(u)}`;
+  const hover = meterHover(d);
   return `
-    <div class="sd-meter" aria-live="polite">
-      ${none ? top : note}
+    <div class="sd-meter" aria-live="polite"${hover ? ` title="${escapeHtml(hover)}"` : ""}>
       ${uniq}
+      ${goodHtml(d)}
+      ${none ? "" : scaleHtml(u)}
       ${offBoard ? `<div class="sd-meter-none">${escapeHtml(offBoard)}</div>` : ""}
-      <div class="sd-meter-proj${pr?.posted === false && pr.error ? " sd-meter-error" : ""}">${escapeHtml(projectionLineText(d))}</div>
-      ${pr?.posted ? srcLine(pr, "Projections") : ""}
+      ${note}
     </div>`;
 }
 
-// ---------- the fetches, kept here (not in api.js: the public site's stand-in must export api.js's names exactly) ----------
+// ---------- the requests: ./api.js's, which the public site's stand-in answers in the browser (RULES.md D71) ----------
 
 /** POST /api/showdown/<key>/lineup/meter; resolves to the parsed answer, never throws for a server-side refusal. */
 export async function postLineupMeter(key, body, fetchImpl = fetch) {
-  const url = `/api/showdown/${encodeURIComponent(key)}/lineup/meter`;
-  const res = await fetchImpl(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-  return readJson(res);
+  return postShowdownLineupMeter(key, body, fetchImpl);
 }
 
 /** GET /api/showdown/<key>/modes: what the ticked sources have posted, and each man's notes. */
 export async function getLineupModes(key, fetchImpl = fetch) {
-  const url = `/api/showdown/${encodeURIComponent(key)}/modes`;
-  return readJson(await fetchImpl(url));
+  return getShowdownModes(key, fetchImpl);
 }
 
 // ---------- state and trigger ----------
@@ -340,8 +208,9 @@ function reset() {
 
 function liveMeterAllowed() {
   if (typeof window === "undefined") return false;
-  // The published site has no server to ask; sample mode writes nothing and has no meter route either.
-  if (onSitePage()) return false;
+  // The published site measures in the browser when its stand-in for ./api.js runs the meter (RULES.md D71); sample mode
+  // writes nothing and has no meter route.
+  if (onSitePage()) return supports("meter");
   return !isSampleMode();
 }
 
@@ -352,7 +221,7 @@ export function meterState() {
   return { sig: m.sig, status: m.status, data: m.data, message: m.message, modesInfo, modesError };
 }
 
-/** What a slot shows for this board row (see figuresFor); off the live app (the site, sample mode) there is no modes answer, so no notes.
+/** What a slot shows for this board row (see figuresFor); with the meter off (sample mode, or a site that does not run it) there is no modes answer, so no notes.
  *  An answer read for another figures key than the board's on screen (a ± bump, a typed number or a Sources save since, its re-read not
  *  yet in or failed) gives its notes but not its projections: the row's are newer (🔵 2026-10-22). */
 export function playerFigures(row, isCpt) {
@@ -388,9 +257,7 @@ function reasonNotes() {
 
 /** The current strip html (call inside the panel draw, after syncMeter). */
 export function meterStripHtml() {
-  const board = last?.board ?? null;
-  const names = { projection: halfName(board, "projection"), ownership: halfName(board, "ownership") };
-  return meterHtml(m, { label: figuresLabelHtml(board), modesInfo, modesNote: modesNoteText(), notes: reasonNotes(), live: isLive(), names });
+  return meterHtml(m, { modesInfo, modesNote: modesNoteText(), notes: reasonNotes(), live: isLive() });
 }
 
 let last = null; // the last syncMeter arguments, so an answer landing repaints without a panel draw

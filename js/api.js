@@ -14,6 +14,7 @@ import { boardWithEdits, putEdits, resetPlayerEdits, resetAllEdits } from "./sit
 import { buildCard, precheck, identityOf } from "../server/playercard/build.js";
 import { ndcAbbr, teamFileUrl, gamelogUrl, teamFileProblem, gamelogProblem } from "../server/playercard/ndc-files.js";
 import { boardWithWeights, readWeights, putWeights } from "./site-weights.js";
+import { createWorkerRunner } from "./site-worker.js";
 
 export const READ_ONLY_MESSAGE = "Read-only on the live site. Do this in the app on your computer.";
 
@@ -269,81 +270,19 @@ export function postLineupOptimize() {
   return readOnly();
 }
 
-// The Optimizer's work runs in a module worker (opt-worker.js) when the browser allows one, else on the page's thread.
-let worker = null;
-let workerBroken = false;
-let workerSeq = 0;
-const pending = new Map();
-
-function optWorker() {
-  if (workerBroken || typeof Worker === "undefined") return null;
-  if (worker) return worker;
-  try {
-    worker = new Worker(new URL("./opt-worker.js", import.meta.url), { type: "module" });
-  } catch {
-    workerBroken = true;
-    return null;
-  }
-  worker.onmessage = (event) => {
-    const p = pending.get(event.data?.id);
-    if (!p) return;
-    pending.delete(event.data.id);
-    p.resolve(event.data.response);
-  };
-  // The worker could not start, crashed, or could not read a message: every waiting request is run on the page
-  // instead, and so is every later one.
-  const broken = () => {
-    workerBroken = true;
-    try { worker?.terminate(); } catch { /* already gone */ }
-    worker = null;
-    for (const p of pending.values()) p.reject(new Error("worker failed"));
-    pending.clear();
-  };
-  worker.onerror = broken;
-  worker.onmessageerror = broken;
-  return worker;
-}
-
+// The Optimizer's work runs in a module worker (opt-worker.js) when the browser allows one, else on the page's thread
+// (site-worker.js, the one copy of the runner, which the Showdown Optimizer uses too).
 // Longest wait for the worker's answer. The search is bounded and takes well under a second on the real board; a
 // worker that has not answered by then is stuck, so it is stopped (a fresh one starts next time) and the visitor is
 // told plainly instead of the screen staying on "Making lineups".
 const WORKER_TIMEOUT_MS = 20000;
-class GenerateTimeout extends Error {}
 
 const GENERATE_FAILED = () => siteError("LINEUP_GENERATE_FAILED", "Could not make lineups.");
 
-async function runGenerate(args) {
-  const w = optWorker();
-  if (w) {
-    try {
-      return await new Promise((resolve, reject) => {
-        const id = ++workerSeq;
-        const timer = setTimeout(() => {
-          if (!pending.has(id)) return;
-          pending.delete(id);
-          try { w.terminate(); } catch { /* already gone */ }
-          if (worker === w) worker = null;
-          for (const p of pending.values()) p.reject(new GenerateTimeout());
-          pending.clear();
-          reject(new GenerateTimeout());
-        }, WORKER_TIMEOUT_MS);
-        const done = (fn) => (value) => { clearTimeout(timer); fn(value); };
-        pending.set(id, { resolve: done(resolve), reject: done(reject) });
-        w.postMessage({ id, args });
-      });
-    } catch (e) {
-      if (e instanceof GenerateTimeout) return GENERATE_FAILED();
-      /* the worker failed: fall through to the page's thread */
-    }
-  }
-  try {
-    const { generateResponse } = await import("./site-generate.js");
-    return generateResponse(args);
-  } catch (e) {
-    console.error("lineup generate: failed", e);
-    return GENERATE_FAILED();
-  }
-}
+const runGenerate = createWorkerRunner({
+  kind: "classic", timeoutMs: WORKER_TIMEOUT_MS, failed: GENERATE_FAILED,
+  onPage: async (args) => (await import("./site-generate.js")).generateResponse(args),
+});
 
 // Body and answer as POST /api/lineup/generate. Existing lineups (uniqueness and exposure) are this device's saved
 // lineups of the week; the app's own saved lineups are never counted (D69). Never throws: there is no server on the

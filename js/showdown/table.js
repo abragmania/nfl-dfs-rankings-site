@@ -101,9 +101,9 @@ function noteCellHtml(row) {
 // ---------- the Optimizer's player pool (Adam 2026-10-26 3:22 PM: the Optimizer looks like the retired Rankings tab, D81) ----------
 // The pool (pool.js) draws these same columns and cells through `hooks`, which add what the Optimizer needs: the figures the slots
 // show (`figures(row, isCpt)`: lineup-meter.js playerFigures, the board row's own plus the modes answer's notes), the Player cell
-// (`playerCell(row)`), the ± bump in the Proj cell (`projCell(row, proj)`), the Ceil and CPT Ceil cells (`ceilCell(row, isCpt)`, when the
+// (`playerCell(row)`), the ± bump in the Proj cell or, on the Captain tab, the CPT proj cell (`projCell(row, proj, isCpt)`), the Ceil and CPT Ceil cells (`ceilCell(row, isCpt)`, when the
 // columns carry SD_CEIL_COLUMNS), the Val cell (`valueCell(row)`), a class on the row (`rowClass(row)`) and the cells after Notes
-// (`tail(row)`). Without hooks a row is drawn as the retired Rankings tab drew it.
+// (`tail(row)`), and the row's own attributes (`rowAttrs(row)`: the pool's click, keyboard stop and title). Without hooks a row is drawn as the retired Rankings tab drew it.
 
 /** TwoGun's ceiling columns (the Optimizer's pool only, while the board carries his ceilings; Adam 2026-10-25, D81): his ceiling and, gold,
  *  his Captain ceiling (1.5x), as the retired Captain list showed it (🔵 R1 2026-10-26: every feature kept). */
@@ -138,7 +138,7 @@ function hookedProjHtml(row, isCpt, h) {
   const f = h.figures(row, isCpt);
   const base = projTitleText(f.proj, row, isCpt ? "Captain: 1.5x price, 1.5x points. " : "");
   const title = f.projNote ? `${base}${base && !/\s$/.test(base) ? " " : ""}${f.projNote}` : base;
-  const inner = (!isCpt && h.projCell ? h.projCell(row, f.proj) : null) ?? (f.proj == null ? "no proj" : dec1(f.proj));
+  const inner = (h.projCell ? h.projCell(row, f.proj, isCpt) : null) ??(f.proj == null ? "no proj" : dec1(f.proj));
   return `<span title="${escapeHtml(title)}">${inner}</span>`;
 }
 
@@ -173,7 +173,7 @@ export function showdownRowHtml(row, hooks = {}, cols = SD_COLUMNS) {
   const dimmed = rowIsOut(row);
   const extra = String(hooks.rowClass?.(row) ?? "").trim();
   return `
-    <tr class="rank-row${dimmed ? " row-dimmed" : ""}${extra ? ` ${extra}` : ""}" data-id="${escapeHtml(String(row.id))}">
+    <tr class="rank-row${dimmed ? " row-dimmed" : ""}${extra ? ` ${extra}` : ""}" data-id="${escapeHtml(String(row.id))}"${hooks.rowAttrs?.(row) ?? ""}>
       ${cols.map((c) => cellHtml(row, c.key, hooks)).join("\n      ")}${hooks.tail?.(row) ?? ""}
     </tr>`;
 }

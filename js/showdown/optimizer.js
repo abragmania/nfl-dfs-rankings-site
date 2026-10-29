@@ -12,7 +12,7 @@ import { parsePct, uniqueSavedName, duplicateSaveStatus } from "../lineup.js";
 import { newBuildId, batchBuild } from "../lineup-builds.js";
 import { toggleMustHave, bulkUids, filterBarHtml } from "../lineup-filter.js";
 import { lineupModeOf } from "../lineup-cash.js";
-import { postShowdownLineup, getShowdowns } from "./api.js";
+import { postShowdownLineup, getShowdowns, supports, postShowdownLineupGenerate } from "./api.js"; // supports: D71, what the public site implements
 import { resyncMeterExcludes } from "./lineup-meter.js";
 import { halfName } from "./figures-label.js";
 import { resyncSwapsExcludes } from "./lineup-swaps.js";
@@ -49,10 +49,10 @@ export function setOptimizerStorage(getStorage, list = null) {
   if (list) listShowdowns = list;
 }
 
-/** True on the live app only: the published site and sample mode have no generate route (lineup-meter.js's own rule). */
+/** True on the live app, and on the published site once it implements the generate route (D71, Adam 4:48 PM 2026-10-29: anything on the local site is on the public site); sample mode has none. */
 export function optimizerLive() {
   if (typeof window === "undefined") return false;
-  if (onSitePage()) return false;
+  if (onSitePage()) return supports("generate");
   return !isSampleMode();
 }
 
@@ -124,17 +124,16 @@ export async function pruneGoneShowdowns(currentKey, list = listShowdowns) {
 
 // ---------- the request ----------
 
-/** POST /api/showdown/<key>/lineup/generate (kept here, not in api.js: the public site's stand-in must export api.js's names exactly). */
+/** POST /api/showdown/<key>/lineup/generate, through api.js (D71: the public site's stand-in answers it in the browser and ignores fetchImpl). */
 export async function postShowdownGenerate(key, body, fetchImpl = fetch) {
-  const url = `/api/showdown/${encodeURIComponent(key)}/lineup/generate`;
-  const res = await fetchImpl(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-  return readJson(res);
+  return postShowdownLineupGenerate(key, body, fetchImpl);
 }
 
 /** PUT /api/showdown/<key>/overrides, body as classic's PUT /api/overrides (Adam 2026-10-22: the ± bump sends {bump: {id: steps | null}});
  *  answers this game's recomputed board. Kept here for the same reason as postShowdownGenerate; sample mode refuses as every write does (A7). */
 export async function putShowdownOverrides(key, patch, fetchImpl = fetch) {
   if (isSampleMode()) return sampleRefusal();
+  if (!supports("overrides")) return Promise.reject(new Error("The projection bump cannot be saved on the public site.")); // D71: the PUT has no stand-in there
   const res = await fetchImpl(`/api/showdown/${encodeURIComponent(key)}/overrides`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(patch) });
   return readJson(res);
 }
@@ -336,6 +335,18 @@ export function optimizerSavedFilter(board) {
   };
 }
 
+const SITE_BUMP_TITLE = "The ± bump runs in the app";
+
+/** The ± pair in a pool projection cell (`isCpt`: the Captain tab's CPT proj cell): live in the app; on the public site, where the PUT has no
+ *  stand-in (supports("overrides") is false), the pair keeps its place disabled with a plain sentence (D71, as classic's lineup-view.js
+ *  draws it with no bump writer); null off the live screen (sample mode), where the pool draws its own figure. */
+export function poolBumpHtml(row, proj, isCpt, canSave = supports("overrides")) {
+  if (!optimizerLive()) return null;
+  const kind = isCpt ? "cpt" : null;
+  if (canSave) return bumpProjHtml(row, proj, { kind });
+  return bumpProjHtml(row, proj, { enabled: false, kind, title: SITE_BUMP_TITLE });
+}
+
 /**
  * What the one player pool (pool.js setPoolControls; Adam 2026-10-26, the Rankings table as the pool) asks for each row: the rows it
  * lists, the Min % / Max % heads and boxes of each role, each role's lock and exclude and the In button, the row's look, whether a Ceil
@@ -350,7 +361,9 @@ export const poolControls = {
   // Excluded from every lineup dims the row; a lock at either role tints it (a Captain-only exclude leaves the row as it is: he can still be FLEX).
   rowClass: (row) => (optimizerLive() ? V.poolRowClass(row, "flex", modeState()) || (S.isLocked(modeState(), row, "cpt") ? " lineup-row-locked" : "") : ""),
   ceilColumn: (board) => optimizerLive() && S.boardHasTg(board, "ceil"), // Adam 2026-10-25 (D81): a Ceil column while any row of the board carries TwoGun's ceiling
-  projCell: (row, proj) => (optimizerLive() ? bumpProjHtml(row, proj) : null), // the ± bump (Adam 2026-10-22) before the Proj figure; one pair per man moves both his figures
+  projCell: (row, proj, isCpt = false) => poolBumpHtml(row, proj, isCpt), // the ± bump (Adam 2026-10-22) before the Proj figure (FLEX tab) or the CPT proj figure (Captain tab); one pair per man moves both his figures
+  readTab: () => S.readPoolTab(storage), // the pool's Captain | FLEX tab, kept in the browser on the site too (D71)
+  writeTab: (tab) => S.writePoolTab(storage, tab),
 };
 
 // ---------- wiring ----------

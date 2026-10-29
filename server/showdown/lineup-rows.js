@@ -4,8 +4,23 @@
 // it, unchanged, to out/server/showdown/ by walking the site's imports.
 import { isRevived } from "../rank/sidelined.js";
 import { valueOf } from "../rank/value-core.js";
+import { TWOGUN_ID } from "../sources/selection-core.js";
 
 const cache = new WeakMap();
+
+/** What board.mode.ticked says about TwoGun: proj (ticked for Projections), projOnly (the only projection source ticked:
+ *  board.mode.cashMode "twogun", modeOf's one reading), own (ticked for FLEX or Captain ownership) and ownOnly (the only
+ *  source ticked for both). All false for a board with no ticked list (a stand-in build). Pure: here, not in board-view.js
+ *  (which reads files), so the public site's meter, swaps and Optimizer read it in the browser (RULES.md D71). */
+export function boardTwoGun(board) {
+  const t = board?.mode?.ticked;
+  const ids = (kind) => (t?.[kind]?.sources ?? []).map((s) => s.id);
+  const only = (kind) => ids(kind).length === 1 && ids(kind)[0] === TWOGUN_ID;
+  return {
+    proj: ids("projection").includes(TWOGUN_ID), projOnly: board?.mode?.cashMode === "twogun",
+    own: ids("sdOwnFlex").includes(TWOGUN_ID) || ids("sdOwnCpt").includes(TWOGUN_ID), ownOnly: only("sdOwnFlex") && only("sdOwnCpt")
+  };
+}
 
 /**
  * The rows the Showdown Lineup tab reads on the board path (the meter, the six slots, both lists, swaps, Build, Generate):

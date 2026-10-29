@@ -30,7 +30,7 @@ export function slotPlayerHtml(row, isCpt, palette = null) {
   return cardPlayerRowHtml(p, isCpt ? "CPT" : "FLEX", decor, { big: true, pos: true, posHtml: posPillHtml }).trim(); // every slot is FLEX, so the row names his position, as the pool does
 }
 
-// Repaints only the placed slots' big rows (the Clear button is the row's sibling and survives; the panel is not redrawn, so a typed lineup name survives);
+// Repaints only the placed slots' big rows (the panel is not redrawn, so a typed lineup name survives);
 // lineup.js's repaintSlotFigures calls it when the meter's modes answer (each man's notes) lands. An empty or missing slot has no row and is left alone.
 export function repaintSlots(container, board, { cpt, flex }) {
   const palette = showdownPalette(board);
@@ -43,19 +43,20 @@ export function repaintSlots(container, board, { cpt, flex }) {
   container.querySelectorAll("[data-flex-index]").forEach((el) => paint(el, flex[Number(el.dataset.flexIndex)], false));
 }
 
-// One slot, classic's shapes (lineup-view.js slotsHtml): filled is the card row (it carries the slot name) and Clear; Empty and "Not on this board" keep the
-// label and the same 64px (style.css .lineup-slot-big).
+// One slot, classic's shapes (lineup-view.js slotsHtml) without its Clear button (D39, Adam 4:45 PM 2026-10-29: "I don't want the tiny ... clear
+// buttons"): filled is the card row (it carries the slot name), and a click on a placed slot takes his man out (lineup.js wires `clearAttrs`);
+// Empty and "Not on this board" keep the label and the same 64px (style.css .lineup-slot-big).
 function slotHtml({ label, placed, row, palette, attrs, clearAttrs }) {
   const body = !placed
     ? `<span class="lineup-slot-player lineup-slot-empty">Empty</span>`
     : row
       ? slotPlayerHtml(row, label === "CPT", palette)
       : `<span class="lineup-slot-player lineup-slot-missing">Not on this board</span>`;
+  const removable = placed ? ` ${clearAttrs} tabindex="0" title="Click to remove" aria-label="Click to remove"` : ""; // no button role: the card holds a name that opens his card
   return `
-    <div class="lineup-slot lineup-slot-big${row ? " lineup-slot-card" : ""}${attrs.cls}"${attrs.data}>
+    <div class="lineup-slot lineup-slot-big${row ? " lineup-slot-card" : ""}${attrs.cls}${placed ? " sd-slot-removable" : ""}"${attrs.data}${removable}>
       ${row ? "" : `<span class="lineup-slot-label">${label}</span>`}
       ${body}
-      <button type="button" class="lineup-slot-clear" ${clearAttrs}${placed ? "" : " disabled"}>Clear</button>
     </div>`;
 }
 

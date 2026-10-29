@@ -101,6 +101,27 @@ export function writeKeyState(getStorage, key, keyState) {
   }
 }
 
+export const POOL_TAB_KEY = "nfldfs.sdPoolTab.v1"; // the player pool's Captain | FLEX tab (D39): one choice for every showdown, browser-only, never sent to the server
+
+/** The pool tab kept in the browser, "flex" or "cpt"; "flex" when nothing is kept or storage is blocked. */
+export function readPoolTab(getStorage) {
+  try {
+    return getStorage().getItem(POOL_TAB_KEY) === "cpt" ? "cpt" : "flex";
+  } catch (e) {
+    return "flex"; // storage blocked or unreadable: the tab lasts for this page view only
+  }
+}
+
+/** Keeps the pool tab; false when storage is blocked (the tab then lasts for this page view). */
+export function writePoolTab(getStorage, tab) {
+  try {
+    getStorage().setItem(POOL_TAB_KEY, tab === "cpt" ? "cpt" : "flex");
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+
 /** Drops every stored showdown whose key is not in `keepKeys` (🔵 866b0ce B11); resolves the dropped keys. Blocked or unreadable
  *  storage drops nothing. The caller decides what is loaded; an empty `keepKeys` drops nothing (never "none loaded"). */
 export function dropStoredKeysExcept(getStorage, keepKeys) {

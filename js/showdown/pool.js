@@ -1,9 +1,10 @@
 // The Showdown Optimizer's player pool (Adam 2026-10-26 3:22 PM: "make the optimizer LOOK LIKE THE RANKINGS SCREEN and we don't want the
 // rankings screen anymore"; 3:27 PM: integrate the Rankings format's good parts into the Optimizer; D81, the counterpart of classic's
 // Optimizer-first step 4, a58538d). ONE table drawn with the retired Rankings tab's columns and cells (table.js: the figures next to the
-// names, the hovers, the graded Val, the gold Captain columns and the note cell), with the Optimizer's per-man controls and the builder's
-// Add FLEX / Add CPT at the row's end, so the old Captain | FLEX toggle and its two lists are gone: each row carries both roles. Under
-// the head, a totals row adds every man's Own FLEX and Own CPT (Adam 3:28 PM), so a bias in the ownership figures shows.
+// names, the hovers, the graded Val, the gold Captain columns and the note cell), with the Optimizer's per-man controls at the row's end.
+// Since 4:45 PM 2026-10-29 it has a Captain tab and a FLEX tab (each draws its seat's figures), and a click on a row adds the man to the
+// lineup or takes him out (no Add buttons). Under the head, a totals row adds every man's Own FLEX and Own CPT (Adam 3:28 PM), so a bias
+// in the ownership figures shows.
 // The filter bar above the builder (view.js) writes poolState.filters; poolVisibleRows is the ONE call the pool's body and the bar's
 // count both read, so the two always agree. lineup.js owns the lineup and draws this pool in its panel; this file draws, sorts and wires.
 import { escapeHtml, dec1 } from "../format.js";
@@ -20,27 +21,86 @@ import { readingShortText, halfName, stampText } from "./figures-label.js";
 export const DEFAULT_POOL_FILTERS = Object.freeze({ team: "both", pos: "All", minSalary: null, maxSalary: null, minProj: null });
 const START_SORT = Object.freeze({ col: "proj", dir: "desc" }); // the Rankings tab's default: projection, highest first
 
-/** The pool's filters (view.js's filter bar writes them) and its sort (a header click), kept for the page view. */
-export const poolState = { sort: { ...START_SORT }, filters: { ...DEFAULT_POOL_FILTERS } };
+/** The pool's filters (view.js's filter bar writes them), its sort (a header click) and its tab ("flex" or "cpt"; null until first read
+ *  from the browser's storage), kept for the page view. */
+export const poolState = { sort: { ...START_SORT }, filters: { ...DEFAULT_POOL_FILTERS }, tab: null };
 
 /** Clear filters: every filter back to none (the sort stays, as the Rankings tab's Clear filters left it). */
 export function resetPoolFilters() {
   poolState.filters = { ...DEFAULT_POOL_FILTERS };
 }
 
-/** Test hook: the start sort and no filters. */
+/** Test hook: the start sort, no filters and the tab read afresh. */
 export function resetPoolState() {
   poolState.sort = { ...START_SORT };
+  poolState.tab = null;
   resetPoolFilters();
 }
 
 // The Optimizer's additions (optimizer.js poolControls): {live(), rows(all, shown), capHeads(kind), capCells(row, kind),
-// button(row, kind, action) ("lock", "include" or "exclude"), rowClass(row), ceilColumn(board), projCell(row, proj)}, each optional; none set (or not live)
-// leaves the pool its own rows with the two Add buttons.
+// button(row, kind, action) ("lock", "include" or "exclude"), rowClass(row), ceilColumn(board), projCell(row, proj, isCpt), readTab(), writeTab(tab)},
+// each optional; none set (or not live) leaves the pool its own rows with no controls.
 let controls = null;
 export function setPoolControls(next) {
   controls = next && typeof next === "object" ? next : null;
 }
+
+// ---------- the Captain | FLEX tabs (Adam 4:45 PM 2026-10-29; D39, D81) ----------
+
+/** The two lists of the pool, Captain and FLEX (Adam: "a CPTN list and a FLEX list ... separated with a tab thingy"). */
+export const POOL_TABS = Object.freeze([Object.freeze({ key: "cpt", label: "Captain" }), Object.freeze({ key: "flex", label: "FLEX" })]);
+
+// The columns each tab draws, by SD_COLUMNS / SD_CEIL_COLUMNS key: FLEX the FLEX-seat figures, Captain the Captain-seat ones (one Val for both: the
+// Captain's price and points are both 1.5x, so his value is the FLEX value, table.js).
+const TAB_COLUMNS = Object.freeze({
+  flex: new Set(["player", "salary", "proj", "tgCeil", "value", "ownFlex", "levFlex", "note"]),
+  cpt: new Set(["player", "cptSalary", "cptProj", "tgCeilCpt", "value", "ownCpt", "levCpt", "note"]),
+});
+// A sort on one tab's column moves to the other tab's twin of it when the tab changes, so "highest projection first" survives the switch.
+const TWIN_COLUMNS = Object.freeze({ salary: "cptSalary", proj: "cptProj", tgCeil: "tgCeilCpt", ownFlex: "ownCpt", levFlex: "levCpt" });
+const twinOf = (col) => TWIN_COLUMNS[col] ?? Object.keys(TWIN_COLUMNS).find((k) => TWIN_COLUMNS[k] === col) ?? col;
+
+/** The tab on screen: "flex" unless the browser remembered "cpt" (controls.readTab; the choice never goes to the server). */
+export function poolTab() {
+  if (poolState.tab !== "flex" && poolState.tab !== "cpt") poolState.tab = controls?.readTab?.() === "cpt" ? "cpt" : "flex";
+  return poolState.tab;
+}
+
+/** Switches the tab, keeps it in the browser and moves the sort to the twin column; false when it was the tab already. */
+export function setPoolTab(tab) {
+  const next = tab === "cpt" ? "cpt" : "flex";
+  if (next === poolTab()) return false;
+  poolState.tab = next;
+  poolState.sort = { ...poolState.sort, col: twinOf(poolState.sort.col) };
+  controls?.writeTab?.(next);
+  return true;
+}
+
+const startSortFor = (tab) => ({ ...START_SORT, col: tab === "cpt" ? "cptProj" : START_SORT.col });
+
+// ---------- a click on a row (Adam 4:45 PM 2026-10-29: "if I click a player's row he goes into the lineup, if I click it again he's out") ----------
+
+/** What a click on his row does on `tab`, from what lineup.js keeps placed ({ cptId, flexIds }): "add-flex" or "remove-flex" or, for the
+ *  Captain, "move-to-flex" on the FLEX tab; "add-cpt" (a FLEX man moves up, another Captain is replaced) or "remove-cpt" on the Captain tab. Pure. */
+export function poolPickAction(placement, id, tab) {
+  const key = String(id);
+  const isCaptain = String(placement?.cptId ?? "") === key;
+  if (tab === "cpt") return isCaptain ? "remove-cpt" : "add-cpt";
+  if (isCaptain) return "move-to-flex";
+  return (placement?.flexIds ?? new Set()).has(key) ? "remove-flex" : "add-flex";
+}
+
+const PICK_TITLES = Object.freeze({
+  "add-flex": "Click to add to FLEX",
+  "remove-flex": "Click to remove",
+  "move-to-flex": "Click to move to FLEX",
+  "add-cpt": "Click to make Captain",
+  "remove-cpt": "Click to remove as Captain",
+});
+
+/** A click inside one of these is that control's own (the ± bump, a Min / Max box, lock, In, exclude, the name's card popup) or the padding
+ *  around it, not a pick. */
+export const POOL_PICK_SKIP = "button, a, input, select, textarea, label, .player-name, .bump-ctl, .sd-pool-btn, .sd-pool-in, .lineup-min-cell, .lineup-max-cell";
 
 const num = (v) => (typeof v === "number" && Number.isFinite(v) ? v : null);
 
@@ -99,10 +159,11 @@ export function nextPoolSort(sort, col) {
   return sort.col === col ? { col, dir: sort.dir === "asc" ? "desc" : "asc" } : { col, dir: defaultDirFor(col) };
 }
 
-/** The sort the pool draws with for `board`: a sort left on Ceil goes back to the start sort once the column is gone (the board no longer
- *  carries a ceiling, or the app is not live), and the kept sort with it, so the next click starts from there (the old lists' rule). */
+/** The sort the pool draws with for `board`: a sort left on a column the tab does not draw (Ceil once the board no longer carries a
+ *  ceiling or the app is not live, or the other tab's column) goes back to the tab's start sort, and the kept sort with it, so the next
+ *  click starts from there (the old lists' rule). */
 export function poolSort(board) {
-  if ((poolState.sort.col === "tgCeil" || poolState.sort.col === "tgCeilCpt") && controls?.ceilColumn?.(board) !== true) poolState.sort = { ...START_SORT };
+  if (!poolColumns(board).some((c) => c.key === poolState.sort.col)) poolState.sort = startSortFor(poolTab());
   return poolState.sort;
 }
 
@@ -190,15 +251,16 @@ export function ownTotalsRowHtml(t, cols, tailCount = 0) {
 const live = () => controls?.live?.() === true;
 const withCeil = (board) => controls?.ceilColumn?.(board) === true;
 
-/** The pool's columns: the Rankings tab's, with Ceil while the Optimizer says the board carries TwoGun's ceilings. */
-export function poolColumns(board) {
-  return sdColumns(withCeil(board));
+/** The pool's columns on `tab`: the Rankings tab's columns of that seat (TAB_COLUMNS), with Ceil while the Optimizer says the board
+ *  carries TwoGun's ceilings. */
+export function poolColumns(board, tab = poolTab()) {
+  return sdColumns(withCeil(board)).filter((c) => TAB_COLUMNS[tab].has(c.key));
 }
 
 const thCount = (html) => (html.match(/<th\b/g) ?? []).length;
 
 /** One role's control group in the head (2026-10-26, Phase B item 2): a spanning head ("FLEX", or "Captain" in gold) over its sub-heads,
- *  Min % and Max % (GPP, live app), Lock and Excl (live app) and Add, in the order of the row's cells (tailCellsHtml). */
+ *  Min % and Max % (GPP, live app) and Lock and Excl (live app), in the order of the row's cells (tailCellsHtml); none off the live app. */
 function groupHeads(kind) {
   const cpt = kind === "cpt";
   const role = cpt ? "Captain" : "FLEX";
@@ -206,61 +268,67 @@ function groupHeads(kind) {
   const buttons = live()
     ? `<th class="sd-pool-sub${g}" title="Lock him at ${role} in every lineup">Lock</th><th class="sd-pool-sub${g}" title="${cpt ? "Exclude him as Captain; he can still be FLEX" : "Exclude him from every lineup"}">Excl</th>`
     : "";
-  const subs = `${controls?.capHeads?.(kind) ?? ""}${buttons}<th class="sd-pool-sub${g}" title="Put him in ${cpt ? "the Captain slot" : "the next open FLEX slot"}">Add</th>`;
-  return { top: `<th class="sd-pool-group${g}" colspan="${thCount(subs)}">${role}</th>`, subs };
+  const subs = `${controls?.capHeads?.(kind) ?? ""}${buttons}`;
+  return { top: subs ? `<th class="sd-pool-group${g}" colspan="${thCount(subs)}">${role}</th>` : "", subs };
 }
 
-/** The tail of the head after Notes: In (live app, spanning both head rows), then the FLEX group and the Captain group. */
-function tailHeads() {
+/** The tail of the head after Notes: In (live app, spanning both head rows), then the tab's own control group. */
+function tailHeads(tab) {
   const inHead = live() ? `<th class="sd-pool-in-head" rowspan="2" title="In: in every lineup at Captain or FLEX, the optimizer picks the role">In</th>` : "";
-  const flex = groupHeads("flex");
-  const cpt = groupHeads("cpt");
-  return { top: `${inHead}${flex.top}${cpt.top}`, subs: `${flex.subs}${cpt.subs}`, count: (inHead ? 1 : 0) + thCount(flex.subs) + thCount(cpt.subs) };
+  const group = groupHeads(tab);
+  return { top: `${inHead}${group.top}`, subs: group.subs, count: (inHead ? 1 : 0) + thCount(group.subs) };
 }
 
-/** The head: the sortable Rankings heads (spanning both rows) and the control groups over their sub-heads, then the ownership totals
- *  row (over the whole board). */
-export function poolHeadHtml(board, sort = poolSort(board)) {
-  const cols = poolColumns(board);
-  const tail = tailHeads();
-  return `<tr>${showdownHeadCellsHtml(sort, cols, { rowspan: 2 })}${tail.top}</tr><tr class="sd-pool-subhead">${tail.subs}</tr>${ownTotalsRowHtml(ownTotals(board?.rows ?? []), cols, tail.count)}`;
+/** The head: the sortable Rankings heads (spanning both rows) and the tab's control group over its sub-heads (one row when there are
+ *  none), then the ownership totals row (over the whole board). */
+export function poolHeadHtml(board, sort = poolSort(board), tab = poolTab()) {
+  const cols = poolColumns(board, tab);
+  const tail = tailHeads(tab);
+  const two = tail.count > 0;
+  const subRow = two ? `<tr class="sd-pool-subhead">${tail.subs}</tr>` : "";
+  return `<tr>${showdownHeadCellsHtml(sort, cols, { rowspan: two ? 2 : 1 })}${tail.top}</tr>${subRow}${ownTotalsRowHtml(ownTotals(board?.rows ?? []), cols, tail.count)}`;
 }
 
-/** What is placed, as lineup.js keeps it: { cptId, flexIds } (strings). */
-function placedOf(placement, id) {
-  const isCaptain = String(placement?.cptId ?? "") === id;
-  return { isCaptain, placed: isCaptain || (placement?.flexIds ?? new Set()).has(id) };
+/** Whether he sits in the seat `tab` lists (the Captain on the Captain tab, a FLEX man on the FLEX tab); lineup.js keeps the placement
+ *  as { cptId, flexIds } (strings). */
+function placedOnTab(placement, id, tab) {
+  return tab === "cpt" ? String(placement?.cptId ?? "") === id : (placement?.flexIds ?? new Set()).has(id);
 }
 
-/** The cells after Notes for one row, under the head's groups: In, then for FLEX and then Captain the Min % / Max % boxes, the lock,
- *  the exclude and the Add button, each in its own cell. */
-function tailCellsHtml(row, placement) {
-  const id = String(row.id);
-  const { isCaptain, placed } = placedOf(placement, id);
-  const addFlex = `<button type="button" class="lineup-row-btn sd-add-btn" data-action="add-flex" data-id="${escapeHtml(id)}"${placed ? " disabled" : ""}>Add FLEX</button>`;
-  const addCpt = `<button type="button" class="lineup-row-btn sd-add-btn${isCaptain ? " active" : ""}" data-action="add-cpt" data-id="${escapeHtml(id)}">${isCaptain ? "Captain" : "Add CPT"}</button>`;
-  const btn = (kind, action) => `<td class="sd-pool-btn">${controls?.button?.(row, kind, action) ?? ""}</td>`;
-  const group = (kind, add) => `${controls?.capCells?.(row, kind) ?? ""}${live() ? btn(kind, "lock") + btn(kind, "exclude") : ""}<td class="sd-pool-add">${add}</td>`;
-  return `${live() ? `<td class="sd-pool-in">${controls?.button?.(row, "flex", "include") ?? ""}</td>` : ""}${group("flex", addFlex)}${group("cpt", addCpt)}`;
+/** The cells after Notes for one row, under the head's group: In, then the tab's role: the Min % / Max % boxes, the lock and the exclude,
+ *  each in its own cell. */
+function tailCellsHtml(row, tab) {
+  const btn = (action) => `<td class="sd-pool-btn">${controls?.button?.(row, tab, action) ?? ""}</td>`;
+  const group = `${controls?.capCells?.(row, tab) ?? ""}${live() ? btn("lock") + btn("exclude") : ""}`;
+  return `${live() ? `<td class="sd-pool-in">${controls?.button?.(row, "flex", "include") ?? ""}</td>` : ""}${group}`;
 }
 
-/** The body rows (`rows`: poolVisibleRows), each the Rankings row with the slots' figures, the ± bump, the Ceil cell and the tail. */
-export function poolBodyHtml(board, rows, placement, figures = playerFigures) {
-  const cols = poolColumns(board);
+/** A row's click attributes (D39): the pick its click makes, a keyboard stop and its words as the hover and the label (no button role:
+ *  the row holds buttons of its own). */
+function pickAttrsHtml(placement, row, tab) {
+  const action = poolPickAction(placement, String(row.id), tab);
+  return ` data-pick="${action}" tabindex="0" title="${PICK_TITLES[action]}" aria-label="${PICK_TITLES[action]}"`;
+}
+
+/** The body rows (`rows`: poolVisibleRows), each the Rankings row with the slots' figures, the ± bump, the Ceil cell and the tab's tail;
+ *  a click on a row picks or drops him (poolPickAction). */
+export function poolBodyHtml(board, rows, placement, figures = playerFigures, tab = poolTab()) {
+  const cols = poolColumns(board, tab);
   if (!rows.length) {
-    const span = cols.length + tailHeads().count;
+    const span = cols.length + tailHeads(tab).count;
     return `<tr class="sd-pool-empty-row"><td class="sd-pool-empty" colspan="${span}">No player matches these filters.</td></tr>`;
   }
   const hooks = {
     figures,
-    projCell: controls?.projCell ? (row, proj) => controls.projCell(row, proj) : null,
+    projCell: controls?.projCell ? (row, proj, isCpt) => controls.projCell(row, proj, isCpt) : null,
     // The Player cell names him in full and, for a phone, the cards' short name too (style.css shows one; 👁 V1: no name cut mid-word).
     playerCell: (row) => `<div class="player-cell">${sdLine(row, { nameHtml: cardNameHtml(row) })}</div>`,
     ceilCell: (row, isCpt) => bumpCeilHtml(row, isCpt ? poolCeilCpt(row) : poolCeil(row), { kind: isCpt ? "cpt" : null, out: rowIsOut(row) }),
     valueCell: (row) => poolValueHtml(row, figures),
-    // A placed man's row is tinted (the builder's), beside the Optimizer's own look (excluded, locked), each class once.
-    rowClass: (row) => [...new Set([placedOf(placement, String(row.id)).placed ? "lineup-row-locked" : "", ...String(controls?.rowClass?.(row) ?? "").trim().split(/\s+/)].filter(Boolean))].join(" "),
-    tail: (row) => tailCellsHtml(row, placement),
+    // A man placed in this tab's seat has his row tinted (the builder's), beside the Optimizer's own look (excluded, locked), each class once.
+    rowClass: (row) => [...new Set([placedOnTab(placement, String(row.id), tab) ? "lineup-row-locked" : "", "sd-pool-pick", ...String(controls?.rowClass?.(row) ?? "").trim().split(/\s+/)].filter(Boolean))].join(" "),
+    rowAttrs: (row) => pickAttrsHtml(placement, row, tab),
+    tail: (row) => tailCellsHtml(row, tab),
   };
   return rows.map((r) => showdownRowHtml(r, hooks, cols)).join("");
 }
@@ -321,6 +389,13 @@ export function poolLegendText(board) {
   return [sourceSentence, HOVER_WORDS].filter(Boolean).join(" · ");
 }
 
+/** The Captain | FLEX switch beside the heading: the Sources page's Players switch (sources-page-html.js playersHeadHtml, the .sp-seg
+ *  rules), the tab on screen marked active. */
+export function poolTabsHtml(active = poolTab()) {
+  const btns = POOL_TABS.map((t) => `<button type="button" class="sp-seg-btn${t.key === active ? " active" : ""}" data-pool-tab="${t.key}" aria-pressed="${t.key === active}">${t.label}</button>`).join("");
+  return `<span class="sp-seg sd-pool-tabs" role="group" aria-label="Player pool list">${btns}</span>`;
+}
+
 /** The whole pool: heading and figures words, the table in its scroll panel (sized by scroll-panels.js, Expand by expand.js), the legend.
  *  `rows`: poolVisibleRows(board), computed once by the caller so the filter bar's count reads the same list. */
 export function poolHtml(board, placement, rows) {
@@ -328,6 +403,7 @@ export function poolHtml(board, placement, rows) {
     <section id="sd-pool" class="sd-pool">
       <div class="sd-pool-head">
         <h3 class="lineup-right-title">Player pool</h3>
+        ${poolTabsHtml()}
         <span class="sd-pool-note">${escapeHtml(poolNoteText(board))}</span>
       </div>
       <div class="table-wrap scroll-panel">
@@ -344,8 +420,8 @@ export function poolHtml(board, placement, rows) {
 
 /**
  * Wires the drawn pool (`poolEl`, #sd-pool): a header click sorts it (only its head and body are redrawn, through ctx.repaint), and each
- * name carries its whole self on hover, a tagged row showing the cards' short name. ctx = { board, repaint() }. The row buttons are
- * lineup.js's to wire (its Add actions and the Optimizer's controls).
+ * name carries its whole self on hover, a tagged row showing the cards' short name. ctx = { board, repaint() }. The rows' click
+ * (wirePickRows) and the Optimizer's row controls are lineup.js's to wire.
  */
 export function wirePool(poolEl, ctx) {
   poolEl.querySelectorAll("th[data-col]").forEach((th) => {
@@ -361,6 +437,40 @@ export function wirePool(poolEl, ctx) {
     const full = rowOf(tr.dataset.id)?.name ?? (n.title || n.textContent); // the row's name: the cell holds both the full and the short name
     n.title = full;
     if (tr.querySelector(".out-tag, .status-badge")) n.textContent = shortName(full, rowOf(tr.dataset.id)?.pos);
+  });
+}
+
+/** Wires the pool's rows (D39): a click anywhere on a row but its own controls, or Enter / Space on the focused row, calls
+ *  pick(id, action) with the row's data-pick (poolPickAction's answer when it was drawn). */
+export function wirePickRows(root, pick) {
+  root.querySelectorAll("[data-pick]").forEach((tr) => {
+    const go = () => pick(tr.dataset.id, tr.dataset.pick);
+    tr.addEventListener("click", (ev) => {
+      if (!ev?.target?.closest?.(POOL_PICK_SKIP)) go();
+    });
+    tr.addEventListener("keydown", (ev) => {
+      if ((ev.key === "Enter" || ev.key === " ") && ev.target === tr) {
+        ev.preventDefault?.();
+        go();
+      }
+    });
+  });
+}
+
+/** Wires the Captain | FLEX switch once per full draw (it lives outside the head and body a repaint replaces): a click picks the tab,
+ *  marks the buttons and repaints the pool (ctx.repaint). */
+export function wirePoolTabs(poolEl, ctx) {
+  const buttons = [...poolEl.querySelectorAll("[data-pool-tab]")];
+  buttons.forEach((btn) => {
+    btn.addEventListener("click", () => {
+      if (!setPoolTab(btn.dataset.poolTab)) return;
+      buttons.forEach((b) => {
+        const on = b.dataset.poolTab === poolTab();
+        b.classList.toggle("active", on);
+        b.setAttribute("aria-pressed", String(on));
+      });
+      ctx.repaint();
+    });
   });
 }
 

@@ -114,6 +114,15 @@ export function likelyRangeText(copies, spread = null) {
   return l ? `likely ${rangeWords(l)}` : null;
 }
 
+/** The meter's small line under a Unique verdict, whose own sentence already says nobody else most likely has it: only the
+ *  usual range, "Usually 0 to 2 other entries" ("Usually no other entry" when the range is 0 alone); null when unreadable. */
+export function usuallyText(copies, spread = null) {
+  const l = likelyCopiesSpread(copies, spread);
+  if (!l) return null;
+  if (l.high === 0) return "Usually no other entry";
+  return `Usually ${rangeWords(l)} other ${l.low === l.high && l.low === 1 ? "entry" : "entries"}`;
+}
+
 /** The meter's fact line: "Most likely 3 other entries have this exact lineup (usually 1 to 6)", "Most likely no other entry has
  *  this exact lineup (usually 0 to 2)", "Most likely 1 other entry has this exact lineup (usually 0 to 2)"; null when unreadable.
  *  The bracket is left off when the range is one number (a lineup nobody else is expected to hold). `spread`: the answer's (uniqueness.spread). */

@@ -13,7 +13,8 @@ import { sigFig2, meterRequestBody, meterState, lineupSig, onMeterAnswer, NOT_ON
 import { aboutCopies, aboutCopiesWords, bestWords, answerBasis, isEstimate, swapEstimateTitle, estimateLabelHtml } from "./field-explain.js"; // the field model's words (D82)
 import { posPillHtml } from "./table.js";
 import { teamChipHtml } from "../player-row.js"; // this panel's own team chip: the swaps row draws no logo (D80 as amended 2026-10-25)
-import { readJson, requestFailureText } from "./read-json.js"; // the one JSON reader (🔵 866b0ce B3, B4)
+import { requestFailureText } from "./read-json.js"; // the one JSON reader's sentences (🔵 866b0ce B3, B4)
+import { postShowdownLineupSwaps } from "./api.js"; // the request; on the public site its stand-in answers it in the browser (D71)
 
 const MINUS = "−";
 const DELAY_MS = 250; // after the meter's own pause, so a quick run of clicks asks once
@@ -228,14 +229,12 @@ export function swapsRequestBody(board, cpt, flex, excludes = []) {
   return meterRequestBody(board, cpt, flex, excludes);
 }
 
-// ---------- the fetch, kept here beside the panel (api.js's names are the public site's stand-in contract) ----------
+// ---------- the request: ./api.js's, which the public site's stand-in answers in the browser (RULES.md D71) ----------
 
 /** POST /api/showdown/<key>/lineup/swaps; resolves to the parsed answer, never throws for a server-side refusal; a non-JSON
  *  answer throws read-json.js's NOT_JSON error. */
 export async function postLineupSwaps(key, body, fetchImpl = fetch) {
-  const url = `/api/showdown/${encodeURIComponent(key)}/lineup/swaps`;
-  const res = await fetchImpl(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-  return readJson(res);
+  return postShowdownLineupSwaps(key, body, fetchImpl);
 }
 
 // ---------- state and trigger ----------
@@ -278,7 +277,7 @@ onMeterAnswer(() => {
 
 /**
  * Called before every panel draw (after syncMeter). The swaps follow the meter: they exist only while it has a complete
- * live lineup (`enabled`, which is false on the published site and in sample mode, where the meter itself is off). A lineup
+ * live lineup (`enabled`, which is false in sample mode and on a site that does not run the meter, where the meter itself is off). A lineup
  * or board that differs from the one last asked about shows "working out" and sends one request after a short pause;
  * an answer for a lineup that has since changed is dropped. `excludes`: the Optimizer's for the mode on screen, as the meter
  * gets them (optimizer.js optimizerExcludes); none by default.

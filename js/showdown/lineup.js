@@ -9,7 +9,7 @@
 // width below both columns, above the swaps and the saved lineups.
 import { escapeHtml, money, dec1 } from "../format.js";
 import { postShowdownLineupOptimize, getShowdownLineups, postShowdownLineup, deleteShowdownLineup, putShowdownLineupName, putShowdownLineupTag } from "./api.js";
-import { poolHtml, poolVisibleRows, paintPool, wirePool, setPoolControls } from "./pool.js"; // the one player pool, the Rankings table with both roles on each row (Adam 2026-10-26)
+import { poolHtml, poolVisibleRows, paintPool, wirePool, wirePoolTabs, wirePickRows, setPoolControls } from "./pool.js"; // the one player pool, the Rankings table with both roles on each row (Adam 2026-10-26)
 // The Showdown Optimizer (Adam 2026-10-19, sketch A): its band over the builder, its Make row under it, its batch full width below, its controls on the pool rows.
 import { syncOptimizer, optimizerLive, optimizerBandHeadHtml, optimizerBandBoxesHtml, optimizerGoRowHtml, optimizerResultsBlockHtml, optimizerExcludes, optimizerSavedFilter, poolControls, wirePoolControls, wireOptimizer } from "./optimizer.js";
 import { handBuild } from "../lineup-builds.js";
@@ -25,6 +25,7 @@ import { syncSwaps, swapsPanelHtml, wireSwaps } from "./lineup-swaps.js"; // the
 import { showdownPerSpotText, shownTotal } from "../totals.js";
 import { syncMeter, meterStripHtml, wireMeter, playerFigures } from "./lineup-meter.js"; // uniqueness / projection strip under the slots; every figure on the screen is the served board's (Adam 2026-10-20)
 import { builtOnText } from "./figures-label.js"; // the board's sources in words (the retired Figures switch's place)
+import { lineupReadHtml } from "./lineup-read.js"; // the "Lineup read" sentences under the meter (Adam 2026-10-29 5:10 PM: "just make it not suck")
 
 // "Projection minus ownership" was removed and Leverage has no measure (Adam 2026-10-15, Lev measure to be
 // redesigned); the server answers either name by building by projection with an objectiveNote.
@@ -180,6 +181,34 @@ function addFlex(row) {
   state.flex[idx] = { id: String(row.id) };
   state.lastResult = null;
   state.addError = null;
+}
+
+/**
+ * A click on a pool row (pool.js poolPickAction names `action`; Adam 4:45 PM 2026-10-29): the same add and clear rules the Add and Clear
+ * buttons ran. A Captain moved to FLEX goes back to Captain when FLEX refuses him (full, or no FLEX salary), with the refusal shown.
+ */
+export function pickPoolRow(row, action) {
+  if (!row) return;
+  if (action === "remove-flex") {
+    const idx = state.flex.findIndex((s) => s && String(s.id) === String(row.id));
+    if (idx !== -1) clearFlex(idx);
+  } else if (action === "remove-cpt") {
+    clearCaptain();
+  } else if (action === "add-cpt") {
+    addCaptain(row);
+  } else if (action === "move-to-flex") {
+    const was = { cpt: state.cpt, lastResult: state.lastResult };
+    clearCaptain();
+    addFlex(row);
+    if (state.addError) Object.assign(state, was);
+  } else {
+    addFlex(row);
+  }
+}
+
+/** Test hook: who is placed now, {cpt, flex, addError} (copies). */
+export function lineupPicks() {
+  return { cpt: state.cpt ? { ...state.cpt } : null, flex: state.flex.map((s) => (s ? { ...s } : null)), addError: state.addError };
 }
 
 function clearCaptain() {
@@ -349,8 +378,8 @@ function buildStatusHtml(board) {
   return parts.join("");
 }
 
-// What the pool needs from the lineup: who is placed (a placed man's row is tinted, and his Add FLEX is disabled); its Add CPT and
-// Add FLEX buttons run addCaptain and addFlex (wireRowButtons), where the rules stay.
+// What the pool needs from the lineup: who is placed (a placed man's row is tinted on the tab where he sits); a click on a row runs
+// pickPoolRow (poolCtx's pick), where the add and clear rules stay.
 function listPlacement() {
   return { cptId: state.cpt ? String(state.cpt.id) : null, flexIds: new Set(state.flex.filter(Boolean).map((s) => String(s.id))) };
 }
@@ -408,6 +437,7 @@ function panelHtml(board, poolRows) {
         ${controlsHtml()}
         <div class="lineup-slots">${slotsHtml(board)}</div>
         ${meterStripHtml()}
+        ${lineupReadHtml(board, state)}
         <div class="salary-bar">
           <div class="salary-bar-track"><div class="salary-bar-fill${overCap ? " over" : ""}" style="width:${fillPct}%"></div></div>
           <span class="salary-bar-label${overCap ? " over" : ""}">${escapeHtml(salaryText)}</span>
@@ -441,17 +471,9 @@ function optCtx(board, key) {
 // `container`: the whole panel, or the pool's element when only the pool was repainted.
 function wireRowButtons(container, board) {
   wirePoolControls(container, optCtx(board, lastKey));
-  container.querySelectorAll("[data-action='add-cpt']").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      addCaptain(findRow(board, btn.dataset.id));
-      commit();
-    });
-  });
-  container.querySelectorAll("[data-action='add-flex']").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      addFlex(findRow(board, btn.dataset.id));
-      commit();
-    });
+  wirePickRows(container, (id, action) => { // a click on a pool row (D39): the man goes in or out, and the panel is redrawn
+    pickPoolRow(findRow(board, id), action);
+    commit();
   });
 }
 
@@ -468,19 +490,26 @@ function wire(container, board, key) {
     clearAll();
     commit();
   });
-  container.querySelector("[data-action='clear-cpt']")?.addEventListener("click", () => {
-    clearCaptain();
-    commit();
-  });
-  container.querySelectorAll("[data-action='clear-flex']").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      clearFlex(Number(btn.dataset.flex));
+  // A click (or Enter / Space) on a filled slot card takes his man out (D39, Adam 4:45 PM 2026-10-29: no Clear buttons).
+  const onSlot = (el, remove) => {
+    el.addEventListener("click", (ev) => { // his name keeps opening his card
+      if (ev?.target?.closest?.("button, a, input, .opt-p-name")) return;
+      remove();
       commit();
     });
-  });
+    el.addEventListener("keydown", (ev) => {
+      if ((ev.key === "Enter" || ev.key === " ") && ev.target === el) { ev.preventDefault?.(); remove(); commit(); }
+    });
+  };
+  const cptSlot = container.querySelector("[data-action='clear-cpt']");
+  if (cptSlot) onSlot(cptSlot, clearCaptain);
+  container.querySelectorAll("[data-action='clear-flex']").forEach((el) => onSlot(el, () => clearFlex(Number(el.dataset.flex))));
   wireRowButtons(container, board);
   const pool = container.querySelector("#sd-pool");
-  if (pool) wirePool(pool, poolCtx(board));
+  if (pool) {
+    wirePool(pool, poolCtx(board));
+    wirePoolTabs(pool, poolCtx(board));
+  }
   container.querySelector("#sd-lineup-save-btn")?.addEventListener("click", () => {
     const nameInput = container.querySelector("#sd-lineup-save-name");
     doSaveLineup(key, nameInput ? nameInput.value : "");

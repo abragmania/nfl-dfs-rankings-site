@@ -1,6 +1,6 @@
 // Showdown meter, the field model's words (RULES.md D82; the meter plan 2026-10-25 sections 8 and 12 step 5, Adam 2026-10-18
-// "show the calculation"): the calculation sentence, the "about" rounding, the scale's two ends from the answer, and the
-// "estimate" label with the basis it carries on hover. Pure and browser-safe, a separate file because lineup-meter.js is about
+// "show the calculation"): the calculation sentence, the "about" rounding, the scale's two ends from the answer, the
+// "estimate" label with the basis it carries on hover, and the panel's two verdict lines. Pure and browser-safe, a separate file because lineup-meter.js is about
 // 555 lines, under the 600-line ceiling. Every figure here comes from the server's answer (`parts`, `left`, `gap`, `scale`, `model`); nothing is a
 // number typed in by hand except the two fall-back ends of the scale and the 10-copy line below which a figure is an estimate.
 import { escapeHtml, money, dec1 } from "../format.js";
@@ -21,10 +21,51 @@ export function copiesText(copies) {
   return sigFig2(copies);
 }
 
-/** Which way the calculation line is shown, for the first-draft render (Adam sees both): "A" a small grey line under the
- *  facts (and the same sentence on the headline's hover); "B" the sentence only on the headline's hover. The lead flips this
- *  one constant; meterHtml also takes `calc` ("A" | "B") in its view argument, which wins over it. */
-export const CALC_DIRECTION = "A";
+// The calculation sentence is on the meter panel's hover only (Adam 2026-10-29 5:08 PM: "not boilerplate garbage and random
+// text and sourcing"; lineup-meter.js meterHover), so the old "A" (a line on the face) / "B" (hover) switch is gone.
+
+// ---------- the panel's two verdicts (Adam 2026-10-29 5:08 PM: "more 'is this a good lineup / is this a unique lineup', get down to the point of it") ----------
+// The cut-offs below (1, 10 and 100 copies; 5, 10 and 20 percent under the best possible) are the panel's wording bands, chosen
+// for the words; no source claims them. The figures they read are the answer's own (uniqueness.copies, gapPts, gapPct, proj).
+// Edges, so a verdict never contradicts the figure shown beside it: copies are classed on their displayed rounding (two
+// significant figures, as copiesText shows them) and a figure exactly 1, 10 or 100 goes to the worse band (the scale's end
+// reads "under 1 copy"); the gap is classed on its displayed one decimal and exactly -5, -10 or -20 stays in the better band
+// ("within 5%").
+
+/** The Unique line from expected copies: { word, text, tone } (tone: "green", "yellowgreen", "amber", "red"); null when unreadable. */
+export function uniqueVerdict(copies) {
+  if (!isNum(copies) || copies < 0) return null;
+  const shown = Number(copies.toPrecision(2)); // the figure as the panel shows it
+  if (shown < 1) return { word: "Unique", text: "most likely nobody else has this lineup", tone: "green" };
+  if (shown < 10) return { word: "Rare", text: "a few copies out there", tone: "yellowgreen" };
+  if (shown < 100) return { word: "Common", text: `about ${copiesText(copies)} copies out there`, tone: "amber" };
+  return { word: "Chalk", text: `about ${copiesText(copies)} copies`, tone: "red" };
+}
+
+/**
+ * The Good line from the answer's gap to the best possible lineup ({ proj, gapPts, gapPct }; negative is under the best):
+ * { word, text, tone }; with no gap to compare, { word: null, text: "Projection N; no best-possible figure to compare" } when
+ * the projection is known; null when neither is.
+ */
+export function goodVerdict({ proj = null, gapPts = null, gapPct = null } = {}) {
+  if (!isNum(gapPct) || !isNum(gapPts)) return isNum(proj) ? { word: null, text: `Projection ${dec1(proj)}; no best-possible figure to compare`, tone: null } : null;
+  const under = `${dec1(Math.abs(gapPts))} points under the best possible (${dec1(Math.abs(gapPct))}%)`;
+  const shown = Number(gapPct.toFixed(1)); // the percent as the panel shows it
+  if (shown >= -5) return { word: "Strong", text: "within 5% of the best possible lineup", tone: "green" };
+  if (shown >= -10) return { word: "Solid", text: under, tone: "yellowgreen" };
+  if (shown >= -20) return { word: "Below par", text: under, tone: "amber" };
+  return { word: "Weak", text: under, tone: "red" };
+}
+
+/** "If it wins, 57% chance it is yours alone" from the answer's aloneChance; null when it is not a number. A chance that would
+ *  round to 100% without being certain reads "over 99%", one that would round to 0% reads "under 1%" (the server's chance for a
+ *  chalky lineup is a tiny number, never a true zero). */
+export function aloneText(aloneChance) {
+  if (!isNum(aloneChance)) return null;
+  const pct = aloneChance * 100;
+  const words = pct >= 100 ? "100%" : pct >= 99.5 ? "over 99%" : pct < 0.5 ? "under 1%" : `${Math.round(pct)}%`;
+  return `If it wins, ${words} chance it is yours alone`;
+}
 
 /** The scale's ends when an answer carries no anchors (a mismatched pair of files still draws): 1 copy at the unique end,
  *  100 at the chalky end, and the end labels then read as before (the words alone). */

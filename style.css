@@ -1320,10 +1320,10 @@ tr:last-child .cell-edit-hint { top: auto; bottom: 100%; margin-top: 0; margin-b
 .lineup-slot-clear:disabled { opacity: 0.4; cursor: default; }
 
 /* ---------- Showdown meter strip (Adam 2026-10-18; public/js/showdown/lineup-meter.js) ----------
-   Under the six slots: uniqueness first and big (expected copies, with a red-amber-green log scale and a marker at
-   the lineup's copies; how many other entries most likely hold it is the fact line below), the projection against the best possible second, in neutral grey. Lives in the fixed-width
-   left column, so nothing here sets a width of its own; a source line stays on one line (full source on hover),
-   anything else wraps instead of widening the panel. */
+   Under the six slots: the Unique and Good verdicts first (their block is below, after .sd-meter-error), then the expected
+   copies on a red-amber-green log scale with a marker at the lineup's copies; the sources and the calculation are on the
+   panel's hover. Lives in the fixed-width left column, so nothing here sets a width of its own; text wraps instead of
+   widening the panel. */
 .sd-meter, .sd-swaps { /* the swaps panel (below) wears the same box; it has its own class so the meter's repaint never finds it */
   margin-bottom: var(--sp-3);
   padding: var(--sp-2) var(--sp-3);
@@ -1335,16 +1335,6 @@ tr:last-child .cell-edit-hint { top: auto; bottom: 100%; margin-top: 0; margin-b
 }
 /* Adam 2026-10-20: "the number is spread too far to the right": the label and the number sit together on one line, left-aligned. */
 .sd-meter-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: flex-start; gap: 10px; }
-/* The figures label (Adam 2026-10-20: the retired Source switch's place, showdown/figures-label.js): the sources this game's board reads
-   and the Sources link at the right end of the head line, as the switch rode it, so the meter's last line still clears the sticky Make
-   row at 1920x947; the full source lines are on its hover. It takes the room the title and number leave (a 0 basis, so the wrapping head
-   line never drops it to a row of its own) and its words shorten with an ellipsis, the link always shown, so the head line stays one
-   row in every tick state (visual check of 83ee117). With nothing measured it is the strip's first line, left-aligned. */
-.sd-figures { display: flex; flex: 1 1 0; min-width: 0; justify-content: flex-end; align-items: baseline; gap: var(--sp-2); font-size: 12px; color: var(--text-dim); white-space: nowrap; }
-.sd-figures-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.sd-figures-link { flex: none; font-size: 12px; }
-.sd-meter-figures-line { display: flex; margin-bottom: var(--sp-2); }
-.sd-meter-figures-line .sd-figures { justify-content: flex-start; }
 /* The Showdown header's sources pill (#sd-figures-pill) is a button that opens the Sources page: the pill's own look, no button chrome. */
 .sd-figures-pill { background: none; border: 0; padding: 0; margin: 0; font: inherit; cursor: pointer; }
 .sd-figures-pill:hover .pill { border-color: var(--accent); }
@@ -1367,14 +1357,30 @@ tr:last-child .cell-edit-hint { top: auto; bottom: 100%; margin-top: 0; margin-b
 .sd-meter-ends > span { display: flex; flex-direction: column; } /* the end word and, under it, the answer's anchor ("100 or more", "about 2 copies"; D82) */
 .sd-meter-ends > span:last-child { align-items: flex-end; }
 .sd-meter-end-note { font-size: 10px; }
-.sd-meter-facts { display: flex; flex-direction: column; gap: 2px; color: var(--text); }
-.sd-meter-calc { margin-top: var(--sp-1); font-size: 11px; color: var(--text-dim); } /* the calculation line, direction A (field-explain.js CALC_DIRECTION) */
 .sd-est { margin-left: 4px; font-size: 10px; font-weight: 400; font-style: italic; color: var(--text-dim); white-space: nowrap; cursor: help; } /* the "estimate" label on a figure under 10 copies and on a swap row with one */
 .sd-est.sd-est-slot { visibility: hidden; } /* a swap fold with no label keeps its place, so the fold figures end at one x (lineup-swaps.js LABEL_SLOT) */
-.sd-meter-src { margin-top: var(--sp-1); font-size: 11px; color: var(--text-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .sd-meter-proj { margin-top: var(--sp-2); padding-top: var(--sp-2); border-top: 1px solid var(--border); font-size: var(--fs-sm); color: var(--text-muted); }
 .sd-meter-none { color: var(--text-dim); font-size: var(--fs-sm); }
 .sd-meter-error { color: var(--danger); font-size: var(--fs-sm); font-weight: 600; }
+/* The meter's two verdicts (Adam 2026-10-29 5:08 PM: "is this a good lineup / is this a unique lineup", lineup-meter.js meterHtml):
+   each one big line led by its coloured word (the scale's palette), the Unique line's small facts under it; the copies figure and
+   its scale follow, quieter than the verdicts. The sources and the calculation are on the panel's hover. */
+.sd-verdict { font-size: 16px; font-weight: 600; line-height: 1.3; color: var(--text); }
+.sd-verdict-word { font-weight: 800; }
+.sd-verdict-good { margin-top: var(--sp-1); }
+.sd-verdict-sub { font-size: 12px; color: var(--text-muted); }
+.sd-meter .sd-meter-head { margin-top: var(--sp-2); }
+.sd-meter .sd-meter-head .sd-meter-label { font-weight: 400; color: var(--text-muted); font-size: 12px; }
+.sd-meter .sd-meter-head .sd-meter-big { font-size: 15px; }
+/* Showdown lineup read (Adam 2026-10-29) */
+/* lineup-read.js: plain sentences that read the six-man lineup, a thin card under the meter strip in the same box, its title in the
+   meter head's label style, its lines at the meter's small size with the lead words bold. Lives in the left column: no width of its own. */
+.sd-read { margin-bottom: var(--sp-3); padding: var(--sp-2) var(--sp-3); background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 6px; min-width: 0; font-variant-numeric: tabular-nums; }
+.sd-read-head { font-size: 12px; color: var(--text-muted); margin-bottom: 2px; }
+.sd-read-none { color: var(--text-dim); font-size: 12px; }
+.sd-read-lines { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 3px; }
+.sd-read-line { font-size: 12px; line-height: 1.35; color: var(--text); }
+.sd-read-line b { font-weight: 700; }
 
 .salary-bar-track {
   height: 14px;
@@ -2414,10 +2420,17 @@ td.opt-exp-opp { color: var(--text-muted); } /* the cells only: the Matchup head
 .sd-pool-table th.sd-pool-sub { text-align: center; cursor: default; padding: 2px 2px 4px; }
 .sd-pool-table :is(th.lineup-min-head, th.lineup-max-head, td.lineup-min-cell, td.lineup-max-cell) { text-align: center; padding-left: 2px; padding-right: 2px; cursor: default; }
 .sd-pool-table td.sd-pool-btn { text-align: center; padding-left: 1px; padding-right: 1px; }
-.sd-pool-table td.sd-pool-add { text-align: left; padding-left: 3px; padding-right: 6px; }
+/* A click on a pool row picks or drops the man (pool.js poolPickAction; Adam 4:45 PM 2026-10-29): the row is a pointer and a keyboard stop. */
+.sd-pool-table tbody tr.sd-pool-pick { cursor: pointer; }
+.sd-pool-table tbody tr.sd-pool-pick:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+/* The Captain | FLEX switch (the Sources page's .sp-seg) between the heading and the figures words. */
+.sd-pool-tabs { align-self: center; }
+/* A filled Showdown slot is clicked to take his man out (lineup-slots.js; no Clear button, so no room kept for one). */
+.lineup-slots .sd-slot-removable { cursor: pointer; }
+.lineup-slots .sd-slot-removable:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.lineup-slots .sd-slot-removable.lineup-slot-card > .opt-p.opt-p-big { padding-right: var(--sp-3); }
 .sd-pool-table .opt-input.lineup-min-input, .sd-pool-table .opt-input.lineup-max-input { width: 2.2em; padding-left: 2px; padding-right: 2px; } /* three digits; narrower so the pool fits beside the builder at 1920 (Q1) */
 .sd-pool-table .lineup-row-btn.sd-row-ico { margin-right: 0; }
-.sd-pool-table .lineup-row-btn.sd-add-btn { min-width: 64px; padding: 2px 6px; text-align: center; vertical-align: middle; }
 /* Adam 2026-10-26 3:59 PM ("i like the list to the side of the optimizer not beneath"): the player pool is the right column beside the
    builder, starting level with it (the band's head sits above both, lineup.js) and taking the rest of the width; a table wider than
    that scrolls sideways inside its own panel, its Player column held at the left. The builder's column is fixed at 600px (its cards do
@@ -2627,7 +2640,6 @@ td.opt-exp-opp { color: var(--text-muted); } /* the cells only: the Matchup head
 @media (min-width: 1101px) { .sd-pool-layout .opt-panel.sd-opt-panel .opt-groups.opt-groups-cash { grid-template-columns: minmax(0, 1fr); } }
 .sd-opt-panel .opt-set-label { white-space: nowrap; }
 .sd-pool-table tbody tr:hover:not(.sd-pool-subhead) > td:first-child:not([colspan]) { background: var(--row-hover); }
-.sd-pool-table td.sd-pool-add { text-align: center; }
 @media (max-width: 700px) {
   /* The gold band wraps instead of pushing the page wider than the phone (it measured 805px at 375). */
   .sd-band-text { white-space: normal; font-size: var(--fs-md); }
@@ -2638,7 +2650,7 @@ td.opt-exp-opp { color: var(--text-muted); } /* the cells only: the Matchup head
   .sd-pool-table .nm-full { display: none; }
   .sd-pool-table .nm-short { display: inline; }
   .sd-pool-table th.sd-own-total-label { white-space: normal; max-width: 190px; }
-  .sd-pool-table .lineup-row-btn.sd-add-btn, .sd-pool-table .lineup-row-btn.sd-row-ico { min-height: 32px; }
+  .sd-pool-table .lineup-row-btn.sd-row-ico { min-height: 32px; }
   /* The builder's slots (classic and Showdown share them): a smaller logo, figures and Clear, so the name and position keep their letters. */
   .lineup-slots .opt-p-big :is(.opt-p-logo, .player-badge) { flex-basis: 32px; width: 32px; height: 32px; }
   .lineup-slots .opt-p-big .opt-p-name { font-size: 14px; }

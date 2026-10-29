@@ -3,8 +3,8 @@
 // sources) is replaced by one line naming the sources this game's board reads, from board.mode.ticked (the ticked sources per
 // section, server/rank/select-showdown.js tickedSources) and board.figures (the server's source lines and stamps,
 // server/showdown/board-view.js boardFigures), with a link to the Sources page, where Adam picks the sources. Pure: text and html
-// builders only, no DOM, no storage, no network; lineup-meter.js puts the label on the meter's head line, view.js the pill in
-// #sd-figures-pill. A board with no figures (the dev sample, public/dev/showdown-sample.json) gets no label and no pill.
+// builders only, no DOM, no storage, no network; view.js puts the pill in #sd-figures-pill, and the meter's hover reads
+// figureLine (the label left the meter's face on 2026-10-29). A board with no figures (the dev sample, public/dev/showdown-sample.json) gets no label and no pill.
 import { escapeHtml } from "../format.js";
 
 const TWOGUN_ID = "twogun";
@@ -108,23 +108,20 @@ export function figuresLabelText(board) {
   return [names, stampText(board.figures)].filter(Boolean).join(" · ");
 }
 
-/** The hover behind the label and the pill: board.figures' projection and ownership source lines in full, each with its as-of, and any refusal. */
-export function figuresTitle(board) {
-  if (!hasFigures(board)) return "";
-  const line = (h, what) => {
-    if (!h) return `${what}: not named`;
-    const src = typeof h.source === "string" && h.source.trim() ? h.source.trim() : `${what}: source not named`;
-    const when = asOfText(h);
-    return `${src}${when ? `; as of ${when}` : ""}${h.error ? `. ${h.error}` : ""}`;
-  };
-  return [line(board.figures.projection, "Projections"), line(board.figures.ownership, "Ownership")].join("\n");
+/** One half's source line in full, as the server words it (a ticked source with no figures for this game named in it), with its
+ *  as-of and any refusal: `h` is board.figures' half or a meter answer's half ({ source, asOf, asOfFrom, error }); `what` names
+ *  the half when it carries no source ("Projections" or "Ownership"). The one copy behind figuresTitle and the meter's hover. */
+export function figureLine(h, what) {
+  if (!h) return `${what}: not named`;
+  const src = typeof h.source === "string" && h.source.trim() ? h.source.trim() : `${what}: source not named`;
+  const when = asOfText(h);
+  return `${src}${when ? `; as of ${when}` : ""}${h.error ? `. ${h.error}` : ""}`;
 }
 
-/** The label on the meter's head line, with the Sources link (data-sd-open-sources, wired by lineup-meter.js); "" for a board with no figures. */
-export function figuresLabelHtml(board) {
-  const text = figuresLabelText(board);
-  if (text === null) return "";
-  return `<span class="sd-figures" title="${escapeHtml(figuresTitle(board))}"><span class="sd-figures-text">${escapeHtml(text)}</span><button type="button" class="link-btn sd-figures-link" data-sd-open-sources>Sources</button></span>`;
+/** The hover behind the pill: board.figures' projection and ownership source lines in full, each with its as-of, and any refusal. */
+export function figuresTitle(board) {
+  if (!hasFigures(board)) return "";
+  return [figureLine(board.figures.projection, "Projections"), figureLine(board.figures.ownership, "Ownership")].join("\n");
 }
 
 /**

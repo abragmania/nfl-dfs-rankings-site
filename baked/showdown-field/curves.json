@@ -1,0 +1,1117 @@
+{
+  "schemaVersion": 3,
+  "note": "Fitted field curves for the Showdown lineup meter (the Showdown meter plan 2026-10-25, sections 3, 5, 7 and 8), written by tools/sd_field_fit.mjs only; never edit by hand. Fitted on 5 nights only, pooled over nights whose own curves differ (by up to 1.88 in log factor at a knot).",
+  "fitDate": "2026-10-27",
+  "fitClock": "9:24 AM EDT",
+  "fitAt": "2026-10-27T13:24:17.290Z",
+  "tool": {
+    "commit": "d0ea63019aa55deded752757d6148576423d344b",
+    "filesNotInThatCommit": []
+  },
+  "gapUnit": "pct",
+  "projStep": 0.25,
+  "lambda": 1,
+  "ownershipExponents": {
+    "captain": 0.375,
+    "flex": 0.625
+  },
+  "ownershipExponentChoice": {
+    "chosen": {
+      "captain": 0.375,
+      "flex": 0.625
+    },
+    "rule": "the pair (Captain exponent, FLEX exponent) with the best mean held-out Poisson log-score over the 5 leave-one-night-out swaps (Adam's default Q5, 2026-10-26), every night printed; on a tie the pair nearer Captain 1, FLEX 1",
+    "grid": {
+      "seatValues": [
+        0.25,
+        0.5,
+        0.75,
+        1,
+        1.25
+      ],
+      "refinementStep": 0.125,
+      "note": "each seat on 0.25, 0.5, 0.75, 1, 1.25, then 0.125 steps around the best pair and along the diagonal around the best single exponent, never outside 0.25 to 1.25; 31 pairs scored"
+    },
+    "chosenMeanLogScore": -32.727253,
+    "bestSingle": {
+      "b": 0.5,
+      "meanLogScore": -33.451819
+    },
+    "straightMeanLogScore": -38.210353,
+    "pairs": [
+      {
+        "captain": 0.25,
+        "flex": 0.25,
+        "meanLogScore": -36.122055,
+        "nights": {
+          "2026-w06-SEADEN": -40.8319,
+          "2026-w06-WASSF": -38.962356,
+          "2026-w07-NECHI": -31.668795,
+          "2026-w07-KCSEA": -31.820564,
+          "2026-w07-DALPHI": -37.32666
+        }
+      },
+      {
+        "captain": 0.25,
+        "flex": 0.375,
+        "meanLogScore": -33.97502,
+        "nights": {
+          "2026-w06-SEADEN": -37.568811,
+          "2026-w06-WASSF": -35.383528,
+          "2026-w07-NECHI": -31.124833,
+          "2026-w07-KCSEA": -30.918108,
+          "2026-w07-DALPHI": -34.879821
+        }
+      },
+      {
+        "captain": 0.25,
+        "flex": 0.5,
+        "meanLogScore": -33.05532,
+        "nights": {
+          "2026-w06-SEADEN": -35.446948,
+          "2026-w06-WASSF": -32.921026,
+          "2026-w07-NECHI": -31.446771,
+          "2026-w07-KCSEA": -30.65465,
+          "2026-w07-DALPHI": -34.807207
+        }
+      },
+      {
+        "captain": 0.25,
+        "flex": 0.625,
+        "meanLogScore": -33.23796,
+        "nights": {
+          "2026-w06-SEADEN": -34.402974,
+          "2026-w06-WASSF": -31.502177,
+          "2026-w07-NECHI": -32.611957,
+          "2026-w07-KCSEA": -30.979213,
+          "2026-w07-DALPHI": -36.693477
+        }
+      },
+      {
+        "captain": 0.25,
+        "flex": 0.75,
+        "meanLogScore": -34.404767,
+        "nights": {
+          "2026-w06-SEADEN": -34.38366,
+          "2026-w06-WASSF": -31.051661,
+          "2026-w07-NECHI": -34.600399,
+          "2026-w07-KCSEA": -31.84357,
+          "2026-w07-DALPHI": -40.144543
+        }
+      },
+      {
+        "captain": 0.25,
+        "flex": 1,
+        "meanLogScore": -39.273275,
+        "nights": {
+          "2026-w06-SEADEN": -37.252895,
+          "2026-w06-WASSF": -32.771819,
+          "2026-w07-NECHI": -40.978455,
+          "2026-w07-KCSEA": -35.016817,
+          "2026-w07-DALPHI": -50.346392
+        }
+      },
+      {
+        "captain": 0.25,
+        "flex": 1.25,
+        "meanLogScore": -46.932501,
+        "nights": {
+          "2026-w06-SEADEN": -43.774277,
+          "2026-w06-WASSF": -37.583327,
+          "2026-w07-NECHI": -50.435509,
+          "2026-w07-KCSEA": -39.870053,
+          "2026-w07-DALPHI": -62.99934
+        }
+      },
+      {
+        "captain": 0.375,
+        "flex": 0.375,
+        "meanLogScore": -34.269749,
+        "nights": {
+          "2026-w06-SEADEN": -36.931173,
+          "2026-w06-WASSF": -36.118289,
+          "2026-w07-NECHI": -32.500485,
+          "2026-w07-KCSEA": -30.465153,
+          "2026-w07-DALPHI": -35.333647
+        }
+      },
+      {
+        "captain": 0.375,
+        "flex": 0.5,
+        "meanLogScore": -32.958107,
+        "nights": {
+          "2026-w06-SEADEN": -34.275177,
+          "2026-w06-WASSF": -33.339427,
+          "2026-w07-NECHI": -32.482463,
+          "2026-w07-KCSEA": -29.906952,
+          "2026-w07-DALPHI": -34.786515
+        }
+      },
+      {
+        "captain": 0.375,
+        "flex": 0.625,
+        "meanLogScore": -32.727253,
+        "nights": {
+          "2026-w06-SEADEN": -32.640834,
+          "2026-w06-WASSF": -31.582854,
+          "2026-w07-NECHI": -33.237988,
+          "2026-w07-KCSEA": -29.931575,
+          "2026-w07-DALPHI": -36.243015
+        }
+      },
+      {
+        "captain": 0.5,
+        "flex": 0.25,
+        "meanLogScore": -37.915832,
+        "nights": {
+          "2026-w06-SEADEN": -41.161018,
+          "2026-w06-WASSF": -41.448339,
+          "2026-w07-NECHI": -35.326749,
+          "2026-w07-KCSEA": -31.925176,
+          "2026-w07-DALPHI": -39.717878
+        }
+      },
+      {
+        "captain": 0.5,
+        "flex": 0.5,
+        "meanLogScore": -33.451819,
+        "nights": {
+          "2026-w06-SEADEN": -33.917721,
+          "2026-w06-WASSF": -34.309155,
+          "2026-w07-NECHI": -34.050453,
+          "2026-w07-KCSEA": -29.670543,
+          "2026-w07-DALPHI": -35.311222
+        }
+      },
+      {
+        "captain": 0.5,
+        "flex": 0.75,
+        "meanLogScore": -33.226492,
+        "nights": {
+          "2026-w06-SEADEN": -30.56117,
+          "2026-w06-WASSF": -31.175249,
+          "2026-w07-NECHI": -35.648311,
+          "2026-w07-KCSEA": -29.723684,
+          "2026-w07-DALPHI": -39.024047
+        }
+      },
+      {
+        "captain": 0.5,
+        "flex": 1,
+        "meanLogScore": -36.406032,
+        "nights": {
+          "2026-w06-SEADEN": -30.724493,
+          "2026-w06-WASSF": -31.491259,
+          "2026-w07-NECHI": -39.903713,
+          "2026-w07-KCSEA": -31.738265,
+          "2026-w07-DALPHI": -48.172431
+        }
+      },
+      {
+        "captain": 0.5,
+        "flex": 1.25,
+        "meanLogScore": -42.342335,
+        "nights": {
+          "2026-w06-SEADEN": -34.187726,
+          "2026-w06-WASSF": -34.757681,
+          "2026-w07-NECHI": -46.704583,
+          "2026-w07-KCSEA": -35.417614,
+          "2026-w07-DALPHI": -60.644072
+        }
+      },
+      {
+        "captain": 0.625,
+        "flex": 0.625,
+        "meanLogScore": -33.545362,
+        "nights": {
+          "2026-w06-SEADEN": -31.69507,
+          "2026-w06-WASSF": -33.460602,
+          "2026-w07-NECHI": -36.253196,
+          "2026-w07-KCSEA": -29.401986,
+          "2026-w07-DALPHI": -36.915955
+        }
+      },
+      {
+        "captain": 0.75,
+        "flex": 0.25,
+        "meanLogScore": -41.272149,
+        "nights": {
+          "2026-w06-SEADEN": -43.74108,
+          "2026-w06-WASSF": -45.332324,
+          "2026-w07-NECHI": -40.044877,
+          "2026-w07-KCSEA": -33.524444,
+          "2026-w07-DALPHI": -43.718019
+        }
+      },
+      {
+        "captain": 0.75,
+        "flex": 0.5,
+        "meanLogScore": -35.822887,
+        "nights": {
+          "2026-w06-SEADEN": -35.195109,
+          "2026-w06-WASSF": -37.481623,
+          "2026-w07-NECHI": -38.262624,
+          "2026-w07-KCSEA": -30.449247,
+          "2026-w07-DALPHI": -37.725831
+        }
+      },
+      {
+        "captain": 0.75,
+        "flex": 0.75,
+        "meanLogScore": -34.436247,
+        "nights": {
+          "2026-w06-SEADEN": -30.177277,
+          "2026-w06-WASSF": -33.494828,
+          "2026-w07-NECHI": -39.042698,
+          "2026-w07-KCSEA": -29.624334,
+          "2026-w07-DALPHI": -39.8421
+        }
+      },
+      {
+        "captain": 0.75,
+        "flex": 1,
+        "meanLogScore": -36.301575,
+        "nights": {
+          "2026-w06-SEADEN": -28.306477,
+          "2026-w06-WASSF": -32.841076,
+          "2026-w07-NECHI": -42.070384,
+          "2026-w07-KCSEA": -30.721331,
+          "2026-w07-DALPHI": -47.568607
+        }
+      },
+      {
+        "captain": 0.75,
+        "flex": 1.25,
+        "meanLogScore": -40.811158,
+        "nights": {
+          "2026-w06-SEADEN": -29.368669,
+          "2026-w06-WASSF": -35.036192,
+          "2026-w07-NECHI": -47.17778,
+          "2026-w07-KCSEA": -33.45726,
+          "2026-w07-DALPHI": -59.01589
+        }
+      },
+      {
+        "captain": 1,
+        "flex": 0.25,
+        "meanLogScore": -45.677988,
+        "nights": {
+          "2026-w06-SEADEN": -47.964177,
+          "2026-w06-WASSF": -50.129256,
+          "2026-w07-NECHI": -45.341863,
+          "2026-w07-KCSEA": -36.210007,
+          "2026-w07-DALPHI": -48.744639
+        }
+      },
+      {
+        "captain": 1,
+        "flex": 0.5,
+        "meanLogScore": -39.548147,
+        "nights": {
+          "2026-w06-SEADEN": -38.514852,
+          "2026-w06-WASSF": -41.813121,
+          "2026-w07-NECHI": -43.354162,
+          "2026-w07-KCSEA": -32.518819,
+          "2026-w07-DALPHI": -41.539779
+        }
+      },
+      {
+        "captain": 1,
+        "flex": 0.75,
+        "meanLogScore": -37.328979,
+        "nights": {
+          "2026-w06-SEADEN": -32.318451,
+          "2026-w06-WASSF": -37.248087,
+          "2026-w07-NECHI": -43.752106,
+          "2026-w07-KCSEA": -31.02205,
+          "2026-w07-DALPHI": -42.3042
+        }
+      },
+      {
+        "captain": 1,
+        "flex": 1,
+        "meanLogScore": -38.210353,
+        "nights": {
+          "2026-w06-SEADEN": -28.959715,
+          "2026-w06-WASSF": -35.914062,
+          "2026-w07-NECHI": -46.129842,
+          "2026-w07-KCSEA": -31.402361,
+          "2026-w07-DALPHI": -48.645784
+        }
+      },
+      {
+        "captain": 1,
+        "flex": 1.25,
+        "meanLogScore": -41.595898,
+        "nights": {
+          "2026-w06-SEADEN": -28.201263,
+          "2026-w06-WASSF": -37.344391,
+          "2026-w07-NECHI": -50.248016,
+          "2026-w07-KCSEA": -33.387702,
+          "2026-w07-DALPHI": -58.798116
+        }
+      },
+      {
+        "captain": 1.25,
+        "flex": 0.25,
+        "meanLogScore": -50.798867,
+        "nights": {
+          "2026-w06-SEADEN": -53.368629,
+          "2026-w06-WASSF": -55.559398,
+          "2026-w07-NECHI": -50.967249,
+          "2026-w07-KCSEA": -39.689042,
+          "2026-w07-DALPHI": -54.410016
+        }
+      },
+      {
+        "captain": 1.25,
+        "flex": 0.5,
+        "meanLogScore": -44.206471,
+        "nights": {
+          "2026-w06-SEADEN": -43.295626,
+          "2026-w06-WASSF": -46.932705,
+          "2026-w07-NECHI": -48.934195,
+          "2026-w07-KCSEA": -35.533334,
+          "2026-w07-DALPHI": -46.336496
+        }
+      },
+      {
+        "captain": 1.25,
+        "flex": 0.75,
+        "meanLogScore": -41.403527,
+        "nights": {
+          "2026-w06-SEADEN": -36.276114,
+          "2026-w06-WASSF": -41.97176,
+          "2026-w07-NECHI": -49.195743,
+          "2026-w07-KCSEA": -33.523118,
+          "2026-w07-DALPHI": -46.050902
+        }
+      },
+      {
+        "captain": 1.25,
+        "flex": 1,
+        "meanLogScore": -41.569626,
+        "nights": {
+          "2026-w06-SEADEN": -31.855801,
+          "2026-w06-WASSF": -40.156228,
+          "2026-w07-NECHI": -51.272568,
+          "2026-w07-KCSEA": -33.346656,
+          "2026-w07-DALPHI": -51.216876
+        }
+      },
+      {
+        "captain": 1.25,
+        "flex": 1.25,
+        "meanLogScore": -44.103187,
+        "nights": {
+          "2026-w06-SEADEN": -29.757146,
+          "2026-w06-WASSF": -41.029962,
+          "2026-w07-NECHI": -54.859103,
+          "2026-w07-KCSEA": -34.7385,
+          "2026-w07-DALPHI": -60.131226
+        }
+      }
+    ]
+  },
+  "left": [
+    {
+      "x": 0,
+      "logFactor": 0
+    },
+    {
+      "x": 100,
+      "logFactor": -0.12047192293898396
+    },
+    {
+      "x": 200,
+      "logFactor": -0.25073879295101986
+    },
+    {
+      "x": 300,
+      "logFactor": -0.3989470695842983
+    },
+    {
+      "x": 400,
+      "logFactor": -0.5812661495586597
+    },
+    {
+      "x": 500,
+      "logFactor": -0.8113686668083459
+    },
+    {
+      "x": 700,
+      "logFactor": -1.1075236951545164
+    },
+    {
+      "x": 1000,
+      "logFactor": -1.481670788552605
+    },
+    {
+      "x": 1500,
+      "logFactor": -1.9395315474147348
+    },
+    {
+      "x": 2000,
+      "logFactor": -2.4753169844746714
+    },
+    {
+      "x": 3000,
+      "logFactor": -3.073462505896239
+    },
+    {
+      "x": 5000,
+      "logFactor": -3.7068722660538933
+    }
+  ],
+  "gap": [
+    {
+      "x": 0,
+      "logFactor": 0
+    },
+    {
+      "x": 0.5,
+      "logFactor": -0.2804178437533816
+    },
+    {
+      "x": 1,
+      "logFactor": -0.5620689602941028
+    },
+    {
+      "x": 2,
+      "logFactor": -0.8476266078617694
+    },
+    {
+      "x": 3,
+      "logFactor": -1.140871607185605
+    },
+    {
+      "x": 4,
+      "logFactor": -1.4485009230184052
+    },
+    {
+      "x": 5,
+      "logFactor": -1.781352199055786
+    },
+    {
+      "x": 7,
+      "logFactor": -2.155478306648926
+    },
+    {
+      "x": 9,
+      "logFactor": -2.587453646406698
+    },
+    {
+      "x": 12,
+      "logFactor": -3.090543808965853
+    },
+    {
+      "x": 16,
+      "logFactor": -3.6629861961746246
+    },
+    {
+      "x": 22,
+      "logFactor": -4.285201562252826
+    },
+    {
+      "x": 30,
+      "logFactor": -4.929451047270356
+    }
+  ],
+  "scale": {
+    "uniqueEnd": 0.889574,
+    "chalkyEnd": 104,
+    "field": 100000,
+    "basis": "the entry-weighted 10th and 90th percentiles of these curves' own predicted copies (100,000 x P) over the fit nights' covered entries"
+  },
+  "spread": {
+    "kind": "negative-binomial",
+    "size": 0.387785,
+    "heldOutPoissonCoverageMin": 0.2872,
+    "heldOutNegBinCoverageMin": 0.6692,
+    "bar": 0.7,
+    "note": "The spread changes only the \"usually a to b\" range words; the headline copies figure is the model's mean and never this distribution's mode (a negative binomial of size under 1 peaks at 0 for every mean)."
+  },
+  "provenance": [
+    {
+      "contestId": "196689718",
+      "key": "2026-w06-SEADEN",
+      "game": "SEA@DEN",
+      "date": "2026-10-15",
+      "entries": 84179,
+      "entriesCounted": 84179,
+      "distinct": 14670,
+      "covered": 83608,
+      "coveredDefinition": "entries whose six men all have a pre-game ownership above 0 in their seat and a pre-game FLEX projection; ownershipPostedEntries: entries whose six men all have a posted ownership of any value",
+      "bestLegal": 88.59,
+      "bestEntered": 88.59,
+      "ownership": {
+        "source": "This game's ticked ownership: FLEX and Captain apart, TwoGun; players they miss are left blank, plus Adam's typed numbers",
+        "asOf": "THU OCT 15 · 8:39 AM CT"
+      },
+      "projection": {
+        "source": "This game's ticked projections: TwoGun; players they miss are left blank, plus Adam's typed numbers (a typed revive of a player listed out is not used while TwoGun is the only projection source)",
+        "asOf": "Thu Oct 15 8:32 AM CT (the Ceiling Board's UPDATED stamp)"
+      },
+      "usedFor": "shipped curves (pooled); held-out test of the curves fitted on the other 4 nights; night-by-night curve"
+    },
+    {
+      "contestId": "196786690",
+      "key": "2026-w06-WASSF",
+      "game": "WAS@SF",
+      "date": "2026-10-19",
+      "entries": 87284,
+      "entriesCounted": 87284,
+      "distinct": 14097,
+      "covered": 77248,
+      "coveredDefinition": "entries whose six men all have a pre-game ownership above 0 in their seat and a pre-game FLEX projection; ownershipPostedEntries: entries whose six men all have a posted ownership of any value",
+      "bestLegal": 105.04,
+      "bestEntered": 105.04,
+      "ownership": {
+        "source": "This game's ticked ownership: FLEX and Captain apart, TwoGun; players they miss are left blank, plus Adam's typed numbers",
+        "asOf": "MON OCT 19 6:08 PM CT (the ownership \"Updated\" stamp; board updated Mon Oct 19 6:07 PM CT)"
+      },
+      "projection": {
+        "source": "This game's ticked projections: TwoGun; players they miss are left blank, plus Adam's typed numbers (a typed revive of a player listed out is not used while TwoGun is the only projection source)",
+        "asOf": "Mon, Oct 19, 6:07 PM CT (the Ceiling Board's UPDATED stamp as get_slates reported it)"
+      },
+      "usedFor": "shipped curves (pooled); held-out test of the curves fitted on the other 4 nights; night-by-night curve"
+    },
+    {
+      "contestId": "196947072",
+      "key": "2026-w07-NECHI",
+      "game": "NE@CHI",
+      "date": "2026-10-22",
+      "entries": 73427,
+      "entriesCounted": 73427,
+      "distinct": 12340,
+      "covered": 72788,
+      "coveredDefinition": "entries whose six men all have a pre-game ownership above 0 in their seat and a pre-game FLEX projection; ownershipPostedEntries: entries whose six men all have a posted ownership of any value",
+      "bestLegal": 99.1,
+      "bestEntered": 99.1,
+      "ownership": {
+        "source": "This game's ticked ownership: FLEX and Captain apart, TwoGun; players they miss are left blank, plus Adam's typed numbers",
+        "asOf": "Thu Oct 22 2026 6:07 PM CT (the board's UPDATED stamp; read 7:54 PM EDT, replacing the 7:32 AM CT reading)"
+      },
+      "projection": {
+        "source": "This game's ticked projections: TwoGun; players they miss are left blank, plus Adam's typed numbers (a typed revive of a player listed out is not used while TwoGun is the only projection source)",
+        "asOf": "2026-10-22 18:07 CT (the Ceiling Board's UPDATED stamp)"
+      },
+      "usedFor": "shipped curves (pooled); held-out test of the curves fitted on the other 4 nights; night-by-night curve"
+    },
+    {
+      "contestId": "197055014",
+      "key": "2026-w07-KCSEA",
+      "game": "KC@SEA",
+      "date": "2026-10-25",
+      "entries": 78092,
+      "entriesCounted": 78092,
+      "distinct": 12836,
+      "covered": 74312,
+      "coveredDefinition": "entries whose six men all have a pre-game ownership above 0 in their seat and a pre-game FLEX projection; ownershipPostedEntries: entries whose six men all have a posted ownership of any value",
+      "bestLegal": 91.21,
+      "bestEntered": 91.21,
+      "ownership": {
+        "source": "This game's ticked ownership: FLEX and Captain apart, TwoGun; players they miss are left blank, plus Adam's typed numbers",
+        "asOf": "Sun Oct 25 2026 6:13 PM CT (the ownership \"Updated\" stamp, his last filing before the 7:20 PM CT kickoff; board UPDATED 6:12 PM CT; read Mon Oct 26 1:41 PM EDT from the finished week's board, replacing the 12:50 PM CT filing read at 7:13 PM EDT on game night)"
+      },
+      "projection": {
+        "source": "This game's ticked projections: TwoGun; players they miss are left blank, plus Adam's typed numbers (a typed revive of a player listed out is not used while TwoGun is the only projection source)",
+        "asOf": "2026-10-25 18:12 CT (the Ceiling Board's UPDATED stamp)"
+      },
+      "usedFor": "shipped curves (pooled); held-out test of the curves fitted on the other 4 nights; night-by-night curve"
+    },
+    {
+      "contestId": "197055073",
+      "key": "2026-w07-DALPHI",
+      "game": "DAL@PHI",
+      "date": "2026-10-26",
+      "entries": 73373,
+      "entriesCounted": 73373,
+      "distinct": 11288,
+      "covered": 68890,
+      "coveredDefinition": "entries whose six men all have a pre-game ownership above 0 in their seat and a pre-game FLEX projection; ownershipPostedEntries: entries whose six men all have a posted ownership of any value",
+      "bestLegal": 100.84,
+      "bestEntered": 100.84,
+      "ownership": {
+        "source": "This game's ticked ownership: FLEX and Captain apart, TwoGun; players they miss are left blank, plus Adam's typed numbers",
+        "asOf": "Mon Oct 26 2026 6:08 PM CT (the ownership \"Updated\" stamp; board UPDATED 6:07 PM CT, his last before the 7:15 PM CT kickoff; read 2026-10-27 09:11 EDT, after the game, replacing the 8:35 AM CT reading)"
+      },
+      "projection": {
+        "source": "This game's ticked projections: TwoGun; players they miss are left blank, plus Adam's typed numbers (a typed revive of a player listed out is not used while TwoGun is the only projection source)",
+        "asOf": "2026-10-26 18:07 CT (the Ceiling Board's UPDATED stamp; his last update before the 19:15 CT kickoff)"
+      },
+      "usedFor": "shipped curves (pooled); held-out test of the curves fitted on the other 4 nights; night-by-night curve"
+    }
+  ],
+  "heldOut": {
+    "lambda": 1,
+    "swaps": [
+      {
+        "train": "2026-w06-WASSF+2026-w07-NECHI+2026-w07-KCSEA+2026-w07-DALPHI",
+        "test": "2026-w06-SEADEN",
+        "logScoreModel": -32.640834,
+        "logScoreProduct": -143.35208,
+        "logScoreLeftOnly": -62.504048,
+        "top100Model": 1.65852,
+        "top100Product": 23.8807,
+        "poissonCoverage": 0.3176,
+        "negBinCoverage": 0.7009,
+        "negBinSize": 0.42377,
+        "negBinLogScore": -5.2439099,
+        "bands": [
+          {
+            "band": "under 0.1",
+            "share": 0.02805,
+            "ratio": 36.57,
+            "judged": true
+          },
+          {
+            "band": "0.1 to 1",
+            "share": 0.1401,
+            "ratio": 11.4,
+            "judged": true
+          },
+          {
+            "band": "1 to 10",
+            "share": 0.363,
+            "ratio": 4.033,
+            "judged": true
+          },
+          {
+            "band": "10 to 100",
+            "share": 0.3758,
+            "ratio": 1.884,
+            "judged": true
+          },
+          {
+            "band": "100 or more",
+            "share": 0.09309,
+            "ratio": 1.197,
+            "judged": true
+          }
+        ],
+        "check1": true,
+        "check2": true,
+        "check3": false,
+        "legalLineups": 1969445,
+        "bandsAll": [
+          {
+            "band": "under 0.1",
+            "lineups": 1934540,
+            "actualEntries": 2345,
+            "predictedEntries": 7221.14,
+            "ratio": 0.3247,
+            "judged": false
+          },
+          {
+            "band": "0.1 to 1",
+            "lineups": 25637,
+            "actualEntries": 11713,
+            "predictedEntries": 7734.36,
+            "ratio": 1.514,
+            "judged": true
+          },
+          {
+            "band": "1 to 10",
+            "lineups": 7761,
+            "actualEntries": 30350,
+            "predictedEntries": 24598.4,
+            "ratio": 1.234,
+            "judged": true
+          },
+          {
+            "band": "10 to 100",
+            "lineups": 1452,
+            "actualEntries": 31417,
+            "predictedEntries": 35268.7,
+            "ratio": 0.8908,
+            "judged": true
+          },
+          {
+            "band": "100 or more",
+            "lineups": 55,
+            "actualEntries": 7783,
+            "predictedEntries": 9404.2,
+            "ratio": 0.8276,
+            "judged": true
+          }
+        ],
+        "check3a": true
+      },
+      {
+        "train": "2026-w06-SEADEN+2026-w07-NECHI+2026-w07-KCSEA+2026-w07-DALPHI",
+        "test": "2026-w06-WASSF",
+        "logScoreModel": -31.582854,
+        "logScoreProduct": -160.98609,
+        "logScoreLeftOnly": -57.509647,
+        "top100Model": 2.11682,
+        "top100Product": 37.4509,
+        "poissonCoverage": 0.3223,
+        "negBinCoverage": 0.716,
+        "negBinSize": 0.367774,
+        "negBinLogScore": -4.8309815,
+        "bands": [
+          {
+            "band": "under 0.1",
+            "share": 0.01067,
+            "ratio": 8.653,
+            "judged": false
+          },
+          {
+            "band": "0.1 to 1",
+            "share": 0.09737,
+            "ratio": 5.53,
+            "judged": true
+          },
+          {
+            "band": "1 to 10",
+            "share": 0.3928,
+            "ratio": 3.178,
+            "judged": true
+          },
+          {
+            "band": "10 to 100",
+            "share": 0.4434,
+            "ratio": 2.143,
+            "judged": true
+          },
+          {
+            "band": "100 or more",
+            "share": 0.05569,
+            "ratio": 1.424,
+            "judged": true
+          }
+        ],
+        "check1": true,
+        "check2": false,
+        "check3": false,
+        "legalLineups": 2398714,
+        "bandsAll": [
+          {
+            "band": "under 0.1",
+            "lineups": 2357467,
+            "actualEntries": 824,
+            "predictedEntries": 10101.9,
+            "ratio": 0.08157,
+            "judged": false
+          },
+          {
+            "band": "0.1 to 1",
+            "lineups": 31027,
+            "actualEntries": 7522,
+            "predictedEntries": 9214.83,
+            "ratio": 0.8163,
+            "judged": true
+          },
+          {
+            "band": "1 to 10",
+            "lineups": 8678,
+            "actualEntries": 30345,
+            "predictedEntries": 26749.6,
+            "ratio": 1.134,
+            "judged": true
+          },
+          {
+            "band": "10 to 100",
+            "lineups": 1504,
+            "actualEntries": 34255,
+            "predictedEntries": 35622.7,
+            "ratio": 0.9616,
+            "judged": true
+          },
+          {
+            "band": "100 or more",
+            "lineups": 38,
+            "actualEntries": 4302,
+            "predictedEntries": 5625.15,
+            "ratio": 0.7648,
+            "judged": true
+          }
+        ],
+        "check3a": true
+      },
+      {
+        "train": "2026-w06-SEADEN+2026-w06-WASSF+2026-w07-KCSEA+2026-w07-DALPHI",
+        "test": "2026-w07-NECHI",
+        "logScoreModel": -33.237988,
+        "logScoreProduct": -146.89893,
+        "logScoreLeftOnly": -60.818049,
+        "top100Model": 2.52709,
+        "top100Product": 53.3223,
+        "poissonCoverage": 0.2971,
+        "negBinCoverage": 0.6692,
+        "negBinSize": 0.385062,
+        "negBinLogScore": -4.8519287,
+        "bands": [
+          {
+            "band": "under 0.1",
+            "share": 0.01719,
+            "ratio": 7.328,
+            "judged": false
+          },
+          {
+            "band": "0.1 to 1",
+            "share": 0.1051,
+            "ratio": 5.961,
+            "judged": true
+          },
+          {
+            "band": "1 to 10",
+            "share": 0.4004,
+            "ratio": 3.391,
+            "judged": true
+          },
+          {
+            "band": "10 to 100",
+            "share": 0.4386,
+            "ratio": 2.276,
+            "judged": true
+          },
+          {
+            "band": "100 or more",
+            "share": 0.03877,
+            "ratio": 1.647,
+            "judged": true
+          }
+        ],
+        "check1": true,
+        "check2": false,
+        "check3": false,
+        "legalLineups": 1478218,
+        "bandsAll": [
+          {
+            "band": "under 0.1",
+            "lineups": 1447986,
+            "actualEntries": 1251,
+            "predictedEntries": 4878.27,
+            "ratio": 0.2564,
+            "judged": false
+          },
+          {
+            "band": "0.1 to 1",
+            "lineups": 21319,
+            "actualEntries": 7651,
+            "predictedEntries": 6622.27,
+            "ratio": 1.155,
+            "judged": true
+          },
+          {
+            "band": "1 to 10",
+            "lineups": 7331,
+            "actualEntries": 29141,
+            "predictedEntries": 24002.5,
+            "ratio": 1.214,
+            "judged": true
+          },
+          {
+            "band": "10 to 100",
+            "lineups": 1560,
+            "actualEntries": 31923,
+            "predictedEntries": 35068.9,
+            "ratio": 0.9103,
+            "judged": true
+          },
+          {
+            "band": "100 or more",
+            "lineups": 22,
+            "actualEntries": 2822,
+            "predictedEntries": 2902.58,
+            "ratio": 0.9722,
+            "judged": true
+          }
+        ],
+        "check3a": true
+      },
+      {
+        "train": "2026-w06-SEADEN+2026-w06-WASSF+2026-w07-NECHI+2026-w07-DALPHI",
+        "test": "2026-w07-KCSEA",
+        "logScoreModel": -29.931575,
+        "logScoreProduct": -108.56347,
+        "logScoreLeftOnly": -34.535439,
+        "top100Model": 1.68991,
+        "top100Product": 30.7677,
+        "poissonCoverage": 0.308,
+        "negBinCoverage": 0.6977,
+        "negBinSize": 0.398848,
+        "negBinLogScore": -5.0452867,
+        "bands": [
+          {
+            "band": "under 0.1",
+            "share": 0.01284,
+            "ratio": 20.06,
+            "judged": false
+          },
+          {
+            "band": "0.1 to 1",
+            "share": 0.1014,
+            "ratio": 11.23,
+            "judged": true
+          },
+          {
+            "band": "1 to 10",
+            "share": 0.4136,
+            "ratio": 3.819,
+            "judged": true
+          },
+          {
+            "band": "10 to 100",
+            "share": 0.408,
+            "ratio": 1.887,
+            "judged": true
+          },
+          {
+            "band": "100 or more",
+            "share": 0.06418,
+            "ratio": 0.862,
+            "judged": true
+          }
+        ],
+        "check1": true,
+        "check2": true,
+        "check3": false,
+        "legalLineups": 782234,
+        "bandsAll": [
+          {
+            "band": "under 0.1",
+            "lineups": 751753,
+            "actualEntries": 954,
+            "predictedEntries": 5181.43,
+            "ratio": 0.1841,
+            "judged": false
+          },
+          {
+            "band": "0.1 to 1",
+            "lineups": 21599,
+            "actualEntries": 7536,
+            "predictedEntries": 6668.79,
+            "ratio": 1.13,
+            "judged": true
+          },
+          {
+            "band": "1 to 10",
+            "lineups": 7297,
+            "actualEntries": 30733,
+            "predictedEntries": 23620.7,
+            "ratio": 1.301,
+            "judged": true
+          },
+          {
+            "band": "10 to 100",
+            "lineups": 1537,
+            "actualEntries": 30320,
+            "predictedEntries": 35388.5,
+            "ratio": 0.8568,
+            "judged": true
+          },
+          {
+            "band": "100 or more",
+            "lineups": 48,
+            "actualEntries": 4769,
+            "predictedEntries": 7281.76,
+            "ratio": 0.6549,
+            "judged": true
+          }
+        ],
+        "check3a": true
+      },
+      {
+        "train": "2026-w06-SEADEN+2026-w06-WASSF+2026-w07-NECHI+2026-w07-KCSEA",
+        "test": "2026-w07-DALPHI",
+        "logScoreModel": -36.243015,
+        "logScoreProduct": -129.72772,
+        "logScoreLeftOnly": -55.542943,
+        "top100Model": 1.08324,
+        "top100Product": 14.226,
+        "poissonCoverage": 0.2872,
+        "negBinCoverage": 0.7054,
+        "negBinSize": 0.373014,
+        "negBinLogScore": -5.2212004,
+        "bands": [
+          {
+            "band": "under 0.1",
+            "share": 0.01195,
+            "ratio": 10.54,
+            "judged": false
+          },
+          {
+            "band": "0.1 to 1",
+            "share": 0.1188,
+            "ratio": 8.852,
+            "judged": true
+          },
+          {
+            "band": "1 to 10",
+            "share": 0.3355,
+            "ratio": 3.485,
+            "judged": true
+          },
+          {
+            "band": "10 to 100",
+            "share": 0.3994,
+            "ratio": 1.804,
+            "judged": true
+          },
+          {
+            "band": "100 or more",
+            "share": 0.1343,
+            "ratio": 0.6835,
+            "judged": true
+          }
+        ],
+        "check1": true,
+        "check2": true,
+        "check3": false,
+        "legalLineups": 1191343,
+        "bandsAll": [
+          {
+            "band": "under 0.1",
+            "lineups": 1159892,
+            "actualEntries": 823,
+            "predictedEntries": 6231.86,
+            "ratio": 0.1321,
+            "judged": false
+          },
+          {
+            "band": "0.1 to 1",
+            "lineups": 24710,
+            "actualEntries": 8159,
+            "predictedEntries": 7068.57,
+            "ratio": 1.154,
+            "judged": true
+          },
+          {
+            "band": "1 to 10",
+            "lineups": 5606,
+            "actualEntries": 23136,
+            "predictedEntries": 16965.3,
+            "ratio": 1.364,
+            "judged": true
+          },
+          {
+            "band": "10 to 100",
+            "lineups": 1066,
+            "actualEntries": 27518,
+            "predictedEntries": 27005.2,
+            "ratio": 1.019,
+            "judged": true
+          },
+          {
+            "band": "100 or more",
+            "lineups": 69,
+            "actualEntries": 9254,
+            "predictedEntries": 16112.8,
+            "ratio": 0.5743,
+            "judged": true
+          }
+        ],
+        "check3a": true
+      }
+    ],
+    "stopRulePassed": false,
+    "check3Passed": false,
+    "check3aPassed": true
+  },
+  "experimentsAdopted": [
+    "b Captain 0.375, FLEX 0.625"
+  ]
+}
