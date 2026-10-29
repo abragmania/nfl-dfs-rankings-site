@@ -251,8 +251,9 @@ export function fieldRanks(table) {
   return rank;
 }
 
-/** The gap measure (the curve's x) of a total projection, in the curves' unit. `ranks` only for the rank unit. */
-function gapX(proj, unit, best, table, ranks) {
+/** The gap measure (the curve's x) of a total projection, in the curves' unit. `ranks` only for the rank unit. Exported
+ *  unchanged for the classic field model (./classic-field-model.js), so both measure the gap with one copy. */
+export function gapX(proj, unit, best, table, ranks) {
   if (unit === "points") return best - proj;
   if (unit === "pct") return ((best - proj) / best) * 100;
   const t = Math.min(table.nProj - 1, Math.max(0, proj / table.projStep - table.projOrigin)); // fractional column
