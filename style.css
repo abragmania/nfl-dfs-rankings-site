@@ -1812,13 +1812,19 @@ th.sd-cpt-col.sorted { color: var(--amber); }
 #sd-pool > .sd-pool-head .lineup-right-title { margin: 0; }
 #sd-pool > .expand-bar:not(.is-expanded) { grid-column: 2; grid-row: 1; width: auto; }
 #sd-pool > .scroll-panel, #sd-pool > .table-legend, #sd-pool > .expand-placeholder { grid-column: 1 / -1; }
+/* The legend line wraps to the table's width: its one long line was the widest thing in the fit-content grid, so the panel and the legend
+   ran past the table's right edge. width 0 with min-width 100% keeps it out of the grid's width and gives it the grid's. */
+#sd-pool > .table-legend { width: 0; min-width: 100%; }
 #sd-pool > .table-wrap:not(.is-expanded) { width: auto; max-width: 100%; margin: 0; scrollbar-gutter: stable; }
 .sd-pool-note { font-size: var(--fs-sm); color: var(--text-dim); }
 /* The table: the Rankings table's look (the shared .rankings-table rules name it too: sticky head, cell padding, 30px rows, hover,
    dimmed rows), but laid out by its content, not fixed widths, since its columns vary (Ceil, the Optimizer's boxes and buttons).
    The figures right-align with tabular digits; Player and Notes read left. The Player cell stops at 250px (a long name gives way
    with an ellipsis; its hover has it whole), so no name pushes the figures away. */
-.sd-pool-table { border-collapse: collapse; font-size: 14px; }
+/* border-spacing 0 with separate borders, not collapse: with collapsed borders Chrome paints a sticky head's row borders where the table
+   put them, and the body rows' figures showed through the head's seams while the panel was scrolled (the head, its Min/Max group row and
+   the totals row are all in the sticky thead). Each cell keeps its one bottom border, so the look is the same. */
+.sd-pool-table { border-collapse: separate; border-spacing: 0; font-size: 14px; }
 .sd-pool-table :is(th, td) { text-align: right; font-variant-numeric: tabular-nums; }
 .sd-pool-table :is(th, td):first-child, .sd-pool-table th[data-col="note"], .sd-pool-table td.sd-notes-cell { text-align: left; }
 .sd-pool-table .player-cell { max-width: 250px; }
