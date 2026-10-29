@@ -1491,7 +1491,7 @@ tr:last-child .cell-edit-hint { top: auto; bottom: 100%; margin-top: 0; margin-b
   font-size: var(--fs-sm);
   white-space: nowrap;
 }
-/* Lock/Locked and Exclude/Excluded keep one width each, so a locked row's Add never moves toward the panel edge. */
+/* Lock/Locked and Exclude/Excluded keep one width each, so the row's buttons do not shift as they toggle (🔵 c8f3752 review). */
 .lineup-row-btn[data-action="row-lock"] { min-width: 58px; text-align: center; }
 .lineup-row-btn[data-action="row-exclude"] { min-width: 66px; text-align: center; }
 .lineup-row-btn.active { background: var(--accent); border-color: var(--accent); color: #ffffff; }

@@ -1,5 +1,5 @@
 {
-  "publishedAt": "2026-10-29T21:57:39.628Z",
+  "publishedAt": "2026-10-29T22:02:06.594Z",
   "season": 2026,
   "week": 7,
   "boardGeneratedAt": "2026-10-29T21:57:16.931Z",
@@ -8,7 +8,7 @@
   "showdowns": [
     "2026-w08-CARGB"
   ],
-  "sourceCommit": "c8f37523714ff4141f24a7d6caef8295f325f09e",
+  "sourceCommit": "9c79ea6b892e2950f698d2ecfeeb8c69daa8a570",
   "appCommit": "c8f37523714ff4141f24a7d6caef8295f325f09e",
   "machine": "desktop",
   "matchups": false
