@@ -112,8 +112,9 @@ export const SHOWDOWN_GENERATE_FAILED = () => errorBody("LINEUP_GENERATE_FAILED"
 /**
  * POST .../lineup/generate on the baked board: { board, body ({settings, field}), saved (this device's saved lineups of this
  * showdown, counted for minimum unique as the app counts its own; the app's saved lineups are not, D69), curvesRead (as the
- * meter's) }. The body is checked before anything else, as the route does; a made answer carries SITE_SAVED_NOTE among its
- * notes (which saved lineups were counted), and a board whose week is unknown counts no saved lineup and says so instead.
+ * meter's) }. The body is checked before anything else, as the route does; a made GPP answer carries SITE_SAVED_NOTE among its
+ * notes (which saved lineups were counted; Cash counts none, so none there), and a board whose week is unknown counts no saved
+ * lineup and says so instead.
  * Returns the route's body. Runs in opt-worker.js (runShowdownGenerate) or on the page.
  */
 export function showdownGenerateResponse({ board, body: rawBody, saved = [], curvesRead = null }) {
@@ -124,7 +125,10 @@ export function showdownGenerateResponse({ board, body: rawBody, saved = [], cur
   const week = board.slate?.week;
   return routeBody(generateAnswer({
     board, body, field: checked.field, generate: generateShowdownLineups,
-    readSaved: () => (Number.isInteger(week) ? { saved: Array.isArray(saved) ? saved : [], note: SITE_SAVED_NOTE } : { saved: [], note: WEEK_UNKNOWN_SAVED_NOTE }),
+    // Cash counts no saved lineup (the engine hands Cash no existing lineups), so its answer carries no saved-lineups note.
+    readSaved: () => (Number.isInteger(week)
+      ? { saved: Array.isArray(saved) ? saved : [], ...(body.settings?.mode === "cash" ? {} : { note: SITE_SAVED_NOTE }) }
+      : { saved: [], note: WEEK_UNKNOWN_SAVED_NOTE }),
     loadCurves: () => curvesRead ?? { error: curvesMissingSentence() }
   }), board);
 }

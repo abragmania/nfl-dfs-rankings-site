@@ -2,7 +2,7 @@
 // "secondary section" wording is amended by step 6's documents). Top: the Optimizer band (its max-per-team and D73 QB-stack controls included). Left column: the
 // nine DraftKings classic slots (D1), a salary bar, totals, Clear all and Save lineup. Right column: the same rows the ranked list
 // below is showing — same store, same filters (the one filter bar above sets them, Optimizer-first step 4), same sort (its headers
-// set it) — with per-row Lock, Exclude and Add-to-slot buttons. app.js passes #lineup-mount as the container: only that part of
+// set it) — with per-row Lock and Exclude buttons; a click on a row puts the man in or takes him out (D81, 2026-10-29). app.js passes #lineup-mount as the container: only that part of
 // #lineup-panel is redrawn here, never the filter bar, game strip or ranked list around it.
 //
 // State (locks, excludes, the nine slots, and the option controls) lives in this module for the life of
@@ -34,7 +34,8 @@ import { getLineups, postLineup, putLineup, deleteLineup } from "./api.js";
 import { renderEntriesSection, wireEntries } from "./entries-wire.js";
 import { phoneMinHeight, panelMinHeight } from "./expand.js";
 import { defaultCashState, cleanCashState, swapModeStash } from "./lineup-cash.js";
-import { setPoolCallbacks, poolStarClick, panelHtml, savedOfActiveSlate } from "./lineup-view.js";
+import { setPoolCallbacks, poolStarClick, panelHtml, savedOfActiveSlate, CLASSIC_POOL_PICK_SKIP } from "./lineup-view.js";
+import { wirePick, wirePickRows, SLOT_PICK_SKIP } from "./pick-rows.js"; // click-to-pick, the one wiring the Showdown Optimizer shares (D81)
 import { cleanPlayerMax, boardModeOf, slateKeyOf, uniqueSavedName, lockedIds, cashPick, wireOptimizer } from "./lineup-optimizer.js";
 
 export const LINEUP_SLOTS = ["QB", "RB", "RB", "WR", "WR", "WR", "TE", "FLEX", "DST"];
@@ -528,6 +529,35 @@ export function lockPool(id) {
   else addPlayer(row, rowById);
 }
 
+/** Takes slot `i`'s man out (a click on the filled slot card, the old Clear button's rule): his lock goes, and an Undo made before it is
+ *  dropped (Cash 3b fix round 2, 2026-10-17: a cleared slot is never silently refilled by Undo). An empty slot does nothing. */
+export function removeSlot(i) {
+  const p = state.slots[i];
+  if (!p) return;
+  state.locks.delete(p.id);
+  state.slots[i] = null;
+  state.addError = null;
+  opt.cashUndo = null;
+}
+
+/** A click on his pool row (D81 counterpart of 336c1f5; lineup-view.js classicPickAction drew the action): "add" places him in the first
+ *  slot his position can fill, by addPlayer's rules and refusals (excluded, already placed, no salary, no open slot: the sentence shows
+ *  under the slots); "remove" takes out every slot holding the same DraftKings player (🔵 finding 6), as removeSlot does. Either drops an
+ *  Undo made before it (Cash 3b fix round, 2026-10-17). */
+export function pickPoolRow(row, action, rowById) {
+  if (!row || (action !== "add" && action !== "remove")) return;
+  opt.cashUndo = null;
+  if (action === "add") {
+    addPlayer(row, rowById);
+    return;
+  }
+  const identity = dkIdentity(row);
+  state.slots.forEach((s, i) => {
+    const placedRow = s ? rowById.get(String(s.id)) : null;
+    if (placedRow && dkIdentity(placedRow) === identity) removeSlot(i);
+  });
+}
+
 /** Places `entries` ({slot, id}, in any order) into a fresh LINEUP_SLOTS-shaped array, each by its own
  *  `slot` name into the next free slot of that name (🔵 finding 7) — not by its position in the input
  *  array, which need not line up with LINEUP_SLOTS' order. An entry whose slot name has no free slot left
@@ -708,15 +738,10 @@ function wire(container) {
     commit();
   });
 
-  container.querySelectorAll("[data-action='slot-clear']").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      const i = Number(btn.dataset.slot);
-      const p = state.slots[i];
-      if (!p) return;
-      state.locks.delete(p.id);
-      state.slots[i] = null;
-      state.addError = null;
-      opt.cashUndo = null; // Cash 3b fix round 2, 2026-10-17: a cleared slot is never silently refilled by Undo
+  // A click (or Enter / Space) on a filled slot card takes his man out (D81 counterpart of 336c1f5: no Clear buttons); his name keeps opening his card.
+  container.querySelectorAll("[data-action='slot-remove']").forEach((el) => {
+    wirePick(el, SLOT_PICK_SKIP, () => {
+      removeSlot(Number(el.dataset.slot));
       commit();
     });
   });
@@ -766,17 +791,14 @@ function wire(container) {
       commit();
     });
   });
-  container.querySelectorAll("[data-action='row-add']").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      const board = store.get().board;
-      const rows = board?.rows ?? [];
-      const rowById = new Map(rows.map((r) => [String(r.id), r]));
-      const row = rowById.get(btn.dataset.id);
-      if (!row) return;
-      opt.cashUndo = null; // Cash 3b fix round, 2026-10-17: as for an exclude
-      addPlayer(row, rowById);
-      commit();
-    });
+  // A click (or Enter / Space) on a pool row puts the man in or takes him out (D81 counterpart of 336c1f5: no Add button); his name, the
+  // star, the bump, the boxes, the Cash chips, Lock and Exclude keep their own jobs (CLASSIC_POOL_PICK_SKIP).
+  wirePickRows(container, CLASSIC_POOL_PICK_SKIP, (id, action) => {
+    const rowById = boardRowMap(store.get().board);
+    const row = rowById.get(String(id));
+    if (!row) return;
+    pickPoolRow(row, action, rowById);
+    commit();
   });
 
   // Save lineup: the name box is read here, at click time, rather than tracked in state on every

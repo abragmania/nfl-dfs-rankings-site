@@ -1,8 +1,9 @@
 // Showdown meter: how unique a lineup will most likely be, in plain counts (Adam 2026-10-20: "I don't care about the % chance
-// nobody else has it, I just want to know how unique it will most likely be"). Pure and browser-safe; a separate file because
-// lineup-meter.js is about 555 lines, under the 600-line ceiling. lineup-meter.js re-exports likelyCopies; optimizer-view.js uses likelyRangeText.
+// nobody else has it, I just want to know how unique it will most likely be"). Pure and browser-safe; its own file to keep
+// lineup-meter.js under the 600-line ceiling. lineup-meter.js re-exports likelyCopies; meter-face.js uses the meter's words;
+// optimizer-view.js uses likelyRangeText.
 
-// The largest mean read: the server accepts a field up to 10,000,000 (server/showdown/uniqueness-routes.js MAX_FIELD) and
+// The largest mean read: the server accepts a field up to 10,000,000 (server/showdown/meter-answer.js MAX_FIELD) and
 // copies = field x p can never exceed the field, so no real board reaches more. A larger mean is null at once rather than a loop of
 // 1e8 or more terms (at 2^53 the counter would stop moving and hang the tab). The app itself sends no field; the default is 100,000.
 const MAX_MEAN = 10000000;

@@ -180,20 +180,15 @@ export function scaleHtml(u) {
       </div>`;
 }
 
-/** "Projection 88.3 · best possible 97.1": the figures behind the Good verdict (the best only when the answer has one). */
-function projBestText(d) {
-  const parts = [`Projection ${dec1(d.proj)}`];
-  if (isNum(d.bestProj)) parts.push(`best possible ${dec1(d.bestProj)}`);
-  return parts.join(" · ");
-}
-
 /**
- * The projection's lines: the Good verdict when the answer has a projection (field-explain.js goodVerdict) with its figures on a
- * small line under it, so a Strong verdict still shows its numbers; else the plain sentence (not posted, a man unprojected).
+ * The projection's lines: the Good verdict when the answer has a projection (field-explain.js goodVerdict) with the best possible
+ * lineup's figure on a small line under it ("Best possible lineup 97.1"), so a Strong verdict still shows a number; else the plain
+ * sentence (not posted, a man unprojected). The lineup's own total is not repeated here: the builder's totals line shows it as
+ * Adam ruled on 2026-10-17 (each slot's shown figure rounded, then summed), and the answer's unrounded sum could differ by 0.1.
  */
 export function goodHtml(d) {
   const pr = d?.projection;
   const v = pr?.posted === false ? null : goodVerdict(d ?? {});
-  if (v) return `${verdictHtml(v, "good")}${v.word && isNum(d.proj) ? `<div class="sd-verdict-sub">${escapeHtml(projBestText(d))}</div>` : ""}`;
+  if (v) return `${verdictHtml(v, "good")}${v.word && isNum(d.bestProj) ? `<div class="sd-verdict-sub">Best possible lineup ${escapeHtml(dec1(d.bestProj))}</div>` : ""}`;
   return `<div class="sd-meter-proj${pr?.posted === false && pr.error ? " sd-meter-error" : ""}">${escapeHtml(projectionLineText(d))}</div>`;
 }

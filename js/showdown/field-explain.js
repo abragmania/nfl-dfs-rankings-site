@@ -1,7 +1,7 @@
 // Showdown meter, the field model's words (RULES.md D82; the meter plan 2026-10-25 sections 8 and 12 step 5, Adam 2026-10-18
 // "show the calculation"): the calculation sentence, the "about" rounding, the scale's two ends from the answer, the
-// "estimate" label with the basis it carries on hover, and the panel's two verdict lines. Pure and browser-safe, a separate file because lineup-meter.js is about
-// 555 lines, under the 600-line ceiling. Every figure here comes from the server's answer (`parts`, `left`, `gap`, `scale`, `model`); nothing is a
+// "estimate" label with the basis it carries on hover, and the panel's two verdict lines. Pure and browser-safe, its own file to keep
+// lineup-meter.js and meter-face.js under the 600-line ceiling. Every figure here comes from the server's answer (`parts`, `left`, `gap`, `scale`, `model`); nothing is a
 // number typed in by hand except the two fall-back ends of the scale and the 10-copy line below which a figure is an estimate.
 import { escapeHtml, money, dec1 } from "../format.js";
 
@@ -221,11 +221,12 @@ export function bandBasis(copies, model, field = null) {
   return ratio ? `on past nights lineups predicted at ${band.band} copies really ran about ${ratio} this` : null;
 }
 
-/** Whether a figure of `copies` carries the estimate label: under 10 copies. (The answer's own estimate flag, model.estimate,
- *  is true whenever the field entered is not one of the fitted sizes, which the app's 100,000 never is: it goes to the hover
- *  as modelNote, not onto every figure.) */
+/** Whether a figure of `copies` carries the estimate label: under 10 copies as the figure is shown (two significant figures, so
+ *  9.97, shown "10", carries none and 9.94, shown "9.9", does). (The answer's own estimate flag, model.estimate, is true whenever
+ *  the field entered is not one of the fitted sizes, which the app's 100,000 never is: it goes to the hover as modelNote, not
+ *  onto every figure.) */
 export function isEstimate(copies) {
-  return isNum(copies) && copies < ESTIMATE_BELOW;
+  return isNum(copies) && Number(copies.toPrecision(2)) < ESTIMATE_BELOW;
 }
 
 const sentence = (s) => (/[.!?]$/.test(s) ? s : `${s}.`);

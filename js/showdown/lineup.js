@@ -9,7 +9,8 @@
 // width below both columns, above the swaps and the saved lineups.
 import { escapeHtml, money, dec1 } from "../format.js";
 import { postShowdownLineupOptimize, getShowdownLineups, postShowdownLineup, deleteShowdownLineup, putShowdownLineupName, putShowdownLineupTag } from "./api.js";
-import { poolHtml, poolVisibleRows, paintPool, wirePool, wirePoolTabs, wirePickRows, setPoolControls } from "./pool.js"; // the one player pool, the Rankings table with both roles on each row (Adam 2026-10-26)
+import { poolHtml, poolVisibleRows, paintPool, wirePool, wirePoolTabs, setPoolControls, POOL_PICK_SKIP } from "./pool.js"; // the one player pool, the Rankings table with both roles on each row (Adam 2026-10-26)
+import { wirePick, wirePickRows, SLOT_PICK_SKIP } from "../pick-rows.js"; // click-to-pick, the one wiring classic's Optimizer shares (D81)
 // The Showdown Optimizer (Adam 2026-10-19, sketch A): its band over the builder, its Make row under it, its batch full width below, its controls on the pool rows.
 import { syncOptimizer, optimizerLive, optimizerBandHeadHtml, optimizerBandBoxesHtml, optimizerGoRowHtml, optimizerResultsBlockHtml, optimizerExcludes, optimizerSavedFilter, poolControls, wirePoolControls, wireOptimizer } from "./optimizer.js";
 import { handBuild } from "../lineup-builds.js";
@@ -471,7 +472,7 @@ function optCtx(board, key) {
 // `container`: the whole panel, or the pool's element when only the pool was repainted.
 function wireRowButtons(container, board) {
   wirePoolControls(container, optCtx(board, lastKey));
-  wirePickRows(container, (id, action) => { // a click on a pool row (D39): the man goes in or out, and the panel is redrawn
+  wirePickRows(container, POOL_PICK_SKIP, (id, action) => { // a click on a pool row (D39): the man goes in or out, and the panel is redrawn
     pickPoolRow(findRow(board, id), action);
     commit();
   });
@@ -490,17 +491,8 @@ function wire(container, board, key) {
     clearAll();
     commit();
   });
-  // A click (or Enter / Space) on a filled slot card takes his man out (D39, Adam 4:45 PM 2026-10-29: no Clear buttons).
-  const onSlot = (el, remove) => {
-    el.addEventListener("click", (ev) => { // his name keeps opening his card
-      if (ev?.target?.closest?.("button, a, input, .opt-p-name")) return;
-      remove();
-      commit();
-    });
-    el.addEventListener("keydown", (ev) => {
-      if ((ev.key === "Enter" || ev.key === " ") && ev.target === el) { ev.preventDefault?.(); remove(); commit(); }
-    });
-  };
+  // A click (or Enter / Space) on a filled slot card takes his man out (D39, Adam 4:45 PM 2026-10-29: no Clear buttons); his name keeps opening his card.
+  const onSlot = (el, remove) => wirePick(el, SLOT_PICK_SKIP, () => { remove(); commit(); });
   const cptSlot = container.querySelector("[data-action='clear-cpt']");
   if (cptSlot) onSlot(cptSlot, clearCaptain);
   container.querySelectorAll("[data-action='clear-flex']").forEach((el) => onSlot(el, () => clearFlex(Number(el.dataset.flex))));

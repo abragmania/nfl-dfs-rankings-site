@@ -104,6 +104,8 @@ function controlsHtml() {
     </div>`;
 }
 
+const SLOT_REMOVE_TITLE = "Click to remove";
+
 function slotsHtml(rowById, roles) {
   return LINEUP_SLOTS.map((slotName, i) => {
     const s = state.slots[i];
@@ -118,11 +120,13 @@ function slotsHtml(rowById, roles) {
       : row
         ? slotPlayerHtml(row, roles.get(String(row.id)), slotName, paletteForRows(rowById))
         : `<span class="lineup-slot-player lineup-slot-missing">Not on this slate</span>`;
+    // D81 counterpart of 336c1f5 (Adam 5:00 PM 2026-10-29): no Clear button; a click (or Enter / Space) on a placed slot takes his man out
+    // (lineup.js wires data-action="slot-remove"; his name keeps opening his card). No button role: the card holds that name.
+    const removable = s ? ` data-action="slot-remove" data-slot="${i}" tabindex="0" title="${SLOT_REMOVE_TITLE}" aria-label="${SLOT_REMOVE_TITLE}"` : "";
     return `
-      <div class="lineup-slot lineup-slot-big${row ? " lineup-slot-card" : ""}" data-slot-index="${i}">
+      <div class="lineup-slot lineup-slot-big${row ? " lineup-slot-card" : ""}${s ? " lineup-slot-removable" : ""}" data-slot-index="${i}"${removable}>
         ${row ? "" : `<span class="lineup-slot-label">${escapeHtml(slotName)}</span>`}
         ${bodyHtml}
-        <button type="button" class="lineup-slot-clear" data-action="slot-clear" data-slot="${i}"${s ? "" : " disabled"}>Clear</button>
       </div>`;
   }).join("");
 }
@@ -415,8 +419,8 @@ function newLineupFigures(lineup, rowById) {
 /** Whether the board is in TwoGun mode and carries medians: the only case the Median sort is offered for a GPP list or a saved list. */
 const boardMediansForSort = () => isTwoGunMode(store.get().board) && boardHasMedians(activeSlateRows(store.get().board));
 
-/** The identity of every currently-placed player (🔵 finding 6), used both to disable Add on an
- *  already-placed row and to block adding the same DraftKings player twice under a different board id. */
+/** The identity of every currently-placed player (🔵 finding 6), used both to make a click on an already-placed
+ *  row take him out and to block adding the same DraftKings player twice under a different board id. */
 function placedIdentities(rowById) {
   const set = new Set();
   for (const s of state.slots) {
@@ -499,6 +503,27 @@ export function rightColumnHtml(rows, rowById) {
     <div class="table-legend">&mdash; = nobody has published one</div>`;
 }
 
+// ---- click-to-pick on the pool rows (D81 counterpart of 336c1f5; Adam 5:00 PM 2026-10-29: Showdown's row clicks in classic, no Add button) ----
+
+const POOL_PICK_TITLES = Object.freeze({ add: "Click to add to the lineup", remove: "Click to remove" });
+
+/** A click inside one of these is that control's own (the star, his name's card, the ± bump, a Min % / Max % box, the Cash chips, Lock and
+ *  Exclude) or the padding around it, never a pick (pick-rows.js wirePickRows; the Showdown pool's twin is pool.js POOL_PICK_SKIP). */
+export const CLASSIC_POOL_PICK_SKIP = "button, a, input, select, textarea, label, .player-name, .bump-ctl, .lineup-star-col, .lineup-min-cell, .lineup-max-cell, .lineup-cash-cell, .lineup-row-actions";
+
+/** What a click on his pool row does: "remove" when he is placed (by DraftKings identity, 🔵 finding 6), null when he is excluded (an
+ *  excluded man cannot be picked; Exclude undoes it), else "add" (lineup.js pickPoolRow puts him in the first slot his position fills). Pure. */
+export function classicPickAction(row, placedSet, excludes) {
+  if (placedSet.has(dkIdentity(row))) return "remove";
+  return excludes.has(String(row.id)) ? null : "add";
+}
+
+/** A pool row's pick attributes: the pick its click makes, a keyboard stop and its words as the hover and the label (no button role: the
+ *  row holds buttons of its own); none for a row that cannot be picked. */
+function poolPickAttrs(action) {
+  return action ? ` data-pick="${action}" tabindex="0" title="${POOL_PICK_TITLES[action]}" aria-label="${POOL_PICK_TITLES[action]}"` : "";
+}
+
 function rightRowHtml(row, placedSet, posShown, maxMap = {}, minMap = {}, cashWant = null, tgOn = false) { // cashWant: a Set of Want ids in cash mode, else null; tgOn: TwoGun mode, which adds the Ceil cell
   const id = String(row.id);
   const maxText = maxMap[id] ?? "";
@@ -507,13 +532,13 @@ function rightRowHtml(row, placedSet, posShown, maxMap = {}, minMap = {}, cashWa
   const minBad = Number.isNaN(parsePct(minText));
   const locked = state.locks.has(id);
   const excluded = state.excludes.has(id);
-  // 🔵 finding 6: "already placed" is a DraftKings-identity comparison, not a board-id comparison.
-  const placed = placedSet.has(dkIdentity(row));
+  // 🔵 finding 6: "already placed" is a DraftKings-identity comparison, not a board-id comparison (classicPickAction).
+  const pick = classicPickAction(row, placedSet, state.excludes);
   // 🔵 finding 8: same dimming rule as the Rankings table.
   const dimmed = rowIsOut(row);
-  const rowClass = `${excluded ? " lineup-row-excluded" : locked ? " lineup-row-locked" : ""}${dimmed ? " row-dimmed" : ""}`;
+  const rowClass = `${excluded ? " lineup-row-excluded" : locked ? " lineup-row-locked" : ""}${dimmed ? " row-dimmed" : ""}${pick ? " lineup-pool-pick" : ""}`;
   return `
-    <tr class="lineup-row${rowClass}" data-id="${escapeHtml(id)}">
+    <tr class="lineup-row${rowClass}" data-id="${escapeHtml(id)}"${poolPickAttrs(pick)}>
       <td class="lineup-star-col"><button type="button" class="star-btn${row.starred ? " active" : ""}" data-action="toggle-star" data-id="${escapeHtml(id)}"${poolCallbacks?.onToggleStar ? "" : " disabled"}>${row.starred ? "★" : "☆"}</button></td>
       <td>
         <span class="player-cell">${playerLineHtml(row, { pos: posShown })}</span>
@@ -530,7 +555,6 @@ function rightRowHtml(row, placedSet, posShown, maxMap = {}, minMap = {}, cashWa
       <td class="lineup-row-actions">
         ${cashWant ? "" : `<button type="button" class="lineup-row-btn${locked ? " active" : ""}" data-action="row-lock" data-id="${escapeHtml(id)}"${excluded ? " disabled" : ""}>${locked ? "Locked" : "Lock"}</button>`}
         <button type="button" class="lineup-row-btn${excluded ? " active danger" : ""}" data-action="row-exclude" data-id="${escapeHtml(id)}">${excluded ? "Excluded" : "Exclude"}</button>
-        <button type="button" class="lineup-row-btn" data-action="row-add" data-id="${escapeHtml(id)}"${excluded || placed ? " disabled" : ""}>Add</button>
       </td>
     </tr>`;
 }

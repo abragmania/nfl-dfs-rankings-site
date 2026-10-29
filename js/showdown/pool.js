@@ -99,7 +99,7 @@ const PICK_TITLES = Object.freeze({
 });
 
 /** A click inside one of these is that control's own (the ± bump, a Min / Max box, lock, In, exclude, the name's card popup) or the padding
- *  around it, not a pick. */
+ *  around it, not a pick (lineup.js passes it to the shared pick-rows.js wirePickRows). */
 export const POOL_PICK_SKIP = "button, a, input, select, textarea, label, .player-name, .bump-ctl, .sd-pool-btn, .sd-pool-in, .lineup-min-cell, .lineup-max-cell";
 
 const num = (v) => (typeof v === "number" && Number.isFinite(v) ? v : null);
@@ -421,7 +421,7 @@ export function poolHtml(board, placement, rows) {
 /**
  * Wires the drawn pool (`poolEl`, #sd-pool): a header click sorts it (only its head and body are redrawn, through ctx.repaint), and each
  * name carries its whole self on hover, a tagged row showing the cards' short name. ctx = { board, repaint() }. The rows' click
- * (wirePickRows) and the Optimizer's row controls are lineup.js's to wire.
+ * (pick-rows.js wirePickRows, with POOL_PICK_SKIP) and the Optimizer's row controls are lineup.js's to wire.
  */
 export function wirePool(poolEl, ctx) {
   poolEl.querySelectorAll("th[data-col]").forEach((th) => {
@@ -437,23 +437,6 @@ export function wirePool(poolEl, ctx) {
     const full = rowOf(tr.dataset.id)?.name ?? (n.title || n.textContent); // the row's name: the cell holds both the full and the short name
     n.title = full;
     if (tr.querySelector(".out-tag, .status-badge")) n.textContent = shortName(full, rowOf(tr.dataset.id)?.pos);
-  });
-}
-
-/** Wires the pool's rows (D39): a click anywhere on a row but its own controls, or Enter / Space on the focused row, calls
- *  pick(id, action) with the row's data-pick (poolPickAction's answer when it was drawn). */
-export function wirePickRows(root, pick) {
-  root.querySelectorAll("[data-pick]").forEach((tr) => {
-    const go = () => pick(tr.dataset.id, tr.dataset.pick);
-    tr.addEventListener("click", (ev) => {
-      if (!ev?.target?.closest?.(POOL_PICK_SKIP)) go();
-    });
-    tr.addEventListener("keydown", (ev) => {
-      if ((ev.key === "Enter" || ev.key === " ") && ev.target === tr) {
-        ev.preventDefault?.();
-        go();
-      }
-    });
   });
 }
 
