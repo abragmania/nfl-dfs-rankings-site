@@ -25,11 +25,14 @@ export function copiesText(copies) {
 // text and sourcing"; lineup-meter.js meterHover), so the old "A" (a line on the face) / "B" (hover) switch is gone.
 
 // ---------- the panel's two verdicts (Adam 2026-10-29 5:08 PM: "more 'is this a good lineup / is this a unique lineup', get down to the point of it") ----------
-// The cut-offs below (1, 10 and 100 copies; 5, 10 and 20 percent under the best possible) are the panel's wording bands, chosen
-// for the words; no source claims them. The figures they read are the answer's own (uniqueness.copies, gapPts, gapPct, proj).
+// The cut-offs below are the panel's wording bands. The copies cuts (1, 10 and 100) are chosen for the words; no source claims
+// them. The gap cuts (5, 10 and 15 percent under the best possible) come from six Showdown nights' DraftKings standings scored
+// against TwoGun's pre-game projection (🟡 scout, Adam yes 6:08 PM 2026-10-29): lineups within 5% of the best reached the top 1%
+// at 2.5 times the field's rate, 5 to 10% at the field's rate, 10 to 15% at a third of it, past 15% at an eighth, past 20% never
+// (0 of 8,787). The figures they read are the answer's own (uniqueness.copies, gapPts, gapPct, proj).
 // Edges, so a verdict never contradicts the figure shown beside it: copies are classed on their displayed rounding (two
 // significant figures, as copiesText shows them) and a figure exactly 1, 10 or 100 goes to the worse band (the scale's end
-// reads "under 1 copy"); the gap is classed on its displayed one decimal and exactly -5, -10 or -20 stays in the better band
+// reads "under 1 copy"); the gap is classed on its displayed one decimal and exactly -5, -10 or -15 stays in the better band
 // ("within 5%").
 
 /** The Unique line from expected copies: { word, text, tone } (tone: "green", "yellowgreen", "amber", "red"); null when unreadable. */
@@ -53,7 +56,7 @@ export function goodVerdict({ proj = null, gapPts = null, gapPct = null } = {}) 
   const shown = Number(gapPct.toFixed(1)); // the percent as the panel shows it
   if (shown >= -5) return { word: "Strong", text: "within 5% of the best possible lineup", tone: "green" };
   if (shown >= -10) return { word: "Solid", text: under, tone: "yellowgreen" };
-  if (shown >= -20) return { word: "Below par", text: under, tone: "amber" };
+  if (shown >= -15) return { word: "Below par", text: under, tone: "amber" };
   return { word: "Weak", text: under, tone: "red" };
 }
 
