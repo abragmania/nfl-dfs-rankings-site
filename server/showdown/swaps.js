@@ -157,7 +157,7 @@ const halfOf = (h) => ({ posted: h.posted, source: h.source, asOf: h.asOf, asOfF
  * Both views of every man on the board: { cptMen, flexMen } in the figures of `rows` (the halves' lineupRows), ownership as a fraction or
  * null. `isNotOnBoard(row, slot)` is the ownership half's: a man counted at Q8's 0% in that seat's slot carries notOnBoard
  * (Captain and FLEX apart). `projOf(row)` is the projection half's FLEX figure (the Captain's at CPT_MULTIPLIER of it), so a
- * man reads here exactly as the meter reads him (on the board path a DraftKings-average stand-in counts at his average, as Build sums him).
+ * man reads here exactly as the meter reads him (a man no source covers has no projection, null; there is no DraftKings-average stand-in).
  */
 function menFromRows(rows, isNotOnBoard, projOf) {
   const out = { cptMen: [], flexMen: [] };

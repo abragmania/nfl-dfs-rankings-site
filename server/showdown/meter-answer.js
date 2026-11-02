@@ -205,9 +205,9 @@ function sidelinedWord(row) {
  * projOf(row) -> FLEX projection or null, noteOf(row) -> the hover sentence for a man counted out or null, rowsForBest,
  * unposted: [names], cacheKey, extra }. `rows` are lineupRows(board), and a man is read by id from them, so a row of
  * board.rows sent in (the meter's checked lineup) gets the same figure (a revive set aside under TwoGun only included).
- * Any number on the row counts, a man counted out (D45) at his 0 and a DraftKings-average stand-in at his average, exactly
- * as Build, Generate, the saved snapshot and the public site's Build sum him (Adam 10-18 removed the stand-in under TwoGun
- * only, select.js standInRows; whether one should ever count when gaps are blank is open for Adam). `tp`: TwoGun's
+ * Any number on the row counts, a man counted out (D45) at his 0, exactly as Build, Generate, the saved snapshot and the
+ * public site's Build sum him. A man no source covers has no number (Showdown never stands in his DraftKings average, Adam
+ * 2026-11-02), so he has no figure here; a locked one counts 0 in Build's total with a note saying so. `tp`: TwoGun's
  * projections file as read (twogun-projections.js loadTwoGunProjections), used only for noteOf's sentence, or null.
  */
 export function projectionHalf(rows, { tp = null, generatedAt = null, board = null } = {}) {

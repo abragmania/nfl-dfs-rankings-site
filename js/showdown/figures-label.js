@@ -16,10 +16,11 @@ const AS_OF_WORD = { "file time": "saved ", "board built": "board built ", fetch
 const isDateText = (raw) => typeof raw === "string" && /^\d{4}-\d{2}-\d{2}/.test(raw) && !Number.isNaN(new Date(raw).getTime());
 const reEscape = (s) => String(s).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
-/** An as-of as the page writes it: a date as "Oct 18, 2:30 PM", anything else as written without a trailing "(...)"; null when missing. */
+/** An as-of as the page writes it: a date as Eastern "Oct 18, 2:30 PM", anything else as written without a trailing "(...)" (TwoGun's
+ *  stamps arrive from the server already in Eastern text, server/lib/et.js centralStampToEasternText); null when missing. */
 export function whenText(raw) {
   if (raw === null || raw === undefined || raw === "") return null;
-  if (isDateText(raw)) return new Date(raw).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+  if (isDateText(raw)) return new Date(raw).toLocaleString("en-US", { timeZone: "America/New_York", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
   return String(raw).replace(/\s*\([^()]*\)\s*$/, "");
 }
 
@@ -80,7 +81,7 @@ const sameText = (a, b) => a.replace(/[,\s]+/g, " ").trim().toLowerCase() === b.
 
 /**
  * The label's stamp from board.figures' own as-of per half (the server already picks each half's oldest, board-view.js boardFigures).
- * Both halves written as dates: the older one. Otherwise (TwoGun's stamps are plain text such as "Mon Oct 19 6:07 PM CT") the two
+ * Both halves written as dates: the older one. Otherwise (TwoGun's stamps are plain text such as "Mon, Oct 19, 7:07 PM ET") the two
  * cannot be ordered, so both are shown, "proj <time> · own <time>", never one guessed as the older (review of 83ee117); the same text
  * twice (commas and spaces aside) is shown once. Null when neither half has one.
  */
@@ -96,7 +97,7 @@ export function stampText(fig) {
 }
 
 /**
- * The head-line label's words: "Proj and own: TwoGun · Mon, Oct 19, 6:07 PM CT", or "Proj: 4 sources · Own: LineupHQ · Oct 15,
+ * The head-line label's words: "Proj and own: TwoGun · Mon, Oct 19, 7:07 PM ET", or "Proj: 4 sources · Own: LineupHQ · Oct 15,
  * 8:00 AM"; null for a board with no figures. Kept short so the head line never wraps (visual check of 83ee117): a ticked source
  * with no figures for this game is named on the hover and the source lines, not here.
  */
