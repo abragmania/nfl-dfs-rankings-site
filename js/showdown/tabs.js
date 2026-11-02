@@ -354,7 +354,7 @@ export function ownershipTableParts(rows, sort, withKinds, ctx = {}, srcCols = [
  */
 export function ownershipBasisText(board, kinds, rows = [], selections = []) {
   const stamp = localStamp(board.generatedAt);
-  const asOf = stamp ? `Figures from the board built ${stamp.monthDay} ${stamp.clock}.` : "Figures: as-of time not recorded.";
+  const asOf = stamp ? `Figures from the board built ${stamp.monthDay} ${stamp.clock} ET.` : "Figures: as-of time not recorded.";
   if (kinds.size !== 1) return asOf;
   const [kind] = kinds;
   const tail = `for every FLEX and Captain figure below. ${asOf}`;

@@ -185,8 +185,8 @@ function pctMap(given, role, count, toLineups, board, word, notes) {
 
 const roleWord = (c) => (c.pos === "CPT" ? "Captain" : "FLEX");
 
-/** A figure build's projection total: null when any of the six men has no projection of his own (the "no projection"
- *  stand-in or none), never a partial sum (cash 2b fix, 2026-10-17). */
+/** A figure build's projection total: null when any of the six men has no projection of his own (flagged "no projection"
+ *  or none), never a partial sum (cash 2b fix, 2026-10-17). */
 function projTotal(men) {
   const known = (c) => num(c.proj) !== null && (num(c.override?.proj) !== null || !(c.flags ?? []).includes("no projection"));
   return men.every(known) ? round2(men.reduce((a, c) => a + c.proj, 0)) : null;

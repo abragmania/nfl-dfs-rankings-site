@@ -36,7 +36,7 @@ export function defaultFilters() {
 export const CLASSIC_PROJ_FLOOR = 3;
 
 // D52: true when the row's projection is a real one - a source projected him, or Adam typed one (D28). A row
-// flagged "no projection" whose proj is DraftKings' average (the server's "avgPoints" stand-in) is not, and is
+// flagged "no projection" is not, even with a number on it (a listed-out man's 0), and is
 // hidden and ungraded like any unprojected player. The browser's copy of server/rank/value-core.js
 // hasRealProjection (the browser cannot import server files); keep the two identical.
 export function hasRealProjection(row) {
@@ -49,7 +49,7 @@ export function hasRealProjection(row) {
 
 // The one predicate behind every classic player list (Rankings table, Projections tab, Projected Ownership
 // tab, Lineup Builder pool). `row.proj` is the final projection (a typed-in override included); a player with
-// no projection, or only the D52 stand-in, is hidden too. Skipped when "Show all players" is on, and while the
+// no projection (D52) is hidden too. Skipped when "Show all players" is on, and while the
 // search box has text so that typing a name always finds the player.
 export function passesProjFloor(row, filters) {
   if (filters?.showAllPlayers) return true;

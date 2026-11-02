@@ -35,8 +35,8 @@ function sourcePillHtml(id, sources, injuryReport = null) {
     const text = `${label} · ${missing.join(", ")} failed`;
     return `<li class="pill pill-warning" title="${escapeHtml(`${text}; those players are blended without it`)}">${escapeHtml(text)}</li>`;
   }
-  const time = localStamp(source?.fetchedAt)?.clock ?? ""; // Adam's local time, not the UTC clock in the stamp
-  const suffix = time ? `cached ${time}` : "cached";
+  const time = localStamp(source?.fetchedAt)?.clock ?? ""; // Eastern time, not the UTC clock in the stamp
+  const suffix = time ? `cached ${time} ET` : "cached";
   return `<li class="pill pill-warning" title="${escapeHtml(label)} · ${suffix}">${escapeHtml(label)} · ${suffix}</li>`;
 }
 
@@ -286,7 +286,8 @@ export function wireUpload({ csvInput, uploadInfo, slateLine, pillsRow }, { onUp
     } else if (data.ok) {
       const message = `Uploaded ${file.name}.`;
       setStatus(message, false);
-      uploadInfo.textContent = `${data.savedAs ?? file.name} · uploaded ${localStamp(data.uploadedAt)?.clock ?? data.uploadedAt}`;
+      const uploadedClock = localStamp(data.uploadedAt)?.clock;
+      uploadInfo.textContent = `${data.savedAs ?? file.name} · uploaded ${uploadedClock ? `${uploadedClock} ET` : data.uploadedAt}`;
       renderSlateLine(slateLine, data);
       // Show pills for this response's own stale list immediately, before the board reloads;
       // board.sources isn't known yet so the id itself is the label (🔵 review requirement).

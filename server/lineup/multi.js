@@ -133,10 +133,9 @@ export function keptSidelinedNote(name, status, word = "Locked") {
 }
 
 /** The note for a man kept because he is locked ("Locked"; the showdown Optimizer says it of an included man too, word
- *  "Included") who has no projection from any source: `proj` is the board's stand-in figure, or null when there is none.
- *  One copy: showdown-pool.js keptNotes uses it. */
-export function noSourceProjectionNote(name, proj, word = "Locked") {
-  return `${word} ${name} has no projection from any source and counts as ${proj === null ? "0" : `his stand-in ${round2(proj)}`}.`;
+ *  "Included") who has no projection from any source. One copy: showdown-pool.js keptNotes uses it. */
+export function noSourceProjectionNote(name, word = "Locked") {
+  return `${word} ${name} has no projection from any source and counts as 0.`;
 }
 
 /** The key that decides "the same DraftKings player" (optimize.js dkKeyOf): two board rows can share a DK id. */
@@ -346,7 +345,7 @@ function rowFlags(row, pos, opts) {
   const ceil = ceilingOf(row);
   const figureBuild = Object.hasOwn(FIGURE_BUILDS, opts.objective);
   const figure = figureBuild ? figureOf(row, opts.objective) : null;
-  // Cash 2b fix, 2026-10-17: projMissing (none, or only the stand-in) makes a median lineup's proj null, never a partial sum.
+  // Cash 2b fix, 2026-10-17: projMissing (none, or flagged "no projection" with no typed one) makes a median lineup's proj null, never a partial sum.
   const projMissing = proj === null || (!overridden && flags.includes("no projection"));
   return {
     proj, overridden, game, ceil, projMissing,
@@ -419,7 +418,7 @@ const oppStackActive = (opts) => !(opts.stackOpp === 0 && opts.stackOppOrMore);
  *   whatever the objective. ceil (TwoGun's ceilings summed) is present only when some row carries one, and null when
  *   any player in the lineup lacks one; a board without ceilings gives exactly the output it always did. Never throws.
  *   Cash only (Cash 2b fix, 2026-10-17): median (TwoGun's medians summed) is present on a median build, null when any
- *   player lacks one, and that build's proj is null when any player's projection is missing or only a stand-in; mode
+ *   player lacks one, and that build's proj is null when any player's projection is missing; mode
  *   is "cash"; basis is the picked basis, also on a refusal inside the build, and null only when none could be picked.
  */
 export function generateLineups(args) {
@@ -1017,7 +1016,7 @@ function prepare(rows, opts, notes) {
       // A late-out row also carries "injured", so the late-out note is checked first.
       if (lateOut) notes.push(`Locked ${name} was ruled out after TwoGun's board was made; he is kept because he is locked.`);
       else if (sidelined) notes.push(keptSidelinedNote(name, row.status));
-      if (noProjection) notes.push(noSourceProjectionNote(name, proj));
+      if (noProjection) notes.push(noSourceProjectionNote(name));
       if (noCeiling) notes.push(`Locked ${name} has no TwoGun ${figureWord} and counts as 0 in this ${figureWord} build.`);
       if (avoided) notes.push(`Locked ${name} plays in ${game}, a game set to avoid; he is kept because he is locked.`);
       if (unstarredQb) notes.push(`Locked ${name} is not starred; he is used because he is locked.`);
@@ -1799,7 +1798,7 @@ function presentLineup(st, players) {
   }
   const salary = players.reduce((s, c) => s + c.salary, 0);
   const proj = players.reduce((s, c) => s + c.proj, 0);
-  // Cash 2b fix, 2026-10-17: a median build's proj is null when any player's projection is missing or a stand-in.
+  // Cash 2b fix, 2026-10-17: a median build's proj is null when any player's projection is missing.
   const out = { ids, salary, proj: st.medianBuild && players.some((c) => c.projMissing) ? null : round2(proj) };
   // TwoGun's ceilings summed, only on a board that carries them (so a current-mode answer is unchanged); null, never
   // a partial sum, when any player lacks one. The same for a median build's medians.

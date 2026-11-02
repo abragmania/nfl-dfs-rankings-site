@@ -159,10 +159,8 @@ export function statusBadgeHtml(row, word = row?.status) {
 
 const PROJ_FLAG_LABELS = {
   thin: "Sources making up less than half the blend's weight cover this player; the projection is theirs alone.",
-  avgPoints: "No projection source covers this player; using DraftKings' average points per game instead.",
-  imputed: "No DST-specific projection; imputed from average points per game.",
   injured: "Flagged injured; may affect availability this week.",
-  injuryUnknown: "No projection: no source covers this player and the injury report is missing, so his average does not stand in.",
+  injuryUnknown: "No projection: no source covers this player and the injury report is missing.",
 };
 
 // Every tag is a researched one (review Q1, Adam 2026-10-14: the computed chalk and value tags are gone); a
@@ -225,7 +223,7 @@ export function sourceFailedMarkerHtml(row, sources) {
 
 function projFlagMarkerHtml(row) {
   const flags = row.flags ?? [];
-  const present = ["thin", "avgPoints", "imputed", "injured", "injuryUnknown"].filter((f) => flags.includes(f) && !(f === "injured" && flags.includes("revived")));
+  const present = ["thin", "injured", "injuryUnknown"].filter((f) => flags.includes(f) && !(f === "injured" && flags.includes("revived")));
   const failedText = sourceFailedTexts(row);
   if (!present.length && !failedText.length) return "";
   const title = [...present.map((f) => PROJ_FLAG_LABELS[f] ?? f), ...failedText].join(" ");

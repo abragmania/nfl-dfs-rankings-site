@@ -160,7 +160,7 @@ function buildStatusHtml() {
 function formatSavedAt(iso) {
   const d = new Date(iso);
   if (!iso || Number.isNaN(d.getTime())) return "";
-  return d.toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+  return `${d.toLocaleString("en-US", { timeZone: "America/New_York", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })} ET`;
 }
 
 /** Re-derives a saved lineup's nine roster slots and live totals against `rowById` (the CURRENT board),

@@ -335,7 +335,7 @@ export function existingForSlate(saved, secondSlate, slateIds, mode = "gpp") {
  * Cash only (Cash 2b fix, 2026-10-17): the body adds `mode` ("cash") and `basis` ("median" or "proj", the basis the
  * server picked, also on a refusal inside the build; null only when no basis could be picked); on a median build each
  * lineup adds `median` (TwoGun's medians summed, null when any player lacks one) and each player his own `median`, and
- * the lineup's `proj` is null when any player's projection is missing or only a stand-in. A GPP body has none of these.
+ * the lineup's `proj` is null when any player's projection is missing. A GPP body has none of these.
  */
 export function enrichGenerateResult(result, rowById) {
   const lineups = result.lineups.map((l) => ({

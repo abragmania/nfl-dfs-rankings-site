@@ -34,7 +34,7 @@ export function pickInjuryReport(espnState, sleeperState) {
 }
 
 export function injuryReportNote({ state, source }) {
-  if (state === "missing") return "ESPN injury report and the Sleeper backup unavailable: injury status unknown, so no one is shown as healthy and no season-average stand-in is used.";
+  if (state === "missing") return "ESPN injury report and the Sleeper backup unavailable: injury status unknown, so no one is shown as healthy.";
   if (source === "Sleeper") {
     return state === "ok"
       ? "ESPN injury report unavailable: injury statuses are from Sleeper."

@@ -101,7 +101,7 @@ export function stripHtml(row, asOf = null) {
 
 function stampText(iso) {
   const s = localStamp(iso);
-  return s ? `${s.monthDay} ${s.clock}` : "an unknown time";
+  return s ? `${s.monthDay} ${s.clock} ET` : "an unknown time";
 }
 
 /** "Source: NFLDepthCharts team file as of ..., game log as of ..." with the stale marker and the link to his page there. */

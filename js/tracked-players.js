@@ -44,10 +44,10 @@ let saves = Promise.resolve(); // marks are posted one at a time, in click order
 
 const fmt = (n) => n.toLocaleString("en-US");
 
-/** "Oct 19 23:08" from an ISO time, or null. */
+/** "Oct 19 23:08 ET" (Eastern) from an ISO time, or null. */
 function when(iso) {
   const s = localStamp(iso);
-  return s ? `${s.monthDay} ${s.clock}` : null;
+  return s ? `${s.monthDay} ${s.clock} ET` : null;
 }
 
 function showError(message) {

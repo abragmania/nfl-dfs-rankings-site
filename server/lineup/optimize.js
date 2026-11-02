@@ -242,7 +242,7 @@ function run(rows, options, cap) {
     }
     if (!locked) {
       if (proj === null) continue;        // no projection: never auto-rostered (D27 keeps him visible on the board)
-      if (noProjection) continue;         // no source projected him: the AvgPointsPerGame stand-in is not a projection
+      if (noProjection) continue;         // no source projected him (a listed-out man's 0 is not a projection)
       if (rowIsOut(row)) continue;        // out / IR / doubtful / suspended: never auto-rostered
       if (salary === null) continue;      // no price means he cannot be costed against the cap
     }
@@ -253,11 +253,7 @@ function run(rows, options, cap) {
       }
       continue;
     }
-    if (locked && proj === null) {
-      notes.push(lockedNoProjectionNote(row.name ?? key));
-    } else if (locked && noProjection) {
-      notes.push(`Locked ${row.name ?? key} has no projection from any source; his average points per game stands in for one.`);
-    }
+    if (locked && (proj === null || noProjection)) notes.push(lockedNoProjectionNote(row.name ?? key));
     all.push({
       id: key,
       dkKey: dkKeyOf(row, key),

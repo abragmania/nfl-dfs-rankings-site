@@ -34,7 +34,7 @@ const HEAD_CELLS = ["Weight", "Share", "Last pulled", "Posted", "Coverage", "Sta
 // column for column (👁 finding 6); the name column takes what is left.
 const COLGROUP = `<colgroup><col class="sp-w-tick"><col class="sp-w-name"><col class="sp-w-weight"><col class="sp-w-share"><col class="sp-w-pulled"><col class="sp-w-posted"><col class="sp-w-cov"><col class="sp-w-status"></colgroup>`;
 
-/** "Oct 18 17:05" in the browser's local time (format.js localStamp, no date maths here), or null when the stamp is unreadable. */
+/** "Oct 18 17:05" in Eastern time (format.js localStamp, no date maths here; the cell's title says ET so the narrow column does not grow), or null when the stamp is unreadable. */
 export function stampText(ts) {
   const s = localStamp(ts);
   return s ? `${s.monthDay} ${s.clock}` : null;
@@ -77,7 +77,7 @@ export function pillHtml(status, note) {
 }
 
 const muted = (text) => `<span class="sp-muted">${esc(text)}</span>`;
-const pulledHtml = (ts) => (stampText(ts) ? esc(stampText(ts)) : muted("never"));
+const pulledHtml = (ts) => (stampText(ts) ? `<span title="Eastern time (ET)">${esc(stampText(ts))}</span>` : muted("never"));
 // The source's own stamp as it reads, up to its first " (": a stamp that explains itself in brackets ("Mon, Oct 19, 6:07 PM CT (the
 // Ceiling Board's UPDATED stamp ...)", 👁 round 2, V2) shows the stamp and keeps the brackets for the hover, which carries all of it and
 // where it was read from. A plain string cut, no time read (D30); the stamp stays on one line (style.css td.sp-c-posted).

@@ -33,6 +33,6 @@ export function duplicateAfterEdit(stored, nextSlots, nextSlate, existing, { key
 
 export function duplicateMessage(dup) {
   const d = new Date(dup?.savedAt ?? "");
-  const when = Number.isNaN(d.getTime()) ? "" : ` (${d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })})`;
+  const when = Number.isNaN(d.getTime()) ? "" : ` (${d.toLocaleDateString("en-US", { timeZone: "America/New_York", month: "short", day: "numeric", year: "numeric" })})`;
   return `Already saved in ${lineupModeOf(dup) === "cash" ? "Cash" : "GPP"} as "${dup?.name ?? ""}"${when}; one saved copy only`;
 }

@@ -42,8 +42,8 @@ export function computeTags(rows, { findingsTags = new Map() } = {}) {
   const out = new Map();
   for (const row of rows ?? []) {
     const found = findingsTags.get?.(row.id) ?? findingsTags[row.id];
-    // D52: a stand-in projection (DraftKings' average for a player no source projects) is no projection, so it
-    // neither drops nor supports a researched value label; with no projection nothing contradicts the label (D42).
+    // D52: a row flagged "no projection" neither drops nor supports a researched value label; with no projection
+    // nothing contradicts the label (D42).
     const projForLabel = hasRealProjection(row) ? toNumber(row.proj) : null;
     const kept = (found ?? []).filter((t) => {
       const name = normaliseTag(t.tag);

@@ -5,16 +5,16 @@
 //   coverage >= 0.5            -> the blend as it stands.
 //   0 < coverage < 0.5         -> the blend as it stands, flagged "thin" (never shrunk toward a salary baseline:
 //                                 sources skip the players who will not play, so missing coverage is not "unknown").
-//   coverage = 0               -> the CSV's AvgPointsPerGame, flagged "no projection"; when that is null or 0 the
-//                                 projection stays null, never 0 (D27: the player still appears on the board).
-//   A status only ever blocks that stand-in: a player at least one source projects keeps his blend whatever any
-//   status says.
+//   coverage = 0               -> flagged "no projection", the projection stays null, never 0 (D27: the player still
+//                                 appears on the board). DraftKings' AvgPointsPerGame is never a projection, in any
+//                                 mode (Adam 2026-11-02).
+//   A player at least one source projects keeps his blend whatever any status says.
 import { isSidelined } from "./value-core.js"; // pure: the public site runs the board maths in a browser (D71)
 
 const isNum = (v) => Number.isFinite(v);
 
 /** The flags blendProjections and the board's failed-position check put on a row (the site re-blends under new weights). */
-export const BLEND_FLAGS = new Set(["no projection", "avgPoints", "thin", "sidelined", "injuryUnknown"]);
+export const BLEND_FLAGS = new Set(["no projection", "thin", "sidelined", "injuryUnknown"]);
 
 /** Position -> ids of the sources (each {id, missingPositions}) with weight above 0 that returned nothing for that position. */
 export function failedPositions(sources, weightOf) {
@@ -45,7 +45,7 @@ function weightEntries(weights) {
 /**
  * Blends per-source DraftKings points into one projection per player.
  *
- * players      - the slate players (each needs id, pos, salary, avgPoints).
+ * players      - the slate players (each needs id).
  * projBySource - Map (or object) player id -> { sourceId: points }.
  * weights      - { sourceId: weight } (or a Map, or { sourceId: {weight} }) for the sources that count toward
  *                coverage. Pass only the sources that actually produced records: a dead source left in here would
@@ -53,7 +53,7 @@ function weightEntries(weights) {
  * options.labels - { sourceId: label } for the recipe line.
  * options.injuryStatus - Map (or object) player id -> the injury report's status for that player (R82). It alone
  *                decides whether an uncovered player is sidelined.
- * options.injuryReport - "ok" (default), "stale" or "missing" (injuryReportState). "missing": no stand-in, flag "injuryUnknown".
+ * options.injuryReport - "ok" (default), "stale" or "missing" (injuryReportState). "missing": an uncovered player not listed out is flagged "injuryUnknown".
  *
  * Returns { byPlayerId, recipe, totalWeight } where byPlayerId maps id -> { proj, blend, coverage, flags, sources }
  * (blend is the covering sources' weighted mean, null when nothing covered the player).
@@ -96,10 +96,6 @@ export function blendProjections(players, projBySource, weights, { labels = {}, 
         flags.push("sidelined");
       } else if (injuryReport === "missing") {
         flags.push("injuryUnknown");
-      } else {
-        const avg = Number(player.avgPoints);
-        proj = isNum(avg) && avg > 0 ? avg : null;
-        if (proj !== null) flags.push("avgPoints");
       }
     } else if (coverage < 0.5) {
       // Thin coverage is flagged, never inflated. The earlier rule shrank a thin blend toward a points-vs-salary
@@ -146,10 +142,9 @@ export function blendStats(statsBySource, weights, keys = ["rec", "rushYd"]) {
  * The plain-English recipe line the Projections tab shows (PROJECT.md Part 4 "Screens").
  */
 export function recipeText(enabled, labels = {}, injuryReport = "ok") {
-  const listedBy = "the injury report lists";
   const noCoverage = injuryReport === "missing"
-    ? 'No coverage leaves the projection blank, flagged "no projection": the injury report is missing, so nobody can be confirmed healthy and the DraftKings average per game does not stand in.'
-    : `No coverage falls back to the DraftKings average points per game, flagged "no projection", unless ${listedBy} the player as out, on IR, doubtful or suspended, in which case the projection is 0; with no average it stays blank rather than zero.`;
+    ? 'No coverage leaves the projection blank, flagged "no projection": the injury report is missing, so nobody can be confirmed healthy.'
+    : 'No coverage leaves the projection blank, flagged "no projection", unless the injury report lists the player as out, on IR, doubtful or suspended, in which case the projection is 0.';
   const parts = enabled.map(([id, w]) => `${labels[id] ?? id} x${w}`);
   return [
     parts.length

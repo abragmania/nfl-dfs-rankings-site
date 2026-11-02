@@ -93,19 +93,30 @@ export function boardWithWeights(board, slate, weights) {
 
   const projLive = tunable.filter((s) => s.kind === "projection" && s.enabled !== false && (s.recordCount ?? 0) > 0);
   const pick = (weightOf) => Object.fromEntries(projLive.map((s) => [s.id, weightOf(s.id)]));
-  const players = board.rows.map((r) => ({ id: r.id, pos: r.pos, avgPoints: r.avgPoints }));
-  const blend = blendProjections(players, new Map(board.rows.map((r) => [r.id, r.projBySource])), pick(now),
+  const players = board.rows.map((r) => ({ id: r.id, pos: r.pos }));
+  const blendWith = (w) => blendProjections(players, new Map(board.rows.map((r) => [r.id, r.projBySource])), w,
     { labels, injuryStatus: new Map(board.rows.map((r) => [r.id, r.injury?.status ?? null])), injuryReport: state });
+  const blend = blendWith(pick(now));
   const failedForPos = failedPositions(projLive, now);
+  // As server/rank/select.js classicRow: the ticked sources, then the backups the board was baked with (a weight this browser gave a source
+  // counts there too, so a 0 leaves it out); his OUT call while he is ticked is no gap. No projection weight changed: Proj stays as baked.
+  const projChanged = projLive.some((s) => now(s.id) !== published.get(s.id));
+  const bakedBackup = isObject(board.mode?.backupWeights) ? board.mode.backupWeights : null;
+  const backupOf = (id) => (Object.hasOwn(weights, id) ? weights[id] : Number(bakedBackup?.[id] ?? 0));
+  const backup = bakedBackup && projLive.some((s) => backupOf(s.id) > 0) ? blendWith(pick(backupOf)) : null;
+  const failedForBackup = failedPositions(projLive, backupOf);
+  const hisTicked = (board.sources ?? []).some((s) => s.id === "twogun" && s.kind === "projection" && Number(s.weight) > 0);
 
   const ownLive = tunable.filter((s) => s.kind === "ownership" && s.enabled !== false);
   const ownWeight = new Map(ownLive.map((s) => [s.id, now(s.id)]));
 
   const rows = board.rows.map((row) => {
     const out = { ...row };
-    if (row.src?.proj !== "twogun") {
-      const b = blend.byPlayerId.get(row.id);
-      const failed = (failedForPos.get(row.pos) ?? []).filter((id) => row.projBySource?.[id] == null).map((id) => `sourceFailed:${id}`);
+    if (projChanged && row.src?.proj !== "twogun") {
+      const ticked = blend.byPlayerId.get(row.id);
+      const fromBackup = Boolean(backup) && ticked.blend === null && !(hisTicked && row.tg?.call === "OUT");
+      const b = fromBackup ? backup.byPlayerId.get(row.id) : ticked;
+      const failed = ((fromBackup ? failedForBackup : failedForPos).get(row.pos) ?? []).filter((id) => row.projBySource?.[id] == null).map((id) => `sourceFailed:${id}`);
       out.projBase = b.proj;
       out.coverage = b.coverage;
       out.flags = [...b.flags, ...(row.flags ?? []).filter((f) => !BLEND_FLAGS.has(f) && !f.startsWith("sourceFailed:")), ...failed];

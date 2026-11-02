@@ -35,19 +35,22 @@ export function clockPart(isoString) {
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
-// When something happened (a source's fetchedAt, "cached 00:43", "Fetched 00:43") in the browser's own local
-// time: { clock: "HH:MM", day: "YYYY-MM-DD", monthDay: "Oct 10" }, or null when the stamp is unreadable. The one
-// helper for those times; the server stamps them in UTC, so slicing the string (clockPart) shows the UTC clock.
-// Never for kickoffs: those are read as written (kickoffClockPart, D30).
+// When something happened (a source's fetchedAt, "cached 00:43", "Fetched 00:43") in Eastern time, whatever the
+// viewer's machine says (Adam's order 2026-11-02): { clock: "HH:MM", day: "YYYY-MM-DD", monthDay: "Oct 10" }, or null
+// when the stamp is unreadable. The one helper for those times; the server stamps them in UTC, so slicing the string
+// (clockPart) shows the UTC clock. Never for kickoffs: those are read as written (kickoffClockPart, D30).
+const ET_STAMP_PARTS = new Intl.DateTimeFormat("en-US", {
+  timeZone: "America/New_York", hourCycle: "h23", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit",
+});
 export function localStamp(ts) {
   if (typeof ts !== "string" || ts.trim() === "") return null;
   const d = new Date(ts);
   if (Number.isNaN(d.getTime())) return null;
-  const pad = (n) => String(n).padStart(2, "0");
+  const p = Object.fromEntries(ET_STAMP_PARTS.formatToParts(d).map((x) => [x.type, x.value]));
   return {
-    clock: `${pad(d.getHours())}:${pad(d.getMinutes())}`,
-    day: `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`,
-    monthDay: `${MONTHS[d.getMonth()]} ${d.getDate()}`,
+    clock: `${p.hour}:${p.minute}`,
+    day: `${p.year}-${p.month}-${p.day}`,
+    monthDay: `${MONTHS[Number(p.month) - 1]} ${Number(p.day)}`,
   };
 }
 

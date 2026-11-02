@@ -79,20 +79,34 @@ const off = (weight = 1) => ({ use: false, weight });
 /** The two presets. "Our sources": the four projection sources at weight 1 (D37); Footballguys, RotoWire and the
  *  findings at 1, Stokastic off, One Week Season off (not fetched, D35); every Showdown file source on with the D41
  *  method, Stokastic included for Captain too (D40 amended 2026-10-18); ESPN lines; TwoGun calls and extras off. "TwoGun only": TwoGun ticked
- *  alone in every section it feeds, TwoGun lines, calls and extras on, and gaps "blank" in all four sections (Adam,
- *  2026-10-18); "Our sources" gaps "backup". Whether "blank" also drops the DraftKings-average stand-in is open for Adam. */
+ *  alone in every section it feeds, TwoGun lines, calls and extras on, gaps "blank" in the three ownership sections (Adam, 2026-10-18;
+ *  D29) and "backup" in the projection section: his number when he has one, else the backups (Adam 2026-11-02, classic only; a Showdown
+ *  game's stays "blank", presetGaps). "Our sources" gaps "backup". */
 export const PRESETS = deepFreeze({
   ours: { projection: { gaps: "backup", sources: { sleeper: on(), fantasypros: on(), cbs: on(), espn: on(), twogun: off() } },
     ownership: { gaps: "backup", sources: { footballguys: on(), rotowire: on(), findings: on(), stokastic: off(), oneweekseason: off(), twogun: off() } },
     sdOwnFlex: { method: "d41", gaps: "backup", sources: { [ANY]: on(), twogun: off() } },
     sdOwnCpt: { gaps: "backup", sources: { [ANY]: on(), twogun: off() } },
     lines: { primary: "espn-scoreboard" }, injuries: { twogunCalls: false }, extras: { twogun: false } },
-  twogun: { projection: { gaps: "blank", sources: { sleeper: off(), fantasypros: off(), cbs: off(), espn: off(), twogun: on() } },
+  twogun: { projection: { gaps: "backup", sources: { sleeper: off(), fantasypros: off(), cbs: off(), espn: off(), twogun: on() } },
     ownership: { gaps: "blank", sources: { footballguys: off(), rotowire: off(), findings: off(), stokastic: off(), oneweekseason: off(), twogun: on() } },
     sdOwnFlex: { method: "d41", gaps: "blank", sources: { [ANY]: off(), twogun: on() } },
     sdOwnCpt: { gaps: "blank", sources: { [ANY]: off(), twogun: on() } },
     lines: { primary: TWOGUN_ID }, injuries: { twogunCalls: true }, extras: { twogun: true } }
 });
+
+/** The gaps preset `name` writes in section `kind` for a scope of `scopeKind` ("classic" | "showdown", scopeKindOf): PRESETS' own, except
+ *  that a Showdown game's "TwoGun only" leaves a man he lacks blank in the projection section too (Adam 2026-11-02: his classic order
+ *  does not change Showdown). */
+const presetGaps = (name, kind, scopeKind) => (scopeKind === "showdown" && name === "twogun" && kind === "projection" ? "blank" : PRESETS[name][kind].gaps);
+
+/** `kinds` as the classic board reads them (Adam 2026-11-02): with TwoGun ticked for projections a stored "leave blank" reads as "backup",
+ *  so the backups fill a man no ticked source covers. TwoGun ticked alone, his number stands; in a custom mix his number is blended with the
+ *  other ticked sources by weight, as any ticked source is. A new object only when the gaps change. Never for a Showdown scope. */
+export function classicProjectionGaps(kinds) {
+  if (kinds?.projection?.gaps !== "blank" || decide(kinds, "projection", TWOGUN_ID)?.use !== true) return kinds;
+  return { ...kinds, projection: { ...kinds.projection, gaps: "backup" } };
+}
 
 /** A fresh selection holding the "Our sources" preset (what a machine with no selection file uses). */
 export function defaultSelection() {
@@ -102,15 +116,17 @@ export function defaultSelection() {
 /** The "TwoGun only" preset, his FLEX and Captain ownership included: what a Showdown game with no saved choices reads while both his
  *  files for it are posted (showdown-default.js). Read only; nothing is written until a save. */
 export function defaultShowdownSelection() {
-  return applyPreset("twogun", defaultSelection());
+  return applyPreset("twogun", defaultSelection(), "showdown");
 }
 
 /** `target` (a selection) with the sections `fromKind`'s page shows (SHOWN_KINDS) copied from `from` where `toKind` has them too:
  *  the projection section always (every scope has it), the ownership and switch sections only between scopes of the same kind.
- *  The target keeps every other section, its updatedAt and its log. Pure; the caller validates and writes. */
+ *  The target keeps every other section, its updatedAt and its log. TwoGun alone copied from classic (where his gaps always fill) onto a
+ *  game gets the game's rule, presetGaps: no backup numbers on a Showdown TwoGun board. Pure; the caller validates and writes. */
 export function withShownSections(target, from, fromKind, toKind) {
   const next = structuredClone(target);
   for (const k of SHOWN_KINDS[fromKind]) if (SHOWN_KINDS[toKind].includes(k)) next.kinds[k] = structuredClone(from.kinds[k]);
+  if (fromKind === "classic" && toKind === "showdown" && ticksOnlyTwoGunProjection(from)) next.kinds.projection.gaps = presetGaps("twogun", "projection", toKind);
   return next;
 }
 
@@ -206,28 +222,28 @@ function sameChoices(a, b) {
 }
 
 /** "twogun" | "ours" | null: the preset `sel` matches on its ticks, ticked weights, FLEX method, line source, TwoGun
- *  calls and extras, and on the gaps each preset writes in all four sections: "blank" for "twogun" (TwoGun ticked with
- *  backup gaps is a custom choice) and "backup" for "ours" (Our sources' ticks with one section on "leave blank" is a
- *  custom choice, so the Our sources button is not lit while a click on it would still change something). Unticked
+ *  calls and extras, and on the gaps each preset writes for `scopeKind` in all four sections (presetGaps; a section on other
+ *  gaps is a custom choice, so a preset button is not lit while a click on it would still change something). Unticked
  *  weights, updatedAt and the log are not compared. */
-export function presetOf(sel) {
+export function presetOf(sel, scopeKind = "classic") {
   if (!isObj(sel?.kinds)) return null;
-  const gapsOf = (name) => SOURCE_KINDS.every((k) => sel.kinds[k]?.gaps === PRESETS[name][k].gaps);
+  const gapsOf = (name) => SOURCE_KINDS.every((k) => sel.kinds[k]?.gaps === presetGaps(name, k, scopeKind));
   for (const name of ["twogun", "ours"]) if (sameChoices(PRESETS[name], sel.kinds) && gapsOf(name)) return name;
   return null;
 }
 
 /** `sel` with preset `name` applied (a new object): the preset's ticks, ticked weights, method and switches, with
- *  every stored weight of a source the preset leaves unticked kept. Each preset writes the gaps it means, whatever was stored:
- *  "twogun" "blank" and "ours" "backup" (a stored "blank" left by TwoGun only used to survive "Our sources", so the page showed
+ *  every stored weight of a source the preset leaves unticked kept. Each preset writes the gaps it means for `scopeKind`, whatever
+ *  was stored (presetGaps; a stored "blank" left by TwoGun only used to survive "Our sources", so the page showed
  *  "leave blank" under the preset that fills). A source `sel` names
  *  that the preset does not follows the preset's "*" entry if it has one (else it is unticked).
  *  updatedAt and the log are carried over. */
-export function applyPreset(name, sel) {
+export function applyPreset(name, sel, scopeKind = "classic") {
   const preset = PRESETS[name];
   if (!preset) throw Object.assign(new Error(`unknown preset ${JSON.stringify(name)}`), { code: "SELECTION_INVALID" });
   const kinds = structuredClone(preset);
   for (const k of SOURCE_KINDS) {
+    kinds[k].gaps = presetGaps(name, k, scopeKind);
     const stored = isObj(sel?.kinds?.[k]?.sources) ? sel.kinds[k].sources : {};
     const ids = new Set([...Object.keys(kinds[k].sources), ...Object.keys(stored)]);
     for (const id of ids) {
@@ -298,11 +314,13 @@ export function ticksOnlyTwoGunProjection(sel) {
 }
 
 /** One plain-English line for what changed from `before` to `after` ("" when no choice changed): the preset's name
- *  when several choices moved onto a preset at once, else each changed choice. */
-export function describeChange(before, after) {
+ *  when several choices moved onto a preset at once (of `scopeKind`'s, presetOf), else each changed choice. */
+export function describeChange(before, after, scopeKind = "classic") {
   const bits = [];
-  const b = before?.kinds ?? {};
-  const a = after?.kinds ?? {};
+  // A classic "blank" under TwoGun reads as "backup" (classicProjectionGaps), so its move onto "backup" changes no choice.
+  const read = (kinds) => (scopeKind === "classic" ? classicProjectionGaps(kinds ?? {}) : kinds ?? {});
+  const b = read(before?.kinds);
+  const a = read(after?.kinds);
   for (const k of SOURCE_KINDS) {
     const label = KIND_LABELS[k];
     if (b[k]?.gaps !== a[k]?.gaps) bits.push(`${label}: missing players now ${a[k]?.gaps === "blank" ? "left blank" : "filled from the backup sources"}`);
@@ -319,8 +337,8 @@ export function describeChange(before, after) {
   if (b.injuries?.twogunCalls !== a.injuries?.twogunCalls) bits.push(`TwoGun injury calls ${a.injuries?.twogunCalls ? "on" : "off"}`);
   if (b.extras?.twogun !== a.extras?.twogun) bits.push(`TwoGun extras ${a.extras?.twogun ? "on" : "off"}`);
   if (!bits.length) return "";
-  const p = presetOf(after);
-  const onto = p && p !== presetOf(before);
+  const p = presetOf({ kinds: a }, scopeKind);
+  const onto = p && p !== presetOf({ kinds: b }, scopeKind);
   if (onto && bits.length > 1) return `Chose the "${PRESET_LABELS[p]}" preset.`;
   if (onto) return `${bits[0]} (now the "${PRESET_LABELS[p]}" preset).`;
   const shown = bits.slice(0, 8).join("; ");

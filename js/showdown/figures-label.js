@@ -20,7 +20,7 @@ const reEscape = (s) => String(s).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
  *  stamps arrive from the server already in Eastern text, server/lib/et.js centralStampToEasternText); null when missing. */
 export function whenText(raw) {
   if (raw === null || raw === undefined || raw === "") return null;
-  if (isDateText(raw)) return new Date(raw).toLocaleString("en-US", { timeZone: "America/New_York", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+  if (isDateText(raw)) return `${new Date(raw).toLocaleString("en-US", { timeZone: "America/New_York", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })} ET`;
   return String(raw).replace(/\s*\([^()]*\)\s*$/, "");
 }
 

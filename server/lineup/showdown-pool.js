@@ -26,7 +26,7 @@ export function rosterTest(board, objective) {
  *  said alike by Generate and Build. */
 export const noTwoGunProjectionNote = (name, word = "Locked") => `${word} ${name} has no TwoGun projection and counts as 0 in this build.`;
 
-// Classic's projMissing (multi.js rowFlags): no projection, or only the board's "no projection" stand-in with no typed one.
+// Classic's projMissing (multi.js rowFlags): no projection, or the board's "no projection" flag with no typed one.
 const noOwnProjection = (row) => num(row?.proj) === null || (num(row?.override?.proj) === null && (Array.isArray(row?.flags) ? row.flags : []).includes("no projection"));
 
 /**
@@ -42,7 +42,7 @@ export function keptNotes(word, c, row, { why = null, objective = "proj", boardM
   const figure = Object.hasOwn(FIGURE_BUILDS, objective) ? FIGURE_BUILDS[objective] : null;
   if (rowIsOut(row)) out.push(keptSidelinedNote(c.name, row.status, word));
   if (objective === "proj" && boardMode === "twogun" && num(c.proj) === null) out.push(noTwoGunProjectionNote(c.name, word));
-  if (objective === "proj" && boardMode !== "twogun" && noOwnProjection(row)) out.push(noSourceProjectionNote(c.name, num(row.proj), word));
+  if (objective === "proj" && boardMode !== "twogun" && noOwnProjection(row)) out.push(noSourceProjectionNote(c.name, word));
   if (why === "figure") out.push(`${word} ${c.name} has no TwoGun ${figure} and counts as 0 in this ${figure} build.`);
   return out;
 }

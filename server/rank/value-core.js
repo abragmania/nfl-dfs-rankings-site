@@ -29,8 +29,8 @@ export function toNumber(value) {
 
 /**
  * D52: true when the row's projection is a real one - a source projected him, or Adam typed one (D28). A row
- * flagged "no projection" whose proj is DraftKings' average (blend.js's "avgPoints" stand-in) is not: D52 hides
- * him like any unprojected player, and he gets no value, grade or tag on that number. The Optimizer's pool
+ * flagged "no projection" is not, even with a number on it (a listed-out man's 0): D52 hides him like any
+ * unprojected player, and he gets no value, grade or tag on that number. The Optimizer's pool
  * uses the same test (server/lineup/multi.js noProjection); public/js/state.js hasRealProjection is the
  * browser's copy and must stay identical.
  */
@@ -54,8 +54,8 @@ export function valueOf(proj, salary) {
 /**
  * Adds value to a set of rows.
  * rows - objects carrying { id, proj, salary, flags, override }.
- * Returns Map id -> { value }: value is null without a projection. A row whose proj is only the D52 stand-in
- * (hasRealProjection false) gets value null like any unprojected player (D27), unless Adam typed his projection
+ * Returns Map id -> { value }: value is null without a projection. A row hasRealProjection refuses gets value
+ * null like any unprojected player (D27), unless Adam typed his projection
  * (D28); that also keeps him out of the Value grade (public/js/grade.js grades only rows with a value). No Lev
  * (Adam 2026-10-15, Lev measure to be redesigned).
  */
