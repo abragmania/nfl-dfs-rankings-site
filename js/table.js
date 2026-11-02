@@ -147,7 +147,9 @@ export function statusBadgeHtml(row, word = row?.status) {
   if (!raw) return "";
   const info = STATUS_INFO[raw.toLowerCase()];
   const why = untagged(row?.tg?.callText);
-  const notes = [(row?.injury?.comment ?? "").trim(), why ? `TwoGun${row.tg.tag ? ` [${row.tg.tag}]` : ""}: ${why}` : ""].filter(Boolean).join(" ");
+  // A row whose status TwoGun's own call replaced (src.status "twogun") and who is not called OUT: the report's word stays on the badge, with his call beside it.
+  const playsOnHisWord = row?.src?.status === "twogun" && row?.tg?.call !== "OUT" ? "TwoGun lists him as playing." : "";
+  const notes = [(row?.injury?.comment ?? "").trim(), why ? `TwoGun${row.tg.tag ? ` [${row.tg.tag}]` : ""}: ${why}` : "", playsOnHisWord].filter(Boolean).join(" ");
   const title = (head) => escapeHtml(notes ? `${head}. ${notes}` : head);
   const revived = revivedStatusTitle(row, info?.label ?? raw);
   if (revived) return `<span class="status-badge status-revived" title="${title(revived)}">${escapeHtml(info?.short ?? raw)}</span>`;
@@ -310,7 +312,8 @@ export function statusTagsHtml(row) {
   const key = (row.status ?? "").trim().toLowerCase();
   const injuryStatus = row.injury?.status;
   const same = injuryStatus && (injuryStatus.toLowerCase() === key || (STATUS_INFO[key] && STATUS_INFO[key].label === STATUS_INFO[injuryStatus.toLowerCase()]?.label));
-  const injuryHtml = injuryStatus && !same ? statusBadgeHtml({ ...row, tg: key ? null : row.tg, injury: key ? { ...row.injury, comment: "" } : row.injury, flags: [] }, injuryStatus) : "";
+  // With a board status of its own, the second (injury report) badge says nothing of TwoGun's call (src left off).
+  const injuryHtml = injuryStatus && !same ? statusBadgeHtml({ ...row, tg: key ? null : row.tg, src: key ? undefined : row.src, injury: key ? { ...row.injury, comment: "" } : row.injury, flags: [] }, injuryStatus) : "";
   return `${statusBadgeHtml(row)}${injuryHtml}`;
 }
 
