@@ -1,14 +1,12 @@
 {
-  "publishedAt": "2026-11-02T20:59:29.612Z",
+  "publishedAt": "2026-11-03T14:41:35.999Z",
   "season": 2026,
   "week": 8,
-  "boardGeneratedAt": "2026-11-02T20:59:19.274Z",
-  "latestBoardAt": "2026-11-02T20:59:27.763Z",
+  "boardGeneratedAt": "2026-11-03T14:41:24.754Z",
+  "latestBoardAt": "2026-11-03T14:41:24.754Z",
   "defaultMode": "twogun",
-  "showdowns": [
-    "2026-w08-CHISEA"
-  ],
-  "sourceCommit": "c193ed7e973d414973416f8878a6c3e5bf263070",
+  "showdowns": [],
+  "sourceCommit": "2bee8576834de66a00c1c6e2a283d962a61a5e12",
   "appCommit": "c193ed7e973d414973416f8878a6c3e5bf263070",
   "machine": "desktop",
   "matchups": false
