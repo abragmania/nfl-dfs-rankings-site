@@ -85,7 +85,7 @@ export function normalizeBoard(raw) {
 // Filter / sort
 // --------------------------------------------------------------------------------------------------------
 
-const DESC_FIRST = new Set(["salary", "cptSalary", "proj", "cptProj", "tgCeil", "tgCeilCpt", "value", "ownFlex", "ownCpt", "levFlex", "levCpt"]);
+const DESC_FIRST = new Set(["salary", "cptSalary", "proj", "cptProj", "value", "ownFlex", "ownCpt", "levFlex", "levCpt"]);
 export function defaultDirFor(col) {
   return DESC_FIRST.has(col) ? "desc" : "asc";
 }

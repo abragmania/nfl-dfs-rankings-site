@@ -993,11 +993,10 @@ tr:last-child .cell-edit-hint { top: auto; bottom: 100%; margin-top: 0; margin-b
   cursor: default;
 }
 
-/* TwoGun mode's six Rankings columns (Med, Ceil, Ceil/$, Nuke, 3x%, 4x%; table.js TG_COLUMNS) sit after Lev; the <table>
-   carries "tg-on". Widths are re-shared so the table stays inside D54's 1250px box: Tags (52px, with or without the Note column: one 46px
-   pill whole) gives up some, Pos, Salary, Own% and Lev a little, and Player takes the room (there is no Team, Opp or Status column), Ceil/$ takes 60px (Nuke 56px, the other four 50px each),
-   and the columns sum to 1230px, what the box holds beside its vertical scrollbar (1920x947 render, 2026-10-15; Ceil/$
-   added 2026-10-17, DQ1). The generic nth-child widths above still apply in current mode, untouched. */
+/* TwoGun mode's four Rankings columns (Med, Nuke, 3x%, 4x%; table.js TG_COLUMNS) sit after Lev; the <table>
+   carries "tg-on". Widths were shared so the table stays inside D54's 1250px box: Tags (52px, with or without the Note column: one 46px
+   pill whole) gives up some, Pos, Salary, Own% and Lev a little, and Player takes the room (there is no Team, Opp or Status column), Nuke takes 56px (the other three 50px each).
+   The Ceil and Ceil/$ columns are gone (optimizer standard A21, 2026-11-03); the Player column's width and the box widths below are unchanged (the columns now total 110px less in this mode and 102px less with the Note column; fixed layout spreads the slack). The generic nth-child widths above still apply in current mode, untouched. */
 .rankings-table th.tg-col, .rankings-table td.tg-col {
   text-align: right;
   font-variant-numeric: tabular-nums;
@@ -1007,15 +1006,14 @@ tr:last-child .cell-edit-hint { top: auto; bottom: 100%; margin-top: 0; margin-b
 }
 .rankings-table.tg-on th.tg-col, .rankings-table.tg-on td.tg-col { padding-left: 6px; padding-right: 6px; }
 .rankings-table.tg-on th.tg-col { width: 50px; vertical-align: middle; }
-/* Round 5: a sorted header is never clipped. The sort arrow is a little smaller (9px) in every Rankings header; in TwoGun mode the six number headers drop their left
+/* Round 5: a sorted header is never clipped. The sort arrow is a little smaller (9px) in every Rankings header; in TwoGun mode the four number headers drop their left
    padding to 2px (the right padding stays 6px so a header still lines up with its numbers; headers are right-aligned, so the left padding is only spare room) and Pos
-   drops its right padding to 6px. Measured at 1920: "Med ▼" needs 54px of its 50px, Ceil/$, Nuke, 3x% and 4x% 3px more than they have, Pos 2px more. */
+   drops its right padding to 6px. Measured at 1920: "Med ▼" needs 54px of its 50px, Nuke, 3x% and 4x% 3px more than they have, Pos 2px more. */
 .rankings-table th .sort-arrow { font-size: 9px; }
 .rankings-table.tg-on th.tg-col { padding-left: 2px; }
 .rankings-table.tg-on th.pos-col { padding-right: 6px; }
 .rankings-table.tg-on th[data-col="tgNuke"] { width: 56px; } /* "Nuke ▼" whole when sorted */
 .rankings-table.tg-on th[data-col="value"] { padding-left: 6px; padding-right: 6px; } /* "Proj/$ ▼" whole in its 64-66px when sorted, the default sort (🔵 2026-10-17) */
-.rankings-table.tg-on th[data-col="tgCeilPer1k"] { width: 60px; } /* "Ceil/$ ▼" whole when sorted (Adam 2026-10-17, DQ1) */
 /* Adam 2026-10-18 Q1: the Opp (68px) and Status (62px) columns are gone, so Player takes their width (306 + 130 = 436px), then 12px from Tags (64px to 52px) and 22px from Pos, Salary, Own% and Lev (470px). */
 .rankings-table.tg-on th:nth-child(2) { width: 470px; } /* the longest name ("Marquez Valdes-Scantling" with a tag) needs 464px, so no long name is cut (Adam 2026-10-18 Q1) */
 .rankings-table.tg-on th:nth-child(3) { width: 44px; }
@@ -1026,9 +1024,9 @@ tr:last-child .cell-edit-hint { top: auto; bottom: 100%; margin-top: 0; margin-b
 .rankings-table.tg-on th[data-col="tags"] { width: 52px; white-space: normal; padding-left: 3px; padding-right: 3px; }
 .rankings-table.tg-on td.tags-cell { padding-left: 3px; padding-right: 3px; white-space: nowrap; overflow: hidden; text-overflow: clip; }
 /* With the Note column on as well (Adam 2026-10-18, rounds 4 and 5: no cut name, no clipped sorted header): Player takes 464px (the longest name with its tag pill needs 464px), the room
-   coming from Note (74px to 44px: the header "Note" with no padding, a preview ellipsis and the full note as its hover), the six TwoGun columns
+   coming from Note (74px to 44px: the header "Note" with no padding, a preview ellipsis and the full note as its hover), the TwoGun columns
    (4px cell padding instead of 6px, so each is 4px narrower with the same room for its number and sorted header), Lev (36px to 32px) and Salary (66px to 64px);
-   the columns total 1230px before round 6/7; with Note 102px and Tags 60px (below) they total 1296px in a 1316px box. */
+   the columns total 1120px now (1230px with the two Ceil columns, before round 6/7); with Note 102px and Tags 60px (below) they total 1194px (1296px with the Ceil columns), in a 1316px box. */
 .rankings-table.tg-on:has(th[data-col="note"]) th:nth-child(2) { width: 464px; } /* D80 round 7 (Adam 2026-10-18 Q1: no long name is cut): back to the 464px the longest name needs; the 66px for Note and Tags comes from the wider box below, not from Player */
 .rankings-table.tg-on:has(th[data-col="note"]) th:nth-child(3) { width: 44px; }
 .rankings-table.tg-on:has(th[data-col="note"]) th:nth-child(4) { width: 64px; }
@@ -1037,7 +1035,6 @@ tr:last-child .cell-edit-hint { top: auto; bottom: 100%; margin-top: 0; margin-b
 .rankings-table.tg-on:has(th[data-col="note"]) th:nth-child(8) { width: 32px; }
 .rankings-table.tg-on:has(th[data-col="note"]) th.tg-col, .rankings-table.tg-on:has(th[data-col="note"]) td.tg-col { padding-left: 4px; padding-right: 4px; }
 .rankings-table.tg-on:has(th[data-col="note"]) th.tg-col { width: 46px; padding-left: 0; }
-.rankings-table.tg-on:has(th[data-col="note"]) th[data-col="tgCeilPer1k"] { width: 56px; }
 .rankings-table.tg-on:has(th[data-col="note"]) th[data-col="tgNuke"] { width: 52px; }
 .rankings-table.tg-on th[data-col="note"] { width: 44px; padding-left: 0; padding-right: 0; overflow: hidden; text-overflow: clip; } /* round 5: "Note ▲" needs 43px, so the sorted header is whole in 44px with no padding (Player 464px) */
 .rankings-table.tg-on:has(th[data-col="note"]) td:last-child { padding-left: 2px; padding-right: 2px; }
@@ -1046,14 +1043,14 @@ tr:last-child .cell-edit-hint { top: auto; bottom: 100%; margin-top: 0; margin-b
 .rankings-table.tg-on:has(th[data-col="note"]) th[data-col="note"] { width: 102px; }
 .rankings-table.tg-on:has(th[data-col="note"]) th[data-col="tags"] { width: 60px; padding-left: 10px; }
 .rankings-table.tg-on:has(th[data-col="note"]) td.tags-cell { padding-left: 10px; }
-/* D80 round 7 (Adam 2026-10-18 Q1: no long name is cut): the columns now total 1296px, so while the ranked list is in TwoGun mode with the Note column on, its box (the expand bar,
-   the table and the legend share it, so their left edges still line up) is 1316px instead of 1250px: 1296px + 2px of border + the 15px vertical scrollbar + 3px spare.
+/* D80 round 7 (Adam 2026-10-18 Q1: no long name is cut): the columns then totalled 1296px (1194px now, without the Ceil columns), so while the ranked list is in TwoGun mode with the Note column on, its box (the expand bar,
+   the table and the legend share it, so their left edges still line up) is 1316px instead of 1250px: 1296px + 2px of border + the 15px vertical scrollbar + 3px spare (left at 1316px; it holds 1194px with 105px to spare).
    It is a max-width on a 100%-wide box, so a 1366px window (1318px of room inside the page's 24px side padding) holds it with no sideways scroll. Expanded, the full-screen rules still apply. */
 #ranked-list:has(.rankings-table.tg-on th[data-col="note"]) > .expand-bar:not(.is-expanded),
 #ranked-list:has(.rankings-table.tg-on th[data-col="note"]) > .table-wrap:not(.is-expanded),
 #ranked-list:has(.rankings-table.tg-on th[data-col="note"]) > .table-legend { max-width: 1316px; }
 /* D80 round 7 fallback (Adam 2026-10-18 Q1: no long name is cut, no sideways scroll): below 1396px of window (1316px box + 48px page padding + a possible 15px page scrollbar + spare) the box is the room
-   the page has, so the Player column gives up the shortfall: 464px, or 100vw - 912px when that is less (912 = 80px of padding, border and scrollbars + the 832px of the other columns). The matchup pill
+   the page has, so the Player column gives up the shortfall: 464px, or 100vw - 912px when that is less (912 = 80px of padding, border and scrollbars + the 832px the other columns took with the Ceil columns; they take 730px now, so Player gives way up to 102px earlier than it has to). The matchup pill
    is what gives way for it, shrinking with an ellipsis (its full text is the row's matchup); the name, tag, chip and note icon never shrink. At 1366px Player is 454px; from 1376px it is the full 464px. */
 .rankings-table.tg-on:has(th[data-col="note"]) th:nth-child(2) { width: min(464px, calc(100vw - 912px)); }
 .rankings-table.tg-on:has(th[data-col="note"]) .player-cell > .meta-pill { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
@@ -1074,8 +1071,6 @@ tr:last-child .cell-edit-hint { top: auto; bottom: 100%; margin-top: 0; margin-b
   white-space: nowrap;
 }
 
-/* The Optimizer's Projection / Ceiling choice: a greyed Ceiling (no ceilings on this board) keeps its hover reason. */
-.opt-chip.is-disabled { opacity: 0.45; cursor: not-allowed; }
 
 /* An edited Proj/Own% number: coloured, no word beside it; the small x puts the original back. */
 .cell-value.is-override { color: var(--amber); font-weight: 600; }
@@ -1435,9 +1430,6 @@ tr:last-child .cell-edit-hint { top: auto; bottom: 100%; margin-top: 0; margin-b
    (3 to 6) and the Lock / Exclude / Add buttons pack tighter, and the table fits its panel at 1920 and 2560 with the buttons whole. */
 .lineup-pool-table th:nth-child(n+3):nth-child(-n+6), .lineup-pool-table td:nth-child(n+3):nth-child(-n+6) { padding-left: 5px; padding-right: 5px; }
 .lineup-pool-table th:nth-child(2), .lineup-pool-table td:nth-child(2) { padding-left: 6px; padding-right: 6px; }
-/* Adam 2026-10-25: TwoGun mode adds a Ceil column after Proj (lineup-view.js, .pool-ceil), so Own% is column 6 and Proj/$ column 7: they take the same treatment the old 5 and 6 had. */
-.lineup-pool-table.pool-ceil th:nth-child(7), .lineup-pool-table.pool-ceil td:nth-child(7) { text-align: right; font-variant-numeric: tabular-nums; padding-left: 5px; padding-right: 5px; }
-.lineup-pool-table.pool-ceil td:nth-child(6) { font-size: 13px; font-weight: 700; }
 .lineup-pool-table .player-cell { gap: 6px; }
 .lineup-pool-table .lineup-row-actions { gap: 3px; }
 .lineup-pool-table .lineup-row-btn { padding: 2px 5px; }
@@ -1818,7 +1810,7 @@ th.sd-cpt-col.sorted { color: var(--amber); }
 #sd-pool > .table-wrap:not(.is-expanded) { width: auto; max-width: 100%; margin: 0; scrollbar-gutter: stable; }
 .sd-pool-note { font-size: var(--fs-sm); color: var(--text-dim); }
 /* The table: the Rankings table's look (the shared .rankings-table rules name it too: sticky head, cell padding, 30px rows, hover,
-   dimmed rows), but laid out by its content, not fixed widths, since its columns vary (Ceil, the Optimizer's boxes and buttons).
+   dimmed rows), but laid out by its content, not fixed widths, since its columns vary (the Optimizer's boxes and buttons).
    The figures right-align with tabular digits; Player and Notes read left. The Player cell stops at 250px (a long name gives way
    with an ellipsis; its hover has it whole), so no name pushes the figures away. */
 /* border-spacing 0 with separate borders, not collapse: with collapsed borders Chrome paints a sticky head's row borders where the table
@@ -1834,7 +1826,7 @@ th.sd-cpt-col.sorted { color: var(--amber); }
 .sd-pool-table td.sd-pool-empty { text-align: center; color: var(--text-muted); }
 /* The cells pack 5px a side, half the Rankings table's 10px (Q1: the pool beside the 600px builder fits 1920's column, and a 1366px
    window's full-width pool). */
-.sd-pool-table :is(th, td) { padding-left: 4px; padding-right: 4px; } /* 4px since the CPT Ceil column (🔵 R1), so 1920's column still holds the table */
+.sd-pool-table :is(th, td) { padding-left: 4px; padding-right: 4px; } /* 4px (set when the pool had Ceil columns), so 1920's column still holds the table */
 /* Every head after Player may break at its spaces ("CPT / proj", "Own / FLEX", "Min / %"; the sort arrow stays with its word), so each
    column is only as wide as its figures need (a 1px width asks for the narrowest that holds them); the head rows have room for two lines. */
 .sd-pool-table thead tr:not(.sd-own-total-row) th:not([data-col="player"]) { width: 1px; white-space: normal; line-height: 1.2; vertical-align: bottom; }
@@ -2213,15 +2205,12 @@ td.opt-exp-opp { color: var(--text-muted); } /* the cells only: the Matchup head
 .sd-cpt-slot .opt-p-slot { padding: 1px 0; }
 .saved-lineup-slot-tc .sd-pos, .lineup-slots .opt-p .sd-pos { background: var(--tcchip); color: var(--tct); text-shadow: none; } /* the slots' position chip wears the team chip's colours (D81) */
 
-/* The Showdown controls in two rows of the column's width: Objective, Build, Clear all, then Save as and Save lineup; every control 32px tall, the buttons 96px so their right edges line up. */
+/* The Showdown controls in two rows of the column's width: Build and Clear all, then Save as and Save lineup; every control 32px tall, the buttons 96px so their right edges line up. */
 .lineup-controls.sd-controls { flex-direction: column; align-items: stretch; gap: var(--sp-2); }
 .sd-controls-row { display: flex; align-items: flex-end; gap: var(--sp-3); }
 .sd-controls-row .lineup-control { flex: 1 1 auto; min-width: 0; }
 .sd-controls-row :is(select, input, button) { box-sizing: border-box; height: 32px; }
 .sd-controls-row .lineup-control :is(select, input) { width: 100%; }
-/* 👁 V2: the Objective select keeps its content width at every width; Build and Clear all sit right after it. */
-.sd-controls-row:first-child .lineup-control { flex: 0 0 auto; }
-.sd-controls-row:first-child .lineup-control select { width: auto; }
 .sd-controls-row button { flex: 0 0 96px; padding-left: 0; padding-right: 0; white-space: nowrap; }
 
 /* ---------- Showdown swaps panel (Adam 2026-10-18 9:09 PM: "make it ... good like the classic one at least"; public/js/showdown/lineup-swaps.js) ----------
@@ -2401,14 +2390,13 @@ td.opt-exp-opp { color: var(--text-muted); } /* the cells only: the Matchup head
 /* Adam 2026-10-20 (visual check): the Pool and Build boxes square off at the same height (Pool was 85px beside Build's 229px). */
 .opt-panel.sd-opt-panel .opt-groups { align-items: stretch; }
 /* Adam 2026-10-20 9:05 AM: the Showdown builder's six slots and meter must fit a 1920x947 window above the Make row. On a window
-   1600px or wider the two control rows (Objective, Build, Clear all / Save as, Save lineup) sit side by side, which gives back about
+   1600px or wider the two control rows (Build, Clear all / Save as, Save lineup) sit side by side, which gives back about
    60px; a narrower window keeps them stacked, as the column is too narrow for one line. */
 @media (min-width: 1600px) {
   .sd-opt-left .lineup-controls.sd-controls { flex-direction: row; align-items: flex-end; }
   .sd-opt-left .sd-controls-row { flex: 1 1 0; min-width: 0; }
 }
-/* In the 600px builder column (Adam 2026-10-26, the pool beside it) the Objective row keeps its own width, so the select reads whole;
-   the Save as row takes the rest. */
+/* In the 600px builder column (Adam 2026-10-26, the pool beside it) the Build row keeps its own width; the Save as row takes the rest. */
 @media (min-width: 1600px) { .sd-opt-left .sd-controls-row:first-child { flex: 0 0 auto; } }
 .sd-opt-results .opt-cards { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 @media (max-width: 1279px) { .sd-opt-results .opt-cards { grid-template-columns: repeat(3, minmax(0, 1fr)); } }

@@ -101,23 +101,8 @@ function noteCellHtml(row) {
 // ---------- the Optimizer's player pool (Adam 2026-10-26 3:22 PM: the Optimizer looks like the retired Rankings tab, D81) ----------
 // The pool (pool.js) draws these same columns and cells through `hooks`, which add what the Optimizer needs: the figures the slots
 // show (`figures(row, isCpt)`: lineup-meter.js playerFigures, the board row's own plus the modes answer's notes), the Player cell
-// (`playerCell(row)`), the ± bump in the Proj cell or, on the Captain tab, the CPT proj cell (`projCell(row, proj, isCpt)`), the Ceil and CPT Ceil cells (`ceilCell(row, isCpt)`, when the
-// columns carry SD_CEIL_COLUMNS), the Val cell (`valueCell(row)`), a class on the row (`rowClass(row)`) and the cells after Notes
+// (`playerCell(row)`), the ± bump in the Proj cell or, on the Captain tab, the CPT proj cell (`projCell(row, proj, isCpt)`), the Val cell (`valueCell(row)`), a class on the row (`rowClass(row)`) and the cells after Notes
 // (`tail(row)`), and the row's own attributes (`rowAttrs(row)`: the pool's click, keyboard stop and title). Without hooks a row is drawn as the retired Rankings tab drew it.
-
-/** TwoGun's ceiling columns (the Optimizer's pool only, while the board carries his ceilings; Adam 2026-10-25, D81): his ceiling and, gold,
- *  his Captain ceiling (1.5x), as the retired Captain list showed it (🔵 R1 2026-10-26: every feature kept). */
-export const SD_CEIL_COLUMNS = Object.freeze([
-  Object.freeze({ key: "tgCeil", label: "Ceil", title: "TwoGun's ceiling, DraftKings points as he publishes them; a − / + bump scales it with the projection" }),
-  Object.freeze({ key: "tgCeilCpt", label: "CPT Ceil", gold: true, title: "TwoGun's ceiling as Captain: 1.5x his ceiling; a − / + bump scales it with the projection" }),
-]);
-
-/** The table's columns: SD_COLUMNS, with the two Ceil columns after CPT proj when `withCeil`. */
-export function sdColumns(withCeil = false) {
-  if (!withCeil) return SD_COLUMNS;
-  const at = SD_COLUMNS.findIndex((c) => c.key === "cptProj") + 1;
-  return [...SD_COLUMNS.slice(0, at), ...SD_CEIL_COLUMNS, ...SD_COLUMNS.slice(at)];
-}
 
 /** The head row's cells (sortable, the sorted one marked with its arrow, the Captain columns gold), without the <tr>. `rowspan`: the
  *  rows each cell spans (the pool's head has a second row of sub-heads under its control groups). */
@@ -156,8 +141,6 @@ function cellHtml(row, key, h) {
     case "cptSalary": return `<td class="sd-cpt-col">${money(row.cptSalary)}</td>`;
     case "proj": return `<td>${hooked ? hookedProjHtml(row, false, h) : projCellHtml(row.proj, row)}</td>`;
     case "cptProj": return `<td class="sd-cpt-col">${hooked ? hookedProjHtml(row, true, h) : projCellHtml(row.cptProj, row, `Captain: 1.5x price, 1.5x points. `)}</td>`;
-    case "tgCeil": return `<td>${h.ceilCell ? h.ceilCell(row, false) : "—"}</td>`;
-    case "tgCeilCpt": return `<td class="sd-cpt-col">${h.ceilCell ? h.ceilCell(row, true) : "—"}</td>`;
     case "value": return `<td>${h.valueCell ? h.valueCell(row) : gradedValueHtml(row)}</td>`;
     case "ownFlex": return `<td>${hooked ? hookedOwnHtml(row, false, h) : ownCellHtml(row.ownFlex, row.ownHow)}</td>`;
     case "ownCpt": return `<td class="sd-cpt-col">${hooked ? hookedOwnHtml(row, true, h) : ownCellHtml(row.ownCpt, row.ownHow)}</td>`;

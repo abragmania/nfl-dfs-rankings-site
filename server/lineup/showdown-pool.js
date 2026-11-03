@@ -35,7 +35,7 @@ const noOwnProjection = (row) => num(row?.proj) === null || (num(row?.override?.
  * row, `why` his rosterReason in this build (null, "figure" or "other"). In order: D45, classic's sentence (multi.js)
  * word for word with the role word (multi.js keptSidelinedNote), a man the board lists out is kept and counts as 0; D81,
  * in a TwoGun projection build, no TwoGun projection; D81, Our sources, classic's no-projection sentence (multi.js
- * noSourceProjectionNote) by his FLEX figure; in a ceiling or median build, no TwoGun figure counts as 0, never an estimate.
+ * noSourceProjectionNote) by his FLEX figure; in a median build, no TwoGun figure counts as 0, never an estimate.
  */
 export function keptNotes(word, c, row, { why = null, objective = "proj", boardMode } = {}) {
   const out = [];
@@ -75,7 +75,7 @@ export function includedBuildNotes(board, people, boardMode) {
 
 /** The search pool of one build: every unexcluded candidate that may be rostered in it (showdown.js rosterReason), is
  *  locked, or is a priced row of an included man (`includeSet`, person ids; showdown-includes.js), each scored by the
- *  objective (showdown.js scoreFor). Notes as the classic ceiling build's (objective.js ceilingNotes): who was left out
+ *  objective (showdown.js scoreFor). Notes as the classic median build's (objective.js ceilingNotes): who was left out
  *  for want of a figure, that typed projections do not move it, and every man kept only because he is locked or included
  *  (keptNotes: once per locked row, once per included man). */
 export function buildPool(board, lockSet, objective, notes, boardMode, includeSet = new Set()) {

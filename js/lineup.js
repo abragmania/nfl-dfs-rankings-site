@@ -22,7 +22,6 @@
 // only it assigns), storage, the entry points tabs.js imports, the builder and saved-lineup actions, and the wiring.
 // lineup-view.js holds every piece of panel markup; lineup-optimizer.js holds cash mode, the request/validation helpers
 // and the Optimizer actions. Every name this file exported before is still exported from here.
-import { escapeHtml } from "./format.js";
 import { store, FLEX_POS, defaultDirFor, activeSlateRows } from "./state.js";
 import { rowIsOut, twoGunOutReason, STATUS_INFO } from "./table.js"; // D43: the one copy of "vs DAL" / "@ DET"
 import { shownTotal } from "./totals.js";
@@ -40,40 +39,22 @@ import { cleanPlayerMax, boardModeOf, slateKeyOf, uniqueSavedName, lockedIds, ca
 
 export const LINEUP_SLOTS = ["QB", "RB", "RB", "WR", "WR", "WR", "TE", "FLEX", "DST"];
 export const SALARY_CAP = 50000;
-// The lineups maximise projection or TwoGun's ceiling, Adam's pick each time (TwoGun merge 2026-10-15; server/lineup/
-// multi.js OBJECTIVES). Ceiling needs a board carrying TwoGun's ceilings (TwoGun mode): otherwise it is greyed with the
-// reason on hover and the build is by projection. The Leverage and Projection-minus-ownership objectives are gone
-// (Adam 2026-10-15); the server builds any older request naming a retired one on projection, with a note.
+// The lineups maximise projection, the only objective, so the screen has no Build by control (optimizer standard A21 and A13, 2026-11-03:
+// the Ceiling choice was removed and the control returns with a second objective). The Leverage and Projection-minus-ownership
+// objectives are gone too (Adam 2026-10-15); the server builds any older request naming one on projection, with a note.
 export const OBJECTIVES = [
   { value: "proj", label: "Projection" },
-  { value: "ceil", label: "Ceiling" },
 ];
-export const NO_CEILING_REASON = "Ceiling needs TwoGun's ceilings, and this board has none (current mode, or no TwoGun board could be read).";
 
-/** The objective a build uses: Adam's pick, except Ceiling on a board with no ceilings, which builds by projection
- *  (the Ceiling choice is greyed then; his pick comes back when the board has ceilings again). */
-export function effectiveObjective(picked, hasCeilings) {
-  if (picked === "ceil") return hasCeilings ? "ceil" : "proj";
+/** The objective a build uses: Projection, whatever was picked or remembered (a stale "ceil" falls back silently). */
+export function effectiveObjective(picked) {
   return OBJECTIVES.some((o) => o.value === picked) ? picked : "proj";
 }
 
-/** The Projection / Ceiling choice in the Optimizer band. A greyed choice keeps its hover reason (aria-disabled, not
- *  disabled, so the browser still shows the title) and a short dim "(TwoGun mode only)" after it (visual QA V4). */
-export function objectiveChipsHtml(picked, hasCeilings) {
-  const active = effectiveObjective(picked, hasCeilings);
-  return OBJECTIVES.map((o) => {
-    const off = o.value === "ceil" && !hasCeilings;
-    const on = o.value === active;
-    const title = off ? NO_CEILING_REASON : o.value === "ceil" ? "Build the lineups with the highest total of TwoGun's published ceilings" : "Build the lineups with the highest total projection";
-    const chip = `<button type="button" class="chip toggle-chip opt-chip${on ? " active" : ""}${off ? " is-disabled" : ""}" data-action="opt-objective" data-value="${o.value}" aria-pressed="${on}"${off ? ` aria-disabled="true"` : ""} title="${escapeHtml(title)}">${escapeHtml(o.label)}</button>`;
-    return off ? `${chip}<span class="opt-sub" title="${escapeHtml(NO_CEILING_REASON)}">(TwoGun mode only)</span>` : chip;
-  }).join("");
-}
-
-/** The words a set of new lineups is labelled with: the mode and objective it was built in, so a set made before a
- *  mode flip says so ("TwoGun mode, by ceiling"). */
-export function builtInText(mode, objective) {
-  return `${mode === "twogun" ? "TwoGun" : "current"} mode, by ${objective === "ceil" ? "ceiling" : "projection"}`;
+/** The words a set of new lineups is labelled with: the mode it was built in, so a set made before a mode flip says so
+ *  ("TwoGun mode, by projection"). */
+export function builtInText(mode) {
+  return `${mode === "twogun" ? "TwoGun" : "current"} mode, by projection`;
 }
 
 export { optExposureHtml, sortExposure, exposureLimit, minLimit, exposureMark, zeroMinRows }; // lineup-exposure.js
@@ -900,7 +881,7 @@ export const opt = {
   minUnique: String(OPT_DEFAULT_UNIQUE),
   maxExp: { QB: "", RB: "", WR: "", TE: "", DST: "" }, // percent text as typed; blank = no cap
   rules: Object.fromEntries(OPT_RULES.map((r) => [r.key, true])),
-  objective: "proj", // one of OBJECTIVES' values, Adam's pick (effectiveObjective decides what a build uses)
+  objective: "proj", // one of OBJECTIVES' values (effectiveObjective decides what a build uses)
   maxPerTeam: "", // "" (no limit) or "1".."4", the <select> value
   ...OPT_DEFAULT_STACK, // D73: stackOwn / stackOpp numbers and their "or more" ticks
   avoid: new Set(), // game ids such as "DET@ARI"
@@ -922,7 +903,7 @@ export const opt = {
   error: null, // the server's sentence for a refused or failed request
   saveError: null,
   formError: null, // a sentence naming a maximum-exposure box (position or player) that is not a percent; blocks Go
-  results: null, // {slateKey, lineups: [{uid, ids, salary, proj, ceil?, players, saved?}], notes, builtIn} or null
+  results: null, // {slateKey, lineups: [{uid, ids, salary, proj, players, saved?}], notes, builtIn} or null
 };
 
 export function resetOptimizerResults() {
@@ -982,5 +963,5 @@ function syncOptimizerSlate() {
 }
 
 // Re-exports: every name this module exported before the split is still importable from here (tabs.js, the tests and the site build import them).
-export { setPoolCallbacks, slotPlayerHtml, savedLineupSlotHtml, savedCeilHtml, savedLineupCardHtml, savedGroupsHtml, savedLineupPlayers, savedLineupFigures, saveControlsHtml, poolStarClick, rightColumnHtml, lineupTotalsOf, ruleRowsHtml, starredQbQualifiers, usableQbIds, starredQbNote, avoidChipsHtml, optLineupCardHtml, optNotesHtml, bendsLineHtml, cardIsSaved } from "./lineup-view.js";
+export { setPoolCallbacks, slotPlayerHtml, savedLineupSlotHtml, savedLineupCardHtml, savedGroupsHtml, savedLineupPlayers, savedLineupFigures, saveControlsHtml, poolStarClick, rightColumnHtml, lineupTotalsOf, ruleRowsHtml, starredQbQualifiers, usableQbIds, starredQbNote, avoidChipsHtml, optLineupCardHtml, optNotesHtml, bendsLineHtml, cardIsSaved } from "./lineup-view.js";
 export { swapScanHook, parseWhole, parsePct, exposureProblem, exposureOfLineups, lineupSetKey, savedSetKeys, savedForSlate, uniqueSavedName, playerMaxProblem, playerMinProblem, minSlotsFull, minSlotWords, dkKeyOfRow, minRowOut, pairClash, lockStackRefuses, minLockSkips, playerMinPositionProblem, lockedIds, requestCount, minProblemFor, buildGenerateSettings, buildGeneratePayload, slotsForSave, duplicateSaveStatus } from "./lineup-optimizer.js";

@@ -31,7 +31,7 @@ const RULE_SETTING_KEYS = Object.freeze(["rules", "allowRbGames"]);
 const EXPOSURE_KEYS = Object.freeze(["maxExposure", "playerMaxExposure", "playerMinExposure", "spreadDst"]);
 const RULES_OFF = Object.freeze({ starredQbOnly: false, noSameTeamRbs: false, noSameGameRbs: false, noDstVsOwnPlayers: false });
 
-/** 0 for an out row that has a median, exactly as objective.js ceilingOf treats the ceiling. */
+/** TwoGun's published median for a board row, or null; 0 for an out row that has one (out = projection 0 and median 0, Adam). */
 export function medianOf(row) {
   const median = num(row && row.tg && row.tg.median);
   return median !== null && rowIsOut(row) ? 0 : median;

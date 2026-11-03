@@ -1,9 +1,7 @@
 // The Optimizer's objective helpers (moved out of multi.js, cash mode job 1, 2026-10-17; plan CQ6): the number a lineup
 // maximises, per player. Pure and browser-safe: the public site runs the engine in the browser (D69), so no node: imports.
-import { rowIsOut } from "../rank/sidelined.js"; // pure: the public site runs this engine in the browser (D69)
+// The Ceiling objective was removed 2026-11-03 (optimizer standard A21): the feed keeps TwoGun's ceilings, nothing here reads them.
 import { medianOf } from "./cash.js"; // pure; the cash build's median (cash mode job 1, 2026-10-17)
-
-const num = (v) => (typeof v === "number" && Number.isFinite(v) ? v : null);
 
 /**
  * The note a build carries when its request (or a setting saved before 2026-10-15) names a retired objective:
@@ -17,38 +15,32 @@ export function retiredObjectiveNote(objective) {
   return null;
 }
 
-/** The refusal when a ceiling build is asked of a board with no TwoGun ceiling on any row. */
-export const NO_CEILING_SENTENCE = "This board has no TwoGun ceilings (current mode, or no TwoGun board could be read), so lineups cannot be built by ceiling; build by projection.";
+/** The refusal when a request names the removed Ceiling objective (optimizer standard A21, 2026-11-03). The app's own screens
+ *  never send it (a remembered "ceil" falls back to Projection in the browser); only an old caller can. */
+export const CEILING_REMOVED_SENTENCE = "Building by ceiling is no longer offered; build by projection.";
 
 /** The refusal when a median build is asked of a GPP board with no TwoGun median on any row (the cash twin is cash.js NO_MEDIAN_SENTENCE). */
 export const NO_MEDIAN_GPP_SENTENCE = "This board has no TwoGun medians, so lineups cannot be built by median; build by projection.";
 
-/** The score one candidate adds: his projection, or for "ceil" TwoGun's published ceiling (D25 as amended
- *  2026-10-15), 0 for a locked player without one, never an estimate; a typed projection never moves a ceiling. */
+/** The score one candidate adds: his projection, or for a cash "median" build TwoGun's published median (0 for a locked
+ *  player without one, never an estimate; a typed projection never moves it). */
 export function objectiveScore(row, proj, objective) {
   if (objective === "median") return medianOf(row) ?? 0; // cash mode job 1, 2026-10-17: TwoGun's median, 0 when locked without one
-  return objective === "ceil" ? ceilingOf(row) ?? 0 : proj;
+  return proj;
 }
 
 /** The builds that score by one of TwoGun's published figures, and that figure's word (cash mode job 1, 2026-10-17). */
-export const FIGURE_BUILDS = Object.freeze({ ceil: "ceiling", median: "median" });
+export const FIGURE_BUILDS = Object.freeze({ median: "median" });
 
-/** A figure build's figure for a row (ceilingOf or cash.js medianOf), or null when he has none. */
+/** A figure build's figure for a row (cash.js medianOf), or null when he has none. */
 export function figureOf(row, objective) {
-  return objective === "median" ? medianOf(row) : ceilingOf(row);
+  return objective === "median" ? medianOf(row) : null;
 }
 
-/** TwoGun's published ceiling for a board row (row.tg.ceil, TwoGun mode only), or null; 0 for an out row that has one
- *  (out = projection 0 and ceiling 0, Adam). Nothing else is read. */
-export function ceilingOf(row) {
-  const ceil = num(row && row.tg && row.tg.ceil);
-  return ceil !== null && rowIsOut(row) ? 0 : ceil;
-}
-
-/** A ceiling build's notes: how many were left out for want of a ceiling, that typed projections do not move it, and how
+/** A figure build's notes: how many were left out for want of the figure, that typed projections do not move it, and how
  *  many pool players' figures carry Adam's ± bump (`bumped`; Adam 2026-10-22, 5% a step, merge.js bumpFigures), in which
- *  case the figures are no longer as he publishes them. `word` names the figure ("median" for a cash median build, FIGURE_BUILDS). */
-export function ceilingNotes(leftOut, typed, notes, word = "ceiling", bumped = 0) {
+ *  case the figures are no longer as he publishes them. `word` names the figure ("median", FIGURE_BUILDS). */
+export function ceilingNotes(leftOut, typed, notes, word = "median", bumped = 0) {
   if (leftOut > 0) {
     notes.push(`${leftOut} player${leftOut === 1 ? "" : "s"} with no TwoGun ${word} ${leftOut === 1 ? "was" : "were"} left out of this ${word} build.`);
   }

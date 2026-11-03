@@ -47,13 +47,3 @@ export function showdownPerSpotText(salaryLeft, cptOpen, flexOpen) {
   if (cptN && flexN) return `${flexShare} per FLEX · ${cptShare} CPT`;
   return cptN ? `${cptShare} CPT` : `${flexShare} per spot`;
 }
-
-/** A generated lineup's ceiling total (TwoGun mode): the shown sum of its players' ceilings, or the engine's `lineup.ceil`
- *  when the players carry none. undefined in current mode (the lineup has no `ceil`); null when the engine says a player has none. */
-export function lineupCeilTotal(lineup) {
-  if (lineup?.ceil === undefined) return undefined;
-  if (lineup.ceil === null) return null;
-  const players = lineup.players ?? [];
-  const ceils = players.map((p) => p.ceil);
-  return players.length > 0 && ceils.every((c) => typeof c === "number" && Number.isFinite(c)) ? shownTotal(ceils) : lineup.ceil;
-}

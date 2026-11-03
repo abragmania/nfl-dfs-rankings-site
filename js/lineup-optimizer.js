@@ -2,7 +2,7 @@
 // pure request and validation helpers (percent boxes, Min % checks, the generate payload, the saved-set keys), and the actions
 // (Build, Save all, Discard, the Optimizer band's event wiring). `state`, `opt` and the page-level variables are owned by
 // lineup.js; this file imports them and holds only its own swap-cache and build counter. Panel markup is in lineup-view.js.
-import { store, FLEX_POS, activeSlate, activeSlateRows, activeSlateGames, slateDisplayName, boardHasCeilings, isTwoGunMode } from "./state.js";
+import { store, FLEX_POS, activeSlate, activeSlateRows, activeSlateGames, slateDisplayName, isTwoGunMode } from "./state.js";
 import { rowIsOut } from "./table.js"; // D43: the one copy of "vs DAL" / "@ DET"; the red OUT tag (Adam 2026-10-15)
 import { newBuildId, batchBuild } from "./lineup-builds.js";
 import { nextSort } from "./lineup-sort.js"; // Adam 2026-10-17: sort options; geo own = geometric mean of ownership, his multiplicative uniqueness
@@ -359,7 +359,7 @@ const numOrNull = (v) => (typeof v === "number" && Number.isFinite(v) ? v : null
 export const upperOf = (v) => (v === null || v === undefined ? "" : String(v).trim().toUpperCase());
 
 /** Whether the pool drops this unlocked row, mirroring multi.js minOutReason for what the browser can see. `pool` =
- *  {excludes (Set), avoid (Set of game ids), starredQbOnly, objective}. */
+ *  {excludes (Set), avoid (Set of game ids), starredQbOnly}. */
 export function minRowOut(row, id, pool) {
   if (pool.excludes.has(String(id))) return true;
   const raw = upperOf(row?.pos);
@@ -369,15 +369,12 @@ export function minRowOut(row, id, pool) {
   if (!pos || salary === null || salary < 0) return true;
   const flags = Array.isArray(row.flags) ? row.flags : [];
   if (flags.includes("outAfterStamp") && !flags.includes("revived")) return true;
-  // ChatGPT wish r: multi.js revivedOut (a revived player is out of a ceiling build only with no ceiling of his own or a TwoGun OUT call)
-  if (pool.objective === "ceil" && flags.includes("revived") && (numOrNull(row.tg?.ceil) === null || row.tg?.call === "OUT")) return true;
   if (rowIsOut(row)) return true;
   const overridden = numOrNull(row.override?.proj) !== null;
   if (numOrNull(row.proj) === null || (!overridden && flags.includes("no projection"))) return true;
   const game = upperOf(row.gameId);
   if (game && pool.avoid.has(game)) return true;
-  if (pool.starredQbOnly && pos === "QB" && !row.starred) return true;
-  return pool.objective === "ceil" && numOrNull(row.tg?.ceil) === null;
+  return Boolean(pool.starredQbOnly && pos === "QB" && !row.starred);
 }
 
 /** multi.js pairBreak as a yes/no. a, b: {pos, team, opp, game, key, never (a QB's "no" keys)}; `rules` the D55 switches.
@@ -621,7 +618,7 @@ async function doGenerate() {
       avoid,
       locks,
       excludes: [...state.excludes],
-      objective: effectiveObjective(opt.objective, boardHasCeilings(activeSlateRows(board))),
+      objective: effectiveObjective(opt.objective),
       maxPerTeam: opt.maxPerTeam,
       stackOwn: opt.stackOwn,
       stackOwnOrMore: opt.stackOwnOrMore,
@@ -639,7 +636,6 @@ async function doGenerate() {
       excludes: new Set(form.excludes.map(String)),
       avoid: new Set(avoid.map((g) => String(g).toUpperCase())),
       starredQbOnly: sent.settings.rules.starredQbOnly !== false,
-      objective: sent.settings.objective,
     };
     opt.formError = playerMinPositionProblem(playerMin, {
       posOf: (id) => String(rowAt(id)?.pos ?? "").toUpperCase(),
@@ -684,7 +680,7 @@ async function doGenerate() {
       // Each set is labelled with the mode and objective it was built in, so a set made before a mode flip says so
       // (package C review item 9: labelled, not cleared, so a flip never throws away lineups).
       // Only where the mode switch exists (board.mode): a board with no mode reads exactly as before, no label.
-      const builtIn = board?.mode ? builtInText(board.mode.active, form.objective) : "";
+      const builtIn = board?.mode ? builtInText(board.mode.active) : "";
       // The response's own exposure (saved plus new) is not shown: each tab computes its own (D74).
       const bends = Array.isArray(data.bends) ? data.bends : [];
       const marks = { asked: sent.settings.count, min: pctsOf(sent.settings.playerMinExposure), max: pctsOf(sent.settings.playerMaxExposure) };
@@ -741,7 +737,7 @@ async function saveGenerated(uids) {
       const stem = mode === "cash" ? "Cash" : "Lineup";
       const cardName = `${stem} ${results.lineups.indexOf(lineup) + 1}`;
       const name = uniqueSavedName(cardName, taken, stem);
-      const data = await postLineup({ name, slots: slotsForSave(lineup.players), slate: slateKey, ...(mode === "cash" ? { mode } : {}), build: batchBuild(results, lineup) }); // Cash 3b fix round, 2026-10-17: GPP sends no mode
+      const data = await postLineup({ name, slots: slotsForSave(lineup.players), slate: slateKey, ...(mode === "cash" ? { mode } : {}), build: batchBuild(results) }); // Cash 3b fix round, 2026-10-17: GPP sends no mode
       if (data?.error?.code === "DUPLICATE_LINEUP") {
         skipped.push({ name: cardName, message: data.error.message });
         continue;
@@ -897,14 +893,6 @@ export function wireOptimizer(container) {
     } catch (e) {
       console.error("lineup generate: the Stop was not heard", e); // the build runs on to its answer
     }
-  });
-  // Projection or Ceiling, Adam's pick each time; a greyed Ceiling (no ceilings on this board) does nothing.
-  container.querySelectorAll("[data-action='opt-objective']").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      if (btn.getAttribute("aria-disabled") === "true" || opt.objective === btn.dataset.value) return;
-      opt.objective = btn.dataset.value;
-      commit();
-    });
   });
   container.querySelectorAll("[data-action='opt-rule']").forEach((btn) => {
     btn.addEventListener("click", () => {

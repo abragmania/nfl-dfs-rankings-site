@@ -56,18 +56,19 @@ export function validateLineupMode(value) {
 
 // Optional saved-lineup `build` record (ChatGPT wish g, Adam 2026-10-17): where the lineup came from, so the Saved tab
 // orders by build. {kind: "batch" (made by the Optimizer; id = one stamp per Go, shared by every lineup saved from it) or
-// "hand" (manual builder; no id), boardMode "current" | "twogun", objective (batch only), totalCeil (batch only: TwoGun's
-// ceilings summed, null when a player has none), edited (true only: the players were replaced by hand after the save, set by
-// buildAfterSlotEdit)}. Omitted stays omitted; the stored copy holds only these keys.
+// "hand" (manual builder; no id), boardMode "current" | "twogun", objective (batch only), totalCeil (batch only: a ceiling
+// total an older save stored, still accepted and kept, never shown or written now), edited (true only: an older save whose players
+// were replaced by hand; nothing sets it or shows it now)}. Omitted stays omitted; the stored copy holds only these keys.
 const BUILD_KEYS = new Set(["kind", "id", "boardMode", "objective", "totalCeil", "edited"]);
 const BUILD_MODES = new Set(["current", "twogun"]);
-// The engine's own objective names (multi.js OBJECTIVES) plus the retired ones an older saved lineup may still carry.
-const RETIRED_BUILD_OBJECTIVES = Object.freeze(["lev", "projMinusOwn"]);
+// The engine's own objective names (multi.js OBJECTIVES) plus the retired ones an older saved lineup may still carry
+// ("ceil" since optimizer standard A21, 2026-11-03: a stored ceiling build still loads and saves; nothing shows or makes a new one).
+const RETIRED_BUILD_OBJECTIVES = Object.freeze(["lev", "projMinusOwn", "ceil"]);
 const BUILD_OBJECTIVES = new Set([...OBJECTIVES, ...RETIRED_BUILD_OBJECTIVES]);
 const BUILD_ID = /^[A-Za-z0-9_-]{1,40}$/;
 const CEIL_TOTAL_MAX = 1000; // nine players cannot score more
 // Showdown's saved lineups (PROJECT.md Part 4 "Showdown Optimizer port", step 2) pass `options`: `objectives` is the Showdown
-// engine's own list (proj, ceil, median: server/showdown/lineup-checks.js BUILD_OPTIONS; the retired names are always accepted too) and
+// engine's own list (proj, median: server/showdown/lineup-checks.js BUILD_OPTIONS; the retired names are always accepted too) and
 // `projection: true` admits two Showdown-only keys: build.projection, which a page may still send and which is neither checked
 // nor kept (the Showdown save stamps the served board's own projection line, server/showdown/lineups-routes.js; Adam
 // 2026-10-20: every game reads its ticked sources), and build.figuresKey, the served board's figures key
@@ -103,28 +104,6 @@ export function validateLineupBuild(value, { objectives = OBJECTIVES, projection
   if (totalCeil !== undefined) build.totalCeil = totalCeil;
   if (edited === true) build.edited = true;
   return figuresKey === null ? { build } : { build, figuresKey };
-}
-
-/** Pure: a lineup's `build` after its players were replaced by hand. A build that had a ceiling total (totalCeil defined,
- *  even null) no longer describes the rows with it, so the total goes and `edited: true` says so (the Saved card shows a dash
- *  for it); the group and the rest stay. A build with no ceiling total (current mode, a hand build) is returned unchanged,
- *  with no edited key, and so is no build at all. */
-export function buildAfterSlotEdit(build) {
-  if (!build || typeof build !== "object") return build;
-  const { totalCeil, ...rest } = build;
-  if (totalCeil === undefined) return build;
-  return { ...rest, edited: true };
-}
-
-/** Pure: whether two slot lists hold different players. The sorted String(playerId) lists are compared, so the same nine
- *  players in other slots (across FLEX) are not a difference; a list that is not an array counts as different. The
- *  builder's Update always sends slots, so store.js and site-lineups.js ask this before dropping a build's ceiling total. */
-export function slotsPlayersDiffer(oldSlots, newSlots) {
-  if (!Array.isArray(oldSlots) || !Array.isArray(newSlots)) return true;
-  const ids = (slots) => slots.map((s) => String(s && s.playerId)).sort();
-  const a = ids(oldSlots);
-  const b = ids(newSlots);
-  return a.length !== b.length || a.some((v, i) => v !== b[i]);
 }
 
 export function lineupModeOf(lineup) {

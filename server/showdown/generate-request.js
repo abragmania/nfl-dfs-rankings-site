@@ -3,7 +3,7 @@
 // later by the public site's copy of that route. One copy, so both answer message for message alike.
 //
 // The settings are the classic Optimizer's, and only these (Adam 2026-10-18: "these are the only constraints"): count,
-// objective (Projection, ceiling or median), minUnique, locks, includes (Adam 2026-10-19), excludes, maxPerTeam, mode (gpp
+// objective (Projection or median), minUnique, locks, includes (Adam 2026-10-19), excludes, maxPerTeam, mode (gpp
 // or cash), and a Max % and a Min % for the Captain and for FLEX kept apart:
 //   captainMaxExposure, captainMinExposure, flexMaxExposure, flexMinExposure  ({"<player id>": {pct: 0-100}})
 // A player id is the man's FLEX id or his Captain id; either names the same man. Locks and excludes use candidate ids as
@@ -19,7 +19,7 @@ import { CPT_MULTIPLIER, SHOWDOWN_MAX_FROM_TEAM } from "../lineup/showdown.js";
 // The engine's own limits, one copy; its log.js import is swapped for site-src/browser-log.js on the site, as multi.js's is.
 import { MAX_LINEUPS, MAX_UNIQUE, showdownBoard, maxPerTeamOk, MAX_PER_TEAM_SENTENCE, lockedTeamBreak } from "../lineup/showdown-multi.js";
 import { rosterTest } from "../lineup/showdown-pool.js";
-import { figureOf } from "../lineup/objective.js"; // the engine's figure accessor: whether a median or ceiling build has a figure to build on
+import { figureOf, CEILING_REMOVED_SENTENCE } from "../lineup/objective.js"; // the engine's figure accessor: whether a median build has a figure to build on
 import { readIncludes, withIncludes } from "../lineup/showdown-includes.js";
 import { readShowdownRules } from "../lineup/showdown-rules.js";
 import { SHOWDOWN_CASH_REFUSED } from "../lineup/showdown-cash.js";
@@ -34,7 +34,7 @@ export const SHOWDOWN_GENERATE_SETTING_KEYS = new Set([
   "count", "minUnique", "locks", "excludes", "objective", "captainMaxExposure", "captainMinExposure", "flexMaxExposure", "flexMinExposure",
   "lineupRules", "maxPerTeam", "mode", "includes"
 ]);
-// The builds a request may ask for: Projection, TwoGun's ceiling, TwoGun's median (the Captain at 1.5x of it). The one list,
+// The builds a request may ask for: Projection, TwoGun's median (the Captain at 1.5x of it). The one list,
 // lineup-checks.js BUILD_OPTIONS.objectives, the one the saved lineups' build record accepts, pinned to the engine's figure builds.
 const GENERATE_OBJECTIVES = BUILD_OPTIONS.objectives;
 const PCT_SETTINGS = [
@@ -64,8 +64,8 @@ export function generateBodyError(body) {
 
 /**
  * The served board's rows (board-view.js serveShowdownBoard) carrying tg = TwoGun's own {proj, median, ceil} from
- * `figuresById` (twogun-projections.js), or null for a man the file has no row for, which the engine's median and ceiling
- * builds and the cash basis read (objective.js ceilingOf, cash.js medianOf; both count an out man's figure as 0). D45: a man
+ * `figuresById` (twogun-projections.js), or null for a man the file has no row for, which the engine's median build
+ * and the cash basis read (cash.js medianOf counts an out man's figure as 0; the ceiling rides along, unread). D45: a man
  * the board lists sidelined (rowIsSidelined) carries tg.proj 0, so nothing downstream can show his raw TwoGun projection
  * while row.proj is 0. Adam 2026-10-22, the ± bump: his figures are scaled by the row's override.bump steps (bumpFigures),
  * as the merge scales row.proj, since they are attached after the merge. Pure.
@@ -132,6 +132,7 @@ export function validateShowdownGenerateSettings(raw, rows) {
   // no "server picks the basis" note (showdown-cash.js counts a carried objective).
   if (raw.objective !== undefined && raw.objective !== null) {
     const objective = raw.objective;
+    if (objective === "ceil") return { error: CEILING_REMOVED_SENTENCE }; // removed (optimizer standard A21): refused, plainly
     if (typeof objective === "string" && Object.prototype.hasOwnProperty.call(RETIRED_OBJECTIVES, objective)) out.notes.push(RETIRED_OBJECTIVES[objective]);
     else if (typeof objective !== "string" || !GENERATE_OBJECTIVES.includes(objective)) return { error: `objective must be one of ${GENERATE_OBJECTIVES.join(", ")}` };
     out.objective = GENERATE_OBJECTIVES.includes(objective) ? objective : "proj"; // a retired one builds on projection
@@ -230,9 +231,9 @@ export function validateShowdownGenerateSettings(raw, rows) {
   }
   // Lineup rules (D81): refused when malformed, naming someone off the board, or contradicting each other or the locks.
   // A rule naming a man is judged by this build's own pool (rosterTest: a median build rosters a priced, not-out man with
-  // a median whatever his projection; a ceiling build needs a ceiling; an included man is let in, withIncludes), exactly
-  // as the engine judges it (D81). For a median or ceiling build whose figure no row carries (the engine then answers
-  // NO_MEDIAN_GPP_SENTENCE or NO_CEILING_SENTENCE before any rule is read), or a Projection build where no row projects above
+  // a median whatever his projection; an included man is let in, withIncludes), exactly
+  // as the engine judges it (D81). For a median build whose figure no row carries (the engine then answers
+  // NO_MEDIAN_GPP_SENTENCE before any rule is read), or a Projection build where no row projects above
   // 0 (nothing posted, so D45 rosters nobody), any priced man can sit: the rules are judged on everything but who the build
   // could seat, so the answer is the build's own sentence, not a rule sentence about a pool that seats nobody (code review
   // of 7bafd38).
@@ -262,7 +263,6 @@ export function enrichShowdownResult(result, rows) {
   const lineups = result.lineups.map((l) => ({
     salary: l.salary,
     proj: l.proj,
-    ...(l.ceil !== undefined ? { ceil: l.ceil } : {}),
     ...(l.median !== undefined ? { median: l.median } : {}),
     ...(l.bent !== undefined ? { bent: l.bent } : {}),
     slots: l.slots.map((sl) => {

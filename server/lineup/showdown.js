@@ -15,7 +15,7 @@
 // with the classic optimiser's note (optimize.js retiredObjectiveNote).
 import { optimizeLineup, retiredObjectiveNote, failure } from "./optimize.js";
 import { BUILD_CEILING_MS, singleBuildCeilingSentence } from "./build-control.js"; // pure leaf: the ten minute limit and its sentence
-import { objectiveScore, figureOf, FIGURE_BUILDS } from "./objective.js"; // pure; the classic Optimizer's ceiling and median scoring
+import { objectiveScore, figureOf, FIGURE_BUILDS } from "./objective.js"; // pure; the classic Optimizer's median scoring
 import { rowIsOut } from "../rank/sidelined.js"; // pure
 import { listNames } from "./soft.js"; // pure; "A, B and C"
 
@@ -120,8 +120,8 @@ export function rosterable(c) {
   return true;
 }
 
-/** The score one candidate adds in a build (the classic objectiveScore, objective.js): his projection, or for "ceil" or
- *  "median" the TwoGun figure on his board `row`, the Captain's at 1.5x of whichever (D39). A figure build counts a
+/** The score one candidate adds in a build (the classic objectiveScore, objective.js): his projection, or for
+ *  "median" TwoGun's median on his board `row`, the Captain's at 1.5x of it (D39). A figure build counts a
  *  locked man with no figure as 0, never an estimate (classic's rule). "proj" is scoreOf, so its output is unchanged. */
 export function scoreFor(c, row, objective = "proj") {
   if (!Object.hasOwn(FIGURE_BUILDS, objective)) return scoreOf(c);
@@ -129,12 +129,12 @@ export function scoreFor(c, row, objective = "proj") {
 }
 
 /** Why the search may not auto-roster this candidate in this build: null when it may, "figure" when only his missing
- *  TwoGun ceiling or median keeps him out (classic counts these in its note), else "other". "proj" is rosterable().
- *  Ceiling: rosterable() and a ceiling; median: priced, not out, a median, whatever his projection (classic
- *  rowFlags: medianOf alone decides); a revived man whom TwoGun calls OUT stays out of either (classic revivedOut). */
+ *  TwoGun median keeps him out (classic counts these in its note), else "other". "proj" is rosterable().
+ *  Median: priced, not out, a median, whatever his projection (classic rowFlags: medianOf alone decides); a revived man
+ *  whom TwoGun calls OUT stays out (classic revivedOut). */
 export function rosterReason(c, row, objective = "proj") {
   if (!Object.hasOwn(FIGURE_BUILDS, objective)) return rosterable(c) ? null : "other";
-  if (num(c.salary) === null || (objective === "ceil" ? !rosterable(c) : rowIsOut(row))) return "other";
+  if (num(c.salary) === null || rowIsOut(row)) return "other";
   if (figureOf(row, objective) === null) return "figure";
   return (c.flags ?? []).includes("revived") && row?.tg?.call === "OUT" ? "other" : null;
 }

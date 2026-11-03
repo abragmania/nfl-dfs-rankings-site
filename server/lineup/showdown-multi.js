@@ -17,14 +17,14 @@
 // excludes, the cap and the DraftKings rules never bend. Output is deterministic: a tie in points is settled by the search order, which never varies.
 // Lineup rules (settings.lineupRules, D81) are hard too: enforced inside the search, never bent (showdown-rules.js).
 // Max per team (settings.maxPerTeam, 3, 4 or 5; absent = 5, DraftKings' rule) is hard as well (Adam 2026-10-18). The
-// objective is "proj" (default), "ceil" or "median": TwoGun's figure per man, the Captain's at 1.5x of it, scored as
+// objective is "proj" (default) or "median": TwoGun's figure per man, the Captain's at 1.5x of it, scored as
 // classic does (objective.js). settings.mode "cash" is showdown-cash.js: the X best distinct lineups by the basis it picks.
 import { pctToLineups, minLineups } from "./multi.js";
 import { mustAppear, listNames, unmetMinNotes, percentNote } from "./soft.js";
 import { showdownCandidates, exactSearch, rosterable, SHOWDOWN_SLOTS, SHOWDOWN_MAX_FROM_TEAM, CPT_MULTIPLIER } from "./showdown.js";
 import { readShowdownRules, searchGate, assertKeepsRules, rulesShortNote } from "./showdown-rules.js";
 import { showdownCashSettings, cashRanOutNote } from "./showdown-cash.js";
-import { figureOf, FIGURE_BUILDS, NO_CEILING_SENTENCE, NO_MEDIAN_GPP_SENTENCE } from "./objective.js";
+import { figureOf, FIGURE_BUILDS, NO_MEDIAN_GPP_SENTENCE } from "./objective.js";
 import { outReason, rosterTest, buildPool } from "./showdown-pool.js"; // the search pool and its notes
 import { readIncludes, withIncludes, noIncludeFitSentence, roleMax, captainSteer, solveSteered } from "./showdown-includes.js"; // includes (Adam 2026-10-19)
 import { warn } from "../lib/log.js";
@@ -105,7 +105,7 @@ export function showdownBoard(rows, excludesInput = []) {
 /**
  * The hard rules, proved on one finished lineup. `lineup`: { slots: [{slot, id}], salary, proj } (candidate ids, the
  * Captain's being his Captain id). `ctx`: { board (showdownBoard), cap, locks: Set, excludes? (board.excluded),
- * maxPerTeam? (default 5), canRoster? (candidate -> boolean, default rosterable; a ceiling or median build passes its own),
+ * maxPerTeam? (default 5), canRoster? (candidate -> boolean, default rosterable; a median build passes its own),
  * includes? (Set of person ids: each must be in the lineup once, at either role; showdown-includes.js) }.
  * Returns the broken rules as sentences; an empty list means the lineup is legal. Pure.
  */
@@ -199,7 +199,7 @@ function projTotal(men) {
  * @param {object}   args.settings  { count, minUnique, locks, includes (FLEX or Captain ids; each man in every lineup at
  *   either role, showdown-includes.js), excludes, cap, captainMaxExposure, captainMinExposure,
  *   flexMaxExposure, flexMinExposure (each {"<person id>": {pct}}), lineupRules (lineup-rules.js shape), notes (carried
- *   notes), maxPerTeam (3, 4 or 5; absent = 5), objective ("proj", "ceil" or "median"; anything else builds on projection),
+ *   notes), maxPerTeam (3, 4 or 5; absent = 5), objective ("proj" or "median"; anything else builds on projection),
  *   mode ("gpp" or absent, or "cash": showdown-cash.js, which ignores minUnique, the exposures, lineupRules and objective) }
  * @param {object[]} [args.existing] saved lineups of this showdown ({slots:[{slot, playerId}]}); they count for minimum
  *   unique only, never for the exposure caps (D74); never in cash
@@ -265,7 +265,7 @@ function build({ rows, settings, existing, boardMode, onLineup, deadline: deadli
   }
   const objective = Object.hasOwn(FIGURE_BUILDS, s.objective) ? s.objective : "proj";
   if (objective !== "proj" && !rows.some((r) => figureOf(r, objective) !== null)) {
-    notes.push(objective === "ceil" ? NO_CEILING_SENTENCE : NO_MEDIAN_GPP_SENTENCE); // cash never gets here without a median (showdown-cash.js)
+    notes.push(NO_MEDIAN_GPP_SENTENCE); // cash never gets here without a median (showdown-cash.js)
     return none();
   }
   const cap = Math.min(SHOWDOWN_CAP, num(s.cap) ?? SHOWDOWN_CAP); // a lower cap is a test's; never above $50,000
@@ -542,7 +542,7 @@ function build({ rows, settings, existing, boardMode, onLineup, deadline: deadli
       salary: men.reduce((a, c) => a + c.salary, 0),
       proj: objective === "proj" ? round2(men.reduce((a, c) => a + c.score, 0)) : projTotal(men)
     };
-    if (objective !== "proj") lineup[objective] = round2(men.reduce((a, c) => a + c.score, 0)); // the build's own total (ceil or median)
+    if (objective !== "proj") lineup[objective] = round2(men.reduce((a, c) => a + c.score, 0)); // the build's own total (median)
     if (bent !== null) {
       lineup.bent = bent;
       bends.push({ lineup: n + 1, label: bent });

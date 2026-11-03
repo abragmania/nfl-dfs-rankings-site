@@ -18,11 +18,11 @@ export const RETIRED_OBJECTIVES = Object.freeze({
   lev: "Leverage has no measure yet, so this lineup was built by projection."
 });
 // The build record a Showdown lineup may carry (server/lineups/validate.js validateLineupBuild): classic's, with the Showdown
-// engine's objectives (Projection plus the figure builds ceil and median, the list generate-request.js accepts); `projection`
+// engine's objectives (Projection plus the median figure build, the list generate-request.js accepts; a stored "ceil" is still accepted by validate.js); `projection`
 // admits the Showdown-only keys (build.projection, which an older page sends and the save neither checks nor keeps, and
 // build.figuresKey). The figure builds are named here, not read from ../lineup/objective.js FIGURE_BUILDS, so this file
 // keeps no import (the public site copies it unchanged); tests/showdown-lineups-routes.test.mjs pins the two lists equal.
-export const BUILD_OPTIONS = Object.freeze({ objectives: Object.freeze(["proj", "ceil", "median"]), projection: true });
+export const BUILD_OPTIONS = Object.freeze({ objectives: Object.freeze(["proj", "median"]), projection: true });
 
 /** What a Lineup request that names a figures mode gets (Adam 2026-10-20: every game reads its ticked sources, with no mode):
  *  only a page opened before the board became the only source of Lineup figures sends one, "twogun" or "current" alike. */

@@ -51,7 +51,7 @@
   display: none !important;
 }
 
-/* Showdown's Build, Objective, Save and Save-as box are shown and run in the visitor's browser (D71, site-src/
+/* Showdown's Build, Save and Save-as box are shown and run in the visitor's browser (D71, site-src/
    site-showdown.js), as do the classic Optimizer's Lock, Exclude, Add, Clear, Load, Save lineup and Save-as box (D69):
    a saved lineup is kept in the visitor's own browser. */
 

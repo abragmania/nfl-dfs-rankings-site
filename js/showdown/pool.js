@@ -8,10 +8,8 @@
 // The filter bar above the builder (view.js) writes poolState.filters; poolVisibleRows is the ONE call the pool's body and the bar's
 // count both read, so the two always agree. lineup.js owns the lineup and draws this pool in its panel; this file draws, sorts and wires.
 import { escapeHtml, dec1 } from "../format.js";
-import { rowIsOut } from "../table.js";
-import { bumpCeilHtml, CPT_MULT } from "../bump-control.js";
 import { shortName, cardNameHtml } from "../lineup-card.js"; // the cards' one name shortener (👁 V-N1: a tagged row's name; 👁 V1: every name on a phone)
-import { sdColumns, showdownHeadCellsHtml, showdownRowHtml, shownRows, sdLine, gradedValueHtml } from "./table.js";
+import { SD_COLUMNS, showdownHeadCellsHtml, showdownRowHtml, shownRows, sdLine, gradedValueHtml } from "./table.js";
 import { filterRows, sortRows, sortValue, defaultDirFor, joinWords } from "./board-shape.js";
 import { playerFigures } from "./lineup-meter.js";
 import { readingShortText, halfName, stampText } from "./figures-label.js";
@@ -38,7 +36,7 @@ export function resetPoolState() {
 }
 
 // The Optimizer's additions (optimizer.js poolControls): {live(), rows(all, shown), capHeads(kind), capCells(row, kind),
-// button(row, kind, action) ("lock", "include" or "exclude"), rowClass(row), ceilColumn(board), projCell(row, proj, isCpt), readTab(), writeTab(tab)},
+// button(row, kind, action) ("lock", "include" or "exclude"), rowClass(row), projCell(row, proj, isCpt), readTab(), writeTab(tab)},
 // each optional; none set (or not live) leaves the pool its own rows with no controls.
 let controls = null;
 export function setPoolControls(next) {
@@ -50,14 +48,14 @@ export function setPoolControls(next) {
 /** The two lists of the pool, Captain and FLEX (Adam: "a CPTN list and a FLEX list ... separated with a tab thingy"). */
 export const POOL_TABS = Object.freeze([Object.freeze({ key: "cpt", label: "Captain" }), Object.freeze({ key: "flex", label: "FLEX" })]);
 
-// The columns each tab draws, by SD_COLUMNS / SD_CEIL_COLUMNS key: FLEX the FLEX-seat figures, Captain the Captain-seat ones (one Val for both: the
+// The columns each tab draws, by SD_COLUMNS key: FLEX the FLEX-seat figures, Captain the Captain-seat ones (one Val for both: the
 // Captain's price and points are both 1.5x, so his value is the FLEX value, table.js).
 const TAB_COLUMNS = Object.freeze({
-  flex: new Set(["player", "salary", "proj", "tgCeil", "value", "ownFlex", "levFlex", "note"]),
-  cpt: new Set(["player", "cptSalary", "cptProj", "tgCeilCpt", "value", "ownCpt", "levCpt", "note"]),
+  flex: new Set(["player", "salary", "proj", "value", "ownFlex", "levFlex", "note"]),
+  cpt: new Set(["player", "cptSalary", "cptProj", "value", "ownCpt", "levCpt", "note"]),
 });
 // A sort on one tab's column moves to the other tab's twin of it when the tab changes, so "highest projection first" survives the switch.
-const TWIN_COLUMNS = Object.freeze({ salary: "cptSalary", proj: "cptProj", tgCeil: "tgCeilCpt", ownFlex: "ownCpt", levFlex: "levCpt" });
+const TWIN_COLUMNS = Object.freeze({ salary: "cptSalary", proj: "cptProj", ownFlex: "ownCpt", levFlex: "levCpt" });
 const twinOf = (col) => TWIN_COLUMNS[col] ?? Object.keys(TWIN_COLUMNS).find((k) => TWIN_COLUMNS[k] === col) ?? col;
 
 /** The tab on screen: "flex" unless the browser remembered "cpt" (controls.readTab; the choice never goes to the server). */
@@ -104,19 +102,6 @@ export const POOL_PICK_SKIP = "button, a, input, select, textarea, label, .playe
 
 const num = (v) => (typeof v === "number" && Number.isFinite(v) ? v : null);
 
-/** A man's ceiling as the pool shows it: TwoGun's (row.tg.ceil), 0 for a man listed out (as the engine scores him, objective.js
- *  ceilingOf); null when the board has none for him. */
-export function poolCeil(row) {
-  const c = num(row?.tg?.ceil);
-  return c === null ? null : rowIsOut(row) ? 0 : c;
-}
-
-/** His Captain ceiling as the CPT Ceil column shows it: 1.5x poolCeil (🔵 R1); null stays null. */
-export function poolCeilCpt(row) {
-  const c = poolCeil(row);
-  return c === null ? null : c * CPT_MULT;
-}
-
 /** The browser's copy of server/rank/value-core.js valueOf (the browser cannot import server files; the pool's own test file holds the
  *  two identical): projection per $1,000 of salary, null when either is missing. */
 export function valuePer1k(proj, salary) {
@@ -142,15 +127,13 @@ export function poolValueHtml(row, figures = playerFigures) {
 }
 
 /** The value a column sorts by: the figure its cell shows (figures(row, isCpt), the slots' own) for Proj, CPT proj, Own FLEX, Own CPT
- *  and Val, the ceilings for Ceil and CPT Ceil, the board row's for the rest (board-shape.js sortValue). */
+ *  and Val, the board row's for the rest (board-shape.js sortValue). */
 export function poolSortValue(row, col, figures = playerFigures) {
   if (col === "proj") return num(figures(row, false).proj);
   if (col === "cptProj") return num(figures(row, true).proj);
   if (col === "ownFlex") return num(figures(row, false).own);
   if (col === "ownCpt") return num(figures(row, true).own);
   if (col === "value") return poolValue(row, figures);
-  if (col === "tgCeil") return poolCeil(row);
-  if (col === "tgCeilCpt") return poolCeilCpt(row);
   return sortValue(row, col);
 }
 
@@ -159,8 +142,8 @@ export function nextPoolSort(sort, col) {
   return sort.col === col ? { col, dir: sort.dir === "asc" ? "desc" : "asc" } : { col, dir: defaultDirFor(col) };
 }
 
-/** The sort the pool draws with for `board`: a sort left on a column the tab does not draw (Ceil once the board no longer carries a
- *  ceiling or the app is not live, or the other tab's column) goes back to the tab's start sort, and the kept sort with it, so the next
+/** The sort the pool draws with for `board`: a sort left on a column the tab does not draw (the other tab's column, or a column
+ *  that no longer exists) goes back to the tab's start sort, and the kept sort with it, so the next
  *  click starts from there (the old lists' rule). */
 export function poolSort(board) {
   if (!poolColumns(board).some((c) => c.key === poolState.sort.col)) poolState.sort = startSortFor(poolTab());
@@ -249,12 +232,10 @@ export function ownTotalsRowHtml(t, cols, tailCount = 0) {
 // ---------- the markup ----------
 
 const live = () => controls?.live?.() === true;
-const withCeil = (board) => controls?.ceilColumn?.(board) === true;
 
-/** The pool's columns on `tab`: the Rankings tab's columns of that seat (TAB_COLUMNS), with Ceil while the Optimizer says the board
- *  carries TwoGun's ceilings. */
+/** The pool's columns on `tab`: the Rankings tab's columns of that seat (TAB_COLUMNS). */
 export function poolColumns(board, tab = poolTab()) {
-  return sdColumns(withCeil(board)).filter((c) => TAB_COLUMNS[tab].has(c.key));
+  return SD_COLUMNS.filter((c) => TAB_COLUMNS[tab].has(c.key));
 }
 
 const thCount = (html) => (html.match(/<th\b/g) ?? []).length;
@@ -310,7 +291,7 @@ function pickAttrsHtml(placement, row, tab) {
   return ` data-pick="${action}" tabindex="0" title="${PICK_TITLES[action]}" aria-label="${PICK_TITLES[action]}"`;
 }
 
-/** The body rows (`rows`: poolVisibleRows), each the Rankings row with the slots' figures, the ± bump, the Ceil cell and the tab's tail;
+/** The body rows (`rows`: poolVisibleRows), each the Rankings row with the slots' figures, the ± bump and the tab's tail;
  *  a click on a row picks or drops him (poolPickAction). */
 export function poolBodyHtml(board, rows, placement, figures = playerFigures, tab = poolTab()) {
   const cols = poolColumns(board, tab);
@@ -323,7 +304,6 @@ export function poolBodyHtml(board, rows, placement, figures = playerFigures, ta
     projCell: controls?.projCell ? (row, proj, isCpt) => controls.projCell(row, proj, isCpt) : null,
     // The Player cell names him in full and, for a phone, the cards' short name too (style.css shows one; 👁 V1: no name cut mid-word).
     playerCell: (row) => `<div class="player-cell">${sdLine(row, { nameHtml: cardNameHtml(row) })}</div>`,
-    ceilCell: (row, isCpt) => bumpCeilHtml(row, isCpt ? poolCeilCpt(row) : poolCeil(row), { kind: isCpt ? "cpt" : null, out: rowIsOut(row) }),
     valueCell: (row) => poolValueHtml(row, figures),
     // A man placed in this tab's seat has his row tinted (the builder's), beside the Optimizer's own look (excluded, locked), each class once.
     rowClass: (row) => [...new Set([placedOnTab(placement, String(row.id), tab) ? "lineup-row-locked" : "", "sd-pool-pick", ...String(controls?.rowClass?.(row) ?? "").trim().split(/\s+/)].filter(Boolean))].join(" "),

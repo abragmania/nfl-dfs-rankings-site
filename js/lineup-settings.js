@@ -28,7 +28,7 @@ const plural = (n, word) => `${n} ${word}${Number(n) === 1 ? "" : "s"}`;
  *  qualify (0 is named); `qbOwnCount`: starred QBs with custom stacks; `playerCapCount`: players with a Max % or Min % box set. */
 export function activeRulesSummary(opt, { games = [], starredQbCount = null, qbOwnCount = 0, playerCapCount = 0 } = {}) {
   // 🔵 2026-10-17: with one lineup there are no two to differ, so the unique part is dropped.
-  const parts = [`${plural(opt.count, "lineup")} by ${opt.objective === "ceil" ? "ceiling" : "projection"}${Number(opt.count) === 1 ? "" : `, ${plural(opt.minUnique, "unique player")} between any two`}`];
+  const parts = [`${plural(opt.count, "lineup")} by projection${Number(opt.count) === 1 ? "" : `, ${plural(opt.minUnique, "unique player")} between any two`}`];
   const rules = opt.rules ?? {};
   if (rules.starredQbOnly !== false) parts.push(starredQbCount === 0 ? "starred QBs only (none qualify)" : "starred QBs only");
   // "0 ... or more" sets nothing and is left out; "exactly 0" is a rule and stays.

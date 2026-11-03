@@ -1,6 +1,6 @@
 // Showdown Lineup Builder tab (D39/D40, brief): one Captain slot and five FLEX (any position including
-// kicker and defence, both teams required), salary remaining, an objective selector posting to
-// POST /api/showdown/<key>/lineup/optimize, Save lineup and the saved-lineups list against
+// kicker and defence, both teams required), salary remaining, a Build button posting to
+// POST /api/showdown/<key>/lineup/optimize (by projection; no objective choice), Save lineup and the saved-lineups list against
 // /api/showdown/<key>/lineups (same request/response shapes as classic's lineup routes — see
 // public/js/lineup.js, which this module mirrors in structure). The pool rows' lock / In / exclude buttons belong to
 // the Showdown Optimizer (./optimizer.js, Adam 2026-10-19) and drive its Make only: the one-lineup Build always runs a
@@ -29,10 +29,8 @@ import { builtOnText } from "./figures-label.js"; // the board's sources in word
 import { lineupReadHtml } from "./lineup-read.js"; // the "Lineup read" sentences under the meter (Adam 2026-10-29 5:10 PM: "just make it not suck")
 
 // "Projection minus ownership" was removed and Leverage has no measure (Adam 2026-10-15, Lev measure to be
-// redesigned); the server answers either name by building by projection with an objectiveNote.
-const OBJECTIVES = [
-  { value: "proj", label: "Projection" },
-];
+// redesigned); the server answers either name by building by projection with an objectiveNote. state.objective stays "proj"
+// and no Objective choice is drawn while Projection is the only objective (optimizer standard A13, A21).
 
 const state = {
   cpt: null, // {id} or null
@@ -363,7 +361,7 @@ const slotsHtml = (board) => slotsMarkup(board, state); // the placed slots go i
 
 function controlsHtml() {
   const hasAnySlot = Boolean(state.cpt) || state.flex.some(Boolean);
-  return controlsMarkup({ objectives: OBJECTIVES, objective: state.objective, building: state.building, saving: state.saving, saveName: state.saveName, hasAnySlot });
+  return controlsMarkup({ building: state.building, saving: state.saving, saveName: state.saveName, hasAnySlot });
 }
 
 function buildStatusHtml(board) {
@@ -481,11 +479,6 @@ function wireRowButtons(container, board) {
 function wire(container, board, key) {
   wireMeter(container);
   wireSwaps(container);
-  container.querySelector("#sd-lineup-objective")?.addEventListener("change", (e) => {
-    state.objective = e.target.value;
-    state.lastResult = null;
-    commit();
-  });
   container.querySelector("#sd-lineup-build-btn")?.addEventListener("click", () => doBuild(key));
   container.querySelector("#sd-lineup-clear-all-btn")?.addEventListener("click", () => {
     clearAll();

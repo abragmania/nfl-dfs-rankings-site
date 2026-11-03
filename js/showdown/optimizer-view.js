@@ -23,28 +23,21 @@ import { filterLineups, bulkLabel, filterBarHtml } from "../lineup-filter.js";
 export const NO_MATCH_TEXT = "No lineups here have all of the chosen players."; // the saved section's too (optimizer.js optimizerSavedFilter)
 
 // The pool's own position chips are gone (2026-10-26, as classic's step 4): the filter bar above the builder (view.js) filters the pool.
-const NO_FIGURES_TITLE = { median: "Median needs TwoGun's medians, and this game's board has none (TwoGun is not ticked for its projections on the Sources page, or his file is not posted).", ceil: "Ceiling needs TwoGun's ceilings, and this game's board has none (TwoGun is not ticked for its projections on the Sources page, or his file is not posted)." };
-const OBJECTIVE_TITLE = { proj: "Build the lineups with the highest total projection", median: "Build the lineups with the highest total of TwoGun's medians", ceil: "Build the lineups with the highest total of TwoGun's ceilings" };
-const OBJECTIVE_WORD = { proj: "projection", median: "median", ceil: "ceiling" };
+const OBJECTIVE_TITLE = { proj: "Build the lineups with the highest total projection", median: "Build the lineups with the highest total of TwoGun's medians" };
+const OBJECTIVE_WORD = { proj: "projection", median: "median" };
 // The lock button's padlock, drawn in the text colour (the sketch's, approved 2026-10-19).
 const LOCK_SVG = `<svg viewBox="0 0 16 16" width="13" height="13" fill="currentColor" aria-hidden="true"><rect x="3" y="7" width="10" height="8" rx="1.5"/><path d="M5 7V5a3 3 0 016 0v2" fill="none" stroke="currentColor" stroke-width="1.7"/></svg>`;
 
 // ---------- the heading and the settings ----------
 
-/** Projection | Median | Ceiling (classic objectiveChipsHtml's shape): Median or Ceiling is greyed when no row of the served
- *  board carries that figure of TwoGun's (optimizer-state.js boardHasTg, as classic's boardHasCeilings), and the build is then by
- *  projection (effectiveObjective), with the reason on hover and one dim "(needs TwoGun's figures)" after the chips. */
+/** Projection | Median. Drawn only on a board whose rows carry TwoGun's medians (bandBoxesHtml), where Median is a real second choice;
+ *  the pressed one is effectiveObjective's. */
 export function objectiveChipsHtml(picked, board) {
   const active = effectiveObjective(picked, board);
-  const offs = [];
-  const chips = OBJECTIVES.map((o) => {
-    const off = o.value !== "proj" && !boardHasTg(board, o.value);
-    if (off) offs.push(NO_FIGURES_TITLE[o.value]);
+  return OBJECTIVES.map((o) => {
     const on = o.value === active;
-    const title = off ? NO_FIGURES_TITLE[o.value] : OBJECTIVE_TITLE[o.value];
-    return `<button type="button" class="chip toggle-chip opt-chip${on ? " active" : ""}${off ? " is-disabled" : ""}" data-sd-objective="${o.value}" aria-pressed="${on}"${off ? ` aria-disabled="true"` : ""} title="${escapeHtml(title)}">${escapeHtml(o.label)}</button>`;
+    return `<button type="button" class="chip toggle-chip opt-chip${on ? " active" : ""}" data-sd-objective="${o.value}" aria-pressed="${on}" title="${escapeHtml(OBJECTIVE_TITLE[o.value])}">${escapeHtml(o.label)}</button>`;
   }).join("");
-  return offs.length ? `${chips}<span class="opt-sub" title="${escapeHtml(offs.join(" "))}">(needs TwoGun's figures)</span>` : chips;
 }
 
 function teamSelectHtml(value) {
@@ -96,7 +89,8 @@ export function bandBoxesHtml(v) {
     : [
         countRow,
         settingRowHtml("Min unique players", numberBoxHtml(`type="number" min="1" max="${MAX_UNIQUE}" class="opt-input opt-input-num" id="sd-opt-min-unique" value="${escapeHtml(v.ms.minUnique)}" aria-label="Minimum unique players between lineups"`), "Between any two lineups"),
-        settingRowHtml("Build by", `<span class="opt-chips">${objectiveChipsHtml(v.ms.objective, v.board)}</span>`),
+        // No Build by control while Projection is the only objective (optimizer standard A13, A21): it shows only on a board whose rows carry TwoGun's medians, where Median is the second.
+        ...(boardHasTg(v.board, "median") ? [settingRowHtml("Build by", `<span class="opt-chips">${objectiveChipsHtml(v.ms.objective, v.board)}</span>`)] : []),
         settingSubtitleHtml("Max share of lineups"),
         `<div class="opt-set-hint">Each man's Min % and Max % are on the pool rows: the plain pair sets his FLEX share, the gold pair his Captain share.</div>`,
       ].join("");
@@ -129,18 +123,15 @@ export function goRowHtml({ summary, count, generating: showing, busy, formError
 
 const finite = (v) => (typeof v === "number" && Number.isFinite(v) ? v : null);
 
-/** A GPP card's totals: "$49,400 · 97.4 proj · 102% own", with the build's own total after proj on a median or ceiling build
+/** A GPP card's totals: "$49,400 · 97.4 proj · 102% own", with the build's own total after proj on a median build
  *  ("· 91.2 median"). Projection is the sum of the rows as shown (totals.js shownTotal); ownership is each slot's own Captain or
- *  FLEX figure summed (Adam 2026-10-18), a dash when any slot has none; the median / ceiling total is the server's. */
+ *  FLEX figure summed (Adam 2026-10-18), a dash when any slot has none; the median total is the server's. */
 export function gppTotalsText(lineup, objective) {
   const slots = lineup?.slots ?? [];
   const parts = [money(lineup?.salary)];
   const projs = slots.map((s) => s.proj);
   parts.push(projs.length && projs.every((p) => finite(p) !== null) ? `${dec1(shownTotal(projs))} proj` : "— proj (a player has no projection)");
-  if (objective === "median" || objective === "ceil") {
-    const word = objective === "median" ? "median" : "ceil";
-    parts.push(finite(lineup?.[objective]) === null ? `— ${word}` : `${dec1(lineup[objective])} ${word}`);
-  }
+  if (objective === "median") parts.push(finite(lineup?.median) === null ? "— median" : `${dec1(lineup.median)} median`);
   const owns = slots.map((s) => s.own);
   parts.push(owns.length && owns.every((o) => finite(o) !== null) ? `${Math.round(owns.reduce((a, b) => a + b, 0))}% own` : "— own");
   return parts.join(" · ");

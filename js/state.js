@@ -1,7 +1,6 @@
 // Central, framework-free store: one mutable state object, a tiny pub/sub so every renderer can
 // react to a change without the callers having to know who else cares, and the pure filter/sort
 // helpers the table and game strip both need.
-import { rowIsOut } from "./out.js";
 
 const POSITION_CHIPS = ["All", "QB", "RB", "WR", "TE", "DST", "FLEX"];
 const FLEX_POS = new Set(["RB", "WR", "TE"]);
@@ -11,7 +10,7 @@ const FLEX_POS = new Set(["RB", "WR", "TE"]);
 // at load rather than from a click. The Lev column has no number at all (Adam 2026-10-15, Lev measure to be
 // redesigned), so it is not sortable (table.js); a leftover sort on "lev" reads null for every row and keeps the
 // board's order.
-const DESC_FIRST_COLUMNS = new Set(["star", "salary", "proj", "own", "value", "tgMed", "tgCeil", "tgCeilPer1k", "tgNuke", "tgP3x", "tgP4x"]);
+const DESC_FIRST_COLUMNS = new Set(["star", "salary", "proj", "own", "value", "tgMed", "tgNuke", "tgP3x", "tgP4x"]);
 export function defaultDirFor(col) {
   return DESC_FIRST_COLUMNS.has(col) ? "desc" : "asc";
 }
@@ -63,18 +62,15 @@ export function isTwoGunMode(board) {
   return board?.mode?.active === "twogun";
 }
 
-const TG_SORT_COLUMNS = new Set(["tgMed", "tgCeil", "tgCeilPer1k", "tgNuke", "tgP3x", "tgP4x"]);
+const TG_SORT_COLUMNS = new Set(["tgMed", "tgNuke", "tgP3x", "tgP4x"]);
+// Columns that no longer exist (optimizer standard A21, 2026-11-03: Ceil and Ceil/$): a sort remembered on one goes back to the default.
+const REMOVED_SORT_COLUMNS = new Set(["tgCeil", "tgCeilPer1k"]);
 
 /** The sort to keep once `board` loads: a sort on a TwoGun column (table.js TG_COLUMNS) on a board not in TwoGun
- *  mode falls back to the table's default, Value high to low; any other sort is kept as it is. */
+ *  mode, or on a column that was removed, falls back to the table's default, Value high to low; any other sort is kept as it is. */
 export function sortForBoard(sort, board) {
-  return TG_SORT_COLUMNS.has(sort?.col) && !isTwoGunMode(board) ? { col: "value", dir: "desc" } : sort;
-}
-
-// A ceiling build (Optimizer "Ceiling", D25 as amended 2026-10-15) needs at least one row with TwoGun's published
-// ceiling; server/lineup/multi.js refuses one otherwise, and the Optimizer greys the choice.
-export function boardHasCeilings(rows) {
-  return (rows ?? []).some((r) => typeof r?.tg?.ceil === "number" && Number.isFinite(r.tg.ceil));
+  const gone = TG_SORT_COLUMNS.has(sort?.col) && !isTwoGunMode(board);
+  return gone || REMOVED_SORT_COLUMNS.has(sort?.col) ? { col: "value", dir: "desc" } : sort;
 }
 
 class Store {
@@ -217,10 +213,6 @@ function sortValue(row, col) {
     // TwoGun mode's Rankings columns (table.js TG_COLUMNS); a row he does not cover has none and sorts last.
     case "tgMed":
       return row.tg?.median ?? null;
-    case "tgCeil":
-      return row.tg?.ceil != null && rowIsOut(row) ? 0 : (row.tg?.ceil ?? null); // out = ceiling 0, as the cell shows
-    case "tgCeilPer1k":
-      return row.tg?.ceilPer1k != null && rowIsOut(row) ? 0 : (row.tg?.ceilPer1k ?? null); // out = 0, as its cell shows (Adam 2026-10-17, DQ1)
     case "tgNuke":
       return row.tg?.nuke ?? null;
     case "tgP3x":

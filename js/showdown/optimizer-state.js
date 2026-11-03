@@ -21,8 +21,7 @@ const DEFAULTS = Object.freeze({ gppCount: "5", cashCount: "1", minUnique: "1" }
 export const OBJECTIVES = Object.freeze([
   { value: "proj", label: "Projection" },
   { value: "median", label: "Median" },
-  { value: "ceil", label: "Ceiling" },
-]);
+]); // Ceiling was removed (optimizer standard A21, 2026-11-03); a remembered "ceil" is not in this list, so cleanModeState reads it as Projection
 export const MODES = Object.freeze(["gpp", "cash"]);
 const CAP_FIELDS = Object.freeze(["cptMax", "cptMin", "flexMax", "flexMin"]);
 
@@ -242,16 +241,16 @@ export function statusLineText(ms, board) {
 
 // ---------- the request ----------
 
-/** Whether any board row carries TwoGun's `field` ("median" or "ceil") on row.tg (generate-request.js withTwoGunFigures, applied in board-view.js, puts them there while
- *  his file is posted), read as classic's boardHasCeilings (state.js) reads a ceiling. */
+/** Whether any board row carries TwoGun's `field` ("median") on row.tg (generate-request.js withTwoGunFigures, applied in board-view.js, puts them there while
+ *  his file is posted). */
 export function boardHasTg(board, field) {
   return (board?.rows ?? []).some((r) => typeof r?.tg?.[field] === "number" && Number.isFinite(r.tg[field]));
 }
 
-/** The objective a GPP build uses: Adam's pick, except Median or Ceiling on a board with no row carrying that figure of TwoGun's:
- *  it is greyed then and the build is by projection (classic effectiveObjective's rule). */
+/** The objective a GPP build uses: Adam's pick, except Median on a board with no row carrying a median of TwoGun's:
+ *  it is greyed then and the build is by projection; any other value, a remembered "ceil" included, is projection. */
 export function effectiveObjective(picked, board) {
-  if (picked === "median" || picked === "ceil") return boardHasTg(board, picked) ? picked : "proj";
+  if (picked === "median") return boardHasTg(board, picked) ? picked : "proj";
   return "proj";
 }
 
@@ -295,8 +294,8 @@ export function requestCount(text, mode) {
  *  maps, each always sent ({} when no box holds a percent, as the spec's body has them; 🔵 866b0ce B6). Cash: count, locks,
  *  excludes, maxPerTeam and mode only (the server refuses the GPP-only settings in
  *  cash with classic's sentences). includes only when someone is included (the engine's key is new, so an empty list is never
- *  sent; the server's sentence is shown when it refuses it). `board`: the served board, whose rows say whether Median and
- *  Ceiling can be built (effectiveObjective). */
+ *  sent; the server's sentence is shown when it refuses it). `board`: the served board, whose rows say whether Median
+ *  can be built (effectiveObjective). */
 export function buildSettings(ms, mode, board) {
   const cash = mode === "cash";
   const settings = {
@@ -322,7 +321,7 @@ export function buildGenerateBody(ms, mode, board) {
 }
 
 const plural = (n, word) => `${n} ${word}${Number(n) === 1 ? "" : "s"}`;
-const OBJECTIVE_WORD = { proj: "projection", median: "median", ceil: "ceiling" };
+const OBJECTIVE_WORD = { proj: "projection", median: "median" };
 
 /** The basis a cash build is made by, as the server picks it (server/lineup/cash.js cashBasis) from the board's mode.cashMode:
  *  TwoGun's median while TwoGun is this game's only ticked projection source ("twogun"), else the projection. */

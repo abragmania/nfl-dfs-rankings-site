@@ -6,10 +6,11 @@
 // Pure and browser-safe: no node modules, no network, no storage, no logging. tools/publish.mjs copies it, unchanged,
 // to out/server/lineup/ beside the engine and privacy-scans it.
 import {
-  RULE_KEYS, LEGACY_RULE_KEYS, OBJECTIVES, STACK_OWN_MAX, STACK_OPP_MAX, ceilingOf, pctToLineups, minLineups, dkKeyOf, minOutReason, pairBreak,
+  RULE_KEYS, LEGACY_RULE_KEYS, OBJECTIVES, STACK_OWN_MAX, STACK_OPP_MAX, pctToLineups, minLineups, dkKeyOf, minOutReason, pairBreak,
   lockedQbBlocksRow, qbEntryByKey
 } from "./multi.js";
 import { retiredObjectiveNote } from "./optimize.js";
+import { CEILING_REMOVED_SENTENCE } from "./objective.js";
 import { validateQbStacks } from "./qb-stacks.js";
 import { slotsFull, lockedSlotWords, minSlotProblem } from "./soft.js";
 import { medianOf, CASH_NOTES } from "./cash.js";
@@ -213,7 +214,8 @@ export function validateGenerateSettings(raw, ctx) {
   }
   if (raw.objective !== undefined && raw.objective !== null) {
     // Follows multi.js OBJECTIVES; a retired objective ("lev", "projMinusOwn") passes through and multi.js builds it
-    // on projection with a note, so a saved setting never fails.
+    // on projection with a note, so a saved setting never fails. "ceil" was removed (optimizer standard A21): refused, plainly.
+    if (raw.objective === "ceil") return { error: CEILING_REMOVED_SENTENCE };
     if (!OBJECTIVES.includes(raw.objective) && retiredObjectiveNote(raw.objective) === null) return { error: `objective must be one of ${OBJECTIVES.join(", ")}` };
     out.objective = raw.objective;
   }
@@ -329,9 +331,7 @@ export function existingForSlate(saved, secondSlate, slateIds, mode = "gpp") {
 
 /**
  * The response body's {lineups, exposure, notes, bends} from generateLineups' result. Lineup players and exposure rows
- * carry the matchup (D43), salary and own% (D32) beside the engine's own fields. On a TwoGun-mode board a lineup
- * also carries `ceil` (TwoGun's ceilings summed, null when any player lacks one) and so does every one of its players
- * (null for a player TwoGun does not cover); a current-mode answer has neither field, so it is exactly what it was.
+ * carry the matchup (D43), salary and own% (D32) beside the engine's own fields.
  * Cash only (Cash 2b fix, 2026-10-17): the body adds `mode` ("cash") and `basis` ("median" or "proj", the basis the
  * server picked, also on a refusal inside the build; null only when no basis could be picked); on a median build each
  * lineup adds `median` (TwoGun's medians summed, null when any player lacks one) and each player his own `median`, and
@@ -342,13 +342,11 @@ export function enrichGenerateResult(result, rowById) {
     ids: l.ids,
     salary: l.salary,
     proj: l.proj,
-    ...(l.ceil !== undefined ? { ceil: l.ceil } : {}),
     ...(l.median !== undefined ? { median: l.median } : {}),
     ...(l.bent !== undefined ? { bent: l.bent } : {}),
     players: l.ids.map((id) => {
       const r = rowById.get(String(id)) ?? {};
       const player = { id, name: r.name ?? id, pos: r.pos ?? null, team: r.team ?? null, opp: matchupString(r), salary: r.salary ?? null, proj: r.proj ?? null, own: r.own ?? null };
-      if (l.ceil !== undefined) player.ceil = ceilingOf(r); // the engine's figure: 0 for an out player
       if (l.median !== undefined) player.median = medianOf(r);
       return player;
     })

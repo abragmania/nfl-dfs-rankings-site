@@ -196,7 +196,7 @@ export function qbStackPrepare(entries, h) {
     const missing = Object.keys(e.players).filter((pid) => e.players[pid] === "must" && !h.candByKey.has(h.keyOfId.get(pid) ?? `id:${pid}`));
     if (missing.length) {
       const names = missing.map((pid) => h.byId.get(pid)?.name ?? pid).join(", ");
-      const why = `excluded, ruled out, ruled out after TwoGun's board was made, or without a salary or projection${h.ceilBuild ? ", or without a TwoGun ceiling in this ceiling build" : ""}`;
+      const why = `excluded, ruled out, ruled out after TwoGun's board was made, or without a salary or projection`;
       notes.push(`${who} cannot be in any lineup: ${names} ${missing.length === 1 ? "is" : "are"} marked "must" for him but ${missing.length === 1 ? "is" : "are"} not available (${why}).`);
       noted.add(qbKey);
       continue;

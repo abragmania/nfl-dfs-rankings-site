@@ -18,15 +18,12 @@ export function showdownPalette(board) {
   return palettes.get(key);
 }
 
-/** The controls: Objective, Build and Clear all on the first row, Save as and Save lineup on the second (each row the column's full width). */
-export function controlsHtml({ objectives, objective, building, saving, saveName, hasAnySlot }) {
-  const options = objectives.map((o) => `<option value="${o.value}"${objective === o.value ? " selected" : ""}>${escapeHtml(o.label)}</option>`).join("");
+/** The controls: Build and Clear all on the first row, Save as and Save lineup on the second (each row the column's full width). No Objective
+ *  choice while Projection is the only objective (optimizer standard A13, A21). */
+export function controlsHtml({ building, saving, saveName, hasAnySlot }) {
   return `
     <div class="lineup-controls sd-controls">
       <div class="sd-controls-row">
-        <label class="lineup-control">Objective
-          <select id="sd-lineup-objective">${options}</select>
-        </label>
         <button type="button" id="sd-lineup-build-btn" class="lineup-build-btn"${building ? " disabled" : ""}>${building ? "Building…" : "Build"}</button>
         <button type="button" id="sd-lineup-clear-all-btn" class="lineup-clear-all-btn">Clear all</button>
       </div>

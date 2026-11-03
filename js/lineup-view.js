@@ -4,12 +4,12 @@
 // below (poolCallbacks, lastExposure), which only this file assigns. Wiring and actions stay in lineup.js and lineup-optimizer.js.
 import { buildingHtml, goLabelHtml, buildingRowClass } from "./lineup-stop.js";
 import { escapeHtml, money, dec1 } from "./format.js";
-import { store, matchesPosition, filterRows, sortRows, passesProjFloor, activeSlateRows, activeSlateGames, boardHasCeilings, isTwoGunMode } from "./state.js";
+import { store, matchesPosition, filterRows, sortRows, passesProjFloor, activeSlateRows, activeSlateGames, isTwoGunMode } from "./state.js";
 import { sortableHeadHtml } from "./tabs.js";
 import { matchupText, gradedCellHtml, rowIsOut } from "./table.js"; // D43: the one copy of "vs DAL" / "@ DET"
 import { playerLineHtml, showPos } from "./player-row.js";
-import { bumpProjHtml, bumpCeilHtml } from "./bump-control.js"; // Adam 2026-10-22: ± bump on the pool's Proj cell, disabled like the star when no write is wired
-import { shownTotal, lineupCeilTotal, perSpotText } from "./totals.js";
+import { bumpProjHtml } from "./bump-control.js"; // Adam 2026-10-22: ± bump on the pool's Proj cell, disabled like the star when no write is wired
+import { shownTotal, perSpotText } from "./totals.js";
 import { buildTypeText, groupByBuild } from "./lineup-builds.js";
 import { lineupFigures, geoOwn, geoText, medianText, sortKeysFor, sortLineups, effectiveSort, sortRowHtml } from "./lineup-sort.js"; // Adam 2026-10-17: sort options; geo own = geometric mean of ownership, his multiplicative uniqueness
 import { rowsGradedForView } from "./grade.js";
@@ -28,7 +28,7 @@ import {
 } from "./lineup-cash.js";
 import {
   state, opt, LINEUP_SLOTS, SALARY_CAP, MAX_TEAM_OPTIONS, OPT_MAX_COUNT, OPT_MAX_UNIQUE, OPT_DEFAULT_UNIQUE, OPT_STACK_OWN_MAX, OPT_STACK_OPP_MAX,
-  OPT_RULES, RULE_GROUPS, dkIdentity, lineupBusy, computeTotals, placeBySlotName, effectiveObjective, objectiveChipsHtml, boardRowMap, qbGlobals, listedQbIds,
+  OPT_RULES, RULE_GROUPS, dkIdentity, lineupBusy, computeTotals, placeBySlotName, effectiveObjective, boardRowMap, qbGlobals, listedQbIds,
 } from "./lineup.js";
 import {
   identityOf, slateKeyOf, playerMaxFor, playerMinFor, parsePct, parseWhole, requestCount, savedForSlate, savedSetKeys, lineupSetKey, exposureOfLineups,
@@ -219,16 +219,6 @@ export function savedLineupSlotHtml(slotName, entry, palette = null) {
     </div>`;
 }
 
-/** The ceiling total of a saved lineup's build record (ChatGPT wish g): "181.4 ceil" as it was when built; a dash when a
- *  player had no TwoGun ceiling or the players were changed by hand since; "" for a hand build or a current-mode batch. */
-export function savedCeilHtml(build) {
-  if (!build || build.kind !== "batch") return "";
-  if (build.edited) return `<span title="The players were changed by hand after this build, so its ceiling total no longer applies">— ceil</span>`; // the "·" between totals groups is CSS (.saved-lineup-totals, 👁 2026-10-18)
-  if (build.totalCeil === undefined) return "";
-  if (build.totalCeil === null) return `<span title="A player in this lineup had no TwoGun ceiling">— ceil</span>`;
-  return `<span title="TwoGun's ceilings summed, as built">${dec1(build.totalCeil)} ceil</span>`;
-}
-
 export function savedLineupCardHtml(lineup, rowById, numbers = null) {
   const totals = computeLiveTotals(lineup, rowById);
   const isCash = lineup.mode === "cash";
@@ -249,10 +239,9 @@ export function savedLineupCardHtml(lineup, rowById, numbers = null) {
     overCap ? `<span class="saved-lineup-badge saved-lineup-badge-danger">Over cap</span>` : "",
   ].join("");
 
-  // ChatGPT wish g, Adam 2026-10-17: the board mode and build type the lineup was made with, and its ceiling total as built.
+  // ChatGPT wish g, Adam 2026-10-17: the board mode and build type the lineup was made with.
   const buildText = buildTypeText(lineup.build);
   const buildBadge = buildText ? `<span class="saved-lineup-badge saved-lineup-badge-build" title="How this lineup was made">${escapeHtml(buildText)}</span>` : "";
-  const ceilHtml = savedCeilHtml(lineup.build);
   // Adam 2026-10-18: the median total beside proj, the figure the Median sort uses; only on a TwoGun board with medians.
   const medianPart = boardMediansForSort() ? medianText(savedLineupFigures(lineup, rowById).median, (lineup.slots ?? []).some((s) => scoreOfRow(rowById.get(String(s.playerId)), "median") != null), "a player has no TwoGun median or is no longer on the slate") : "";
 
@@ -297,7 +286,7 @@ export function savedLineupCardHtml(lineup, rowById, numbers = null) {
       <div class="saved-lineup-slots">${rowsHtml}</div>
       <div class="saved-lineup-totals">
         <span class="${overCap ? "saved-lineup-totals-over" : ""}">${salaryText}</span>
-        <span>${dec1(totals.totalProj)} proj</span>${medianPart ? `<span>${medianPart}</span>` : ""}${ceilHtml}
+        <span>${dec1(totals.totalProj)} proj</span>${medianPart ? `<span>${medianPart}</span>` : ""}
         <span>${escapeHtml(ownText)}${isCash ? "" : ` &middot; ${geoText(savedLineupFigures(lineup, rowById).geo, "a player has no ownership figure or is no longer on the slate")}`}</span>
       </div>
       <div class="saved-lineup-actions">
@@ -474,13 +463,11 @@ export function rightColumnHtml(rows, rowById) {
   // salary, proj, own, value, star are the ones state.js sortRows reads); the shared sortableHeadHtml draws them.
   // Max % is a plain header, not sortable (Adam 2026-10-11); Adam 2026-10-17: it follows Value, a star column leads,
   // and Pos and Status are no longer columns (the position chip and the status tag sit in the Player cell).
-  const tgOn = isTwoGunMode(store.get().board) && boardHasCeilings(activeSlateRows(store.get().board)); // Adam 2026-10-25: a Ceil column after Proj while this pool can build by ceiling (the Ceiling chip's own test), so the figure (and a bump's effect) is visible
   const headBefore = [
     { key: "star", label: "★", cls: "lineup-star-col" },
     { key: "player", label: "Player" },
     { key: "salary", label: "Sal" },
     { key: "proj", label: "Proj" },
-    ...(tgOn ? [{ key: "tgCeil", label: "Ceil", headTitle: "TwoGun's ceiling, DraftKings points as he publishes them; a − / + bump scales it with the projection" }] : []),
     { key: "own", label: "Own%" },
     { key: "value", label: "Proj/$", title: "Proj/$: projection per $1,000 of salary" },
   ];
@@ -492,11 +479,11 @@ export function rightColumnHtml(rows, rowById) {
   const slateKey = slateKeyOf(store.get().board);
   const maxMap = playerMaxFor(slateKey);
   const minMap = playerMinFor(slateKey);
-  const bodyRows = sorted.map((row) => rightRowHtml(row, placed, showPos(filters.pos), maxMap, minMap, cash ? wantSet : null, tgOn)).join("");
+  const bodyRows = sorted.map((row) => rightRowHtml(row, placed, showPos(filters.pos), maxMap, minMap, cash ? wantSet : null)).join("");
   const emptyRow = sorted.length === 0 && filters.starredOnly ? poolEmptyRowHtml(graded, filters.pos, headBefore.length + (cash ? 2 : 3)) : "";
   return `
     <div class="lineup-rows-wrap scroll-panel">
-      <table class="lineup-rows-table lineup-pool-table${tgOn ? " pool-ceil" : ""}">
+      <table class="lineup-rows-table lineup-pool-table">
         <thead>${headHtml}</thead>
         <tbody>${bodyRows}${emptyRow}</tbody>
       </table>
@@ -525,7 +512,7 @@ function poolPickAttrs(action) {
   return action ? ` data-pick="${action}" tabindex="0" title="${POOL_PICK_TITLES[action]}" aria-label="${POOL_PICK_TITLES[action]}"` : "";
 }
 
-function rightRowHtml(row, placedSet, posShown, maxMap = {}, minMap = {}, cashWant = null, tgOn = false) { // cashWant: a Set of Want ids in cash mode, else null; tgOn: TwoGun mode, which adds the Ceil cell
+function rightRowHtml(row, placedSet, posShown, maxMap = {}, minMap = {}, cashWant = null) { // cashWant: a Set of Want ids in cash mode, else null
   const id = String(row.id);
   const maxText = maxMap[id] ?? "";
   const maxBad = Number.isNaN(parsePct(maxText));
@@ -546,7 +533,6 @@ function rightRowHtml(row, placedSet, posShown, maxMap = {}, minMap = {}, cashWa
       </td>
       <td>${money(row.salary)}</td>
       <td>${bumpProjHtml(row, row.proj, { enabled: Boolean(poolCallbacks?.onBump) })}</td>
-      ${tgOn ? `<td>${bumpCeilHtml(row, Number.isFinite(row.tg?.ceil) ? (rowIsOut(row) ? 0 : row.tg.ceil) : null, { out: rowIsOut(row) })}</td>` : ""}
       <td>${row.own == null ? "—" : `${dec1(row.own)}%`}</td>
       <td>${gradedCellHtml(row.value, row.valueGrade)}</td>
       ${cashWant
@@ -578,8 +564,8 @@ export function ruleRowsHtml(rules, keys = OPT_RULES.map((r) => r.key), notes = 
 }
 
 /** How many quarterbacks "starred QBs only" leaves in the pool (ChatGPT wish k, Adam 2026-10-17): the slate's QBs that are
- *  starred and not otherwise kept out (excluded, out, no projection, avoided game, no ceiling in a ceiling build), by the
- *  same test as the Min % checks (minRowOut). `pool` = {excludes (Set), avoid (Set), objective}. */
+ *  starred and not otherwise kept out (excluded, out, no projection, avoided game), by the
+ *  same test as the Min % checks (minRowOut). `pool` = {excludes (Set), avoid (Set)}. */
 export function starredQbQualifiers(rows, pool) {
   return (rows ?? []).filter((r) => upperOf(r?.pos) === "QB" && !minRowOut(r, r.id, { ...pool, starredQbOnly: true })).length;
 }
@@ -630,17 +616,13 @@ export function optLineupCardHtml(lineup, index, busy, { saved = false, rowById 
   const rows = (lineup.players ?? []).map((p, i) => cardPlayerRowHtml(p, LINEUP_SLOTS[i] ?? p.pos ?? "", decor)).join("");
   const ownBody = totals.own == null ? "— own" : `${Math.round(totals.own)}% own`;
   const geoBody = geoText(geoOwn((lineup.players ?? []).map((p) => p.own))); // Adam 2026-10-17: geo own on the GPP card only
-  // TwoGun mode: the lineup's total of TwoGun's ceilings, as the server summed it (absent in current mode; a dash
-  // when a player has none, never a partial sum).
-  const ceil = lineupCeilTotal(lineup); // ChatGPT wish d: the shown sum, totals.js
-  const ceilBody = ceil === undefined ? "" : `${ceil == null ? `<span title="A player in this lineup has no TwoGun ceiling">—</span>` : dec1(ceil)} ceil`;
   // Adam 2026-10-18: the median total beside proj, off the sort's own figure; only on a TwoGun board with medians or a batch carrying them.
   const plist = lineup.players ?? [];
   const medianPart = !cash && (boardMediansForSort() || plist.some((p) => "median" in p)) ? medianText(newLineupFigures(lineup, rowById).median, plist.some((p) => newPlayerMedian(p, rowById) != null)) : "";
   const nw = (s) => (s ? ` <span class="opt-nowrap">${s}</span>` : ""); // with a median the line is long: breaks fall between figures, not inside one
   const gppTotals = medianPart // the "·" between no-wrap groups is CSS (.opt-nowrap::after, 👁 2026-10-18), so a wrapped line never starts with it; the salary span is the first group
-    ? `${nw(`${dec1(totals.proj) ?? "—"} proj &middot; ${medianPart}`)}${nw(ceilBody)}${nw(`${ownBody} &middot; ${geoBody}`)}`
-    : ` &middot; ${dec1(totals.proj) ?? "—"} proj${ceilBody ? ` &middot; ${ceilBody}` : ""} &middot; ${ownBody} &middot; ${geoBody}`;
+    ? `${nw(`${dec1(totals.proj) ?? "—"} proj &middot; ${medianPart}`)}${nw(`${ownBody} &middot; ${geoBody}`)}`
+    : ` &middot; ${dec1(totals.proj) ?? "—"} proj &middot; ${ownBody} &middot; ${geoBody}`;
   const uid = escapeHtml(lineup.uid ?? "");
   const saveBtn = saved
     ? `<button type="button" class="saved-lineup-btn opt-saved-btn" disabled>Saved ✓</button>`
@@ -697,9 +679,9 @@ export function lockedNames(rowById) {
     .filter(Boolean);
 }
 
-/** The pool the starred-QB count is taken over (ChatGPT wish k): excluded, avoided and ceiling-less QBs fall out. */
-function starredQbPool(board) {
-  return { excludes: state.excludes, avoid: new Set([...opt.avoid].map((g) => String(g).toUpperCase())), objective: effectiveObjective(opt.objective, boardHasCeilings(activeSlateRows(board))) };
+/** The pool the starred-QB count is taken over (ChatGPT wish k): excluded and avoided QBs fall out. */
+function starredQbPool() {
+  return { excludes: state.excludes, avoid: new Set([...opt.avoid].map((g) => String(g).toUpperCase())) };
 }
 
 export const STACK_INERT_TITLE = "Every QB in play has his own numbers, so these do not apply";
@@ -708,7 +690,7 @@ export const stackDefaultsApply = (board) => {
   const rows = activeSlateRows(board);
   const listed = listedQbIds(rows);
   const sent = Object.fromEntries(Object.entries(opt.qb.entries).filter(([id]) => listed.has(id)));
-  return defaultsApply(usableQbIds(rows, starredQbPool(board), opt.rules.starredQbOnly !== false, lockedIds(state.slots, state.locks)), sent);
+  return defaultsApply(usableQbIds(rows, starredQbPool(), opt.rules.starredQbOnly !== false, lockedIds(state.slots, state.locks)), sent);
 };
 
 /** ChatGPT wish i, Adam 2026-10-17: the footer's one-line summary of the settings in effect, from the same `opt` the
@@ -717,7 +699,7 @@ export function optSummaryText(board) {
   if (opt.mode === "cash") return cashSummaryText(board); // Cash mode job 3b
   const rows = activeSlateRows(board);
   const lockedQb = lockedNames(currentRowById()).some((r) => upperOf(r.pos) === "QB");
-  const qualifiers = opt.rules.starredQbOnly !== false ? starredQbQualifiers(rows, starredQbPool(board)) : null;
+  const qualifiers = opt.rules.starredQbOnly !== false ? starredQbQualifiers(rows, starredQbPool()) : null;
   const qbOwnCount = Object.keys(qbStacksPayload(opt.qb.entries, boardRowMap(board), listedQbIds(rows), null, lockedIds(state.slots, state.locks))).length;
   // 🔵 2026-10-17: the percents parsed by parsePct as buildGenerateSettings does (a blank or invalid box is null), and the
   // players with a Max % or Min % box counted from the request's own maps, for the players still in this slate's pool.
@@ -727,7 +709,7 @@ export function optSummaryText(board) {
   const inPool = (map) => Object.fromEntries(Object.entries(map).filter(([id]) => poolIds.has(id)));
   const caps = buildGenerateSettings({ playerMax: inPool(playerMaxFor(slateKey)), playerMin: inPool(playerMinFor(slateKey)) });
   const playerCapCount = new Set([...Object.keys(caps.playerMaxExposure ?? {}), ...Object.keys(caps.playerMinExposure ?? {})]).size;
-  const shown = { ...opt, maxExp, count: requestCount(opt.count), minUnique: parseWhole(opt.minUnique, 1, OPT_MAX_UNIQUE, OPT_DEFAULT_UNIQUE), objective: effectiveObjective(opt.objective, boardHasCeilings(rows)) };
+  const shown = { ...opt, maxExp, count: requestCount(opt.count), minUnique: parseWhole(opt.minUnique, 1, OPT_MAX_UNIQUE, OPT_DEFAULT_UNIQUE), objective: effectiveObjective(opt.objective) };
   return activeRulesSummary(shown, { games: activeSlateGames(board), starredQbCount: qualifiers === 0 && lockedQb ? null : qualifiers, qbOwnCount, playerCapCount });
 }
 
@@ -755,7 +737,6 @@ function optimizerControlsHtml(rowById) {
   const build = [
     settingRowHtml("Lineups to make", numberBoxHtml(`type="number" min="1" max="${OPT_MAX_COUNT}" class="opt-input opt-input-num" id="opt-count" value="${escapeHtml(opt.count)}" aria-label="How many lineups"`), "From the slots you have locked"),
     settingRowHtml("Min unique players", numberBoxHtml(`type="number" min="1" max="${OPT_MAX_UNIQUE}" class="opt-input opt-input-num" id="opt-min-unique" value="${escapeHtml(opt.minUnique)}" aria-label="Minimum unique players between lineups"`), "Between any two lineups"),
-    settingRowHtml("Build by", `<span class="opt-chips">${objectiveChipsHtml(opt.objective, boardHasCeilings(activeSlateRows(board)))}</span>`),
     settingSubtitleHtml("Max share of lineups"),
     expRows,
     ruleRowsHtml(opt.rules, RULE_GROUPS.build),
@@ -776,7 +757,7 @@ function optimizerControlsHtml(rowById) {
   // ChatGPT wish k, Adam 2026-10-17: with "starred QBs only" on, the line under it counts the QBs that qualify.
   const qbNotes = {};
   if (opt.rules.starredQbOnly !== false) {
-    qbNotes.starredQbOnly = starredQbNote(starredQbQualifiers(activeSlateRows(board), starredQbPool(board)), locked.some((r) => upperOf(r.pos) === "QB"));
+    qbNotes.starredQbOnly = starredQbNote(starredQbQualifiers(activeSlateRows(board), starredQbPool()), locked.some((r) => upperOf(r.pos) === "QB"));
   }
   const pool = [
     ruleRowsHtml(opt.rules, RULE_GROUPS.pool, qbNotes),

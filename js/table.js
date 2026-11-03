@@ -33,13 +33,11 @@ const BASE_COLUMNS = [
 const NOTE_COLUMN = { key: "note", label: "Note" };
 export const COLUMNS = BASE_COLUMNS;
 
-// TwoGun mode only (D25 as amended 2026-10-15: his published figures used as he publishes them): six more Rankings
+// TwoGun mode only (D25 as amended 2026-10-15: his published figures used as he publishes them): four more Rankings
 // columns after Lev, each read from row.tg and sortable (state.js sortValue). Current mode never shows them.
+// The Ceil and Ceil/$ columns were removed (optimizer standard A21, 2026-11-03).
 export const TG_COLUMNS = [
   { key: "tgMed", label: "Med", field: "median", title: "TwoGun's median, DraftKings points as he publishes them" },
-  { key: "tgCeil", label: "Ceil", field: "ceil", title: "TwoGun's ceiling, DraftKings points as he publishes them" },
-  // Adam 2026-10-17, DQ1: Ceil/$, his published ceilingPer1k (two decimals as he publishes it), graded like Ceil (D33).
-  { key: "tgCeilPer1k", label: "Ceil/$", field: "ceilPer1k", title: "TwoGun's ceiling per $1,000 of salary, as he publishes it" },
   { key: "tgNuke", label: "Nuke", field: "nuke", title: "TwoGun's nuke (top-end) outcome, DraftKings points as he publishes them" },
   { key: "tgP3x", label: "3x%", field: "p3x", title: "TwoGun's chance (percent) of 3x salary value, as he publishes it" },
   { key: "tgP4x", label: "4x%", field: "p4x", title: "TwoGun's chance (percent) of 4x salary value, as he publishes it" },
@@ -82,7 +80,7 @@ function markerHtml(texts) {
   return list.length ? `<sup class="row-flag-marker tg-marker" title="${escapeHtml(list.join(" "))}">&#8226;</sup>` : "";
 }
 
-/** The hover sentences for one Rankings cell ("proj", "own", "salary", "ceilPer1k", "status") of a TwoGun-mode row. The "status"
+/** The hover sentences for one Rankings cell ("proj", "own", "salary", "status") of a TwoGun-mode row. The "status"
  *  dot now follows the name in the Player cell (Adam 2026-10-18 Q1: the Status column is gone). */
 export function twoGunMarkerTexts(row, field) {
   const src = row?.src;
@@ -100,9 +98,6 @@ export function twoGunMarkerTexts(row, field) {
     if (ownFallback && !projFallback) texts.push("TwoGun publishes no ownership for him; this is the current sources' Own%.");
   } else if (field === "salary") {
     if (flags.includes("salaryDiffers")) texts.push(`TwoGun lists ${money(tg?.salary)}; DraftKings' ${money(row.salary)} is used for Proj/$ and the Optimizer (D13).`);
-  } else if (field === "ceilPer1k") {
-    // Ceil/$ is TwoGun's own figure, computed on his salary, so a row whose salary differs names both salaries.
-    if (flags.includes("salaryDiffers")) texts.push(`Ceil/$ is TwoGun's, on his salary ${money(tg?.salary)}; DraftKings lists ${money(row.salary)}.`);
   } else if (field === "status") {
     if (flags.includes("statusChangedAfterStamp")) {
       texts.push(`His status changed after TwoGun's board was made${tg?.official ? ` (TwoGun quoted ${tg.official})` : ""}${rowIsOut(row) ? "." : "; TwoGun's number is kept."}`);
@@ -112,13 +107,12 @@ export function twoGunMarkerTexts(row, field) {
   return texts;
 }
 
-// One decimal, as he publishes them (Ceil/$ shows two); the 3x% and 4x% headers carry the percent sign so the narrow cells never clip.
+// One decimal, as he publishes them; the 3x% and 4x% headers carry the percent sign so the narrow cells never clip.
 function tgCellHtml(row, col) {
   const v = row.tg?.[col.field];
   if (v == null || Number.isNaN(v)) return "—";
-  const shown = (col.field === "ceil" || col.field === "ceilPer1k") && rowIsOut(row) ? 0 : v; // out = ceiling 0 (Adam), as the optimizer scores it; Ceil/$ follows its Ceil
-  const text = col.field === "ceilPer1k" ? dec2(shown) : dec1(shown);
-  const grade = row.tgGrade?.[col.field]; // Ceil, Ceil/$, Nuke and 4x% are graded like Value (grade.js, D33)
+  const text = dec1(v);
+  const grade = row.tgGrade?.[col.field]; // Nuke and 4x% are graded like Value (grade.js, D33)
   return grade ? `<span class="grade-cell grade-${grade}">${text}</span>` : text;
 }
 
@@ -326,7 +320,7 @@ function noteCellHtml(row) {
   return `<span class="note-preview" title="${escapeHtml(row.note)}">${escapeHtml(preview)}</span>`;
 }
 
-// TwoGun mode: the six TwoGun cells after Lev, plain (a stale board is the header pill's to say, visual QA 2026-10-15).
+// TwoGun mode: the four TwoGun cells after Lev, plain (a stale board is the header pill's to say, visual QA 2026-10-15).
 function tgCellsHtml(row) {
   return TG_COLUMNS.map((c) => {
     const tip = twoGunMarkerTexts(row, c.field).join(" ");

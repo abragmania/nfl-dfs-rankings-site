@@ -13,7 +13,7 @@
 // A letter tag is unique among this device's lineups of the slate (releaseLineupTag, PROJECT.md Part 4 Entries, Adam
 // 2026-10-17); the baked app lineups are read-only here (D69, D71), so their letters are never cleared.
 import {
-  validateLineupSlots, validateLineupName, validateLineupMode, validateLineupTag, validateLineupBuild, buildAfterSlotEdit, slotsPlayersDiffer, releaseLineupTag, findLineupSlate, buildLineupSnapshot,
+  validateLineupSlots, validateLineupName, validateLineupMode, validateLineupTag, validateLineupBuild, releaseLineupTag, findLineupSlate, buildLineupSnapshot,
 } from "../server/lineups/validate.js";
 import { DUPLICATE_CODE, findDuplicate, duplicateAfterEdit, duplicateMessage } from "../server/lineups/duplicate.js";
 
@@ -204,10 +204,7 @@ export function updateDeviceLineup(storage, season, week, id, patch) {
     const { name, slots, salaryUsed, totalProj, slate, tag } = patch ?? {};
     const entry = { ...list[idx] };
     if (name !== undefined) entry.name = name;
-    if (slots !== undefined) {
-      entry.slots = slots;
-      if (entry.build && slotsPlayersDiffer(list[idx].slots, slots)) entry.build = buildAfterSlotEdit(entry.build); // as store.js updateLineup (ChatGPT wish g)
-    }
+    if (slots !== undefined) entry.slots = slots;
     if (salaryUsed !== undefined) entry.salaryUsed = salaryUsed;
     if (totalProj !== undefined) entry.totalProj = totalProj;
     if (typeof slate === "string" && slate !== "") entry.slate = slate;

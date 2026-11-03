@@ -230,7 +230,7 @@ export function savedKeysOf(saved, mode, board) {
  *  so the page sends none). Pure. */
 export function saveBody(lineup, results, name) {
   const slots = (lineup.slots ?? []).map((s) => ({ slot: s.slot, playerId: String(s.personId ?? s.playerId) }));
-  const build = batchBuild({ buildId: results.buildId, boardMode: results.boardMode, objective: results.objective }, { ceil: lineup.ceil, players: [] });
+  const build = batchBuild({ buildId: results.buildId, boardMode: results.boardMode, objective: results.objective });
   if (typeof results.figuresKey === "string" && results.figuresKey !== "") build.figuresKey = results.figuresKey;
   return { name, slots, mode: results.mode, build };
 }
@@ -302,7 +302,7 @@ export function optimizerBandHtml(board) {
 }
 
 /** The Make row (the summary and Make N lineups), the last piece of the builder's column, sticky as classic's footer; "" off the live app.
- *  `board`: the served board (its reading names the cash basis, its rows whether Median and Ceiling can be built). */
+ *  `board`: the served board (its reading names the cash basis, its rows whether Median can be built). */
 export function optimizerGoRowHtml(board) {
   if (!optimizerLive()) return "";
   return V.goRowHtml({ summary: S.summaryText(modeState(), opt.ks.mode, board), count: S.requestCount(modeState().count, opt.ks.mode), generating: showing(), busy: showing() || opt.saving, formError: opt.formError, canStop: canStopShowdownLineupGenerate(), below: opt.buildingBelow });
@@ -361,8 +361,8 @@ export function poolBumpHtml(row, proj, isCpt, canSave = supports("overrides")) 
 
 /**
  * What the one player pool (pool.js setPoolControls; Adam 2026-10-26, the Rankings table as the pool) asks for each row: the rows it
- * lists, the Min % / Max % heads and boxes of each role, each role's lock and exclude and the In button, the row's look, whether a Ceil
- * column shows and the projection cell's ± bump. Off the live app every answer is the pool's own (its rows, nothing added).
+ * lists, the Min % / Max % heads and boxes of each role, each role's lock and exclude and the In button, the row's look
+ * and the projection cell's ± bump. Off the live app every answer is the pool's own (its rows, nothing added).
  */
 export const poolControls = {
   live: () => optimizerLive(),
@@ -372,7 +372,6 @@ export const poolControls = {
   button: (row, kind, action) => (optimizerLive() ? V.poolButtonHtml(row, kind, action, modeState()) : ""), // "lock", "include" (In: the same for both roles) or "exclude"
   // Excluded from every lineup dims the row; a lock at either role tints it (a Captain-only exclude leaves the row as it is: he can still be FLEX).
   rowClass: (row) => (optimizerLive() ? V.poolRowClass(row, "flex", modeState()) || (S.isLocked(modeState(), row, "cpt") ? " lineup-row-locked" : "") : ""),
-  ceilColumn: (board) => optimizerLive() && S.boardHasTg(board, "ceil"), // Adam 2026-10-25 (D81): a Ceil column while any row of the board carries TwoGun's ceiling
   projCell: (row, proj, isCpt = false) => poolBumpHtml(row, proj, isCpt), // the ± bump (Adam 2026-10-22) before the Proj figure (FLEX tab) or the CPT proj figure (Captain tab); one pair per man moves both his figures
   readTab: () => S.readPoolTab(storage), // the pool's Captain | FLEX tab, kept in the browser on the site too (D71)
   writeTab: (tab) => S.writePoolTab(storage, tab),
@@ -467,7 +466,7 @@ function wireBand(root, ctx) {
   });
   root.querySelectorAll("[data-sd-objective]").forEach((btn) => {
     btn.addEventListener("click", () => {
-      if (btn.getAttribute("aria-disabled") === "true" || modeState().objective === btn.dataset.sdObjective) return;
+      if (modeState().objective === btn.dataset.sdObjective) return;
       setModeState({ ...modeState(), objective: btn.dataset.sdObjective });
       ctx.commit();
     });

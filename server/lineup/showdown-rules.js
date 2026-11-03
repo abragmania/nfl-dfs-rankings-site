@@ -8,7 +8,7 @@ const SEAT_MAX = Object.freeze({ cpt: 1, flex: SHOWDOWN_SLOTS.length - 1, any: S
 const seatOf = (c) => (c.pos === "CPT" ? "cpt" : "flex");
 
 /** The rule module's ctx for a showdownBoard and its locks: a seat is unavailable when it is not in the engine's pool.
- *  `canRoster` (candidate -> boolean) is the build's own test (showdown-pool.js rosterTest: a median or ceiling build
+ *  `canRoster` (candidate -> boolean) is the build's own test (showdown-pool.js rosterTest: a median build
  *  rosters by its own figure, D81; showdown-includes.js withIncludes lets an included man in); absent, the projection
  *  build's rosterable. */
 export function showdownRuleContext(board, lockIds = [], canRoster = rosterable) {

@@ -26,7 +26,7 @@ export function boardTwoGun(board) {
  * The rows the Showdown Lineup tab reads on the board path (the meter, the six slots, both lists, swaps, Build, Generate):
  * the served board's own rows, Adam's typed numbers included (D28, D45), except that while TwoGun is the only ticked
  * projection source (board.mode.cashMode "twogun") a revive of a sidelined man is ignored: he stays out at 0, his TwoGun
- * median and ceiling count 0 (cash.js medianOf, objective.js ceilingOf), as the Figures switch's TwoGun mode has always
+ * median counts 0 (cash.js medianOf), as the Figures switch's TwoGun mode has always
  * read him (Adam 2026-10-18: "TwoGun mode ignores a revive"). Every other typed number is kept, and any other board gives
  * board.rows itself, so nothing else moves. One array per board object.
  */
