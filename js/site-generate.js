@@ -27,9 +27,9 @@ export function errorBody(code, message, stale = []) {
  * /api/slate body; the engine reads only a salary cap from it, and neither it nor the route's full slate carries
  * one, so both use DraftKings' $50,000 (D1). `body`: the request {slate, settings}. `saved`: this device's saved
  * lineups of the week (every slate); the route's own filter picks the chosen slate's. `onLineup`: the engine's snapshot after each
- * finished lineup (opt-worker.js). `partial`: a build ended early (site-worker.js endedSiteResult), answered in place of a search. Returns the route's body.
+ * finished lineup (opt-worker.js). `deadline`: epoch ms, only on the page-thread fallback (site-worker.js): the engine ends itself there. `partial`: a build ended early (site-worker.js endedSiteResult), answered in place of a search. Returns the route's body.
  */
-export function generateResponse({ board, slate, body: rawBody, saved, onLineup, partial }) {
+export function generateResponse({ board, slate, body: rawBody, saved, onLineup, deadline, partial }) {
   if (!board || board.ok === false || !Array.isArray(board.rows)) {
     return board && board.ok === false && board.error ? board : errorBody("NO_SLATE", "No slate has been uploaded yet.");
   }
@@ -50,7 +50,7 @@ export function generateResponse({ board, slate, body: rawBody, saved, onLineup,
   try {
     // Cash mode job 2b, 2026-10-17: the Cash basis the board was baked with (board.mode.cashMode, select.js modeOf), as the
     // app reads it; a board baked without one is refused by cash.js cashBasis.
-    const result = partial ?? generateLineups({ rows, slate, settings: checked.settings, existing, boardMode: board.mode?.cashMode, onLineup });
+    const result = partial ?? generateLineups({ rows, slate, settings: checked.settings, existing, boardMode: board.mode?.cashMode, onLineup, deadline });
     return envelope(enrichGenerateResult(result, rowById), { stale });
   } catch (e) {
     console.error("lineup generate: failed", e);

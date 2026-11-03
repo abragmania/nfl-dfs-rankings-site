@@ -2,6 +2,12 @@
 // Stop, the ceiling and the words of a build ended early, for the app (server/lib/app-build.js, worker_threads) and the public site
 // (site-src/site-worker.js, a module worker). Pure and browser-safe (D69): it starts nothing itself; `launch` is the caller's.
 
+/** The one automatic limit of a build started from the screen, on the app and the site, classic and Showdown (Adam 2026-11-03): ten minutes. */
+export const BUILD_CEILING_MS = 600000;
+
+/** The words of a single-lineup Build (classic or Showdown, optimize.js and showdown.js) that reached the limit with no lineup proven best. */
+export const singleBuildCeilingSentence = () => `This build reached its ${Math.round(BUILD_CEILING_MS / 60000)} minute limit: no lineup was finished. Looser settings take less time.`;
+
 /** A build ended early: how far it got. `reason` "stopped" (the Stop button), "ceiling" (the time limit, `ceilingMs`) or "failed" (the worker died). */
 export function stopSentence(reason, made, asked, ceilingMs) {
   const finished = made === 0 ? "no lineup was finished"

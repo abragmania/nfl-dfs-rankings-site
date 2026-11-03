@@ -277,7 +277,7 @@ const GENERATE_FAILED = () => siteError("LINEUP_GENERATE_FAILED", "Could not mak
 const runGenerate = createWorkerRunner({
   kind: "classic", failed: GENERATE_FAILED,
   finish: async (args, partial, reason) => (await import("./site-generate.js")).generateResponse({ ...args, partial: endedSiteResult(partial, reason, args.body?.settings?.count ?? 1) }),
-  onPage: async (args) => (await import("./site-generate.js")).generateResponse(args),
+  onPage: async (args, deadline) => (await import("./site-generate.js")).generateResponse({ ...args, deadline }),
 });
 
 /** Ends the build in hand with the lineups finished so far (the Stop button). */

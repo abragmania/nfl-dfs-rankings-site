@@ -28,17 +28,15 @@ import { figureOf, FIGURE_BUILDS, NO_CEILING_SENTENCE, NO_MEDIAN_GPP_SENTENCE } 
 import { outReason, rosterTest, buildPool } from "./showdown-pool.js"; // the search pool and its notes
 import { readIncludes, withIncludes, noIncludeFitSentence, roleMax, captainSteer, solveSteered } from "./showdown-includes.js"; // includes (Adam 2026-10-19)
 import { warn } from "../lib/log.js";
+import { BUILD_CEILING_MS, stopSentence } from "./build-control.js"; // pure leaf: the ten minute limit's sentence
 
 export const SHOWDOWN_CAP = 50000;
 export const MAX_LINEUPS = 150;
 export const MAX_UNIQUE = SHOWDOWN_SLOTS.length; // six slots
 // Least change first; locks, includes, excludes, the cap and the DraftKings rules never bend (Adam 2026-10-18; includes 2026-10-19).
 export const BEND_ORDER = Object.freeze(["minForce", "playerMax", "minUnique"]);
-// A counter, never a clock, so two runs agree. The whole request's ceiling is minutes of work, never seconds (Adam 2026-11-02): 8 million steps a
-// second with nothing to prune, measured 2026-11-03, and the worst real 150-lineup build used under 1 million. No lineup has a smaller
-// one, and a lineup the ceiling reaches is dropped with a sentence, so every lineup served is proven best.
-const BATCH_STEPS = 2000000000;
-const PER_LINEUP_STEPS = BATCH_STEPS;
+// No step limit (Adam 2026-11-03): a build ends on finishing, the ten minute limit (server/lib/app-build.js, site-src/site-worker.js) or Stop,
+// and every lineup served is proven best.
 
 const num = (v) => (typeof v === "number" && Number.isFinite(v) ? v : null);
 const round2 = (n) => Math.round(n * 100) / 100;
@@ -207,7 +205,6 @@ function projTotal(men) {
  *   unique only, never for the exposure caps (D74); never in cash
  * @param {string}   [args.boardMode] "twogun" or "current": the board's mode, which picks a cash build's basis (cash.js cashBasis)
  *   and names a locked man with no TwoGun projection in a TwoGun projection build (noTwoGunProjectionNote)
- * @param {object}   [args.limits]  { perLineup, batch } step budgets (tests)
  * @param {Function} [args.onLineup] called after each finished lineup with the answer so far ({lineups, exposure, notes, bends, problems,
  *   ruleWarnings}), for a build the public site may end early (site-src/site-worker.js)
  * @returns {{lineups: {slots: {slot, id, personId}[], salary, proj, bent?}[], exposure: {personId, cpt, flex}[], notes: string[],
@@ -247,7 +244,8 @@ function runMode(args, notes) {
   return { ...build({ ...args, settings: c.settings, existing: [], onLineup }, notes), mode: "cash", basis: c.settings.objective };
 }
 
-function build({ rows, settings, existing, limits, boardMode, onLineup }, notes) {
+function build({ rows, settings, existing, boardMode, onLineup, deadline: deadlineGiven }, notes) {
+  const deadline = num(deadlineGiven) ?? Infinity; // epoch ms: the page-thread fallback's ten minute limit (site-src/site-worker.js); none in the app's worker
   const s = settings && typeof settings === "object" ? settings : {};
   let ruleWarnings = [];
   const none = () => ({ lineups: [], exposure: [], notes, bends: [], problems: [], ruleWarnings });
@@ -389,7 +387,6 @@ function build({ rows, settings, existing, limits, boardMode, onLineup }, notes)
   }
   plan.sort((a, b) => cmpId(a.id, b.id));
 
-  const budget = { used: 0, perLineup: num(limits?.perLineup) ?? PER_LINEUP_STEPS, batch: num(limits?.batch) ?? BATCH_STEPS };
   const counts = new Map(); // candidate id -> lineups of this batch (Captain and FLEX rows are separate candidates)
   const bentKeys = new Set();
   const bentOut = new Set();
@@ -404,28 +401,29 @@ function build({ rows, settings, existing, limits, boardMode, onLineup }, notes)
   const capped = (c) => maxes.has(c.id) && !lockSet.has(c.id) && (counts.get(c.id) ?? 0) >= maxes.get(c.id).n;
   // Every solve, bends included, carries the lineup rules and the includes: they never bend (D81; Adam 2026-10-19).
   // `noRules` and `noIncludes` are the diagnoses only.
+  let ranOut = false; // a solve reached the deadline
   const solve = ({ capsOff = new Set(), forced = [], uniq = minUnique, noRules = false, noIncludes = false, steer = new Set() }) => {
-    const stats = {};
     const search = pool.filter((c) => (!capped(c) || capsOff.has(c.id)) && !steer.has(c.id)); // steer: captainSteer's look-ahead
+    const stats = {};
     const best = exactSearch(search, {
       lockIds: [...locks, ...forced],
       cap,
       maxFromTeam: maxPerTeam,
       overlap: priors.length ? { priors, max: MAX_UNIQUE - uniq, keyOf } : null,
-      maxSteps: Math.max(0, Math.min(budget.perLineup, budget.batch - budget.used)),
+      deadline,
       stats,
       ruleGate: noRules ? null : ruleGate,
       includePeople: noIncludes ? null : includeSet
     });
-    budget.used += stats.steps ?? 0;
-    return { best, aborted: Boolean(stats.aborted) };
+    if (stats.timedOut) ranOut = true;
+    return { best, timedOut: Boolean(stats.timedOut) }; // past the deadline `best` is null: a lineup not proven best is never served
   };
   // The rules ran out: nothing keeps them with every Max, Min and uniqueness eased, though something would without them.
   const rulesExhausted = () => {
     if (!ruleGate) return false;
     const all = new Set(pool.map((c) => c.id));
     const kept = solve({ capsOff: all, uniq: 1 });
-    if (kept.best || kept.aborted) return false;
+    if (kept.best) return false;
     return Boolean(solve({ capsOff: all, uniq: 1, noRules: true }).best);
   };
   // The includes ran out, as the rules do above: nothing holds them with every Max, Min and uniqueness eased, though
@@ -434,7 +432,7 @@ function build({ rows, settings, existing, limits, boardMode, onLineup }, notes)
     if (!includeSet.size) return false;
     const all = new Set(pool.map((c) => c.id));
     const kept = solve({ capsOff: all, uniq: 1 });
-    if (kept.best || kept.aborted) return false;
+    if (kept.best) return false;
     return Boolean(solve({ capsOff: all, uniq: 1, noIncludes: true }).best);
   };
 
@@ -475,10 +473,6 @@ function build({ rows, settings, existing, limits, boardMode, onLineup }, notes)
   };
 
   for (let n = 0; n < count; n++) {
-    if (budget.used >= budget.batch) {
-      notes.push(`The search hit its step limit of ${budget.batch.toLocaleString("en-US")} for the whole request while making lineup ${n + 1} of ${count}; ${lineups.length ? `the ${lineups.length} made before it are returned` : "no lineups were made"}.`);
-      break;
-    }
     const steer = captainSteer({ people: includeSet, board, pool, poolIds, maxes, counts, left: count - n, captainLocked: lockedCpt.length > 0 });
     const forced = dueFor(n, steer);
     for (const id of forced) bentKeys.delete(id);
@@ -507,18 +501,20 @@ function build({ rows, settings, existing, limits, boardMode, onLineup }, notes)
       };
       for (const kind of BEND_ORDER) {
         for (const t of trials[kind]()) {
-          if (budget.used >= budget.batch) return { result: { best: null, aborted: false }, bent: null, dropped: [] };
           const r = t.run();
           if (r.best) return { result: r, bent: t.label, dropped: t.drop ?? [] };
-          if (r.aborted) return { result: r, bent: null, dropped: [] };
+          if (r.timedOut) return { result: r, bent: null, dropped: [] };
         }
       }
       return null;
     };
     const { result, bent, dropped } = solveSteered(solve, forced, steer, bend);
-    if (!result.best || result.aborted) {
-      if (result.aborted || budget.used >= budget.batch) {
-        notes.push(`Lineup ${n + 1} of ${count} could not be made: the search stopped at its step limit before proving one best. ${madeBefore()}`);
+    // The ten minute limit (the page-thread fallback only): the lineup in hand is not proven best, so it is dropped; the finished ones are returned.
+    const ceilingNote = () => stopSentence("ceiling", lineups.length, count, BUILD_CEILING_MS);
+    if (!result.best) {
+      const noteFrom = notes.length;
+      if (result.timedOut) {
+        notes.push(ceilingNote());
       } else if (rulesExhausted()) {
         notes.push(rulesShortNote({ made: lineups.length, count, saved: savedCount > 0, cap, rules: ruleSet.rules, nameOf: ruleSet.nameOf }));
       } else if (s.mode === "cash") {
@@ -529,6 +525,7 @@ function build({ rows, settings, existing, limits, boardMode, onLineup }, notes)
       } else {
         notes.push(`No single setting could be bent for lineup ${n + 1} of ${count}: no lineup keeps every setting, and relaxing any one of the Min %, the Max % or the minimum unique alone would not allow one (the locks${includeSet.size ? ", the includes" : ""}, the $${cap.toLocaleString("en-US")} cap, the DraftKings rules${ruleGate ? ", the lineup rules" : ""} and the earlier lineups leave nothing legal). ${madeBefore()}`);
       }
+      if (ranOut && !result.timedOut) notes.splice(noteFrom, notes.length - noteFrom, ceilingNote()); // the diagnosis above ran into the deadline: its note would be wrong
       break;
     }
     // A dropped Min man waits two lineups unless he is out of slack (soft.js's rule for the classic Min %).

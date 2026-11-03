@@ -3,23 +3,23 @@
 // Showdown Optimizer (site-showdown.js; RULES.md D71). tools/publish.mjs copies this file to out/js/site-worker.js, beside
 // opt-worker.js. Nothing runs at import time.
 
-import { createBuildControl, endedResult } from "../server/lineup/build-control.js";
+import { createBuildControl, endedResult, BUILD_CEILING_MS } from "../server/lineup/build-control.js";
 
-/** The longest a build runs in a visitor's browser before it is ended with the lineups finished so far (Adam 2026-11-02: minutes, never seconds). */
-export const BUILD_CEILING_MS = 300000;
+/** The longest a build runs in a visitor's browser before it is ended with the lineups finished so far: the app's ten minutes (build-control.js, one constant). */
+export { BUILD_CEILING_MS };
 
 /** An ended build's answer from the engine: the one copy's words (build-control.js) at this ceiling. */
 export const endedSiteResult = (partial, reason, asked) => endedResult(partial, reason, asked, BUILD_CEILING_MS);
 
-/** The note on an answer made on the page's thread: a browser with no worker cannot be stopped or timed, and the visitor is told. */
-export const PAGE_THREAD_NOTE = "This browser could not run the search in the background, so it ran on this page, with no Stop and no time limit.";
+/** The note on an answer made on the page's thread: a browser with no worker cannot be stopped, and the visitor is told. The ten minute limit still holds there (the deadline given to onPage). */
+export const PAGE_THREAD_NOTE = "This browser could not run the search in the background, so it ran on this page, with no Stop.";
 
 /**
  * A runner for one kind of work: run(args), or run(async () => args) to hold the build's place while they load, resolves to the answer.
  * `kind` ("classic" or "showdown") tells opt-worker.js which answer to make. The worker sends a snapshot after each finished lineup
  * ({id, partial}). Nothing cuts a working build off in seconds: run.stop() (the Stop button, which also holds for a build still on its
  * way) or `ceilingMs` ends it, and the visitor gets `finish(args, snapshot or null, reason)`, the answer for the lineups finished so far
- * with a sentence, never nothing. `onPage(args)` makes the answer on the page's thread when the worker cannot start, crashes or cannot
+ * with a sentence, never nothing. `onPage(args, deadline)` (epoch ms, now plus the ten minute limit: the engine ends itself there) makes the answer on the page's thread when the worker cannot start, crashes or cannot
  * read a message, and it carries PAGE_THREAD_NOTE; run.canStop() is false there. `failed()` is the route's own failure answer; `label` heads the console line.
  */
 export function createWorkerRunner({ kind, ceilingMs = BUILD_CEILING_MS, failed, finish, onPage, label = "lineup generate: failed" }) {
@@ -85,7 +85,7 @@ export function createWorkerRunner({ kind, ceilingMs = BUILD_CEILING_MS, failed,
         if (!out.failed) return out.result;
         /* the worker failed: on to the page's thread */
       }
-      const answer = await onPage(args);
+      const answer = await onPage(args, Date.now() + BUILD_CEILING_MS); // the engines read the deadline on the clock: the page's thread has no timer to end it
       return Array.isArray(answer?.notes) ? { ...answer, notes: [...answer.notes, PAGE_THREAD_NOTE] } : answer;
     } catch (e) {
       console.error(label, e);

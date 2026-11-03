@@ -14,6 +14,7 @@
 // measure to be redesigned; projection minus ownership removed), and a request naming one is built on projection
 // with the classic optimiser's note (optimize.js retiredObjectiveNote).
 import { optimizeLineup, retiredObjectiveNote, failure } from "./optimize.js";
+import { BUILD_CEILING_MS, singleBuildCeilingSentence } from "./build-control.js"; // pure leaf: the ten minute limit and its sentence
 import { objectiveScore, figureOf, FIGURE_BUILDS } from "./objective.js"; // pure; the classic Optimizer's ceiling and median scoring
 import { rowIsOut } from "../rank/sidelined.js"; // pure
 import { listNames } from "./soft.js"; // pure; "A, B and C"
@@ -165,8 +166,10 @@ export function cheapestTable(flex) {
  * Optional, for the showdown Optimizer (server/lineup/showdown-multi.js, Adam 2026-10-18); left out, the search and its
  * result are exactly what optimizeShowdown always had:
  *   overlap  { priors: Set<string>[], max, keyOf(candidate) } - a lineup may share at most `max` keys with each prior;
- *   maxSteps a step budget (one step per search node); stats, when given, gets { steps, aborted }. When the budget runs
- *            out the best lineup found so far is returned (or null), and stats.aborted says it was not proven best;
+ *   stats    when given, gets { steps } (one per search node). The search has no step limit: it ends on finishing, and the
+ *            caller's own time limit (server/lib/app-build.js, site-src/site-worker.js) or Stop ends it from outside;
+ *   deadline epoch ms (default none): the single Build's ten minute limit (optimizeShowdown), read on the clock every 4,096
+ *            steps. Past it the search returns null, never a lineup not proven best, and stats.timedOut is true;
  *   ruleGate (capt, lockedFlex, flex) -> {open(start, left), leaf(), add(c), remove(c)}: hard lineup rules (D81,
  *            showdown-rules.js searchGate), cutting every branch that breaks one or can no longer meet one.
  *   includePeople  Set of person ids every lineup must hold at Captain or FLEX (Adam 2026-10-19, showdown-includes.js):
@@ -175,7 +178,7 @@ export function cheapestTable(flex) {
  * Forced men are `lockIds`. A branch whose cheapest possible completion already breaks the cap is cut (sound, so the
  * lineup found never changes).
  */
-export function exactSearch(pool, { lockIds, cap, maxFromTeam, floor, overlap = null, maxSteps = Infinity, stats = null, ruleGate = null, includePeople = null }) {
+export function exactSearch(pool, { lockIds, cap, maxFromTeam, floor, overlap = null, deadline = Infinity, stats = null, ruleGate = null, includePeople = null }) {
   const locks = new Set(lockIds);
   // Every lock must be rosterable, and at most one of them can be the Captain.
   if (![...locks].every((id) => pool.some((c) => c.id === id))) return null;
@@ -212,14 +215,13 @@ export function exactSearch(pool, { lockIds, cap, maxFromTeam, floor, overlap = 
   let best = null;
   let bestScore = Number.isFinite(floor) ? floor - 1e-9 : -Infinity;
   let steps = 0;
-  let aborted = false;
+  let timedOut = false;
   // Includes: each included man's FLEX candidate in the pool (a man with none can only be the Captain).
   const included = includePeople && includePeople.size ? includePeople : null;
   const flexOf = new Map();
   if (included) for (const c of pool) if (c.pos !== "CPT" && included.has(c.personId) && !flexOf.has(c.personId)) flexOf.set(c.personId, c);
   for (const c of lockedFlex) shift(c, 1);
   for (const capt of captains) {
-    if (aborted) break;
     if (lockedFlex.some((c) => c.personId === capt.personId)) continue;
     // The FLEX this Captain's lineups must hold: the locked FLEX, plus every included man who is not this Captain and
     // not already locked (his FLEX candidate is held for this Captain only). With no includes these are the locked FLEX.
@@ -255,11 +257,11 @@ export function exactSearch(pool, { lockIds, cap, maxFromTeam, floor, overlap = 
     shift(capt, 1);
     const pick = [];
     const dfs = (start, score, salary) => {
-      if (aborted) return;
-      if (++steps > maxSteps) {
-        aborted = true;
+      if ((steps & 4095) === 0 && Date.now() >= deadline) { // a clock read every 4,096 steps, never a step count
+        timedOut = true;
         return;
       }
+      steps++;
       const left = needHere - pick.length;
       if (gate && !gate.open(start, left)) return;
       if (left === 0) {
@@ -288,18 +290,19 @@ export function exactSearch(pool, { lockIds, cap, maxFromTeam, floor, overlap = 
         shift(c, -1);
         pick.pop();
         teams.set(c.team, n);
-        if (aborted) return;
+        if (timedOut) return;
       }
     };
     if (violations === 0) dfs(0, baseScore, baseSalary);
+    if (timedOut) break;
     shift(capt, -1);
     for (const c of heldExtra) shift(c, -1);
   }
   if (stats) {
     stats.steps = steps;
-    stats.aborted = aborted;
+    stats.timedOut = timedOut;
   }
-  return best;
+  return timedOut ? null : best;
 }
 
 /**
@@ -313,7 +316,7 @@ export function exactSearch(pool, { lockIds, cap, maxFromTeam, floor, overlap = 
  * (exactSearch above) then finds the provably best lineup. That lineup is handed back to the classic optimiser with
  * all six locked, so the result is checked for legality and presented exactly as classic presents a lineup.
  */
-export function optimizeShowdown(rows, { objective = "proj", locks, excludes, cap = 50000, maxPerTeam: maxPerTeamGiven, includes } = {}) {
+export function optimizeShowdown(rows, { objective = "proj", locks, excludes, cap = 50000, maxPerTeam: maxPerTeamGiven, includes, _ceilingMs } = {}) { // _ceilingMs: tests only, the exact search's time limit in ms (default ten minutes)
   const maxPerTeam = maxPerTeamGiven ?? SHOWDOWN_MAX_FROM_TEAM; // null (not only undefined) means DraftKings' five
   const list = Array.isArray(rows) ? rows : [];
   const excludeIds = new Set(idList(excludes));
@@ -385,7 +388,10 @@ export function optimizeShowdown(rows, { objective = "proj", locks, excludes, ca
       .map((c) => ({ ...c, salary: num(c.salary) ?? 0, score: scoreOf(c) }));
     // The classic run knows no includes, so its score is no floor when there are any.
     const plainScore = plain.feasible && !included.size ? plain.lineup.reduce((a, e) => a + scoreOf(byCandId.get(String(e.id))), 0) : -Infinity;
-    const best = exactSearch(pool, { lockIds, cap, maxFromTeam: maxPerTeam, floor: plainScore, includePeople: included.size ? included : null });
+    const searched = {};
+    const best = exactSearch(pool, { lockIds, cap, maxFromTeam: maxPerTeam, floor: plainScore, includePeople: included.size ? included : null, deadline: Date.now() + (num(_ceilingMs) ?? BUILD_CEILING_MS), stats: searched });
+    // The ten minute limit: the greedy lineup is not proven best, so it is not served either; the same shape as the includes failure below.
+    if (searched.timedOut) return { ...noTotals(failure(singleBuildCeilingSentence(), cap)), captain: null };
     if (best) {
       const exact = optimizeLineup(candidates, { ...options, locks: best.map((c) => c.id) });
       // With includes the exact run locks all six, so its notes would call the included men locked: the classic run's stand.

@@ -155,20 +155,19 @@ export const STEERED_BEND_WORDS = "to keep the included men's Captain spots for 
 /** One lineup's solve with the look-ahead (captainSteer) and the bends: the steered solve, then every bend steered, then
  *  the plain solve, then every bend plain, so the look-ahead is given up only after its own bends fail. A steered bend may
  *  bend this lineup so that a later lineup need not bend or fail; its label says so (STEERED_BEND_WORDS). The steered pass
- *  only ever ends with a lineup: a steered solve or bend that stops at a step limit, or finds nothing, falls through to the
- *  plain pass (with the budget gone, the plain solve stops at once and the step-limit note follows). With no steer: the
+ *  only ever ends with a lineup: a steered solve or bend that finds nothing falls through to the plain pass. With no steer: the
  *  plain solve, then its bends. `solve`: the engine's solve({forced, steer}); `bend(steer)`: the engine's bends
- *  (BEND_ORDER) under that steer, {result, bent, dropped} when one let a lineup through or the search stopped, else null.
+ *  (BEND_ORDER) under that steer, {result, bent, dropped} when one let a lineup through, else null.
  *  Returns {result, bent, dropped}; result.best is null when nothing was found. */
 export function solveSteered(solve, forced, steer, bend = () => null) {
   let last = null;
   for (const st of steer.size ? [steer, new Set()] : [new Set()]) {
     const steered = st.size > 0;
     last = solve({ forced, steer: st });
-    if (last.best || (last.aborted && !steered)) return { result: last, bent: null, dropped: [] };
-    if (last.aborted) continue; // a steered solve that stopped at its step limit: the plain pass, as before the steered bends
+    if (last.best || last.timedOut) return { result: last, bent: null, dropped: [] }; // timedOut: the ten minute limit, nothing more is tried
     const bentResult = bend(st);
     if (bentResult && !steered) return bentResult;
+    if (bentResult?.result?.timedOut) return { result: bentResult.result, bent: null, dropped: [] };
     if (bentResult?.result?.best) return { ...bentResult, bent: `${bentResult.bent} ${STEERED_BEND_WORDS}` };
   }
   return { result: last, bent: null, dropped: [] };

@@ -3,7 +3,7 @@
 // (D25 as amended 2026-10-15; scoring only, see objectiveScore) that keeps every rule Adam has switched on,
 // every lock, the uniqueness he set against his saved lineups and every earlier lineup of the batch, and the
 // per-position exposure caps as they stand at that moment (counted over this batch only, D74). It is a pure function over board rows: no network, no
-// clock, no file writes. The single-lineup builder (optimize.js) checks and shows one lineup; its classic search is here (bestClassicExact).
+// file writes, and no clock except the ten minute limit of the single-lineup search (bestClassicExact). The single-lineup builder (optimize.js) checks and shows one lineup; its classic search is here (bestClassicExact).
 //
 // Search: exact depth-first branch and bound, deterministic, no dependencies. A lineup is enumerated as one of the
 // three position mixes the FLEX allows (3 RB, 4 WR or 2 TE), group by group (QB, RB, WR, TE, DST), each group a
@@ -20,6 +20,7 @@
 import { rowIsOut } from "../rank/sidelined.js"; // pure: the public site runs this engine in the browser (D69)
 import { assignSlots } from "./dk-entries.js";
 import { warn } from "../lib/log.js";
+import { BUILD_CEILING_MS, stopSentence } from "./build-control.js"; // pure leaf: the one ten minute limit
 import { countsTowardStack } from "./stack-rules.js"; // pure leaf; one copy of the stack predicate
 import {
   parseEntries, qbStackPrepare, globalRule, ruleFromEntry, mustPlan, withReachable, stackTrials, setsTeammates, setsOpponents, cappedMustNotes, mustAboveCapNotes
@@ -44,12 +45,12 @@ const MAX_LINEUPS = 150;
 const SCORE_SCALE = 1e6;
 const MAX_UNITS = 2000; // salary resolution of the knapsack bound
 const MAX_REBUILD_SALARY_STEPS = 1000; // a real slate's prices move in $100 steps: 501
-// A counter, never a clock, so two runs on the same input always agree; a real board needs a few hundred thousand a lineup.
-// The whole request's ceiling is minutes of work, never seconds (Adam 2026-11-02; 200 million took 52 to 91 seconds, measured 2026-11-03).
-// No lineup has a smaller one, and a lineup the ceiling reaches is dropped with a sentence, so every lineup served is proven best.
-const BATCH_NODE_LIMIT = 600000000;
-const NODE_LIMIT = BATCH_NODE_LIMIT;
-const DIAG_NODE_LIMIT = 3000000; // the quarterback pre-checks, which only write a note; a bend gets what the request has left
+// No step limit on the lineups (Adam 2026-11-03): a build ends on finishing, the ten minute limit (server/lib/app-build.js,
+// site-src/site-worker.js) or Stop, and every lineup served is proven best. The one counters left are the quarterback pre-checks':
+// each search's own limit and one total for all the checks and their diagnoses (the old half of the request's budget), so they
+// can never eat the build; they only write notes and never choose or change a lineup.
+const DIAG_NODE_LIMIT = 3000000;
+const CHECK_TOTAL_LIMIT = 300000000;
 
 /** Adam's D55 rules, each a toggle, all on unless he switches one off (the QB stack is stackOwn / stackOpp, D73). */
 export const RULE_KEYS = Object.freeze([
@@ -269,10 +270,11 @@ function normaliseSettings(settings, slate, existingCount, notes) {
     allowRbGames: new Set(idList(s.allowRbGames).map(upper)),
     avoidGames: new Set(idList(s.avoidGames).map(upper)),
     noTrim: Boolean(s._noTrim),
-    nodeLimit: num(s._nodeLimit) ?? NODE_LIMIT,
-    batchNodeLimit: num(s._batchNodeLimit) ?? BATCH_NODE_LIMIT,
     diagNodeLimit: num(s._diagNodeLimit) ?? DIAG_NODE_LIMIT,
-    bendNodeLimit: num(s._bendNodeLimit) ?? Infinity, // a test's; in use a bend's trials get what the request has left
+    checkTotalLimit: num(s._checkTotalLimit) ?? CHECK_TOTAL_LIMIT, // tests only to change
+    checkUsed: 0, // nodes the quarterback checks and their diagnoses have used, against checkTotalLimit
+    deadline: num(s._deadline) ?? undefined, // epoch ms: the page-thread fallback's ten minute limit (site-src/site-worker.js); none in the app's worker
+    bendNodeLimit: num(s._bendNodeLimit) ?? Infinity, // tests only; a bend's trials have no limit in use
     stats: s._stats && typeof s._stats === "object" ? s._stats : null
   };
 }
@@ -429,7 +431,9 @@ const oppStackActive = (opts) => !(opts.stackOpp === 0 && opts.stackOppOrMore);
 export function generateLineups(args) {
   const notes = [];
   try {
-    const { rows, slate, settings, existing, boardMode, onLineup } = args ?? {};
+    const { rows, slate, existing, boardMode, onLineup, deadline } = args ?? {};
+    // `deadline` (epoch ms): the page-thread fallback's ten minute limit; the settings carry it to every search, the bend trials and the checks.
+    const settings = typeof deadline === "number" && args.settings && typeof args.settings === "object" ? { ...args.settings, _deadline: deadline } : args?.settings;
     return runMode(rows, slate, settings, existing, notes, boardMode, onLineup);
   } catch (e) {
     warn("lineup: generate failed", { error: e && e.message });
@@ -517,8 +521,6 @@ function run(rows, slate, settings, existing, notes, onLineup) {
     }
   }
 
-  // One step budget; the quarterback checks never take the half kept for the lineups — rules-repo review 2026-10-17 finding 4
-  opts.budget = { used: 0, floor: Math.ceil(opts.batchNodeLimit / 2) };
   const mustNoted = entryQbChecks(rows, settings, slate, existingList.length, prevKeys, opts, st, notes);
 
   if (opts.stats) opts.stats.exactSalaryUnits = st.exact;
@@ -580,37 +582,34 @@ function buildBatch(c) {
   const room = forcedRoom(st, opts, prevKeys);
   const forcedStates = new Map();
   const madeBefore = () => (lineups.length ? `The ${lineups.length} made before it are returned.` : "No lineups were made.");
-  // The step budget is spent: the lineup in hand is not proven best, so it is dropped and nothing past it is made.
-  const budgetNote = (n) => `The search hit its step limit of ${Math.min(opts.nodeLimit, opts.batchNodeLimit).toLocaleString("en-US")} for the whole request while making lineup ${n + 1} of ${opts.count}; ${lineups.length ? `the ${lineups.length} made before it are returned` : "no lineups were made"}.`;
   for (let n = 0; n < opts.count; n++) {
     const eased = new Set([...easedUntil].filter(([, last]) => last >= n).map(([key]) => key));
     const { ids: forced, waits: waited } = forcedSet(c.plan, counts, n, opts.count, room, eased, bentOut);
     for (const w of waited) waits.set(w.key, w.why);
     // PROJECT.md Part 4 Optimizer: forced again, his older drop reason gives way to a later one. `bentOut` (every key
     // any bend ever dropped) is never cleared: it is forcedSet's never-forced-again-past-saving guard, and clearing it
-    // here let a bent, then re-forced, player drain the step budget once more (round-ten review, 2026-10-17).
+    // here let a bent, then re-forced, player cost the search time once more (round-ten review, 2026-10-17).
     for (const id of forced) bentKeys.delete(st.keyOfId.get(id));
     const lst = forced.length ? forcedState(c.rows, opts, st, forced, forcedStates) : st;
     const lprev = lst === st ? prev : lst.fatal ? null : makePrevIndex(lst, prevKeys, 1);
     const avail = lst.fatal ? { trimmed: 0 } : availableLists(lst, opts, counts, lprev);
-    const batchLeft = opts.batchNodeLimit - opts.budget.used;
-    const result = lst.fatal ? { best: null, nodes: 0, aborted: false } : searchOne(lst, avail, lprev, opts, Math.max(0, Math.min(opts.nodeLimit, batchLeft)));
-    opts.budget.used += result.nodes;
+    const result = lst.fatal ? { best: null, nodes: 0 } : searchOne(lst, avail, lprev, opts, Infinity);
     if (opts.stats) {
       opts.stats.nodes = (opts.stats.nodes ?? 0) + result.nodes;
       opts.stats.trimmed = (opts.stats.trimmed ?? 0) + avail.trimmed;
     }
-    if (result.aborted) {
-      notes.push(budgetNote(n));
+    // The deadline (the page-thread fallback only): the lineup in hand is not proven best, so it is dropped; the finished ones are returned.
+    const endedByDeadline = () => notes.push(stopSentence("ceiling", lineups.length, opts.count, BUILD_CEILING_MS));
+    if (result.timedOut) {
+      endedByDeadline();
       break;
     }
     let players = result.best;
     let bent = null;
     if (!players) {
-      const b = bendLineup(c, forced, lst, n, opts.batchNodeLimit - opts.budget.used);
-      opts.budget.used += b.nodes;
-      if (b.budgetOut) {
-        notes.push(budgetNote(n));
+      const b = bendLineup(c, forced, lst, n);
+      if (b.timedOut) {
+        endedByDeadline();
         break;
       }
       if (!b.players) {
@@ -812,45 +811,46 @@ function forcedState(rows, opts, st, forced, cache) {
   return cache.get(sig);
 }
 
-/** Lineup n bent by soft.js chooseBend's trial; {why} when nothing bends, {budgetOut} when the step budget ran out, a trial that found a
- *  lineup but could not prove it best included: such a lineup is never served. */
-function bendLineup(c, forced, lst, n, budget) {
+/** Lineup n bent by soft.js chooseBend's trial; {why} when nothing bends, {timedOut} past the deadline (a trial's lineup then is not proven best, so none is chosen). */
+function bendLineup(c, forced, lst, n) {
   const { opts } = c;
-  const d = diagnose(c.rows, c.settings, c.slate, c.existingCount, c.prevKeys, opts, null, { forced, budget });
+  const d = diagnose(c.rows, c.settings, c.slate, c.existingCount, c.prevKeys, opts, null, { forced });
+  if (d.timedOut) return { timedOut: true }; // a trial's lineup past the deadline is not proven best: never chosen
   const pick = chooseBend(d.trials);
-  if (pick?.aborted) return { budgetOut: true, nodes: d.nodes };
   if (!pick) {
-    if (d.nodes >= budget) return { budgetOut: true, nodes: d.nodes };
     const names = listNames(forced.map((id) => c.st.byId.get(id)?.name ?? id));
     const minUnchecked = d.trials.some((t) => t.kind === "minForce" && t.unchecked);
     const why = lst.fatal && minUnchecked ? `the Min % players for this lineup (${names}) cannot all be placed: ${lst.fatal.replace(/\.$/, "")}`
       : diagnosisSentence(d.trials, { n, existingCount: c.existingCount, perQb: opts.qbStacks.size > 0, capText: money(opts.cap) });
-    return { why, nodes: d.nodes };
+    return { why };
   }
   const dropped = pick.dropAll ? forced : pick.drop ? [pick.drop] : [];
-  return { players: pick.best, label: bendLabel(pick, d.trials), dropped, nodes: d.nodes };
+  return { players: pick.best, label: bendLabel(pick, d.trials), dropped };
 }
 
 /**
  * The one best classic lineup by projection among `rows`, for the single Build (optimize.js exactClassic, Adam 2026-11-02): this
  * engine's search with no roster rule, every team capped (no D76 exemption, as Build's Max per team has always been) and "stackQbWith or
- * more" teammates. `rows`: only men the caller may roster, the locks among them. Returns { ids, aborted }, ids null when no lineup
- * exists, or { fatal } with this engine's sentence. `aborted`: the step limit ran out, so the lineup is not proven best.
- * `oneGameOk`: lift DraftKings' two-games rule, only to say that rule is what left no lineup. `nodeLimit`: a test's step limit.
+ * more" teammates. `rows`: only men the caller may roster, the locks among them. Returns { ids }, ids null when no lineup
+ * exists, or { fatal } with this engine's sentence. The search has no step limit: what it returns is proven best. `deadline` (epoch ms,
+ * default now plus the ten minute BUILD_CEILING_MS) ends it unfinished, read on the clock every 4,096 nodes: { ids: null, timedOut: true }.
+ * `oneGameOk`: lift DraftKings' two-games rule, only to say that rule is what left no lineup.
  */
-export function bestClassicExact(rows, { locks, cap, maxPerTeam, stackQbWith, oneGameOk = false, nodeLimit }) {
+export function bestClassicExact(rows, { locks, cap, maxPerTeam, stackQbWith, oneGameOk = false, deadline = Date.now() + BUILD_CEILING_MS }) {
   const notes = [];
   const opts = normaliseSettings({
     count: 1, minUnique: 1, locks, cap, maxPerTeam, objective: "proj", stackOpp: 0, stackOppOrMore: true, stackOwn: 0, stackOwnOrMore: true,
-    rules: { starredQbOnly: false, noSameTeamRbs: false, noSameGameRbs: false, noDstVsOwnPlayers: false }, capAllTeams: true, _cash: true, _nodeLimit: nodeLimit
+    rules: { starredQbOnly: false, noSameTeamRbs: false, noSameGameRbs: false, noDstVsOwnPlayers: false }, capAllTeams: true, _cash: true
   }, null, 0, notes);
   opts.stackOwn = stackQbWith; // Build's own count: Make N's request limit (STACK_OWN_MAX) has never applied to it
+  opts.deadline = deadline;
   const st = prepare(rows, opts, notes);
   if (st.fatal) return { fatal: st.fatal };
   st.oneGameOk = oneGameOk;
   const prev = makePrevIndex(st, [], 1);
-  const r = searchOne(st, availableLists(st, opts, new Map(), prev), prev, opts, opts.nodeLimit);
-  return { ids: r.best ? r.best.map((c) => c.id) : null, aborted: r.aborted };
+  const r = searchOne(st, availableLists(st, opts, new Map(), prev), prev, opts, Infinity);
+  if (r.timedOut) return { ids: null, timedOut: true }; // not proven best: never served
+  return { ids: r.best ? r.best.map((c) => c.id) : null };
 }
 
 /** Per-QB entries: each unlocked entry QB is tried alone first; one who fits no lineup gets a note; returns the keys noted. */
@@ -865,56 +865,33 @@ function entryQbChecks(rows, settings, slate, existingCount, prevKeys, opts, st,
     o2.capCount = opts.capCount;
     const st2 = prepare(rows, o2, scratch);
     if (st2.fatal) continue; // he and the locks do not fit together (salary or slots): not his stack settings, as for any quarterback
-    const lim = stepsLeft(opts, opts.diagNodeLimit, opts.budget.floor);
+    const lim = Math.max(0, Math.min(opts.diagNodeLimit, opts.checkTotalLimit - opts.checkUsed)); // one total for every check and diagnosis: they never eat the build
     if (lim === 0) {
-      notes.push(uncheckedQbNote(qb.name, opts, true));
+      notes.push(uncheckedQbNote(qb.name));
       reported.add(qb.key);
       continue;
     }
     const prev2 = makePrevIndex(st2, prevKeys, 1);
     const r = searchOne(st2, availableLists(st2, o2, new Map(), prev2), prev2, o2, lim);
-    opts.budget.used += r.nodes;
+    opts.checkUsed += r.nodes;
     if (opts.stats) opts.stats.checkNodes = (opts.stats.checkNodes ?? 0) + r.nodes;
+    if (r.timedOut) break; // past the deadline the build itself ends at its first search; no more checks and no note
     if (r.best) continue;
     reported.add(qb.key);
     if (r.aborted) {
-      notes.push(uncheckedQbNote(qb.name, opts, lim < opts.diagNodeLimit)); // never a silent drop — rules-repo review 2026-10-17 finding 3
+      notes.push(uncheckedQbNote(qb.name)); // never a silent drop — rules-repo review 2026-10-17 finding 3
       continue;
     }
     const d = diagnose(rows, settings, slate, existingCount, prevKeys, opts, qb.id);
-    opts.budget.used += d.nodes;
-    notes.push(`${qb.name} cannot be in any lineup with his stack settings: ${checkSentence(d.trials, opts, existingCount)}.`);
+    if (d.timedOut) { reported.delete(qb.key); break; } // past the deadline: no note from a diagnosis that did not finish
+    notes.push(`${qb.name} cannot be in any lineup with his stack settings: ${diagnosisSentence(d.trials, { n: 0, existingCount, perQb: opts.qbStacks.size > 0, capText: money(opts.cap) })}.`);
   }
   return reported;
 }
 
-/** The step limit for one check or diagnosis trial: `cap`, cut to what is left above `floor` (0 once reached). */
-function stepsLeft(opts, cap, floor) {
-  return Math.max(0, Math.min(cap, opts.batchNodeLimit - floor - opts.budget.used));
-}
-
-/** "the <who> used up their share of the request's step limit (S of L)": the words both kinds of check notes use. */
-function checksShareText(opts, who) {
-  const share = opts.batchNodeLimit - opts.budget.floor;
-  return `the ${who} used up their share of the request's step limit (${share.toLocaleString("en-US")} of ${opts.batchNodeLimit.toLocaleString("en-US")})`;
-}
-
-/** An entry quarterback whose solo check ran out of steps (its own limit, or the checks' share when `budgetSpent`). */
-function uncheckedQbNote(name, opts, budgetSpent) {
-  const why = budgetSpent ? checksShareText(opts, "quarterback checks") : `the check hit its step limit of ${opts.diagNodeLimit.toLocaleString("en-US")}`;
-  return `${name}'s stack settings could not be checked (${why}); if he is in no lineup, they may be why.`;
-}
-
-/** soft.js diagnosisSentence for a quarterback check, the trials cut short by the checks' share of the step budget
- *  named as such, never as "no single setting is the cause" — rules-repo review 2026-10-17 finding 4. */
-function checkSentence(trials, opts, existingCount) {
-  const ctx = { n: 0, existingCount, perQb: opts.qbStacks.size > 0, capText: money(opts.cap) };
-  const skipped = trials.filter((t) => t.skipped).map((t) => t.label);
-  if (!skipped.length) return diagnosisSentence(trials, ctx);
-  const rest = trials.filter((t) => !t.skipped);
-  const tail = `; ${checksShareText(opts, "quarterback checks")} before these could be checked: ${skipped.join("; ")}`;
-  if (!rest.some((t) => t.found || t.unchecked)) return `no lineup keeps every setting; no single setting was found to be the cause${tail}`;
-  return `${diagnosisSentence(rest, ctx)}${tail}`;
+/** An entry quarterback whose solo pre-check ran too long to finish (its own limit or the checks' total; it only writes this note and never changes a lineup). */
+function uncheckedQbNote(name) {
+  return `${name}'s stack settings could not be checked (the check ran too long to finish); if he is in no lineup, they may be why.`;
 }
 
 /** The cap a "must" player has reached for this lineup, or null: his own Max % only. His position's Max % no longer
@@ -1447,6 +1424,8 @@ function searchOne(st, avail, prev, opts, nodeLimit) {
   let opps = 0; // D73: offensive players of the team the quarterback faces
   let nodes = 0;
   let aborted = false;
+  let timedOut = false;
+  const deadline = opts.deadline ?? Infinity; // epoch ms; only bestClassicExact sets one (the single Build's ten minute limit)
 
   // D73 stack: the global rule prepare() resolved once (st.global).
   const global = st.global;
@@ -1643,7 +1622,12 @@ function searchOne(st, avail, prev, opts, nodeLimit) {
 
     const dfs = (gi, kRem, start, rem, score) => {
       if (nodes >= nodeLimit) {
-        aborted = true; // the count never passes the limit, so the shared budget is never overdrawn — rules-repo review 2026-10-17 finding 4
+        aborted = true; // only a quarterback pre-check's limit or a test's reaches this; the lineups' searches pass Infinity
+        return;
+      }
+      if ((nodes & 4095) === 0 && Date.now() >= deadline) { // the clock is read every 4,096 nodes, never a step count
+        aborted = true;
+        timedOut = true;
         return;
       }
       nodes++;
@@ -1681,7 +1665,7 @@ function searchOne(st, avail, prev, opts, nodeLimit) {
     dfs(0, groups.length ? groups[0].need : 0, 0, rem0, lockScore);
     if (aborted) break;
   }
-  return { best, nodes, aborted };
+  return { best, nodes, aborted, timedOut };
 }
 
 /** True when the sorted ids of `a` come before those of `b` (the last tie-break). */
@@ -1770,26 +1754,30 @@ function diagnose(rows, settings, slate, existingCount, prevKeys, opts, pin = nu
     const avail = availableLists(st2, o2, batchCounts, prev2);
     return searchOne(st2, avail, prev2, o2, limit);
   };
-  // One step budget (rules-repo review 2026-10-17 finding 4): a bend's trials get what the batch has left; a quarterback check's
-  // diagnosis, which only writes a note, its own limit, stopping above the half kept for the lineups. The caller charges the nodes; a trial its share cut short is skipped.
-  const budget = soft ? soft.budget : opts.batchNodeLimit - opts.budget.floor - opts.budget.used;
+  // A bend's trials have no limit (a test's `_bendNodeLimit` aside); a quarterback check's diagnosis, which only writes a note, has its
+  // own and draws on the checks' one total (opts.checkTotalLimit), so it can never eat the build. Past the deadline the trials stop.
   let nodes = 0;
+  let timedOut = false;
   for (const i of soft ? trialOrder(trials) : trials.keys()) {
     const t = trials[i];
-    const limit = Math.max(0, Math.min(soft ? opts.bendNodeLimit : opts.diagNodeLimit, budget - nodes));
+    const limit = soft ? opts.bendNodeLimit : Math.max(0, Math.min(opts.diagNodeLimit, opts.checkTotalLimit - opts.checkUsed));
     const r = run(t, limit);
     nodes += r.nodes;
+    if (!soft) opts.checkUsed += r.nodes;
+    if (r.timedOut) {
+      timedOut = true;
+      break;
+    }
     if (opts.stats) {
       opts.stats.trialsRun = (opts.stats.trialsRun ?? 0) + 1;
       const key = soft ? "bendNodes" : "diagNodes"; // PROJECT.md Part 4 Optimizer: a bend's diagnosis steps are counted in stats.bendNodes, the quarterback checks' in stats.diagNodes
       opts.stats[key] = (opts.stats[key] ?? 0) + r.nodes;
     }
     Object.assign(t, { found: Boolean(r.best), unchecked: !r.best && r.aborted, aborted: r.aborted, best: r.best, limit });
-    if (!soft && t.unchecked && limit < opts.diagNodeLimit) t.skipped = true;
     // The starred-quarterback cause is worded only when nothing else would allow the lineup, so that case runs on.
     if (soft && chooseBend([t]) && !(t.cause && !t.cause.plainly)) break;
   }
-  return { trials, nodes, run };
+  return { trials, nodes, run, timedOut };
 }
 
 // --------------------------------------------------------------------------------------------------------

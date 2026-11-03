@@ -9,7 +9,7 @@ export const CONFIGS = Object.freeze([
   Object.freeze({ QB: 1, RB: 2, WR: 3, TE: 2, DST: 1 })
 ]);
 
-// Least change first; locks, excludes, the cap and the step limits never bend.
+// Least change first; locks, excludes, the cap and the ten minute limit never bend.
 export const BEND_ORDER = Object.freeze([
   "minForce", "playerMax", "posMax", "spreadDst", "minUnique", "qbStackEntry", "qbStackGlobal", "maxPerTeam", "rule", "starredQbOut", "avoidGames"
 ]);

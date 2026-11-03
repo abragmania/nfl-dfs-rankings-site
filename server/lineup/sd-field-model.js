@@ -198,7 +198,8 @@ export function seatOwnership(own, exponent) {
 }
 
 /**
- * The slate's best legal lineup's projection (section 4), unrounded, or null when there is none: the app's optimiser
+ * The slate's best legal lineup's projection (section 4), unrounded, or null when there is none, or when the optimiser did not
+ * finish within its ten minutes (null means "not worked out" as well as "no lineup"): the app's optimiser
  * (optimizeShowdown, no locks) on `rows` under `excludes`, summed as each chosen candidate's own projection (the
  * Captain's at the multiplier). With no excludes this is the field's best, the one the gap and Z use (the field does not
  * know Adam's excludes); with his excludes it is the meter's displayed "best possible". The one copy the meter

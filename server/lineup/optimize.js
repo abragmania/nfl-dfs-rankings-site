@@ -1,7 +1,7 @@
 // Lineup optimiser for the DraftKings classic slate (PROJECT.md D1: QB, RB, RB, WR, WR, WR, TE, FLEX (RB/WR/TE),
 // DST, $50,000 cap). It is a pure function over board rows (server/rank/board.js gives id, dkId, name, pos,
-// rosterPositions, team, opp, gameId, salary, proj, own, value, flags, status): no network, no date or time
-// logic at all (D30). It reads no file, so the public site can run it in a browser (DECISIONS.md D71). It
+// rosterPositions, team, opp, gameId, salary, proj, own, value, flags, status): no network, and no date or time
+// logic (D30) except the clock of its one ten minute limit (the exact search, build-control.js BUILD_CEILING_MS). It reads no file, so the public site can run it in a browser (DECISIONS.md D71). It
 // maximises projection; the "lev" and "projMinusOwn" objectives are retired (Adam 2026-10-15, Lev measure to be
 // redesigned; projection minus ownership removed) and a request naming one is built on projection with a note
 // (retiredObjectiveNote). Overrides are already merged into the rows it receives (D28), and it only ever rosters
@@ -20,6 +20,7 @@ import { warn } from "../lib/log.js";
 import { rowIsOut } from "../rank/sidelined.js"; // pure: the public site runs this in a browser (D71)
 import { countsTowardStack } from "./stack-rules.js";
 import { retiredObjectiveNote } from "./objective.js"; // pure; the note's one copy, re-exported so every importer keeps working
+import { BUILD_CEILING_MS, singleBuildCeilingSentence } from "./build-control.js"; // pure leaf: the ten minute limit and its sentence
 import { bestClassicExact } from "./multi.js"; // the exact search (Adam 2026-11-02); multi.js imports nothing from this file
 import { oneGameSentence } from "./dk-entries.js"; // pure; the one copy of DraftKings' two-games sentence
 
@@ -145,6 +146,7 @@ export function failure(message, cap) {
  * @param {Array}   [options.flexPositions]  positions the FLEX slot accepts, default RB/WR/TE (D1)
  * @param {number}  [options.maxFromTeam]    most players from one NFL team, null for no limit
  * @param {number}  [options.stackQbWith]    minimum RB/WR/TE from each rostered QB's own team
+ * @param {number}  [options._ceilingMs]     tests only: the classic search's time limit in ms, default BUILD_CEILING_MS (ten minutes)
  * @returns {{lineup:Array,salaryUsed:number,salaryLeft:number,totalProj:number,totalOwn:(number|null),feasible:boolean,message:string,notes:Array<string>}}
  */
 export function optimizeLineup(rows, options = {}) {
@@ -334,7 +336,7 @@ function run(rows, options, cap) {
   }
 
   // ---- classic slots: the exact search ------------------------------------------------------------------
-  if (classicSlots(slots, flexPositions)) return exactClassic(all, byId, base, lockCands, notes, num(options._nodeLimit) ?? undefined);
+  if (classicSlots(slots, flexPositions)) return exactClassic(all, byId, base, lockCands, notes, Date.now() + (num(options._ceilingMs) ?? BUILD_CEILING_MS));
 
   // ---- build, then improve ------------------------------------------------------------------------------
   let starts = buildStarts(ctx, lockFit.slotToLock, lockCands);
@@ -380,18 +382,20 @@ function classicSlots(slots, flexPositions) {
  * The exact lineup on the classic slots (Adam 2026-11-02): multi.js finds it among `all`, every man the rules allow on the
  * whole slate, and it is seated, checked by violation() and shown by present() as if all nine were locked (showdown.js'
  * shape). Not routed through generateLineups: its Max per team skips the quarterback's game (D76), and a lineup it bends would
- * break the stack. An illegal lineup, or one the step limit left unproven, is refused, never served.
+ * break the stack. An illegal lineup is refused, never served. `deadline` (epoch ms): the ten minute limit, for both searches together;
+ * past it the answer is a failure carrying singleBuildCeilingSentence, which every caller already shows as "no lineup".
  */
-function exactClassic(all, byId, base, lockCands, notes, nodeLimit) {
+function exactClassic(all, byId, base, lockCands, notes, deadline) {
   const { cap } = base;
   const ctx = makeCtx(all, base);
   const rows = all.map((c) => byId.get(c.id));
-  const settings = { locks: base.lockIds, cap, maxPerTeam: base.maxFromTeam, stackQbWith: base.stackQbWith, nodeLimit };
+  const settings = { locks: base.lockIds, cap, maxPerTeam: base.maxFromTeam, stackQbWith: base.stackQbWith, deadline };
   const found = bestClassicExact(rows, settings);
   if (found.fatal) return failure(found.fatal, cap);
-  if (found.aborted) return failure("The search hit its step limit before it could prove a lineup best, so none was made.", cap);
+  if (found.timedOut) return failure(singleBuildCeilingSentence(), cap);
   if (!found.ids) {
     const oneGame = bestClassicExact(rows, { ...settings, oneGameOk: true });
+    if (oneGame.timedOut) return failure(singleBuildCeilingSentence(), cap);
     return failure(oneGame.ids ? oneGameSentence(upperGame(byId.get(oneGame.ids[0]))) : infeasibleMessage(ctx, lockCands), cap);
   }
   const men = found.ids.map((id) => ctx.pool.find((c) => c.id === id));

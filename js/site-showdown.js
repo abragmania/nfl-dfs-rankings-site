@@ -114,18 +114,19 @@ export const SHOWDOWN_GENERATE_FAILED = () => errorBody("LINEUP_GENERATE_FAILED"
  * showdown, counted for minimum unique as the app counts its own; the app's saved lineups are not, D69), curvesRead (as the
  * meter's) }. The body is checked before anything else, as the route does; a made GPP answer carries SITE_SAVED_NOTE among its
  * notes (which saved lineups were counted; Cash counts none, so none there), and a board whose week is unknown counts no saved
- * lineup and says so instead. `onLineup`: the engine's snapshot after each finished lineup (opt-worker.js). `partial`: a build ended
+ * lineup and says so instead. `onLineup`: the engine's snapshot after each finished lineup (opt-worker.js). `deadline`: epoch ms, only on
+ * the page-thread fallback (site-worker.js): the engine ends itself there. `partial`: a build ended
  * early (site-worker.js endedSiteResult), answered in place of a search.
  * Returns the route's body. Runs in opt-worker.js (runShowdownGenerate) or on the page.
  */
-export function showdownGenerateResponse({ board, body: rawBody, saved = [], curvesRead = null, onLineup, partial }) {
+export function showdownGenerateResponse({ board, body: rawBody, saved = [], curvesRead = null, onLineup, deadline, partial }) {
   const body = rawBody ?? {};
   if (!usableBoard(board)) return noBoardAnswer(board);
   const checked = generateBodyCheck(body);
   if (checked.error) return errorBody("VALIDATION_ERROR", checked.error);
   const week = board.slate?.week;
   return routeBody(generateAnswer({
-    board, body, field: checked.field, generate: partial ? () => partial : (run) => generateShowdownLineups({ ...run, onLineup }),
+    board, body, field: checked.field, generate: partial ? () => partial : (run) => generateShowdownLineups({ ...run, onLineup, deadline }),
     // Cash counts no saved lineup (the engine hands Cash no existing lineups), so its answer carries no saved-lineups note.
     readSaved: () => (Number.isInteger(week)
       ? { saved: Array.isArray(saved) ? saved : [], ...(body.settings?.mode === "cash" ? {} : { note: SITE_SAVED_NOTE }) }
@@ -138,7 +139,7 @@ export function showdownGenerateResponse({ board, body: rawBody, saved = [], cur
 export const runShowdownGenerate = createWorkerRunner({
   kind: "showdown", failed: SHOWDOWN_GENERATE_FAILED, label: "showdown generate: failed",
   finish: (args, partial, reason) => showdownGenerateResponse({ ...args, partial: endedSiteResult(partial, reason, args.body?.settings?.count ?? 1) }),
-  onPage: (args) => showdownGenerateResponse(args)
+  onPage: (args, deadline) => showdownGenerateResponse({ ...args, deadline })
 });
 
 /**
