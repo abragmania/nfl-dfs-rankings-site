@@ -25,7 +25,7 @@ import { swapsAnswer } from "../server/showdown/swaps.js";
 import { generateBodyCheck, generateAnswer, WEEK_UNKNOWN_SAVED_NOTE } from "../server/showdown/generate-answer.js";
 import { curvesFromText, curvesMissingSentence, curvesUnreadableSentence } from "../server/showdown/field-curves-core.js";
 import { envelope, errorBody } from "./site-generate.js";
-import { createWorkerRunner } from "./site-worker.js";
+import { createWorkerRunner, endedSiteResult } from "./site-worker.js";
 import { validateLineupName } from "../server/lineups/validate.js";
 import {
   pageStorage, readKey, writeKey, sortedNewestFirst, nextLineupName, makeDeviceId, DEVICE_ID_PREFIX, STORAGE_UNAVAILABLE_MESSAGE
@@ -114,17 +114,18 @@ export const SHOWDOWN_GENERATE_FAILED = () => errorBody("LINEUP_GENERATE_FAILED"
  * showdown, counted for minimum unique as the app counts its own; the app's saved lineups are not, D69), curvesRead (as the
  * meter's) }. The body is checked before anything else, as the route does; a made GPP answer carries SITE_SAVED_NOTE among its
  * notes (which saved lineups were counted; Cash counts none, so none there), and a board whose week is unknown counts no saved
- * lineup and says so instead.
+ * lineup and says so instead. `onLineup`: the engine's snapshot after each finished lineup (opt-worker.js). `partial`: a build ended
+ * early (site-worker.js endedSiteResult), answered in place of a search.
  * Returns the route's body. Runs in opt-worker.js (runShowdownGenerate) or on the page.
  */
-export function showdownGenerateResponse({ board, body: rawBody, saved = [], curvesRead = null }) {
+export function showdownGenerateResponse({ board, body: rawBody, saved = [], curvesRead = null, onLineup, partial }) {
   const body = rawBody ?? {};
   if (!usableBoard(board)) return noBoardAnswer(board);
   const checked = generateBodyCheck(body);
   if (checked.error) return errorBody("VALIDATION_ERROR", checked.error);
   const week = board.slate?.week;
   return routeBody(generateAnswer({
-    board, body, field: checked.field, generate: generateShowdownLineups,
+    board, body, field: checked.field, generate: partial ? () => partial : (run) => generateShowdownLineups({ ...run, onLineup }),
     // Cash counts no saved lineup (the engine hands Cash no existing lineups), so its answer carries no saved-lineups note.
     readSaved: () => (Number.isInteger(week)
       ? { saved: Array.isArray(saved) ? saved : [], ...(body.settings?.mode === "cash" ? {} : { note: SITE_SAVED_NOTE }) }
@@ -133,13 +134,10 @@ export function showdownGenerateResponse({ board, body: rawBody, saved = [], cur
   }), board);
 }
 
-// The longest wait for the worker's answer before it is called stuck (site-worker.js), as classic's: 150 lineups with their
-// meters took under half a second on the week 8 CAR@GB board (measured 2026-10-29).
-const SHOWDOWN_WORKER_TIMEOUT_MS = 20000;
-
-/** showdownGenerateResponse off the page's thread (site-worker.js, opt-worker.js), else on it. */
+/** showdownGenerateResponse off the page's thread (site-worker.js, opt-worker.js), else on it; .stop() ends a build with what is finished. */
 export const runShowdownGenerate = createWorkerRunner({
-  kind: "showdown", timeoutMs: SHOWDOWN_WORKER_TIMEOUT_MS, failed: SHOWDOWN_GENERATE_FAILED, label: "showdown generate: failed",
+  kind: "showdown", failed: SHOWDOWN_GENERATE_FAILED, label: "showdown generate: failed",
+  finish: (args, partial, reason) => showdownGenerateResponse({ ...args, partial: endedSiteResult(partial, reason, args.body?.settings?.count ?? 1) }),
   onPage: (args) => showdownGenerateResponse(args)
 });
 

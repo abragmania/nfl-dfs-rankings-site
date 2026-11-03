@@ -12,7 +12,8 @@ import { parsePct, uniqueSavedName, duplicateSaveStatus } from "../lineup.js";
 import { newBuildId, batchBuild } from "../lineup-builds.js";
 import { toggleMustHave, bulkUids, filterBarHtml } from "../lineup-filter.js";
 import { lineupModeOf } from "../lineup-cash.js";
-import { postShowdownLineup, getShowdowns, supports, postShowdownLineupGenerate } from "./api.js"; // supports: D71, what the public site implements
+import { postShowdownLineup, getShowdowns, supports, postShowdownLineupGenerate, stopShowdownLineupGenerate, canStopShowdownLineupGenerate } from "./api.js"; // supports: D71, what the public site implements
+import { afterBuildingDelay, goSitsBelow } from "../lineup-stop.js";
 import { resyncMeterExcludes } from "./lineup-meter.js";
 import { halfName } from "./figures-label.js";
 import { resyncSwapsExcludes } from "./lineup-swaps.js";
@@ -27,6 +28,8 @@ const opt = {
   key: null, // the showdown these settings and this batch belong to
   ks: S.defaultKeyState(), // {mode, gpp, cash} for opt.key, mirrored to localStorage on every change
   generating: false,
+  buildingShown: false, // the build has run a second, so the screen says so (lineup-stop.js)
+  buildingBelow: false, // the Make button sits on its own line under the summary, so the build keeps that layout
   saving: false,
   error: null, // the server's sentence for a refused or failed Make
   formError: null, // a box that is not a percent: blocks Make
@@ -178,6 +181,12 @@ async function doGenerate(ctx) {
   opt.error = null;
   opt.saveError = null;
   ctx.commit();
+  const cancelShow = afterBuildingDelay(() => {
+    if (!opt.generating) return;
+    opt.buildingBelow = goSitsBelow(ctx.container?.querySelector("#sd-opt-go-btn"), ctx.container?.querySelector("#sd-opt-summary"));
+    opt.buildingShown = true;
+    ctx.commit();
+  });
   let stale = false;
   try {
     const data = await (ctx.post ?? postShowdownGenerate)(madeFor, sent);
@@ -194,7 +203,9 @@ async function doGenerate(ctx) {
     stale = opt.key !== madeFor;
     if (!stale) opt.error = requestFailureText(e); // a non-JSON answer reads "The server's answer could not be read (status N)." (B3)
   } finally {
+    cancelShow();
     opt.generating = false;
+    opt.buildingShown = false;
   }
   ctx.commit();
   if (stale) return;
@@ -267,6 +278,7 @@ async function saveCards(uids, ctx) {
 
 // ---------- the pieces lineup.js draws ----------
 
+const showing = () => opt.generating && opt.buildingShown; // a build under a second shows nothing (lineup-stop.js); doGenerate itself refuses a second click
 const busy = () => opt.generating || opt.saving;
 
 const bandView = (board) => ({ mode: opt.ks.mode, ms: modeState(), board, error: opt.error, formError: opt.formError });
@@ -293,7 +305,7 @@ export function optimizerBandHtml(board) {
  *  `board`: the served board (its reading names the cash basis, its rows whether Median and Ceiling can be built). */
 export function optimizerGoRowHtml(board) {
   if (!optimizerLive()) return "";
-  return V.goRowHtml({ summary: S.summaryText(modeState(), opt.ks.mode, board), count: S.requestCount(modeState().count, opt.ks.mode), generating: opt.generating, busy: busy(), formError: opt.formError });
+  return V.goRowHtml({ summary: S.summaryText(modeState(), opt.ks.mode, board), count: S.requestCount(modeState().count, opt.ks.mode), generating: showing(), busy: showing() || opt.saving, formError: opt.formError, canStop: canStopShowdownLineupGenerate(), below: opt.buildingBelow });
 }
 
 /** The batch (its head, source line, exposure tables and cards), drawn full width below both columns (Adam 2026-10-19 11:17 PM:
@@ -304,7 +316,7 @@ export function optimizerResultsBlockHtml(board, saved) {
   const keys = r ? savedKeysOf(saved, r.mode, board) : new Set();
   const { personOf } = S.boardIndex(board);
   const savedFlags = r ? r.lineups.map((l) => keys.has(S.sdSetKey(l.slots, personOf))) : [];
-  return V.resultsHtml({ results: r, generating: opt.generating, saveError: opt.saveError, busy: busy(), savedFlags, board, expSortDir: opt.expSortDir, mustHave: opt.mustHave, mustHaveNames: opt.mustHaveNames });
+  return V.resultsHtml({ results: r, generating: showing(), saveError: opt.saveError, busy: busy(), savedFlags, board, expSortDir: opt.expSortDir, mustHave: opt.mustHave, mustHaveNames: opt.mustHaveNames });
 }
 
 /**
@@ -512,6 +524,13 @@ export function wireOptimizer(ctx) {
     if (piece) wireBand(piece, ctx);
   }
   c.querySelector("#sd-opt-go-btn")?.addEventListener("click", () => doGenerate(ctx));
+  c.querySelector("#sd-opt-stop-btn")?.addEventListener("click", async () => {
+    try {
+      await stopShowdownLineupGenerate();
+    } catch (e) {
+      console.error("showdown generate: the Stop was not heard", e); // the build runs on to its answer
+    }
+  });
   c.querySelectorAll("[data-sd-opt-save]").forEach((btn) => btn.addEventListener("click", () => saveCards([btn.dataset.sdOptSave], ctx)));
   c.querySelector("[data-sd-opt-save-all]")?.addEventListener("click", () => saveCards(shownUids(), ctx)); // the shown lineups only while filtered (D77)
   c.querySelectorAll("[data-sd-opt-discard]").forEach((btn) => {

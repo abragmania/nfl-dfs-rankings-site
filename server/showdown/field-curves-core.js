@@ -45,7 +45,7 @@ export function curvesUnreadableSentence(why) {
   return `The Showdown field curves file ${CURVES_FILE_SHOWN} could not be read (${why}), ${CANNOT}.`;
 }
 
-const deepFreeze = (o) => {
+export const deepFreeze = (o) => {
   if (o && typeof o === "object" && !Object.isFrozen(o)) {
     Object.freeze(o);
     for (const v of Object.values(o)) deepFreeze(v);

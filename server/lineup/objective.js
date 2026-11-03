@@ -5,6 +5,18 @@ import { medianOf } from "./cash.js"; // pure; the cash build's median (cash mod
 
 const num = (v) => (typeof v === "number" && Number.isFinite(v) ? v : null);
 
+/**
+ * The note a build carries when its request (or a setting saved before 2026-10-15) names a retired objective:
+ * "lev" (Adam 2026-10-15, Lev measure to be redesigned) or "projMinusOwn" (Adam 2026-10-15: projection minus
+ * ownership removed). Such a request is built on projection instead, never refused. Null for any other value.
+ * The one copy: optimize.js, multi.js, showdown.js and the routes use it.
+ */
+export function retiredObjectiveNote(objective) {
+  if (objective === "lev") return "Leverage is no longer an objective (it has no measure yet), so these lineups maximise projection.";
+  if (objective === "projMinusOwn") return "Projection minus ownership is no longer an objective, so these lineups maximise projection.";
+  return null;
+}
+
 /** The refusal when a ceiling build is asked of a board with no TwoGun ceiling on any row. */
 export const NO_CEILING_SENTENCE = "This board has no TwoGun ceilings (current mode, or no TwoGun board could be read), so lineups cannot be built by ceiling; build by projection.";
 

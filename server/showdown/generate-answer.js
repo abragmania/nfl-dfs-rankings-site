@@ -61,6 +61,17 @@ function attachMeter({ board, enriched, settings, field, extraNotes, loadCurves 
 
 const fail = (status, code, message, log = null) => ({ ok: false, status, code, message, ...(log ? { log } : {}) });
 
+/** What the engine is asked on a served board: { run: {rows, settings, existing, boardMode}, note? } or { failed } (a generateAnswer refusal). */
+export function generateRun({ board, body, readSaved }) {
+  const rows = lineupRows(board);
+  const checked = validateShowdownGenerateSettings(body.settings, rows);
+  if (checked.error) return { failed: fail(400, "VALIDATION_ERROR", checked.error) };
+  const savedRead = readSaved();
+  if (savedRead.error) return { failed: fail(500, savedRead.error.code ?? "LINEUPS_UNREADABLE", savedRead.error.message) };
+  // Whose wording and Cash basis the engine reads: the board's own reading (noteModeOf).
+  return { run: { rows, settings: checked.settings, existing: savedRead.saved, boardMode: noteModeOf(board) }, note: savedRead.note };
+}
+
 /**
  * The generate answer on a served board, after generateBodyCheck passed: { ok: true, result } (the 200 body before its
  * envelope) or { ok: false, status, code, message, log? }. `body`: the request ({settings, field}); `field`: generateBodyCheck's.
@@ -69,24 +80,20 @@ const fail = (status, code, message, log = null) => ({ ok: false, status, code, 
  * `generate`: the engine (../lineup/showdown-multi.js generateShowdownLineups).
  */
 export function generateAnswer({ board, body, field, readSaved, loadCurves, generate }) {
-  // Whose wording and Cash basis the engine reads: the board's own reading (noteModeOf).
-  const boardMode = noteModeOf(board);
   // Every figure carries its source and as-of date: the answer names this game's ticked sources (board.figures), null for a
   // board without them. The figures key (board-view.js figuresKeyOf) comes back with a save, so a save after the sources
   // changed is refused (lineups-routes.js).
   const projection = board.figures?.projection ?? null;
   const ownership = board.figures?.ownership ?? null;
   const figuresKey = board.figures?.key ?? null;
-  const rows = lineupRows(board);
-  const checked = validateShowdownGenerateSettings(body.settings, rows);
-  if (checked.error) return fail(400, "VALIDATION_ERROR", checked.error);
   // Saved lineups of this showdown count for minimum unique only; with the week unknown there is no file to read.
-  const extraNotes = [];
-  const savedRead = readSaved();
-  if (savedRead.error) return fail(500, savedRead.error.code ?? "LINEUPS_UNREADABLE", savedRead.error.message);
-  if (savedRead.note) extraNotes.push(savedRead.note);
+  const asked = generateRun({ board, body, readSaved });
+  if (asked.failed) return asked.failed;
+  const { rows, settings, boardMode } = asked.run;
+  const checked = { settings };
+  const extraNotes = asked.note ? [asked.note] : [];
   try {
-    const result = generate({ rows, settings: checked.settings, existing: savedRead.saved, boardMode });
+    const result = generate(asked.run);
     // An engine crash is a 500 with its note, never a 200 with zero lineups (code review of 5500554, 2026-10-18).
     if (result.failed) {
       return fail(500, "LINEUP_GENERATE_FAILED", result.notes[result.notes.length - 1] ?? "Could not make showdown lineups.", { message: "showdown generate: the engine failed", extra: { notes: result.notes } });

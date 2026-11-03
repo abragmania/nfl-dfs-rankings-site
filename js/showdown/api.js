@@ -169,14 +169,24 @@ export async function getShowdownModes(key) {
 // count for minimum unique (D69). Runs off the page's thread when the browser allows. Never throws.
 export async function postShowdownLineupGenerate(key, payload) {
   try {
-    const [board, curvesRead] = await Promise.all([fieldBoard(key), fieldCurves()]);
-    const saved = readShowdownDeviceLineups(pageStorage(), key);
-    return await runShowdownGenerate({ board, body: payload, saved, curvesRead });
+    return await runShowdownGenerate(async () => {
+      const [board, curvesRead] = await Promise.all([fieldBoard(key), fieldCurves()]);
+      const saved = readShowdownDeviceLineups(pageStorage(), key);
+      return { board, body: payload, saved, curvesRead };
+    });
   } catch (e) {
     console.error("showdown generate: failed", e);
     return SHOWDOWN_GENERATE_FAILED();
   }
 }
+
+/** Ends the build in hand with the lineups finished so far (the Stop button). */
+export function stopShowdownLineupGenerate() {
+  return runShowdownGenerate.stop();
+}
+
+/** False on the page-thread fallback, where nothing can answer a click until the build is done. */
+export const canStopShowdownLineupGenerate = () => runShowdownGenerate.canStop();
 
 async function bakedLineups(key) {
   try {

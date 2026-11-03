@@ -2,15 +2,17 @@
 // (DECISIONS.md D69). tools/publish.mjs copies this file to out/js/opt-worker.js; site-worker.js starts it as a module
 // worker for site-src/api.js (the classic Optimizer) and site-showdown.js (the Showdown Optimizer, RULES.md D71) and falls
 // back to the page's thread when the browser cannot. Message in: {id, kind, args} (kind "showdown": the arguments of
-// site-showdown.js showdownGenerateResponse; otherwise those of site-generate.js generateResponse); message out: {id, response}.
+// site-showdown.js showdownGenerateResponse; otherwise those of site-generate.js generateResponse); messages out: {id, partial} (the
+// engine's answer so far) after each finished lineup, then {id, response}.
 import { generateResponse, errorBody } from "./site-generate.js";
 import { showdownGenerateResponse, SHOWDOWN_GENERATE_FAILED } from "./site-showdown.js";
 
 self.onmessage = (event) => {
   const { id, kind, args } = event.data ?? {};
   let response;
+  const onLineup = (partial) => self.postMessage({ id, partial });
   try {
-    response = kind === "showdown" ? showdownGenerateResponse(args ?? {}) : generateResponse(args ?? {});
+    response = kind === "showdown" ? showdownGenerateResponse({ ...args, onLineup }) : generateResponse({ ...args, onLineup });
   } catch (e) {
     console.error("lineup generate: failed", e);
     response = kind === "showdown" ? SHOWDOWN_GENERATE_FAILED() : errorBody("LINEUP_GENERATE_FAILED", "Could not make lineups.");

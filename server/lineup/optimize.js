@@ -7,6 +7,11 @@
 // (retiredObjectiveNote). Overrides are already merged into the rows it receives (D28), and it only ever rosters
 // players the DraftKings CSV supplied (D27).
 //
+// On DraftKings' classic slots the lineup is exact (Adam 2026-11-02): multi.js' search finds the provably best one under the
+// locks, excludes, max per team, the stack and the no-projection rule, and violation() and present() below check and show
+// it (exactClassic). The greedy-plus-swaps search stays only for other slot lists: Showdown's first run, which
+// server/lineup/showdown.js's exact search then overrules.
+//
 // It never throws. Bad input, impossible locks, or a cap that cannot be met all come back as
 // { feasible: false, message, notes: [] } with a sentence a human can act on (PROJECT.md Part 4, Lineup Builder
 // screen: "infeasibility explained in a sentence"). A successful build carries its remarks in `notes` and leaves
@@ -14,6 +19,11 @@
 import { warn } from "../lib/log.js";
 import { rowIsOut } from "../rank/sidelined.js"; // pure: the public site runs this in a browser (D71)
 import { countsTowardStack } from "./stack-rules.js";
+import { retiredObjectiveNote } from "./objective.js"; // pure; the note's one copy, re-exported so every importer keeps working
+import { bestClassicExact } from "./multi.js"; // the exact search (Adam 2026-11-02); multi.js imports nothing from this file
+import { oneGameSentence } from "./dk-entries.js"; // pure; the one copy of DraftKings' two-games sentence
+
+export { retiredObjectiveNote };
 
 // --------------------------------------------------------------------------------------------------------
 // Constants
@@ -23,21 +33,9 @@ const DEFAULT_CAP = 50000;
 const DEFAULT_SLOTS = Object.freeze(["QB", "RB", "RB", "WR", "WR", "WR", "TE", "FLEX", "DST"]);
 const DEFAULT_FLEX = Object.freeze(["RB", "WR", "TE"]);
 const OBJECTIVES = Object.freeze(new Set(["proj"]));
-
-/**
- * The note a build carries when its request (or a setting saved before 2026-10-15) names a retired objective:
- * "lev" (Adam 2026-10-15, Lev measure to be redesigned) or "projMinusOwn" (Adam 2026-10-15: projection minus
- * ownership removed). Such a request is built on projection instead, never refused. Null for any other value.
- * The one copy: multi.js, showdown.js and the routes use it too.
- */
-export function retiredObjectiveNote(objective) {
-  if (objective === "lev") return "Leverage is no longer an objective (it has no measure yet), so these lineups maximise projection.";
-  if (objective === "projMinusOwn") return "Projection minus ownership is no longer an objective, so these lineups maximise projection.";
-  return null;
-}
 const BUILD_MODES = Object.freeze(["score", "perDollar", "cheap"]);
 
-// Search bounds. The pool is pruned to the best TOP_PER_POS players per position by the chosen objective, plus
+// Search bounds of the greedy search (other slot lists only). The pool is pruned to the best TOP_PER_POS players per position by the chosen objective, plus
 // CHEAP_PER_POS cheapest per position (without them a top-40-by-projection pool can be unaffordable and the
 // builder would report a false infeasibility), plus every lock. Everything else is bounded by counters, never
 // by a clock, so two runs on the same input always return the same lineup.
@@ -135,7 +133,7 @@ export function failure(message, cap) {
 // --------------------------------------------------------------------------------------------------------
 
 /**
- * Build the best legal lineup it can.
+ * Build the best legal lineup: provably the best on DraftKings' classic slots (exactClassic), the best it can on any other.
  *
  * @param {Array<object>} rows       board rows (server/rank/board.js)
  * @param {object}  [options]
@@ -335,6 +333,9 @@ function run(rows, options, cap) {
     }
   }
 
+  // ---- classic slots: the exact search ------------------------------------------------------------------
+  if (classicSlots(slots, flexPositions)) return exactClassic(all, byId, base, lockCands, notes, num(options._nodeLimit) ?? undefined);
+
   // ---- build, then improve ------------------------------------------------------------------------------
   let starts = buildStarts(ctx, lockFit.slotToLock, lockCands);
 
@@ -369,6 +370,42 @@ function run(rows, options, cap) {
 
   return present(best.lineup, ctx, notes);
 }
+
+/** True for DraftKings' classic nine and FLEX, in any order the caller wrote the FLEX positions. */
+function classicSlots(slots, flexPositions) {
+  return slots.join() === DEFAULT_SLOTS.join() && [...flexPositions].sort().join() === [...DEFAULT_FLEX].sort().join();
+}
+
+/**
+ * The exact lineup on the classic slots (Adam 2026-11-02): multi.js finds it among `all`, every man the rules allow on the
+ * whole slate, and it is seated, checked by violation() and shown by present() as if all nine were locked (showdown.js'
+ * shape). Not routed through generateLineups: its Max per team skips the quarterback's game (D76), and a lineup it bends would
+ * break the stack. An illegal lineup, or one the step limit left unproven, is refused, never served.
+ */
+function exactClassic(all, byId, base, lockCands, notes, nodeLimit) {
+  const { cap } = base;
+  const ctx = makeCtx(all, base);
+  const rows = all.map((c) => byId.get(c.id));
+  const settings = { locks: base.lockIds, cap, maxPerTeam: base.maxFromTeam, stackQbWith: base.stackQbWith, nodeLimit };
+  const found = bestClassicExact(rows, settings);
+  if (found.fatal) return failure(found.fatal, cap);
+  if (found.aborted) return failure("The search hit its step limit before it could prove a lineup best, so none was made.", cap);
+  if (!found.ids) {
+    const oneGame = bestClassicExact(rows, { ...settings, oneGameOk: true });
+    return failure(oneGame.ids ? oneGameSentence(upperGame(byId.get(oneGame.ids[0]))) : infeasibleMessage(ctx, lockCands), cap);
+  }
+  const men = found.ids.map((id) => ctx.pool.find((c) => c.id === id));
+  const seated = assignLocks(men, ctx);
+  const lineup = seated.ok ? seated.slotToLock.map((i) => men[i]) : null;
+  const problem = seated.ok ? violation(lineup, ctx) : seated.message;
+  if (problem) {
+    warn("lineup: the exact search's lineup failed its check", { problem });
+    return failure(`The search's lineup failed its legality check, so it was not served: ${problem}`, cap);
+  }
+  return present(lineup, ctx, notes);
+}
+
+const upperGame = (row) => (row.gameId === null || row.gameId === undefined ? "one game" : String(row.gameId).trim().toUpperCase());
 
 function buildStarts(ctx, slotToLock, lockCands) {
   const starts = [];

@@ -242,13 +242,6 @@ export function bendLabel(pick, trials) {
   return plain ? `${pick.label} (${pick.cause.why}: ${pick.cause.names})` : pick.label;
 }
 
-/** The diagnosis's own lineup unless its run aborted; then the re-search's (`again`), which in the same fixed search
- *  order never ends worse when its limit is at least the trial's. */
-export function settleBend(pick, again) {
-  if (!pick.aborted || !again) return { players: pick.best, aborted: Boolean(pick.aborted) };
-  if (again.best && again.limit >= pick.limit) return { players: again.best, aborted: Boolean(again.aborted) };
-  return { players: pick.best, aborted: true };
-}
 
 export function bendTrials(s) {
   const trials = s.forced.map(({ id, name }) => ({ label: `the Min % on ${name}`, kind: "minForce", patch: {}, drop: id }));

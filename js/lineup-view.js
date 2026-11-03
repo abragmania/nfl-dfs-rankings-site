@@ -2,6 +2,7 @@
 // the saved-lineup cards, the pool beside them, the new-lineup cards and the Optimizer band, results and footer. These functions
 // read `state` and `opt` (owned by lineup.js) and draw HTML; they hold no state of their own beyond the two module variables
 // below (poolCallbacks, lastExposure), which only this file assigns. Wiring and actions stay in lineup.js and lineup-optimizer.js.
+import { buildingHtml, goLabelHtml, buildingRowClass } from "./lineup-stop.js";
 import { escapeHtml, money, dec1 } from "./format.js";
 import { store, matchesPosition, filterRows, sortRows, passesProjFloor, activeSlateRows, activeSlateGames, boardHasCeilings, isTwoGunMode } from "./state.js";
 import { sortableHeadHtml } from "./tabs.js";
@@ -838,14 +839,16 @@ function cashControlsHtml(rowById) {
  *  position: sticky holds them to the bottom of the screen over the whole tab, and lineup.js watchFooter hides them while neither the
  *  builder nor its results are in view. */
 function optimizerFooterHtml(board) {
-  const busy = opt.generating || opt.saving || (opt.mode === "cash" && cashBasisInfo(board).blocked); // cash: Build is disabled whenever cashBasisInfo blocks (no Cash basis, or no medians on a TwoGun basis)
+  const showing = opt.generating && opt.buildingShown; // a build under a second shows nothing (lineup-stop.js); doGenerate itself refuses a second click
+  const busy = showing || opt.saving || (opt.mode === "cash" && cashBasisInfo(board).blocked); // cash: Build is disabled whenever cashBasisInfo blocks (no Cash basis, or no medians on a TwoGun basis)
   // 🔵 d842f0b: a refusal from Build must show where Build was pressed, which can be far below the settings head.
   const footerError = opt.formError ? `<div class="lineup-status lineup-status-error opt-form-error-footer">${escapeHtml(opt.formError)}</div>` : "";
   return `
-    <div class="opt-footer">
+    <div class="opt-footer${buildingRowClass({ showing, below: opt.buildingBelow })}">
       ${footerError}
       <span class="opt-summary">${escapeHtml(optSummaryText(board))}</span>
-      <button type="button" id="opt-go-btn" class="lineup-build-btn opt-go opt-go-big"${busy ? " disabled" : ""}>${opt.generating ? "Making…" : "Build"}</button>
+      ${buildingHtml({ showing, canStop: opt.canStop, stopId: "opt-stop-btn" })}
+      <button type="button" id="opt-go-btn" class="lineup-build-btn opt-go opt-go-big"${busy ? " disabled" : ""}>${goLabelHtml({ showing, idle: "Build", busy: "Making…" })}</button>
     </div>`;
 }
 
@@ -899,7 +902,7 @@ function newLineupsTabHtml(rowById, savedHere) {
   parts.push(mustHaveBarHtml(shown.length, r?.lineups.length ?? 0));
   if (opt.error) parts.push(`<div class="lineup-status lineup-status-error">${escapeHtml(opt.error)}</div>`);
   if (!r) {
-    parts.push(`<div class="saved-lineups-empty">${opt.generating ? "Making lineups…" : "No new lineups. Press Build to make some."}</div>`);
+    parts.push(`<div class="saved-lineups-empty">${opt.generating && opt.buildingShown ? "Making lineups…" : "No new lineups. Press Build to make some."}</div>`);
     lastExposure = { exposure: {}, subtitle: "" };
     return parts.join("");
   }

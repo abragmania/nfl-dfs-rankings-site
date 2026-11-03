@@ -9,7 +9,8 @@ import { nextSort } from "./lineup-sort.js"; // Adam 2026-10-17: sort options; g
 import { toggleMustHave, bulkUids } from "./lineup-filter.js";
 import { OPT_POSITIONS, optExposureHtml, exposureLimit, minLimit } from "./lineup-exposure.js";
 import { wireQbStacks } from "./lineup-qb-stacks.js";
-import { postLineupGenerate, postLineup } from "./api.js";
+import { postLineupGenerate, postLineup, stopLineupGenerate, canStopLineupGenerate } from "./api.js";
+import { afterBuildingDelay, goSitsBelow } from "./lineup-stop.js";
 import {
   boardHasMedians, buildCashSettings, poolReport, wantSwaps, swapDecisionHtml, excludedListHtml, lineupModeOf, CASH_NO_MEDIAN_TEXT, CASH_UNKNOWN_BASIS_TEXT,
 } from "./lineup-cash.js";
@@ -656,10 +657,17 @@ async function doGenerate() {
   }
   let built = false;
   opt.generating = true;
+  opt.canStop = canStopLineupGenerate();
   opt.error = null;
   opt.saveError = null;
   opt.resultsTab = "new"; // D74: a Go shows the New lineups tab
   commit();
+  const cancelShow = afterBuildingDelay(() => {
+    if (!opt.generating) return;
+    opt.buildingBelow = goSitsBelow(lastContainer?.querySelector("#opt-go-btn"), lastContainer?.querySelector(".opt-summary"));
+    opt.buildingShown = true;
+    commit();
+  });
   try {
     const data = await postLineupGenerate(sent);
     if (seasonWeekKey(store.get().board) !== madeForWeek || (store.get().activeSlateKey ?? null) !== madeForSlate) {
@@ -695,6 +703,9 @@ async function doGenerate() {
     }
   } catch (e) {
     opt.error = `Could not reach the server: ${e.message}`;
+  } finally {
+    cancelShow();
+    opt.buildingShown = false;
   }
   opt.generating = false;
   commit();
@@ -880,6 +891,13 @@ export function wireOptimizer(container) {
   wireExposureSort(container);
   wirePickButtons(container);
   container.querySelector("#opt-go-btn")?.addEventListener("click", () => doGenerate());
+  container.querySelector("#opt-stop-btn")?.addEventListener("click", async () => {
+    try {
+      await stopLineupGenerate();
+    } catch (e) {
+      console.error("lineup generate: the Stop was not heard", e); // the build runs on to its answer
+    }
+  });
   // Projection or Ceiling, Adam's pick each time; a greyed Ceiling (no ceilings on this board) does nothing.
   container.querySelectorAll("[data-action='opt-objective']").forEach((btn) => {
     btn.addEventListener("click", () => {

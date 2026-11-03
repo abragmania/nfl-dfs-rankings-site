@@ -289,7 +289,7 @@ export function* fieldCells(table, gapUnit, best, ranks = null) {
   if (gapUnit === "table") throw new Error("fieldCells: the table unit reads histogramCells, not the field table.");
   const { nLeft, nProj, weights, moments, leftStep, projOrigin, projStep } = table;
   const rk = gapUnit === "rank" ? ranks ?? fieldRanks(table) : null;
-  const most = 3 * projStep; // six men, each rounded by at most half a step
+  const most = ((table.size ?? 6) / 2) * projStep; // each man is rounded by at most half a step; only the classic table carries its size, Showdown's is six
   for (let i = 0; i < nLeft; i++) {
     const r = i * nProj;
     for (let j = 0; j < nProj; j++) {

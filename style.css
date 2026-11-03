@@ -1911,6 +1911,21 @@ select.opt-input { text-align: left; padding: 3px 4px; }
 .opt-footer { position: sticky; bottom: 0; z-index: 5; background: var(--bg); border-top: 1px solid var(--border); padding: var(--sp-2) 0; margin-top: var(--sp-3); box-shadow: 0 -6px 12px -8px rgba(0,0,0,0.35); display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3); flex-wrap: wrap; }
 .opt-summary { color: var(--text-muted); font-size: var(--fs-sm); min-width: 0; }
 .opt-form-error-footer { flex: 1 1 100%; margin: 0; } /* the refusal sits on its own row above the summary and Build */
+/* A build past its first second (public/js/lineup-stop.js): the footer stays one row at its idle height and Build where it was; the summary gives up the room. */
+.opt-footer.is-building { flex-wrap: nowrap; }
+.opt-footer.is-building .opt-summary { flex: 1 1 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.opt-footer.is-building > .lineup-build-btn { flex: none; }
+/* A long summary has the button on its own line when idle: the build keeps those two lines, its group on the button's line. */
+.opt-footer.is-building-below { justify-content: flex-start; }
+.opt-footer.is-building-below > .lineup-build-btn { flex: none; }
+.opt-footer.is-building-below > .opt-building { order: 1; flex: 1 1 0; }
+.opt-footer .lineup-status { margin-top: 0; }
+.opt-building { flex: 0 1 auto; min-width: 0; display: flex; align-items: center; gap: var(--sp-2); white-space: nowrap; }
+.opt-building .lineup-status { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.opt-building .lineup-build-btn { flex: none; }
+.lineup-build-btn:has(.opt-go-now) { position: relative; }
+.opt-go-hold { visibility: hidden; }
+.opt-go-now { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; white-space: nowrap; }
 .opt-go-big { padding: 8px 28px; font-size: var(--fs-md); font-weight: 700; }
 .opt-subtitle { margin: var(--sp-2) 0 2px; font-size: 12px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--text-muted); }
 .opt-set-chips { padding: 3px 0 var(--sp-1); }

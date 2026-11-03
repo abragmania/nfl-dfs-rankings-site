@@ -34,8 +34,11 @@ export const MAX_LINEUPS = 150;
 export const MAX_UNIQUE = SHOWDOWN_SLOTS.length; // six slots
 // Least change first; locks, includes, excludes, the cap and the DraftKings rules never bend (Adam 2026-10-18; includes 2026-10-19).
 export const BEND_ORDER = Object.freeze(["minForce", "playerMax", "minUnique"]);
-const PER_LINEUP_STEPS = 3000000; // a counter, never a clock, so two runs agree
-const BATCH_STEPS = 60000000;
+// A counter, never a clock, so two runs agree. The whole request's ceiling is minutes of work, never seconds (Adam 2026-11-02): 8 million steps a
+// second with nothing to prune, measured 2026-11-03, and the worst real 150-lineup build used under 1 million. No lineup has a smaller
+// one, and a lineup the ceiling reaches is dropped with a sentence, so every lineup served is proven best.
+const BATCH_STEPS = 2000000000;
+const PER_LINEUP_STEPS = BATCH_STEPS;
 
 const num = (v) => (typeof v === "number" && Number.isFinite(v) ? v : null);
 const round2 = (n) => Math.round(n * 100) / 100;
@@ -205,6 +208,8 @@ function projTotal(men) {
  * @param {string}   [args.boardMode] "twogun" or "current": the board's mode, which picks a cash build's basis (cash.js cashBasis)
  *   and names a locked man with no TwoGun projection in a TwoGun projection build (noTwoGunProjectionNote)
  * @param {object}   [args.limits]  { perLineup, batch } step budgets (tests)
+ * @param {Function} [args.onLineup] called after each finished lineup with the answer so far ({lineups, exposure, notes, bends, problems,
+ *   ruleWarnings}), for a build the public site may end early (site-src/site-worker.js)
  * @returns {{lineups: {slots: {slot, id, personId}[], salary, proj, bent?}[], exposure: {personId, cpt, flex}[], notes: string[],
  *   bends: {lineup, label}[], problems: {lineup, problems: string[]}[], ruleWarnings: string[], failed?: true}} Never throws.
  *   `problems` lists any lineup that broke a hard rule (checkShowdownLineup); the route refuses to serve one. `failed` marks
@@ -238,10 +243,11 @@ function runMode(args, notes) {
     return { ...none, mode: "cash", basis: null };
   }
   notes.push(...c.notes);
-  return { ...build({ ...args, settings: c.settings, existing: [] }, notes), mode: "cash", basis: c.settings.objective };
+  const onLineup = args.onLineup && ((partial) => args.onLineup({ ...partial, mode: "cash", basis: c.settings.objective }));
+  return { ...build({ ...args, settings: c.settings, existing: [], onLineup }, notes), mode: "cash", basis: c.settings.objective };
 }
 
-function build({ rows, settings, existing, limits, boardMode }, notes) {
+function build({ rows, settings, existing, limits, boardMode, onLineup }, notes) {
   const s = settings && typeof settings === "object" ? settings : {};
   let ruleWarnings = [];
   const none = () => ({ lineups: [], exposure: [], notes, bends: [], problems: [], ruleWarnings });
@@ -391,9 +397,10 @@ function build({ rows, settings, existing, limits, boardMode }, notes) {
   const lineups = [];
   const bends = [];
   const problems = [];
-  let anyAborted = false;
   const madeBefore = () => (lineups.length ? `The ${lineups.length} made before it are returned.` : "No lineups were made.");
 
+  const named = (map) => [...map].map(([id, { pct }]) => ({ name: `${board.byCand.get(id).name} (${roleWord(board.byCand.get(id))})`, pct }));
+  const shortNote = (made) => percentNote({}, named(maxes), named(mins), count, made);
   const capped = (c) => maxes.has(c.id) && !lockSet.has(c.id) && (counts.get(c.id) ?? 0) >= maxes.get(c.id).n;
   // Every solve, bends included, carries the lineup rules and the includes: they never bend (D81; Adam 2026-10-19).
   // `noRules` and `noIncludes` are the diagnoses only.
@@ -509,9 +516,9 @@ function build({ rows, settings, existing, limits, boardMode }, notes) {
       return null;
     };
     const { result, bent, dropped } = solveSteered(solve, forced, steer, bend);
-    if (!result.best) {
+    if (!result.best || result.aborted) {
       if (result.aborted || budget.used >= budget.batch) {
-        notes.push(`Lineup ${n + 1} of ${count} could not be made: the search stopped at its step limit without finding one. ${madeBefore()}`);
+        notes.push(`Lineup ${n + 1} of ${count} could not be made: the search stopped at its step limit before proving one best. ${madeBefore()}`);
       } else if (rulesExhausted()) {
         notes.push(rulesShortNote({ made: lineups.length, count, saved: savedCount > 0, cap, rules: ruleSet.rules, nameOf: ruleSet.nameOf }));
       } else if (s.mode === "cash") {
@@ -524,7 +531,6 @@ function build({ rows, settings, existing, limits, boardMode }, notes) {
       }
       break;
     }
-    if (result.aborted) anyAborted = true;
     // A dropped Min man waits two lineups unless he is out of slack (soft.js's rule for the classic Min %).
     for (const id of dropped) {
       bentOut.add(id);
@@ -550,11 +556,14 @@ function build({ rows, settings, existing, limits, boardMode }, notes) {
     priors.push(new Set(men.map(keyOf)));
     for (const c of men) counts.set(c.id, (counts.get(c.id) ?? 0) + 1);
     lineups.push(lineup);
+    if (onLineup) {
+      // A build ended early (site-src/site-worker.js, server/lib/app-build.js) is short of the lineups its percents were sized for, and says so.
+      const short = lineups.length < count ? shortNote(lineups.length) : null;
+      onLineup({ lineups: [...lineups], exposure: exposureOf(lineups), notes: short ? [...notes, short] : [...notes], bends: [...bends], problems: [...problems], ruleWarnings });
+    }
   }
-  if (anyAborted) notes.push("The search hit its step limit on at least one lineup, so that lineup may not be the very best available.");
   notes.push(...unmetMinNotes(plan, counts, { complete: lineups.length === count, bentKeys, waits: new Map() }));
-  const named = (map) => [...map].map(([id, { pct }]) => ({ name: `${board.byCand.get(id).name} (${roleWord(board.byCand.get(id))})`, pct }));
-  const short = percentNote({}, named(maxes), named(mins), count, lineups.length);
+  const short = shortNote(lineups.length);
   if (short) notes.push(short);
   return { lineups, exposure: exposureOf(lineups), notes, bends, problems, ruleWarnings };
 }

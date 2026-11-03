@@ -4,6 +4,7 @@
 // the classic Optimizer's own helpers and classes (public/js/lineup.js optimizerControlsHtml, cashControlsHtml,
 // optimizerFooterHtml, newLineupsTabHtml, optLineupCardHtml, rightRowHtml); optimizer.js owns the state and the requests.
 import { escapeHtml, money, dec1 } from "../format.js";
+import { buildingHtml, goLabelHtml, buildingRowClass } from "../lineup-stop.js";
 import { settingRowHtml, settingGroupHtml, settingSubtitleHtml, numberBoxHtml } from "../lineup-settings.js";
 import { modeSwitchHtml, cashChipHtml, cashTotalsText, unusedCapText, builtInTextCash } from "../lineup-cash.js";
 import { cardPlayerRowHtml, teamColours } from "../lineup-card.js";
@@ -114,12 +115,13 @@ export function goLabel(count, generating) {
 }
 
 /** The Make row (classic optimizerFooterHtml and its sticky footer, 👁 V3): the summary and the button, the last piece of the builder's column. */
-export function goRowHtml({ summary, count, generating, busy, formError }) {
+export function goRowHtml({ summary, count, generating: showing, busy, formError, canStop = false, below = false }) {
   return `
-    <div class="opt-footer sd-opt-go">
+    <div class="opt-footer sd-opt-go${buildingRowClass({ showing, below })}">
       ${formError ? `<div class="lineup-status lineup-status-error opt-form-error-footer">${escapeHtml(formError)}</div>` : ""}
       <span class="opt-summary" id="sd-opt-summary">${escapeHtml(summary)}</span>
-      <button type="button" id="sd-opt-go-btn" class="lineup-build-btn opt-go opt-go-big"${busy ? " disabled" : ""}>${escapeHtml(goLabel(count, generating))}</button>
+      ${buildingHtml({ showing, canStop, stopId: "sd-opt-stop-btn" })}
+      <button type="button" id="sd-opt-go-btn" class="lineup-build-btn opt-go opt-go-big"${busy ? " disabled" : ""}>${goLabelHtml({ showing, idle: goLabel(count, false), busy: goLabel(count, true) })}</button>
     </div>`;
 }
 

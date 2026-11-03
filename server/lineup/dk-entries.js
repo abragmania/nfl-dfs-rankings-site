@@ -380,12 +380,17 @@ export function validateLineup(slots, pool, { statusById, sidelinedIds, revived,
     if (gameUnknown) {
       warnings.push("The two-games rule could not be checked because a player's Game Info in the entries file names no game.");
     } else if (games.size < 2) {
-      errors.push(`Every player is from one game (${[...games][0]}); DraftKings needs players from at least two different games.`);
+      errors.push(oneGameSentence([...games][0]));
     }
   }
 
   addNotes(errors, warnings, injuryNotes(known, pool, { statusById, sidelinedIds, revived }));
   return { errors, warnings, salary, games: [...games] };
+}
+
+/** The refusal of a lineup whose men all play in `game`. The one copy: the single Build says it too (optimize.js). */
+export function oneGameSentence(game) {
+  return `Every player is from one game (${game}); DraftKings needs players from at least two different games.`;
 }
 
 const addNotes = (errors, warnings, notes) => (errors.push(...notes.errors), warnings.push(...notes.warnings));

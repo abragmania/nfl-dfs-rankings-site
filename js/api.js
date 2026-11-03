@@ -14,7 +14,7 @@ import { boardWithEdits, putEdits, resetPlayerEdits, resetAllEdits } from "./sit
 import { buildCard, precheck, identityOf } from "../server/playercard/build.js";
 import { ndcAbbr, teamFileUrl, gamelogUrl, teamFileProblem, gamelogProblem } from "../server/playercard/ndc-files.js";
 import { boardWithWeights, readWeights, putWeights } from "./site-weights.js";
-import { createWorkerRunner } from "./site-worker.js";
+import { createWorkerRunner, endedSiteResult } from "./site-worker.js";
 
 export const READ_ONLY_MESSAGE = "Read-only on the live site. Do this in the app on your computer.";
 
@@ -272,26 +272,32 @@ export function postLineupOptimize() {
 
 // The Optimizer's work runs in a module worker (opt-worker.js) when the browser allows one, else on the page's thread
 // (site-worker.js, the one copy of the runner, which the Showdown Optimizer uses too).
-// Longest wait for the worker's answer. The search is bounded and takes well under a second on the real board; a
-// worker that has not answered by then is stuck, so it is stopped (a fresh one starts next time) and the visitor is
-// told plainly instead of the screen staying on "Making lineups".
-const WORKER_TIMEOUT_MS = 20000;
-
 const GENERATE_FAILED = () => siteError("LINEUP_GENERATE_FAILED", "Could not make lineups.");
 
 const runGenerate = createWorkerRunner({
-  kind: "classic", timeoutMs: WORKER_TIMEOUT_MS, failed: GENERATE_FAILED,
+  kind: "classic", failed: GENERATE_FAILED,
+  finish: async (args, partial, reason) => (await import("./site-generate.js")).generateResponse({ ...args, partial: endedSiteResult(partial, reason, args.body?.settings?.count ?? 1) }),
   onPage: async (args) => (await import("./site-generate.js")).generateResponse(args),
 });
+
+/** Ends the build in hand with the lineups finished so far (the Stop button). */
+export function stopLineupGenerate() {
+  return runGenerate.stop();
+}
+
+/** False on the page-thread fallback, where nothing can answer a click until the build is done. */
+export const canStopLineupGenerate = () => runGenerate.canStop();
 
 // Body and answer as POST /api/lineup/generate. Existing lineups (uniqueness and exposure) are this device's saved
 // lineups of the week; the app's own saved lineups are never counted (D69). Never throws: there is no server on the
 // site, so a failure is answered as the route's own LINEUP_GENERATE_FAILED, never as an unreachable server.
 export async function postLineupGenerate(payload) {
   try {
-    const [board, slate, wk] = await Promise.all([bakedVisitorBoard(), baked("baked/slate.json"), publishedWeek()]);
-    const saved = wk ? readDeviceLineups(pageStorage(), wk.season, wk.week) : [];
-    return await runGenerate({ board, slate, body: payload, saved });
+    return await runGenerate(async () => {
+      const [board, slate, wk] = await Promise.all([bakedVisitorBoard(), baked("baked/slate.json"), publishedWeek()]);
+      const saved = wk ? readDeviceLineups(pageStorage(), wk.season, wk.week) : [];
+      return { board, slate, body: payload, saved };
+    });
   } catch (e) {
     console.error("lineup generate: failed", e);
     return GENERATE_FAILED();

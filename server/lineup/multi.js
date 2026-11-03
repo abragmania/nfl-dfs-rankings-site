@@ -3,7 +3,7 @@
 // (D25 as amended 2026-10-15; scoring only, see objectiveScore) that keeps every rule Adam has switched on,
 // every lock, the uniqueness he set against his saved lineups and every earlier lineup of the batch, and the
 // per-position exposure caps as they stand at that moment (counted over this batch only, D74). It is a pure function over board rows: no network, no
-// clock, no file writes. The single-lineup builder (optimize.js) is separate and unchanged.
+// clock, no file writes. The single-lineup builder (optimize.js) checks and shows one lineup; its classic search is here (bestClassicExact).
 //
 // Search: exact depth-first branch and bound, deterministic, no dependencies. A lineup is enumerated as one of the
 // three position mixes the FLEX allows (3 RB, 4 WR or 2 TE), group by group (QB, RB, WR, TE, DST), each group a
@@ -20,16 +20,15 @@
 import { rowIsOut } from "../rank/sidelined.js"; // pure: the public site runs this engine in the browser (D69)
 import { assignSlots } from "./dk-entries.js";
 import { warn } from "../lib/log.js";
-import { retiredObjectiveNote } from "./optimize.js"; // pure: the site copies the engine (D69); one copy of the note
 import { countsTowardStack } from "./stack-rules.js"; // pure leaf; one copy of the stack predicate
 import {
   parseEntries, qbStackPrepare, globalRule, ruleFromEntry, mustPlan, withReachable, stackTrials, setsTeammates, setsOpponents, cappedMustNotes, mustAboveCapNotes
 } from "./qb-stacks.js"; // pure; per-QB stack settings
 import {
-  MAX_AT, CONFIGS, listNames, slotsFull, lockedSlotWords, minPlan, forcedSet, lowestScoreFirst, trialOrder, chooseBend, bendLabel, settleBend,
+  MAX_AT, CONFIGS, listNames, slotsFull, lockedSlotWords, minPlan, forcedSet, lowestScoreFirst, trialOrder, chooseBend, bendLabel,
   bendTrials, diagnosisSentence, percentNote, unmetMinNotes
 } from "./soft.js"; // pure; Min % and soft rules
-import { objectiveScore, ceilingOf, ceilingNotes, NO_CEILING_SENTENCE, FIGURE_BUILDS, figureOf } from "./objective.js"; // pure; cash mode job 1, 2026-10-17
+import { objectiveScore, ceilingOf, ceilingNotes, NO_CEILING_SENTENCE, FIGURE_BUILDS, figureOf, retiredObjectiveNote } from "./objective.js"; // pure; cash mode job 1, 2026-10-17
 export { ceilingOf, NO_CEILING_SENTENCE }; // every importer of multi.js keeps working
 import { cashEngineSettings, medianOf } from "./cash.js"; // pure; entered only when settings.mode is "cash" (cash mode job 1, 2026-10-17)
 
@@ -44,10 +43,13 @@ const DEFAULT_CAP = 50000; // D1; optimize.js uses the same default and the boar
 const MAX_LINEUPS = 150;
 const SCORE_SCALE = 1e6;
 const MAX_UNITS = 2000; // salary resolution of the knapsack bound
-// A counter, never a clock, so two runs on the same input always agree; a real board needs a few hundred thousand.
-const NODE_LIMIT = 40000000;
-const DIAG_NODE_LIMIT = 3000000;
-const BATCH_NODE_LIMIT = 200000000; // the whole request, so 150 slow lineups can never run away
+const MAX_REBUILD_SALARY_STEPS = 1000; // a real slate's prices move in $100 steps: 501
+// A counter, never a clock, so two runs on the same input always agree; a real board needs a few hundred thousand a lineup.
+// The whole request's ceiling is minutes of work, never seconds (Adam 2026-11-02; 200 million took 52 to 91 seconds, measured 2026-11-03).
+// No lineup has a smaller one, and a lineup the ceiling reaches is dropped with a sentence, so every lineup served is proven best.
+const BATCH_NODE_LIMIT = 600000000;
+const NODE_LIMIT = BATCH_NODE_LIMIT;
+const DIAG_NODE_LIMIT = 3000000; // the quarterback pre-checks, which only write a note; a bend gets what the request has left
 
 /** Adam's D55 rules, each a toggle, all on unless he switches one off (the QB stack is stackOwn / stackOpp, D73). */
 export const RULE_KEYS = Object.freeze([
@@ -270,6 +272,7 @@ function normaliseSettings(settings, slate, existingCount, notes) {
     nodeLimit: num(s._nodeLimit) ?? NODE_LIMIT,
     batchNodeLimit: num(s._batchNodeLimit) ?? BATCH_NODE_LIMIT,
     diagNodeLimit: num(s._diagNodeLimit) ?? DIAG_NODE_LIMIT,
+    bendNodeLimit: num(s._bendNodeLimit) ?? Infinity, // a test's; in use a bend's trials get what the request has left
     stats: s._stats && typeof s._stats === "object" ? s._stats : null
   };
 }
@@ -409,6 +412,8 @@ const oppStackActive = (opts) => !(opts.stackOpp === 0 && opts.stackOppOrMore);
  *   Every running back, receiver and tight end counts toward the stack (D55 as amended 2026-10-17); catchers is ignored.
  *   mode: "gpp" (default) or "cash" (cash.js cashEngineSettings patches the settings; the result gains mode and basis).
  * @param {string}   [args.boardMode] "twogun" or "current": the board's mode, which picks a cash build's basis (cash refuses any other)
+ * @param {Function} [args.onLineup] called after each finished lineup with the answer so far ({lineups, exposure, notes, bends}), for a build
+ *   the public site may end early (site-src/site-worker.js)
  * @param {Array}    [args.existing] Adam's saved lineups (arrays of ids, or objects with ids/lineup/players/slots);
  *   they count for minimum unique players only, never for the exposure caps (D74); in cash the route and the site pass
  *   none (existingForSlate) and the engine ignores any it is given (Cash 3b fix round, 2026-10-17)
@@ -424,8 +429,8 @@ const oppStackActive = (opts) => !(opts.stackOpp === 0 && opts.stackOppOrMore);
 export function generateLineups(args) {
   const notes = [];
   try {
-    const { rows, slate, settings, existing, boardMode } = args ?? {};
-    return runMode(rows, slate, settings, existing, notes, boardMode);
+    const { rows, slate, settings, existing, boardMode, onLineup } = args ?? {};
+    return runMode(rows, slate, settings, existing, notes, boardMode, onLineup);
   } catch (e) {
     warn("lineup: generate failed", { error: e && e.message });
     notes.push(`Could not make lineups: ${e && e.message ? e.message : "unexpected error"}.`);
@@ -442,12 +447,12 @@ function emptyExposure() {
 
 /** Cash mode job 1, 2026-10-17: GPP (mode "gpp" or absent) runs as it always did and never enters cash.js; cash runs on
  *  cashEngineSettings' patched settings everywhere and adds mode and basis; any other mode makes nothing. */
-function runMode(rows, slate, settings, existing, notes, boardMode) {
+function runMode(rows, slate, settings, existing, notes, boardMode, onLineup) {
   const mode = settings && typeof settings === "object" ? settings.mode : undefined;
   if (mode === undefined || mode === null || mode === "gpp") {
     // Cash mode job 2b, 2026-10-17: only cashEngineSettings may set the internal cash keys, never a GPP caller.
     const { _cash, capAllTeams, ...gpp } = settings && typeof settings === "object" ? settings : {};
-    return run(rows, slate, settings && typeof settings === "object" ? gpp : settings, existing, notes);
+    return run(rows, slate, settings && typeof settings === "object" ? gpp : settings, existing, notes, onLineup);
   }
   if (mode !== "cash") {
     notes.push("mode must be cash or gpp");
@@ -460,10 +465,11 @@ function runMode(rows, slate, settings, existing, notes, boardMode) {
   }
   notes.push(...c.notes);
   // Cash 3b fix round, 2026-10-17: saves never count in cash (Adam: no minimum unique), so the engine drops them itself.
-  return { ...run(rows, slate, c.settings, [], notes), mode: "cash", basis: c.settings.objective };
+  const cashSnapshot = onLineup && ((partial) => onLineup({ ...partial, mode: "cash", basis: c.settings.objective }));
+  return { ...run(rows, slate, c.settings, [], notes, cashSnapshot), mode: "cash", basis: c.settings.objective };
 }
 
-function run(rows, slate, settings, existing, notes) {
+function run(rows, slate, settings, existing, notes, onLineup) {
   if (!Array.isArray(rows) || rows.length === 0) {
     notes.push("No player rows were supplied, so there is nothing to build lineups from.");
     return { lineups: [], exposure: emptyExposure(), notes, bends: [] };
@@ -526,14 +532,17 @@ function run(rows, slate, settings, existing, notes) {
     notes.push(`${st.byId.get(id).name ?? id}'s Min % of ${pct} is under one lineup of ${opts.count}, so it forces nothing.`);
   }
   const plan = minPlan(minEntries(opts, st));
-  const b = buildBatch({ rows, settings, slate, existingCount: existingList.length, prevKeys, prev, counts, opts, st, plan, notes, mustNoted });
-  if (b.aborted && b.lineups.length) {
-    notes.push(`The search hit its step limit on at least one lineup, so that lineup may not be the very best available.`);
-  }
+  const named = (map) => [...map].map(([id, { pct }]) => ({ name: st.byId.get(id)?.name ?? id, pct }));
+  const shortNote = (made) => percentNote(opts.capPct, named(opts.playerCap), named(opts.playerMin), opts.count, made);
+  // A build ended early (site-src/site-worker.js, server/lib/app-build.js) is short of the lineups its percents were sized for, and says so.
+  const snapshot = onLineup && ((lineups, bends) => {
+    const short = lineups.length < opts.count ? shortNote(lineups.length) : null;
+    onLineup({ lineups: [...lineups], exposure: exposureOf(st, prevKeys, opts), notes: short ? [...notes, short] : [...notes], bends: [...bends] });
+  });
+  const b = buildBatch({ rows, settings, slate, existingCount: existingList.length, prevKeys, prev, counts, opts, st, plan, notes, mustNoted, snapshot });
   notes.push(...unmetMinNotes(plan, counts, { complete: b.lineups.length === opts.count, bentKeys: b.bentKeys, waits: b.waits }));
   notes.push(...mustAboveCapNotes(mustAboveCapItems(st, opts, counts, prevKeys.slice(existingList.length)), b.lineups.length));
-  const named = (map) => [...map].map(([id, { pct }]) => ({ name: st.byId.get(id)?.name ?? id, pct }));
-  const short = percentNote(opts.capPct, named(opts.playerCap), named(opts.playerMin), opts.count, b.lineups.length);
+  const short = shortNote(b.lineups.length);
   if (short) notes.push(short);
   return { lineups: b.lineups, exposure: exposureOf(st, prevKeys, opts), notes, bends: b.bends };
 }
@@ -568,13 +577,11 @@ function buildBatch(c) {
   const bentOut = new Set(); // forcedSet's guard: dropped by any bend, never forced again once past saving (never cleared)
   const waits = new Map();
   const easedUntil = new Map(); // DK key -> last lineup index a bent-out Min player is left unforced
-  const stepOut = new Map();
   const room = forcedRoom(st, opts, prevKeys);
   const forcedStates = new Map();
   const madeBefore = () => (lineups.length ? `The ${lineups.length} made before it are returned.` : "No lineups were made.");
-  // The whole request's step budget is spent: the lineup in hand is not proven best, so it is dropped.
-  const budgetNote = (n) => `The search hit its step limit of ${opts.batchNodeLimit.toLocaleString("en-US")} for the whole request while making lineup ${n + 1} of ${opts.count}; ${lineups.length ? `the ${lineups.length} made before it are returned` : "no lineups were made"}.`;
-  let aborted = false;
+  // The step budget is spent: the lineup in hand is not proven best, so it is dropped and nothing past it is made.
+  const budgetNote = (n) => `The search hit its step limit of ${Math.min(opts.nodeLimit, opts.batchNodeLimit).toLocaleString("en-US")} for the whole request while making lineup ${n + 1} of ${opts.count}; ${lineups.length ? `the ${lineups.length} made before it are returned` : "no lineups were made"}.`;
   for (let n = 0; n < opts.count; n++) {
     const eased = new Set([...easedUntil].filter(([, last]) => last >= n).map(([key]) => key));
     const { ids: forced, waits: waited } = forcedSet(c.plan, counts, n, opts.count, room, eased, bentOut);
@@ -582,53 +589,39 @@ function buildBatch(c) {
     // PROJECT.md Part 4 Optimizer: forced again, his older drop reason gives way to a later one. `bentOut` (every key
     // any bend ever dropped) is never cleared: it is forcedSet's never-forced-again-past-saving guard, and clearing it
     // here let a bent, then re-forced, player drain the step budget once more (round-ten review, 2026-10-17).
-    for (const id of forced) {
-      bentKeys.delete(st.keyOfId.get(id));
-      stepOut.delete(st.keyOfId.get(id));
-    }
+    for (const id of forced) bentKeys.delete(st.keyOfId.get(id));
     const lst = forced.length ? forcedState(c.rows, opts, st, forced, forcedStates) : st;
     const lprev = lst === st ? prev : lst.fatal ? null : makePrevIndex(lst, prevKeys, 1);
     const avail = lst.fatal ? { trimmed: 0 } : availableLists(lst, opts, counts, lprev);
     const batchLeft = opts.batchNodeLimit - opts.budget.used;
-    const batchBinds = batchLeft <= opts.nodeLimit;
     const result = lst.fatal ? { best: null, nodes: 0, aborted: false } : searchOne(lst, avail, lprev, opts, Math.max(0, Math.min(opts.nodeLimit, batchLeft)));
     opts.budget.used += result.nodes;
     if (opts.stats) {
       opts.stats.nodes = (opts.stats.nodes ?? 0) + result.nodes;
       opts.stats.trimmed = (opts.stats.trimmed ?? 0) + avail.trimmed;
     }
-    if (result.aborted && batchBinds) {
+    if (result.aborted) {
       notes.push(budgetNote(n));
       break;
     }
-    if (result.aborted) aborted = true;
     let players = result.best;
     let bent = null;
     if (!players) {
-      // PROJECT.md Part 4 Optimizer, Min % and soft rules: a step run-out may drop only this lineup's Min players.
-      const b = result.aborted && !forced.length ? { nodes: 0 } : bendLineup(c, forced, lst, n, opts.batchNodeLimit - opts.budget.used, result.aborted);
+      const b = bendLineup(c, forced, lst, n, opts.batchNodeLimit - opts.budget.used);
       opts.budget.used += b.nodes;
       if (b.budgetOut) {
         notes.push(budgetNote(n));
-        break;
-      }
-      if (!b.players && result.aborted) {
-        notes.push(`Lineup ${n + 1} of ${opts.count} could not be made: the search stopped at its limit of ${opts.nodeLimit.toLocaleString("en-US")} steps without finding one. ${madeBefore()}`);
         break;
       }
       if (!b.players) {
         notes.push(`No single setting could be bent for lineup ${n + 1} of ${opts.count}: ${b.why}. ${madeBefore()}`);
         break;
       }
-      if (b.aborted) aborted = true;
       // PROJECT.md Part 4 Optimizer, Min % and soft rules: a dropped Min waits two lineups unless out of slack.
       for (const id of b.dropped.filter((d) => !b.players.some((p) => p.key === st.keyOfId.get(d)))) {
         const key = st.keyOfId.get(id);
         bentOut.add(key);
-        if (result.aborted) {
-          stepOut.set(key, `the search hit its step limit of ${opts.nodeLimit.toLocaleString("en-US")} on a lineup that held him`);
-          waits.set(key, stepOut.get(key));
-        } else bentKeys.add(key);
+        bentKeys.add(key);
         easedUntil.set(key, n + 2);
       }
       players = b.players;
@@ -652,9 +645,9 @@ function buildBatch(c) {
       bends.push({ lineup: n + 1, label: bent });
     }
     lineups.push(lineup);
+    c.snapshot?.(lineups, bends);
   }
-  for (const [key, why] of stepOut) if (!waits.has(key)) waits.set(key, why);
-  return { lineups, bends, bentKeys, waits, aborted };
+  return { lineups, bends, bentKeys, waits };
 }
 
 /** The Min % players as soft.js minPlan entries: the pool candidate with his caps as limits, or `out` with the reason. */
@@ -819,11 +812,13 @@ function forcedState(rows, opts, st, forced, cache) {
   return cache.get(sig);
 }
 
-/** Lineup n bent by soft.js chooseBend's trial; {why} when nothing bends, {budgetOut} when the step budget ran out. */
-function bendLineup(c, forced, lst, n, budget, runOut) {
+/** Lineup n bent by soft.js chooseBend's trial; {why} when nothing bends, {budgetOut} when the step budget ran out, a trial that found a
+ *  lineup but could not prove it best included: such a lineup is never served. */
+function bendLineup(c, forced, lst, n, budget) {
   const { opts } = c;
-  const d = diagnose(c.rows, c.settings, c.slate, c.existingCount, c.prevKeys, opts, null, { forced, budget, runOut });
+  const d = diagnose(c.rows, c.settings, c.slate, c.existingCount, c.prevKeys, opts, null, { forced, budget });
   const pick = chooseBend(d.trials);
+  if (pick?.aborted) return { budgetOut: true, nodes: d.nodes };
   if (!pick) {
     if (d.nodes >= budget) return { budgetOut: true, nodes: d.nodes };
     const names = listNames(forced.map((id) => c.st.byId.get(id)?.name ?? id));
@@ -832,14 +827,30 @@ function bendLineup(c, forced, lst, n, budget, runOut) {
       : diagnosisSentence(d.trials, { n, existingCount: c.existingCount, perQb: opts.qbStacks.size > 0, capText: money(opts.cap) });
     return { why, nodes: d.nodes };
   }
-  const limit = Math.max(0, Math.min(opts.nodeLimit, budget - d.nodes));
-  const again = pick.aborted ? { ...d.run(pick, limit), limit } : null;
-  if (again && opts.stats) {
-    opts.stats.reSearches = (opts.stats.reSearches ?? 0) + 1;
-    opts.stats.bendNodes = (opts.stats.bendNodes ?? 0) + again.nodes;
-  }
   const dropped = pick.dropAll ? forced : pick.drop ? [pick.drop] : [];
-  return { ...settleBend(pick, again), label: bendLabel(pick, d.trials), dropped, nodes: d.nodes + (again ? again.nodes : 0) };
+  return { players: pick.best, label: bendLabel(pick, d.trials), dropped, nodes: d.nodes };
+}
+
+/**
+ * The one best classic lineup by projection among `rows`, for the single Build (optimize.js exactClassic, Adam 2026-11-02): this
+ * engine's search with no roster rule, every team capped (no D76 exemption, as Build's Max per team has always been) and "stackQbWith or
+ * more" teammates. `rows`: only men the caller may roster, the locks among them. Returns { ids, aborted }, ids null when no lineup
+ * exists, or { fatal } with this engine's sentence. `aborted`: the step limit ran out, so the lineup is not proven best.
+ * `oneGameOk`: lift DraftKings' two-games rule, only to say that rule is what left no lineup. `nodeLimit`: a test's step limit.
+ */
+export function bestClassicExact(rows, { locks, cap, maxPerTeam, stackQbWith, oneGameOk = false, nodeLimit }) {
+  const notes = [];
+  const opts = normaliseSettings({
+    count: 1, minUnique: 1, locks, cap, maxPerTeam, objective: "proj", stackOpp: 0, stackOppOrMore: true, stackOwn: 0, stackOwnOrMore: true,
+    rules: { starredQbOnly: false, noSameTeamRbs: false, noSameGameRbs: false, noDstVsOwnPlayers: false }, capAllTeams: true, _cash: true, _nodeLimit: nodeLimit
+  }, null, 0, notes);
+  opts.stackOwn = stackQbWith; // Build's own count: Make N's request limit (STACK_OWN_MAX) has never applied to it
+  const st = prepare(rows, opts, notes);
+  if (st.fatal) return { fatal: st.fatal };
+  st.oneGameOk = oneGameOk;
+  const prev = makePrevIndex(st, [], 1);
+  const r = searchOne(st, availableLists(st, opts, new Map(), prev), prev, opts, opts.nodeLimit);
+  return { ids: r.best ? r.best.map((c) => c.id) : null, aborted: r.aborted };
 }
 
 /** Per-QB entries: each unlocked entry QB is tried alone first; one who fits no lineup gets a note; returns the keys noted. */
@@ -1170,17 +1181,22 @@ function prepare(rows, opts, notes) {
   for (const c of all) c.sUnits = st.exact ? c.salary / st.unit : Math.max(0, Math.floor(c.salary / st.unit - 1e-9));
   st.units = st.exact ? (rem) => rem / st.unit : (rem) => Math.min(st.S - 1, Math.floor(rem / st.unit + 1e-9));
 
-  // Bound tables, built once on the full pool; trimming and exposure only remove players, so they stay upper bounds.
+  st.configs = configTables(byPos, st);
+  return st;
+}
+
+/** One bound table set per position mix the locks allow, on these per-position lists. */
+function configTables(lists, st) {
   const knap = {};
-  for (const pos of POSITIONS) knap[pos] = knapsack(byPos[pos], MAX_AT[pos], st.S);
-  st.configs = [];
+  for (const pos of POSITIONS) knap[pos] = knapsack(lists[pos], MAX_AT[pos], st.S);
+  const out = [];
   for (let ci = 0; ci < CONFIGS.length; ci++) {
     const cfg = CONFIGS[ci];
-    if (!POSITIONS.every((p) => locksAt[p] <= cfg[p])) continue;
-    const groups = GROUP_ORDER.map((pos) => ({ pos, need: cfg[pos] - locksAt[pos] })).filter((g) => g.need > 0);
-    st.configs.push({ index: ci, groups, ...boundTables(groups, knap, st.S) });
+    if (!POSITIONS.every((p) => st.locksAt[p] <= cfg[p])) continue;
+    const groups = GROUP_ORDER.map((pos) => ({ pos, need: cfg[pos] - st.locksAt[pos] })).filter((g) => g.need > 0);
+    out.push({ index: ci, groups, ...boundTables(groups, knap, st.S) });
   }
-  return st;
+  return out;
 }
 
 /** Spread defenses (pure): a defense with Max % room counts unless, under the defense rule, he faces a locked player or no
@@ -1551,8 +1567,10 @@ function searchOne(st, avail, prev, opts, nodeLimit) {
   const lockScore = st.lockCands.reduce((s, c) => s + c.score, 0);
   const rem0 = st.cap - st.lockSalary;
 
-  // Order the position mixes by their root bound, so the best mix sets a strong incumbent first.
-  const configs = st.configs
+  // Order the position mixes by their root bound, so the best mix sets a strong incumbent first. The bounds are read from this lineup's
+  // own lists: the caps and the trim have taken players out, so tables on them are lower and still upper bounds. (Above MAX_REBUILD_SALARY_STEPS the prepare()
+  // tables stand, still upper bounds: a table that fine costs more than it saves.)
+  const configs = (st.S <= MAX_REBUILD_SALARY_STEPS ? configTables(avail, st) : st.configs)
     .map((cfg) => ({ cfg, root: cfg.suffix[0][st.units(rem0)] }))
     .filter((x) => x.root > -Infinity)
     .sort((a, b) => b.root - a.root || a.cfg.index - b.cfg.index)
@@ -1612,7 +1630,7 @@ function searchOne(st, avail, prev, opts, nodeLimit) {
     };
 
     const leaf = (score, rem) => {
-      if (games < 2) return;
+      if (games < 2 && !st.oneGameOk) return;
       if (mates < rule.needOwn || mates > rule.capOwn || opps < rule.needOpp || opps > rule.capOpp) return;
       if (rule.withKeys.length && !rule.withKeys.every((k) => placed.some((p) => p.key === k))) return;
       const salary = st.cap - rem;
@@ -1735,7 +1753,7 @@ function diagnose(rows, settings, slate, existingCount, prevKeys, opts, pin = nu
     avoidGames: opts.avoidGames.size > 0,
     locks: opts.locks.length > 0,
     pin
-  }).filter((t) => !soft?.runOut || t.kind === "minForce");
+  });
 
   const run = (t, limit) => {
     const scratch = [];
@@ -1752,13 +1770,13 @@ function diagnose(rows, settings, slate, existingCount, prevKeys, opts, pin = nu
     const avail = availableLists(st2, o2, batchCounts, prev2);
     return searchOne(st2, avail, prev2, o2, limit);
   };
-  // One step budget (rules-repo review 2026-10-17 finding 4): a bend gets what the batch has left; a quarterback check's
-  // diagnosis stops above the half kept for the lineups. The caller charges the nodes; a trial its share cut short is skipped.
+  // One step budget (rules-repo review 2026-10-17 finding 4): a bend's trials get what the batch has left; a quarterback check's
+  // diagnosis, which only writes a note, its own limit, stopping above the half kept for the lineups. The caller charges the nodes; a trial its share cut short is skipped.
   const budget = soft ? soft.budget : opts.batchNodeLimit - opts.budget.floor - opts.budget.used;
   let nodes = 0;
   for (const i of soft ? trialOrder(trials) : trials.keys()) {
     const t = trials[i];
-    const limit = Math.max(0, Math.min(opts.diagNodeLimit, budget - nodes));
+    const limit = Math.max(0, Math.min(soft ? opts.bendNodeLimit : opts.diagNodeLimit, budget - nodes));
     const r = run(t, limit);
     nodes += r.nodes;
     if (opts.stats) {
@@ -1767,7 +1785,7 @@ function diagnose(rows, settings, slate, existingCount, prevKeys, opts, pin = nu
       opts.stats[key] = (opts.stats[key] ?? 0) + r.nodes;
     }
     Object.assign(t, { found: Boolean(r.best), unchecked: !r.best && r.aborted, aborted: r.aborted, best: r.best, limit });
-    if (t.unchecked && limit < opts.diagNodeLimit) t.skipped = true;
+    if (!soft && t.unchecked && limit < opts.diagNodeLimit) t.skipped = true;
     // The starred-quarterback cause is worded only when nothing else would allow the lineup, so that case runs on.
     if (soft && chooseBend([t]) && !(t.cause && !t.cause.plainly)) break;
   }
