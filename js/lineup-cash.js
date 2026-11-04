@@ -16,7 +16,12 @@ const MAX_PER_TEAM = 8;
 
 // Change together with CASH_DEFAULTS in server/lineup/cash.js (the browser cannot import it; tests/cash-ui.test.mjs compares).
 // Adam 2026-10-17: cash has no minimum-unique rule, so no minUnique here, in the stored state or in the request.
-export const CASH_DEFAULTS_BROWSER = Object.freeze({ count: "1", maxPerTeam: "" });
+export const CASH_DEFAULTS_BROWSER = Object.freeze({ count: "5", maxPerTeam: "" }); // optimizer standard D9: five lineups, as GPP
+
+/** D9: the lineup count the defaults changed from, and the version of the count defaults a saved state carries; a saved state without the version
+ *  that remembers the old count takes the new default once (cleanCashState's `fromVersion`), after which a count of 1 is the user's own. */
+export const OLD_DEFAULT_COUNT = "1";
+export const COUNT_DEFAULTS_VERSION = 5;
 // Copies of server/lineup/cash.js NO_MEDIAN_SENTENCE and UNKNOWN_MODE_SENTENCE (code review of a9455a0, MUST 1): the Optimizer's
 // Cash band shows the server's own refusal before Build is pressed. Change together; tests/cash-ui.test.mjs compares.
 export const CASH_NO_MEDIAN_TEXT = "TwoGun is the only projection source in use, but this board carries no TwoGun medians, so a cash lineup cannot be built by median; use another projection source to build by projection.";
@@ -26,8 +31,14 @@ export function defaultCashState() {
   return { ...CASH_DEFAULTS_BROWSER, avoid: [], want: {} };
 }
 
-// Cash mode job 3b, 2026-10-17: what lineup.js hydrate accepts from storage; anything else falls back to the defaults.
-export function cleanCashState(raw) {
+/** D9: a remembered lineup count of 1 from before the defaults changed takes the new default once: `count` as stored, `savedVersion` the count-defaults
+ *  version the stored state carried (null for an older one that carried none). Anything else, and a count of 1 stored after the change, is the user's own. Pure. */
+export function countAfterDefaultsChange(count, savedVersion) {
+  return savedVersion !== COUNT_DEFAULTS_VERSION && String(count).trim() === OLD_DEFAULT_COUNT ? CASH_DEFAULTS_BROWSER.count : count;
+}
+
+// Cash mode job 3b, 2026-10-17: what lineup.js hydrate accepts from storage; anything else falls back to the defaults. `savedVersion`: see countAfterDefaultsChange.
+export function cleanCashState(raw, savedVersion = COUNT_DEFAULTS_VERSION) {
   const base = defaultCashState();
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return base;
   const text = (v, fallback) => (typeof v === "string" || typeof v === "number" ? String(v) : fallback);
@@ -35,7 +46,7 @@ export function cleanCashState(raw) {
   if (raw.want && typeof raw.want === "object" && !Array.isArray(raw.want)) {
     for (const [slate, ids] of Object.entries(raw.want)) if (Array.isArray(ids)) want[slate] = [...new Set(ids.map(String))];
   }
-  return { count: text(raw.count, base.count), maxPerTeam: text(raw.maxPerTeam, base.maxPerTeam), avoid: Array.isArray(raw.avoid) ? raw.avoid.map(String) : [], want };
+  return { count: countAfterDefaultsChange(text(raw.count, base.count), savedVersion), maxPerTeam: text(raw.maxPerTeam, base.maxPerTeam), avoid: Array.isArray(raw.avoid) ? raw.avoid.map(String) : [], want };
 }
 
 // D75: the one browser copy of the lineup-mode rule (entries-plan.js imports it); server/lineups/validate.js keeps the server's, a test checks they agree.
@@ -76,17 +87,22 @@ export function cashChipHtml() {
   return `<span class="cash-chip" aria-hidden="true">$</span>`;
 }
 
-export function convictionChipsHtml(row, { locked = false, wanted = false, excluded = false } = {}) {
+/** The Lock | Want | Fine chips. A man clicked into the lineup (`inLineup`, no padlock, not Want) has no chip active: he is held by the Build, so "Fine" (neither in nor
+ *  wanted) would be false; a click on Fine takes him out of the lineup (lineup-optimizer.js cashPick). */
+export function convictionChipsHtml(row, { locked = false, wanted = false, excluded = false, inLineup = false } = {}) {
   const id = escapeHtml(String(row?.id ?? ""));
-  const active = locked ? "must" : wanted ? "want" : "fine";
+  const active = locked ? "must" : wanted ? "want" : inLineup ? null : "fine";
+  const title = (key) => (key === "fine" && inLineup && !locked ? ` title="Take him out of your lineup"` : "");
   const part = (key, label) =>
-    `<button type="button" class="cash-pick-btn${active === key ? " active" : ""}" data-cash-pick="${key}" data-id="${id}" aria-pressed="${active === key}"${excluded ? " disabled" : ""}>${label}</button>`;
+    `<button type="button" class="cash-pick-btn${active === key ? " active" : ""}" data-cash-pick="${key}" data-id="${id}" aria-pressed="${active === key}"${title(key)}${excluded ? " disabled" : ""}>${label}</button>`;
   return `<span class="cash-pick${excluded ? " is-disabled" : ""}" role="group" aria-label="Conviction for ${escapeHtml(row?.name ?? "")}">${part("must", "Lock")}${part("want", "Want")}${part("fine", "Fine")}</span>`;
 }
 
-export function cashHeadLine(mustRows, wantRows) {
+/** The line over cash's settings: the men clicked into the lineup (held, no padlock), the padlocked (Lock) and the Wants. A padlock counts only as Lock. */
+export function cashHeadLine(mustRows, wantRows, inRows = []) {
   const names = (rs) => rs.map((r) => escapeHtml(r?.name ?? "")).join(", ");
   const parts = [];
+  if (inRows?.length) parts.push(`${inRows.length} in the lineup: ${names(inRows)}`);
   if (mustRows?.length) parts.push(`${mustRows.length} Lock: ${names(mustRows)}`);
   if (wantRows?.length) parts.push(`${wantRows.length} Want: ${names(wantRows)}`);
   return parts.length ? parts.join(" · ") : "No Lock or Want players";
@@ -336,6 +352,16 @@ export function unusedCapText(salary, cap = SALARY_CAP) {
 
 export function cashBadgeHtml() {
   return `<span class="saved-lineup-badge saved-lineup-badge-cash">$ Cash</span>`;
+}
+
+/** The `GPP` mark (optimizer standard A12, round 3): every saved card says which kind it is, Cash or GPP. */
+export function gppBadgeHtml() {
+  return `<span class="saved-lineup-badge saved-lineup-badge-gpp">GPP</span>`;
+}
+
+/** The mark for a saved lineup: Cash for a cash lineup, GPP for every other (lineupModeOf's rule). */
+export function modeBadgeHtml(lineup) {
+  return lineupModeOf(lineup) === "cash" ? cashBadgeHtml() : gppBadgeHtml();
 }
 
 /** "1 lineup from the last Build (Cash, by TwoGun's median)": no mode clause, since the basis names itself and the header may show a

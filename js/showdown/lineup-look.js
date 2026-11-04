@@ -4,7 +4,7 @@
 // screen so they always read apart.
 import { escapeHtml } from "../format.js";
 import { slatePalette } from "../team-palette.js";
-import { BUILDING_LABEL } from "../lineup-stop.js"; // standard D15: the button reads Building... after one second, like Make and Build
+import { confirmHtml, anchorHtml, CLEAR_QUESTION } from "../confirm-inline.js"; // B13: Clear all asks `Clear the lineup?` beside itself, as classic's does
 
 const palettes = new Map(); // "DAL,GB" to its palette (one entry per game viewed in this page's life, each a small palette of two teams, so it grows slowly and is not pruned)
 
@@ -19,20 +19,20 @@ export function showdownPalette(board) {
   return palettes.get(key);
 }
 
-/** The controls: Build and Clear all on the first row, Save as and Save lineup on the second (each row the column's full width). No Objective
- *  choice while Projection is the only objective (optimizer standard A13, A21). */
-export function controlsHtml({ building, buildingShown = false, saving, saveName, hasAnySlot }) {
+/** The working lineup's controls: Clear all on the first row, Save as and `Save working lineup` on the second (each row the column's full width). The
+ *  one Build is in the Optimizer's Build row under the slots (optimizer standard A13, round 3: Showdown's top Build folded into it), and no Objective
+ *  choice is drawn while Projection is the only objective (A21). */
+export function controlsHtml({ saving, saveName, hasAnySlot, confirm = null }) {
   return `
     <div class="lineup-controls sd-controls">
       <div class="sd-controls-row">
-        <button type="button" id="sd-lineup-build-btn" class="lineup-build-btn"${building ? " disabled" : ""}>${building && buildingShown ? BUILDING_LABEL : "Build"}</button>
-        <button type="button" id="sd-lineup-clear-all-btn" class="lineup-clear-all-btn">Clear all</button>
+        ${anchorHtml(`<button type="button" id="sd-lineup-clear-all-btn" class="lineup-clear-all-btn">Clear all</button>`, confirm === "clear" ? confirmHtml(CLEAR_QUESTION, { data: "clear" }) : "", { align: "left" })}
       </div>
       <div class="sd-controls-row">
         <label class="lineup-control">Save as
           <input type="text" id="sd-lineup-save-name" class="lineup-save-name-input" placeholder="Name (optional)" value="${escapeHtml(saveName)}" />
         </label>
-        <button type="button" id="sd-lineup-save-btn" class="lineup-build-btn"${!hasAnySlot || saving ? " disabled" : ""}>${saving ? "Saving…" : "Save lineup"}</button>
+        <button type="button" id="sd-lineup-save-btn" class="lineup-build-btn"${!hasAnySlot || saving ? " disabled" : ""}>${saving ? "Saving…" : "Save working lineup"}</button>
       </div>
     </div>`;
 }

@@ -388,6 +388,19 @@ export function validateLineup(slots, pool, { statusById, sidelinedIds, revived,
   return { errors, warnings, salary, games: [...games] };
 }
 
+/** The earliest kickoff (ms) of the slate's games, read from the salary file's parsed games (`slate.gameIds` limits it to a second slate's games); null when unknown.
+ *  The one copy: both Entries routes and the browser's Download DK CSV (public/js/dk-lineup-csv.js) refuse a lineup past it (D55, D30: the stored kickoffUtc, no date logic of our own). */
+export function earliestKickoffMs(full, slate) {
+  const wanted = slate?.gameIds ? new Set(slate.gameIds) : null;
+  let earliest = null;
+  for (const g of full?.games ?? []) {
+    if (wanted && !wanted.has(g.id)) continue;
+    const t = Date.parse(g.kickoffUtc);
+    if (Number.isFinite(t) && (earliest === null || t < earliest)) earliest = t;
+  }
+  return earliest;
+}
+
 /** The refusal of a lineup whose men all play in `game`. The one copy: the single Build says it too (optimize.js). */
 export function oneGameSentence(game) {
   return `Every player is from one game (${game}); DraftKings needs players from at least two different games.`;

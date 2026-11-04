@@ -11,10 +11,10 @@ import { getShowdownLineups, getShowdownEntries, postShowdownEntriesUpload, post
 import { requestFailureText } from "./read-json.js";
 
 export const SHOWDOWN_ENTRIES_NS = "nfldfs.sdentries";
-/** No file yet for the game on screen; this tab's Optimizer button is "Make", so it names no Build step. */
+/** No file yet for the game on screen; it names no Build step. */
 export const SHOWDOWN_ENTRIES_EMPTY_TEXT = "No entries file uploaded yet for this game. Upload your DraftKings Showdown entries file with the button above, or from any Upload button.";
-/** A file is loaded but the game has no saved lineup: this Optimizer's button is "Make". */
-export const SHOWDOWN_ENTRIES_NO_LINEUPS_TEXT = "Save lineups in the Optimizer first (Make, then Save all); the entries fill themselves after that.";
+/** A file is loaded but the game has no saved lineup: the Optimizer's one button is "Build" (A13, round 3: it was "Make"). */
+export const SHOWDOWN_ENTRIES_NO_LINEUPS_TEXT = "Save lineups in the Optimizer first (Build, then Save all); the entries fill themselves after that.";
 
 // The game on screen and what the tab shows for it. `lineups` are that game's saved lineups (all of them, so the numbers are the game's own
 // numberLineups; only the complete ones are proposed, entries-plan.js orderedFillLineups); `sig` is the last list drawn.

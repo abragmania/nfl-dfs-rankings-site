@@ -6,6 +6,9 @@ import { escapeHtml } from "./format.js";
 import { textColourFor } from "./format.js";
 import { TEAM_BY_ABBR } from "./teams-data.js";
 import { POSITION_CHIPS, CLASSIC_PROJ_FLOOR, store } from "./state.js";
+import { askInline, anchorHtml } from "./confirm-inline.js";
+import { rowMessageHtml } from "./row-message.js";
+import { bumpStepsOf } from "./bump-control.js";
 
 // `updateFilterSummary` is called on every filter change (app.js) to patch just the "N of M players"
 // count and the removable active-game chip, without touching the rest of the bar — the position chips,
@@ -104,7 +107,7 @@ export function renderFilterBar(container, teamAbbrs, filters, callbacks, hasOve
       <button type="button" id="starred-toggle" class="chip toggle-chip${filters.starredOnly ? " active" : ""}">${favoritesChipLabel()}</button>
       <button type="button" id="starred-qb-toggle" class="chip toggle-chip" aria-pressed="false">Starred QBs only</button>
       ${showAllToggleHtml(filters.showAllPlayers, `id="show-all-toggle"`)}
-      <button type="button" id="reset-overrides-btn" class="reset-btn"${hasOverrides ? "" : " disabled"}>Reset all overrides</button>
+      ${anchorHtml(`<button type="button" id="reset-overrides-btn" class="reset-btn"${hasOverrides ? "" : " disabled"}>Reset all overrides</button>`)}
     </div>
     <div class="filter-row">
       <div class="chip-group" id="team-chips">${teamChipsHtml}</div>
@@ -167,15 +170,29 @@ export function renderFilterBar(container, teamAbbrs, filters, callbacks, hasOve
     callbacks.onClearFilters();
   });
 
-  container.querySelector("#reset-overrides-btn").addEventListener("click", () => {
-    // D72: the reset clears typed numbers only; stars and notes stay. On the public site it puts back the published
-    // numbers (D71; tools/publish.mjs injectSite marks the html tag is-site at publish time, and site-src/site.js adds it too).
-    const onSite = document.documentElement.classList.contains("is-site");
-    const question = onSite
-      ? "Put back the published numbers? This clears every projection and ownership number you typed. Stars and notes stay."
-      : "Reset all overrides for this week? This clears every edited projection and ownership number. Stars and notes stay.";
-    if (window.confirm(question)) {
-      callbacks.onResetOverrides();
-    }
+  // A6 (round 3): the one question, asked beside the button, the same on the app and on the site. D72: the reset clears typed numbers and bumps only;
+  // stars and notes stay. On the public site it puts back the published numbers (D71; site-src/site-overrides.js).
+  const resetBtn = container.querySelector("#reset-overrides-btn");
+  resetBtn.addEventListener("click", () => {
+    if (resetBtn.disabled) return;
+    askInline(resetBtn, RESET_ALL_QUESTION, () => callbacks.onResetOverrides()); // floats right-aligned under the button, so the bar does not grow
   });
+}
+
+// "Reset all overrides" (D28) clears only typed projection and ownership numbers, never stars or notes (D72), so
+// it has nothing to do while no row carries a typed number; it starts muted and inert rather than reading as a
+// live destructive action (👁 visual-qa third pass). On the public site the board says whether the visitor typed
+// any number (site-src/site-overrides.js), since there Reset all puts back the published numbers (D71, D72).
+// Optimizer standard A6 (round 3): a ± bump is a number change too, so a board with only bumps enables it (the reset clears them with the typed numbers).
+export function hasAnyOverride(rows, siteTypedNumbers) {
+  if (typeof siteTypedNumbers === "boolean") return siteTypedNumbers;
+  return (rows ?? []).some((r) => r.override && (r.override.proj != null || r.override.own != null || bumpStepsOf(r) !== 0));
+}
+
+export const RESET_ALL_QUESTION ="Clear every typed projection, typed ownership and bump? Stars and notes stay.";
+
+/** A write that failed beside the button it came from (the project's rule: a failed write is shown beside what was clicked), in red; the next one replaces it. */
+export function showButtonError(btn, text) {
+  btn?.parentNode?.querySelectorAll(".button-error").forEach((el) => el.remove());
+  btn?.insertAdjacentHTML("afterend", rowMessageHtml(text, "error").replace('class="row-msg', 'class="button-error row-msg'));
 }

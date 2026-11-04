@@ -11,17 +11,18 @@ import { OPT_POSITIONS, optExposureHtml, exposureLimit, minLimit } from "./lineu
 import { wireQbStacks } from "./lineup-qb-stacks.js";
 import { postLineupGenerate, postLineup, stopLineupGenerate, canStopLineupGenerate } from "./api.js";
 import { afterBuildingDelay, goSitsBelow, stopFailure } from "./lineup-stop.js";
-import { ruleOn } from "./lineup-settings.js";
+import { ruleOn, countBelowMin, syncCountNote, COUNT_MIN_SENTENCE, fullLineupText } from "./lineup-settings.js";
 import { answerTone } from "./row-message.js";
+import { wireLimitBox, flushOpenLimit, limitRefusals } from "./limit-box.js"; // A3: the Min % and Max % boxes
 import {
   boardHasMedians, buildCashSettings, poolReport, wantSwaps, swapDecisionHtml, excludedListHtml, lineupModeOf, CASH_NO_MEDIAN_TEXT, CASH_UNKNOWN_BASIS_TEXT,
 } from "./lineup-cash.js";
 import {
   state, opt, LINEUP_SLOTS, SALARY_CAP, OBJECTIVES, MAX_TEAM_OPTIONS, OPT_MAX_COUNT, OPT_MAX_UNIQUE, OPT_DEFAULT_COUNT, OPT_DEFAULT_UNIQUE,
   OPT_STACK_OWN_MAX, OPT_STACK_OPP_MAX, OPT_DEFAULT_STACK, OPT_BUSY_TEXT, OPT_RULES, builtInText, effectiveObjective, dkIdentity, commit, lockPool, unlockPool,
-  savePersisted, seasonWeekKey, lastContainer, resetOptimizerResults, clearMustHave, qbStacksForRequest, qbGlobals, setMode,
+  savePersisted, seasonWeekKey, lastContainer, resetOptimizerResults, clearMustHave, qbStacksForRequest, qbGlobals, setMode, removeSlot,
 } from "./lineup.js";
-import { lockedNames, pickOptions, lastExposure, cardIsSaved, optSummaryText, stackDefaultsApply, STACK_INERT_TITLE, savedOfActiveSlate } from "./lineup-view.js";
+import { heldSplit, pickOptions, lastExposure, cardIsSaved, optSummaryText, stackDefaultsApply, STACK_INERT_TITLE, savedOfActiveSlate } from "./lineup-view.js";
 
 // ---- Cash mode job 3b, 2026-10-17 (PROJECT.md Part 4 "Cash mode"; the pure pieces are in lineup-cash.js) ----
 
@@ -43,6 +44,14 @@ export function cashPick(id, pick) {
   }
   const wasMust = state.locks.has(id);
   if (wasMust) unlockPool(id);
+  else if (pick === "fine") {
+    // A man clicked into the lineup is held by the Build; Fine (neither in nor wanted) takes him out, so the chip never reads active with no effect (D3, round 3 fixes).
+    // The chip reads a man in the lineup by his DraftKings identity (a twin row of the same player counts), so Fine does too.
+    const rowById = currentRowById();
+    const idn = rowById.get(id) ? dkIdentity(rowById.get(id)) : null;
+    const at = state.slots.findIndex((s) => s && (String(s.id) === id || (idn !== null && rowById.get(String(s.id)) && dkIdentity(rowById.get(String(s.id))) === idn)));
+    if (at >= 0) removeSlot(at);
+  }
   // Want: a Must or Fine player becomes Want only, a Want player goes back to Fine. Fine: off the list.
   setWant(slateKey, id, pick === "want" && (wasMust || !wantIdsFor(slateKey).includes(id)));
 }
@@ -71,7 +80,8 @@ export function cashSummaryText(board) {
   const info = cashBasisInfo(board);
   const rowById = currentRowById();
   const by = info.blocked ? `no basis (${info.why})` : info.basis === "median" ? "TwoGun's median" : "projection";
-  const parts = [`${s.count} cash lineup${s.count === 1 ? "" : "s"} by ${by}`, `${lockedNames(rowById).length} Lock`, `${wantRowsFor(slateKeyOf(board), rowById).length} Want`];
+  const held = heldSplit(rowById); // D3 (round 3 fixes): a clicked-in man counts as in the lineup, a padlock only as Lock; both are kept by the Build
+  const parts = [`${s.count} cash lineup${s.count === 1 ? "" : "s"} by ${by}`, ...(held.inLineup.length ? [`${held.inLineup.length} in the lineup`] : []), `${held.padlocked.length} Lock`, `${wantRowsFor(slateKeyOf(board), rowById).length} Want`];
   if (s.maxPerTeam !== null) parts.push(`max ${s.maxPerTeam} per team`);
   return parts.join(" · ");
 }
@@ -568,6 +578,13 @@ let optSeq = 0;
 /** Cash 3b fix round 2, 2026-10-17: true only when a new batch was put in place; false on every other exit (cashMakeMust reads it). */
 async function doGenerate() {
   if (opt.generating || opt.saving) return false;
+  flushOpenLimit(); // a Min % or Max % box still open is read as a click away reads it, before the request is made (A3)
+  const refused = limitRefusals(); // a text a box refused (this press's blur included) is not silently built around: the Build stops and names him (item 7)
+  if (refused.length) {
+    opt.formError = refused[0].sentence;
+    commit();
+    return false;
+  }
   const board = store.get().board;
   const slate = activeSlate(board);
   const slateKey = slate ? slate.key : "main";
@@ -581,7 +598,9 @@ async function doGenerate() {
   const rowOf = new Map((board?.rows ?? []).map((r) => [String(r.id), r]));
   const cash = opt.mode === "cash"; // Cash mode job 3b, 2026-10-17: a cash build sends buildCashSettings and none of the GPP-only boxes
   const basis = cashBasisInfo(board);
-  opt.formError = cash ? (basis.blocked ? basis.text : null) : exposureProblem(opt.maxExp) ?? playerMaxProblem(playerMax, nameOf) ?? minProblemFor(opt.count, playerMin, playerMax, state.excludes, nameOf);
+  const countText = cash ? opt.cash.count : opt.count;
+  const heldAll = lockedIds(state.slots, state.locks).length >= LINEUP_SLOTS.length; // every seat held: nothing to build around (item 11)
+  opt.formError = countBelowMin(countText) ? COUNT_MIN_SENTENCE : heldAll ? fullLineupText(LINEUP_SLOTS.length) : cash ? (basis.blocked ? basis.text : null) : exposureProblem(opt.maxExp) ?? playerMaxProblem(playerMax, nameOf) ?? minProblemFor(opt.count, playerMin, playerMax, state.excludes, nameOf);
   if (opt.formError) {
     commit();
     return false;
@@ -842,10 +861,20 @@ export function wireOptimizer(container) {
     const el = container.querySelector(".opt-summary");
     if (el) el.textContent = optSummaryText(store.get().board);
   };
+  // Item 18: `Minimum 1` beside a count box while it is below 1, and the refusal a Build made of it goes once the box is fixed.
+  const countTyped = (el) => {
+    syncCountNote(el, OPT_MAX_COUNT);
+    if (opt.formError === COUNT_MIN_SENTENCE && !countBelowMin(el.value)) {
+      opt.formError = null;
+      container.querySelector(".opt-form-error")?.remove();
+      container.querySelector(".opt-form-error-footer")?.remove();
+    }
+  };
   const bind = (sel, key) => {
     const el = container.querySelector(sel);
     el?.addEventListener("input", () => {
       opt[key] = el.value;
+      if (sel === "#opt-count") countTyped(el);
       refreshSummary();
     });
   };
@@ -859,6 +888,7 @@ export function wireOptimizer(container) {
     const el = container.querySelector(sel);
     el?.addEventListener(event, () => {
       opt.cash[key] = el.value;
+      if (sel === "#opt-cash-count") countTyped(el);
       savePersisted();
       refreshSummary();
     });
@@ -977,24 +1007,33 @@ export function wireOptimizer(container) {
       commit();
     });
   });
-  // The pool's Max % boxes: kept per slate as typed and saved to localStorage on every keystroke without a
-  // re-render (focus stays in the box); a box that is not a percent turns red and blocks Go.
-  for (const [field, selector, forSlate] of [["playerMax", "[data-player-max]", playerMaxFor], ["playerMin", "[data-player-min]", playerMinFor]]) {
-    container.querySelectorAll(selector).forEach((el) => {
-      el.addEventListener("input", () => {
-        const key = slateKeyOf(store.get().board);
-        const map = { ...forSlate(key) };
-        if (el.value.trim() === "") delete map[el.dataset[field]];
-        else map[el.dataset[field]] = el.value;
-        opt[field] = { ...opt[field], [key]: map };
-        el.classList.toggle("invalid", Number.isNaN(parsePct(el.value)));
-        if (opt.formError) {
-          opt.formError = null;
-          container.querySelector(".opt-form-error")?.remove();
-          container.querySelector(".opt-form-error-footer")?.remove(); // the footer copy goes with the head copy
-        }
-        savePersisted();
-        refreshSummary(); // "caps on N players" follows the boxes
+  // The pool's Min % and Max % boxes (A3, round 3 fixes; limit-box.js): kept per slate and saved to localStorage when the box closes (Enter or a click
+  // away; Esc puts the old text back; an emptied box removes the limit). Typing alone changes nothing; a Build started while one is open reads it (doGenerate).
+  for (const [field, attr, forSlate] of [["playerMax", "data-player-max", playerMaxFor], ["playerMin", "data-player-min", playerMinFor]]) {
+    container.querySelectorAll(`[${attr}]`).forEach((el) => {
+      const id = el.getAttribute?.(attr) ?? el.dataset[field];
+      wireLimitBox(el, {
+        selector: `[${attr}="${id}"]`,
+        // The sentence a refused text leaves (held, drawn beside his row, and stopping a Build): it names the man and the old limit that stays.
+        refusalText: (typed) => `${currentRowById().get(String(id))?.name ?? "A player"}'s ${field === "playerMax" ? "Max %" : "Min %"} was not saved: "${String(typed).trim()}" is not a percent from 0 to 100, so his old limit stays. Fix the box or clear it.`,
+        doc: typeof document === "undefined" ? null : document,
+        parse: parsePct,
+        save: (text) => {
+          const key = slateKeyOf(store.get().board);
+          const map = { ...forSlate(key) };
+          if (text === "") delete map[id];
+          else map[id] = text;
+          opt[field] = { ...opt[field], [key]: map };
+          savePersisted();
+        },
+        afterSave: () => {
+          if (opt.formError) {
+            opt.formError = null;
+            container.querySelector(".opt-form-error")?.remove();
+            container.querySelector(".opt-form-error-footer")?.remove(); // the footer copy goes with the head copy
+          }
+          refreshSummary(); // "caps on N players" follows the boxes
+        },
       });
     });
   }

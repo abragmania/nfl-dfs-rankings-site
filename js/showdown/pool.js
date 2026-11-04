@@ -82,20 +82,21 @@ const startSortFor = (tab) => ({ ...START_SORT, col: tab === "cpt" ? "cptProj" :
 
 // ---------- a click on a row (Adam 4:45 PM 2026-10-29: "if I click a player's row he goes into the lineup, if I click it again he's out") ----------
 
-/** What a click on his row does on `tab`, from what lineup.js keeps placed ({ cptId, flexIds }): "add-flex" or "remove-flex" or, for the
- *  Captain, "move-to-flex" on the FLEX tab; "add-cpt" (a FLEX man moves up, another Captain is replaced) or "remove-cpt" on the Captain tab. Pure. */
+/** What a click on his row does on `tab`, from what lineup.js keeps placed ({ cptId, flexIds }): "add-flex" or "remove-flex" on the FLEX tab, "add-cpt"
+ *  (another Captain is replaced and goes to FLEX, C19; a FLEX man's Captain row swaps him with the Captain) or "remove-cpt" on the Captain tab; null for the
+ *  Captain on the FLEX tab, whose row is greyed (A18, round 3). Pure. */
 export function poolPickAction(placement, id, tab) {
   const key = String(id);
   const isCaptain = String(placement?.cptId ?? "") === key;
+  const isFlex = (placement?.flexIds ?? new Set()).has(key);
   if (tab === "cpt") return isCaptain ? "remove-cpt" : "add-cpt";
-  if (isCaptain) return "move-to-flex";
-  return (placement?.flexIds ?? new Set()).has(key) ? "remove-flex" : "add-flex";
+  if (isCaptain) return null;
+  return isFlex ? "remove-flex" : "add-flex";
 }
 
 const PICK_TITLES = Object.freeze({
   "add-flex": "Click to add to FLEX",
   "remove-flex": "Click to remove",
-  "move-to-flex": "Click to move to FLEX",
   "add-cpt": "Click to make Captain",
   "remove-cpt": "Click to remove as Captain",
 });
@@ -312,11 +313,19 @@ function controlCellHtml(row, key, tab) {
   }
 }
 
+/** What a click on a row does and why not (A18): lineup.js passes `placement.pickOf(row, tab, base)` (seat-picker.js: the fit and the other seat's greying);
+ *  without it the click is poolPickAction's and a row greyed for the other seat says why. Returns {action, reason}. */
+function pickOf(placement, row, tab) {
+  const base = poolPickAction(placement, String(row.id), tab);
+  if (placement?.pickOf) return placement.pickOf(row, tab, base);
+  return { action: base, reason: base ? "" : "He is already in your lineup in the other seat. Take him out there first." };
+}
+
 /** A row's click attributes (D39): the pick its click makes, a keyboard stop and its words as the hover and the label (no button role:
- *  the row holds buttons of its own). */
-function pickAttrsHtml(placement, row, tab) {
-  const action = poolPickAction(placement, String(row.id), tab);
-  return ` data-pick="${action}" tabindex="0" title="${PICK_TITLES[action]}" aria-label="${PICK_TITLES[action]}"`;
+ *  the row holds buttons of its own). A row that cannot be clicked has no pick and no keyboard stop; its reason is the hover and it is greyed. */
+function pickAttrsHtml({ action, reason }) {
+  if (action) return ` data-pick="${action}" tabindex="0" title="${PICK_TITLES[action]}" aria-label="${PICK_TITLES[action]}"`;
+  return reason ? ` title="${escapeHtml(reason)}" aria-disabled="true"` : "";
 }
 
 /** The body rows (`rows`: poolVisibleRows), each the Rankings row with the slots' figures and the row controls, in Adam's column order;
@@ -326,6 +335,7 @@ export function poolBodyHtml(board, rows, placement, figures = playerFigures, ta
   if (!rows.length) {
     return `<tr class="sd-pool-empty-row"><td class="sd-pool-empty" colspan="${cols.length + 1}">No player matches these filters.</td></tr>`;
   }
+  const picks = new Map(rows.map((r) => [String(r.id), pickOf(placement, r, tab)]));
   const hooks = {
     figures,
     projCell: controls?.projCell ? (row, proj, isCpt) => controls.projCell(row, proj, isCpt) : null,
@@ -335,10 +345,11 @@ export function poolBodyHtml(board, rows, placement, figures = playerFigures, ta
     playerCell: (row) => `<div class="player-cell">${sdLine(row, { nameHtml: cardNameHtml(row) })}${seatTagHtml(placedSeat(placement, row.id))}${controls?.lockIcon?.(row) ?? ""}</div><span class="lp-l2">${bareOppHtml(row)}</span>${messageIsFor(placement?.message, row.id) ? rowMessageHtml(placement.message.text, placement.message.tone) : ""}`,
     valueCell: (row) => poolValueHtml(row, figures),
     // A man seated in the lineup, on either list, has his row tinted (the builder's), kept apart from a lock (the icon, C20), beside the Optimizer's own look (excluded), each class once.
-    rowClass: (row) => [...new Set([placedSeat(placement, row.id) ? "sd-row-seated" : "", "sd-pool-pick", ...String(controls?.rowClass?.(row, tab) ?? "").trim().split(/\s+/)].filter(Boolean))].join(" "),
+    // A row that cannot be clicked is greyed instead of a pick row (A18); the lookup is made once per row and shared by the class and the attributes.
+    rowClass: (row) => [...new Set([placedSeat(placement, row.id) ? "sd-row-seated" : "", picks.get(String(row.id)).action ? "sd-pool-pick" : "sd-row-greyed", ...String(controls?.rowClass?.(row, tab) ?? "").trim().split(/\s+/)].filter(Boolean))].join(" "),
     rowAttrs: (row) => {
       const c = teamColours(palette, row.team);
-      return `${pickAttrsHtml(placement, row, tab)} style="${teamColourStyle(c)}"`;
+      return `${pickAttrsHtml(picks.get(String(row.id)))} style="${teamColourStyle(c)}"`;
     },
     ctlCell: (row, key) => controlCellHtml(row, key, tab),
     fillCell: true, // the empty last column (FILL_HEAD)

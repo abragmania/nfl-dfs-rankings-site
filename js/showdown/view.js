@@ -7,7 +7,9 @@
 // the page (Adam 2026-10-18; tabs.js SOURCE_TABS keys). The Optimizer tab (Adam 2026-10-26 3:22 PM, D81, as classic's step 4): the game
 // line and the filter bar (sticky at the window's top) are drawn here, outside #sd-lineup-mount, which lineup.js redraws; the filter bar
 // filters the pool (pool.js poolState), so a keystroke in its boxes never destroys a box.
-import { getShowdownBoard, postShowdownRefresh, postShowdownProjectionsPaste } from "./api.js";
+import { getShowdownBoard, postShowdownRefresh, postShowdownProjectionsPaste, supports, isShowdownSampleMode } from "./api.js";
+import { hasRowOverride } from "../row-reset.js";
+import { deleteShowdownOverrides } from "./optimizer.js";
 import { renderPills, kickoffDateAndClock, paintSourcesLink, wireSourcesLink, modePillHtml } from "../header.js";
 import { isSourcesTab, sourcesTabToOpen } from "../tabs.js";
 import { renderSourcesPage, sectionSources } from "../sources-page.js";
@@ -149,7 +151,7 @@ function renderEmpty() {
 // from older text. The markup and the wiring are filter-bar.js's.
 function renderFilterBar() {
   typedFilters.flush();
-  els.filterbar.innerHTML = filterBarHtml(poolState.filters, state.board?.game, store.get().filters.showAllPlayers);
+  els.filterbar.innerHTML = filterBarHtml(poolState.filters, state.board?.game, store.get().filters.showAllPlayers, resetButton());
   wireFilterBar(els.filterbar, {
     typed: typedFilters,
     rebuild: renderFilterBar,
@@ -158,7 +160,13 @@ function renderFilterBar() {
       document.querySelector("#show-all-toggle")?.classList.remove("active");
       store.setFilters({ showAllPlayers: false });
     },
+    onResetOverrides: () => writeBoard((key) => deleteShowdownOverrides(key), "the reset"),
   });
+}
+
+// A6 (round 3): the Reset all overrides button is drawn where overrides can be written (the app, not the public site or sample mode); enabled while any man has a typed number or a bump.
+function resetButton() {
+  return supports("overrides") && !isShowdownSampleMode() ? { enabled: (state.board?.rows ?? []).some(hasRowOverride) } : null;
 }
 
 // The sticky filter bar covers the top of the window, so a scroll to an element of the Optimizer's part (Make's results, the saved

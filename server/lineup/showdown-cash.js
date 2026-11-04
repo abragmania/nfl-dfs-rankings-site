@@ -8,7 +8,7 @@
 import { cashBasis, carried, CASH_NOTES } from "./cash.js";
 import { listNames } from "./soft.js";
 
-export const SHOWDOWN_CASH_DEFAULTS = Object.freeze({ count: 1, minUnique: 1 });
+export const SHOWDOWN_CASH_DEFAULTS = Object.freeze({ count: 5, minUnique: 1 }); // optimizer standard D9: five lineups, as GPP
 
 const EXPOSURE_KEYS = Object.freeze(["captainMaxExposure", "captainMinExposure", "flexMaxExposure", "flexMinExposure"]);
 

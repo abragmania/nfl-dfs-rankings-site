@@ -10,14 +10,16 @@
 // exclude by FLEX id takes the man out of every lineup; by Captain id only his Captain spot. An include (Adam 2026-10-19
 // 10:27 PM) is a man's FLEX id: he must be in the lineup at Captain or FLEX and the optimizer picks the role.
 import { parsePct, parseWhole } from "../lineup.js";
+import { countAfterDefaultsChange, COUNT_DEFAULTS_VERSION } from "../lineup-cash.js";
 
 export const STORAGE_KEY = "nfldfs.sdOptimizer.v1";
 export const MAX_COUNT = 150; // server/lineup/showdown-multi.js MAX_LINEUPS
 export const MAX_UNIQUE = 6; // showdown-multi.js MAX_UNIQUE: six slots
 export const TEAM_OPTIONS = ["3", "4", "5"]; // Adam 2026-10-18: Max per team 3, 4 or 5; 5 is DraftKings' own rule
 export const DEFAULT_MAX_PER_TEAM = "5";
-// Classic's defaults (lineup.js OPT_DEFAULT_COUNT, lineup-cash.js CASH_DEFAULTS_BROWSER): five GPP lineups, one cash lineup.
-const DEFAULTS = Object.freeze({ gppCount: "5", cashCount: "1", minUnique: "1" });
+// Classic's defaults (lineup.js OPT_DEFAULT_COUNT, lineup-cash.js CASH_DEFAULTS_BROWSER): five lineups in both modes, one unique player between any two
+// (optimizer standard D9, round 3; cash was one lineup). A remembered count of 1 from before takes the new five once (cleanKeyState).
+const DEFAULTS = Object.freeze({ gppCount: "5", cashCount: "5", minUnique: "1" });
 export const OBJECTIVES = Object.freeze([
   { value: "proj", label: "Projection" },
   { value: "median", label: "Median" },
@@ -33,7 +35,7 @@ export function defaultModeState(mode) {
 
 /** A fresh state for one showdown: GPP on screen, both modes at their defaults. */
 export function defaultKeyState() {
-  return { mode: "gpp", gpp: defaultModeState("gpp"), cash: defaultModeState("cash") };
+  return { mode: "gpp", countsV: COUNT_DEFAULTS_VERSION, gpp: defaultModeState("gpp"), cash: defaultModeState("cash") };
 }
 
 const strList = (v) => (Array.isArray(v) ? [...new Set(v.filter((x) => typeof x === "string" || typeof x === "number").map(String))] : []);
@@ -46,13 +48,14 @@ function cleanTextMap(raw) {
   return out;
 }
 
-/** One mode's state as storage gives it back: anything unreadable falls back to the default, never thrown. */
-export function cleanModeState(raw, mode) {
+/** One mode's state as storage gives it back: anything unreadable falls back to the default, never thrown. `savedVersion`: the count-defaults version the
+ *  stored showdown carried (lineup-cash.js countAfterDefaultsChange: an older state's remembered count of 1 takes the new default once). */
+export function cleanModeState(raw, mode, savedVersion = COUNT_DEFAULTS_VERSION) {
   const d = defaultModeState(mode);
   if (!raw || typeof raw !== "object") return d;
   const out = {
     ...d,
-    count: textOr(raw.count, d.count),
+    count: countAfterDefaultsChange(textOr(raw.count, d.count), savedVersion),
     maxPerTeam: TEAM_OPTIONS.includes(String(raw.maxPerTeam)) ? String(raw.maxPerTeam) : d.maxPerTeam,
     locks: strList(raw.locks),
     includes: strList(raw.includes),
@@ -69,7 +72,7 @@ export function cleanModeState(raw, mode) {
 /** A showdown's state as storage gives it back. */
 export function cleanKeyState(raw) {
   if (!raw || typeof raw !== "object") return defaultKeyState();
-  return { mode: raw.mode === "cash" ? "cash" : "gpp", gpp: cleanModeState(raw.gpp, "gpp"), cash: cleanModeState(raw.cash, "cash") };
+  return { mode: raw.mode === "cash" ? "cash" : "gpp", countsV: COUNT_DEFAULTS_VERSION, gpp: cleanModeState(raw.gpp, "gpp", raw.countsV ?? null), cash: cleanModeState(raw.cash, "cash", raw.countsV ?? null) }; // null: stored before the count defaults changed (D9)
 }
 
 /** Every showdown's saved state, {key: state}; {} when storage is empty, blocked or unreadable. */
@@ -228,15 +231,27 @@ export function toggleExclude(ms, row, kind) {
 
 /** The line under the heading: "2 included: Jayden Daniels, Brock Purdy · 1 locked: George Kittle" (a Captain lock reads
  *  "Brock Purdy (CPT)"); "" when nobody is included or locked. */
-export function statusLineText(ms, board) {
+export function statusLineText(ms, board, seated = []) {
   const { candOf, rowOf } = boardIndex(board);
   const nameOf = (person) => rowOf.get(person)?.name ?? person;
+  const label = (id) => { const c = candOf.get(id); return `${nameOf(c.person)}${c.role === "CPT" ? " (CPT)" : ""}`; };
   const parts = [];
   const inc = ms.includes.filter((id) => rowOf.has(id));
   if (inc.length) parts.push(`${inc.length} included: ${inc.map(nameOf).join(", ")}`);
-  const locks = ms.locks.filter((id) => candOf.has(id)).map((id) => { const c = candOf.get(id); return `${nameOf(c.person)}${c.role === "CPT" ? " (CPT)" : ""}`; });
+  // Round 3 fix batch (item 11), the classic Optimizer's words: a man clicked into the lineup is held by the Build and said as in the lineup; a padlock only as locked.
+  const padlocked = new Set(ms.locks);
+  const inLineup = seated.filter((id) => candOf.has(id) && !padlocked.has(id));
+  if (inLineup.length) parts.push(`${inLineup.length} in the lineup: ${inLineup.map(label).join(", ")}`);
+  const locks = ms.locks.filter((id) => candOf.has(id)).map(label);
   if (locks.length) parts.push(`${locks.length} locked: ${locks.join(", ")}`);
   return parts.join(" · ");
+}
+
+/** The candidate ids a Build keeps (item 11, classic's rule: the slots he has filled are held, locked or not): the padlocks and the seated men, a man excluded in this mode left out
+ *  (the picker keeps an excluded man out of a seat; one excluded after he sat is not forced). Each once. */
+export function heldCandidates(ms, seated = []) {
+  const excluded = new Set(ms.excludes);
+  return [...new Set([...ms.locks, ...seated.filter((id) => !excluded.has(id))])];
 }
 
 // ---------- the request ----------
@@ -296,11 +311,11 @@ export function requestCount(text, mode) {
  *  cash with classic's sentences). includes only when someone is included (the engine's key is new, so an empty list is never
  *  sent; the server's sentence is shown when it refuses it). `board`: the served board, whose rows say whether Median
  *  can be built (effectiveObjective). */
-export function buildSettings(ms, mode, board) {
+export function buildSettings(ms, mode, board, seated = []) {
   const cash = mode === "cash";
   const settings = {
     count: requestCount(ms.count, mode),
-    locks: [...ms.locks],
+    locks: heldCandidates(ms, seated), // the padlocks and the men in the seats (item 11)
     excludes: [...ms.excludes],
     maxPerTeam: Number(TEAM_OPTIONS.includes(String(ms.maxPerTeam)) ? ms.maxPerTeam : DEFAULT_MAX_PER_TEAM),
     mode: cash ? "cash" : "gpp",
@@ -316,8 +331,8 @@ export function buildSettings(ms, mode, board) {
 
 /** The whole body: {settings}. No boardMode: the server builds on this game's served board and takes its reading from the board
  *  (optimizer-routes.js noteModeOf: board.mode.cashMode). */
-export function buildGenerateBody(ms, mode, board) {
-  return { settings: buildSettings(ms, mode, board) };
+export function buildGenerateBody(ms, mode, board, seated = []) {
+  return { settings: buildSettings(ms, mode, board, seated) };
 }
 
 const plural = (n, word) => `${n} ${word}${Number(n) === 1 ? "" : "s"}`;

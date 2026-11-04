@@ -14,6 +14,8 @@ import { escapeHtml, money, dec1, dec2, pct1 } from "./format.js";
 import { playerLineHtml, showPos } from "./player-row.js";
 import { store } from "./state.js";
 import { twoGunOutReason, rowIsOut, untagged, revivedStatusTitle } from "./out.js";
+import { bumpStepsOf } from "./bump-control.js"; // B12: a bump makes the row resettable
+import { rowMessageHtml } from "./row-message.js";
 
 const BASE_COLUMNS = [
   { key: "star", label: "★" },
@@ -228,10 +230,11 @@ function editableInnerHtml(row, field, displayHtml, extraHtml = "") {
   // A listed-out player resets to 0, not to the blend's projBase (R82: out = 0).
   const out = field === "proj" && (rowIsOut(row) || (row.flags ?? []).includes("revived"));
   const outLabel = escapeHtml(STATUS_INFO[String(row.status ?? "").trim().toLowerCase()]?.label || row.status || "injured");
-  const backText = out ? `Back to 0 (listed ${outLabel})` : `Back to the original (${baseDisplay})`;
+  // B12 (round 3): the small x is the row's reset: it clears his typed numbers and his bump together, so the Proj cell carries it for a bump alone too.
+  const backText = `${out ? `Back to 0 (listed ${outLabel})` : `Back to the original (${baseDisplay})`}. Clears his typed numbers and bump.`;
   // An edited number is coloured (no word beside it); the small x puts the original back.
   const valueAttrs = hasOverride ? ` class="cell-value is-override" title="Your number. ${out ? `Without it: 0 (listed ${outLabel})` : `Original: ${baseDisplay}`}"` : ` class="cell-value"`;
-  const resetBtn = hasOverride
+  const resetBtn = hasOverride || (field === "proj" && bumpStepsOf(row) !== 0)
     ? `<button type="button" class="reset-icon" data-action="reset-${field}" data-id="${idAttr(row)}" title="${backText}" aria-label="${backText}">&times;</button>`
     : "";
   return `<span${valueAttrs}>${displayHtml}</span>${extraHtml}${resetBtn}`;
@@ -398,10 +401,72 @@ function restoreCell(cellEl, id, field) {
   cellEl.innerHTML = cellInnerHtml(row, field);
 }
 
-// ChatGPT wish q, Adam 2026-10-17: shown under an open Proj or Own% editor (blur cancels too, as Esc does).
-export const EDIT_HINT = "Enter saves · Esc cancels";
+// The hint under every open typed-number and note box (optimizer standard A3, round 3): Enter or a click away saves, Esc cancels.
+export const EDIT_HINT = "Enter saves, Esc cancels";
+export const NOT_SAVED_TEXT = "Not saved";
 
-export function startEdit(cellEl, id, field, currentValue, onCommit) {
+/** What a typed number is, for `field` ("proj" or "own"): {value} when it can be saved, {error: sentence} when it cannot, {empty: true} for a box with nothing in it. Pure. */
+export function readTypedNumber(raw, field) {
+  const text = String(raw ?? "").trim();
+  if (text === "") return { empty: true };
+  const parsed = Number(text);
+  if (!Number.isFinite(parsed)) return { error: "Enter a number." };
+  if (field === "proj" && parsed < 0) return { error: "Projection must be 0 or greater." };
+  if (field === "own" && (parsed < 0 || parsed > 100)) return { error: "Ownership must be between 0 and 100." };
+  return { value: parsed };
+}
+
+/** What closing a typed-number or note box does (A3), given how it was closed and what it holds. `how`: "enter" (Enter pressed), "away" (a click
+ *  elsewhere) or "escape". `read`: readTypedNumber's answer (for a note: {value: text} or {empty: true}); `start`: the text the box opened with.
+ *  Returns "save", "cancel", "keep" (a bad number on Enter: the box stays open with the message) or "notSaved" (a bad number on a click away: the box
+ *  closes, nothing is saved, and "Not saved" is said). A click away that changes nothing is a cancel (no write for a click in and out). Pure. */
+export function closeDecision(how, read, start) {
+  if (how === "escape" || read.empty) return "cancel";
+  if (read.error) return how === "enter" ? "keep" : "notSaved";
+  if (how === "away" && String(read.value) === String(start)) return "cancel";
+  return "save";
+}
+
+// The one typed-number or note box that is open (A3, round 3 fixes): a redraw of the table (renderTableBody, updateRow) takes it out first and puts it
+// back, text and focus kept, in the new cell, so replacing the old box never reads as a click away and never writes (a half-typed value saved by
+// the removal's blur was the bug). `released` makes the old box's handlers do nothing.
+let openEditor = null; // {kind: "field"|"note", id, field, input, wrap, start, released}
+
+function takeOpenEditor(within) {
+  const ed = openEditor;
+  if (!ed) return null;
+  if (within && !within.contains?.(ed.wrap)) return null;
+  ed.released = true;
+  openEditor = null;
+  if (ed.wrap.isConnected === false) return null; // already gone from the page: nothing to put back
+  return { kind: ed.kind, id: ed.id, field: ed.field, text: ed.input.value, start: ed.start };
+}
+
+function reopenEditor(tbodyEl, carry) {
+  if (!carry) return;
+  if (carry.kind === "note") {
+    const icon = tbodyEl.querySelector(`.note-slot [data-action='edit-note'][data-id="${cssEscapeId(carry.id)}"]`);
+    if (icon) startNoteEdit(icon, carry);
+    return;
+  }
+  const cell = tbodyEl.querySelector(`.editable-cell[data-id="${cssEscapeId(carry.id)}"][data-field="${carry.field}"]`);
+  const row = findCurrentRow(carry.id);
+  if (cell && row) beginFieldEdit(cell, carry.id, carry.field, carry.field === "proj" ? row.proj : row.own, carry);
+}
+
+/** Opens the number box on a Proj or Own cell and wires what closing it does (the cell's own restore and the caller's save). `carry`: the box a redraw took out. */
+function beginFieldEdit(cellEl, id, field, current, carry = null) {
+  startEdit(cellEl, id, field, current, (idOrNull, maybeField, maybeValue, info) => {
+    if (idOrNull == null) {
+      restoreCell(cellEl, id, field);
+      if (info?.notSaved) showNotSaved(cellEl, info.notSaved); // a refused number on a click away: nothing saved, and it says so (A3)
+      return;
+    }
+    currentCallbacks?.onEditValue?.(idOrNull, maybeField, maybeValue);
+  }, carry);
+}
+
+export function startEdit(cellEl, id, field, currentValue, onCommit, carry = null) {
   const wrap = document.createElement("span");
   wrap.className = "cell-edit-wrap";
   const input = document.createElement("input");
@@ -410,6 +475,8 @@ export function startEdit(cellEl, id, field, currentValue, onCommit) {
   input.className = "cell-edit-input";
   // Prefill rounded to one decimal (Adam, 2026-09-27): the board carries full precision, the box must not.
   input.value = currentValue == null ? "" : (typeof currentValue === "number" ? String(Math.round(currentValue * 10) / 10) : currentValue);
+  const start = carry?.start ?? input.value;
+  if (carry) input.value = carry.text; // a redraw took the box out: what he had typed comes back
   const errorEl = document.createElement("div");
   errorEl.className = "cell-edit-error";
   errorEl.hidden = true;
@@ -422,7 +489,9 @@ export function startEdit(cellEl, id, field, currentValue, onCommit) {
   cellEl.innerHTML = "";
   cellEl.appendChild(wrap);
   input.focus();
-  input.select();
+  if (!carry) input.select();
+  const editor = { kind: "field", id, field, input, wrap, start, released: false };
+  openEditor = editor;
 
   let done = false;
   const showError = (msg) => {
@@ -430,77 +499,115 @@ export function startEdit(cellEl, id, field, currentValue, onCommit) {
     errorEl.hidden = false;
     hintEl.hidden = true; // the message takes the hint's place under the box
   };
+  const shut = () => {
+    done = true;
+    if (openEditor === editor) openEditor = null;
+  };
   const cancel = () => {
     if (done) return;
-    done = true;
+    shut();
     onCommit(null);
   };
-  const commit = () => {
-    if (done) return;
-    const raw = input.value.trim();
-    if (raw === "") {
-      cancel(); // empty input on Enter = cancel, not delete; the explicit reset icon sends null
-      return;
-    }
-    const parsed = Number(raw);
-    if (!Number.isFinite(parsed)) {
-      showError("Enter a number.");
+  // `how`: "enter", "away" (the box lost focus) or "escape" (closeDecision). A cancel reports (null) so table.js restoreCell puts the old value back.
+  const close = (how) => {
+    if (done || editor.released) return; // a released box was taken out by a redraw: its removal is not a click away and writes nothing
+    const read = readTypedNumber(input.value, field);
+    const decision = closeDecision(how, read, start);
+    if (decision === "keep") {
+      showError(read.error);
       input.focus();
-      return;
+    } else if (decision === "notSaved") {
+      shut();
+      onCommit(null, field, undefined, { notSaved: read.error });
+    } else if (decision === "save") {
+      shut();
+      onCommit(id, field, read.value);
+    } else {
+      cancel();
     }
-    if (field === "proj" && parsed < 0) {
-      showError("Projection must be 0 or greater.");
-      input.focus();
-      return;
-    }
-    if (field === "own" && (parsed < 0 || parsed > 100)) {
-      showError("Ownership must be between 0 and 100.");
-      input.focus();
-      return;
-    }
-    done = true;
-    onCommit(id, field, parsed);
   };
   input.addEventListener("keydown", (e) => {
-    if (e.key === "Enter") commit();
-    if (e.key === "Escape") cancel();
+    if (e.key === "Enter") close("enter");
+    if (e.key === "Escape") close("escape");
   });
   input.addEventListener("blur", () => {
-    if (!done) cancel();
+    if (wrap.isConnected === false) { // removed from the page by something other than a redraw of this table: gone, nothing written
+      editor.released = true;
+      shut();
+      return;
+    }
+    close("away");
   });
 }
 
-function startNoteEdit(iconEl) {
+/** The "Not saved" note beside a cell whose number was refused on a click away; it goes by itself after a few seconds. `reason` is the hover. */
+export function showNotSaved(cellEl, reason, doc = document, setTimer = setTimeout) {
+  const el = doc.createElement("span");
+  el.className = "cell-edit-error cell-not-saved";
+  el.textContent = NOT_SAVED_TEXT;
+  if (reason) el.title = reason;
+  cellEl.appendChild(el);
+  setTimer(() => el.remove(), 4000);
+}
+
+/** Whether closing a note box writes (A3): Enter saves, a click away saves only a changed note, Esc never; an emptied note is saved as a removal, but a box that
+ *  was empty and still is has nothing to write. `text` and `start` are trimmed. Pure. */
+export function noteSaves(how, text, start) {
+  if (how === "escape") return false;
+  if (text === "" && start === "") return false;
+  return how === "enter" ? true : text !== start;
+}
+
+function startNoteEdit(iconEl, carry = null) {
   const id = iconEl.dataset.id;
   const row = findCurrentRow(id);
   const slot = iconEl.closest(".note-slot");
   if (!row || !slot || slot.querySelector("input")) return;
+  const wrap = document.createElement("span");
+  wrap.className = "cell-edit-wrap note-edit-wrap";
   const input = document.createElement("input");
   input.type = "text";
   input.className = "note-edit-input";
   input.maxLength = 300;
   input.value = row.note ?? "";
+  const start = carry?.start ?? input.value.trim();
+  if (carry) input.value = carry.text; // a redraw took the box out: what he had typed comes back
+  const hintEl = document.createElement("div");
+  hintEl.className = "cell-edit-hint";
+  hintEl.textContent = EDIT_HINT;
+  wrap.appendChild(input);
+  wrap.appendChild(hintEl);
   slot.innerHTML = "";
-  slot.appendChild(input);
+  slot.appendChild(wrap);
   input.focus();
-  input.select();
+  if (!carry) input.select();
+  const editor = { kind: "note", id, field: "note", input, wrap, start, released: false };
+  openEditor = editor;
 
   let done = false;
-  const finish = (save) => {
-    if (done) return;
+  // An emptied note removes the note (null); a click away that changes nothing, and Esc, put the icon back with no write.
+  const finish = (how) => {
+    if (done || editor.released) return; // a released box was taken out by a redraw: its removal writes nothing
     done = true;
-    if (save) {
-      const text = input.value.trim();
-      currentCallbacks?.onEditNote?.(id, text === "" ? null : text);
-    } else {
-      slot.innerHTML = noteIconHtml(row);
-    }
+    if (openEditor === editor) openEditor = null;
+    const text = input.value.trim();
+    const save = noteSaves(how, text, start);
+    if (save) currentCallbacks?.onEditNote?.(id, text === "" ? null : text);
+    else slot.innerHTML = noteIconHtml(row);
   };
   input.addEventListener("keydown", (e) => {
-    if (e.key === "Enter") finish(true);
-    if (e.key === "Escape") finish(false);
+    if (e.key === "Enter") finish("enter");
+    if (e.key === "Escape") finish("escape");
   });
-  input.addEventListener("blur", () => finish(false));
+  input.addEventListener("blur", () => {
+    if (wrap.isConnected === false) { // removed from the page by something other than a redraw of this table: gone, nothing written
+      editor.released = true;
+      done = true;
+      if (openEditor === editor) openEditor = null;
+      return;
+    }
+    finish("away");
+  });
 }
 
 function wireDelegation(tbodyEl) {
@@ -514,8 +621,9 @@ function wireDelegation(tbodyEl) {
     }
     const resetBtn = e.target.closest(".reset-icon");
     if (resetBtn) {
-      const field = resetBtn.dataset.action === "reset-own" ? "own" : "proj";
-      currentCallbacks?.onResetField?.(resetBtn.dataset.id, field);
+      // B12 (round 3): the row's reset clears his typed numbers and his bump together; a caller with no row reset keeps the one-number reset.
+      if (currentCallbacks?.onResetRow) currentCallbacks.onResetRow(resetBtn.dataset.id);
+      else currentCallbacks?.onResetField?.(resetBtn.dataset.id, resetBtn.dataset.action === "reset-own" ? "own" : "proj");
       return;
     }
     const noteIcon = e.target.closest("[data-action='edit-note']");
@@ -530,13 +638,7 @@ function wireDelegation(tbodyEl) {
       const row = findCurrentRow(id);
       if (!row) return;
       const current = field === "proj" ? row.proj : row.own;
-      startEdit(cellEl, id, field, current, (idOrNull, maybeField, maybeValue) => {
-        if (idOrNull == null) {
-          restoreCell(cellEl, id, field);
-          return;
-        }
-        currentCallbacks?.onEditValue?.(idOrNull, maybeField, maybeValue);
-      });
+      beginFieldEdit(cellEl, id, field, current);
     }
   });
 }
@@ -545,8 +647,19 @@ export function renderTableBody(tbodyEl, rows, callbacks, hasNoteColumn = false,
   currentRows = rows;
   currentCallbacks = callbacks;
   currentTwoGun = Boolean(opts.twogun);
+  const carry = takeOpenEditor(null); // a box he is typing in survives the redraw (A3, round 3 fixes)
   tbodyEl.innerHTML = rows.map((r) => rowHtml(r, hasNoteColumn, currentTwoGun)).join("");
   wireDelegation(tbodyEl);
+  reopenEditor(tbodyEl, carry);
+}
+
+/** A write for this row failed: the sentence sits under his name, in red (the project's rule: a failed write shows beside the row it was for). It is
+ *  replaced on the row's next redraw. No row on screen, no message. */
+export function showRowError(tbodyEl, id, text) {
+  const cell = tbodyEl.querySelector(`tr[data-id="${cssEscapeId(id)}"]`)?.querySelector(".player-cell")?.parentElement;
+  if (!cell) return;
+  cell.querySelectorAll(".row-msg").forEach((el) => el.remove());
+  cell.insertAdjacentHTML("beforeend", rowMessageHtml(text, "error"));
 }
 
 /** Re-renders exactly one row in place (a failed save must never leave an input open, but must also
@@ -554,5 +667,8 @@ export function renderTableBody(tbodyEl, rows, callbacks, hasNoteColumn = false,
 export function updateRow(tbodyEl, row, hasNoteColumn = false) {
   currentRows = currentRows.map((r) => (String(r.id) === String(row.id) ? row : r));
   const tr = tbodyEl.querySelector(`tr[data-id="${cssEscapeId(row.id)}"]`);
-  if (tr) tr.outerHTML = rowHtml(row, hasNoteColumn, currentTwoGun);
+  if (!tr) return;
+  const carry = takeOpenEditor(tr); // only a box in this row; another row's box is not touched
+  tr.outerHTML = rowHtml(row, hasNoteColumn, currentTwoGun);
+  reopenEditor(tbodyEl, carry);
 }

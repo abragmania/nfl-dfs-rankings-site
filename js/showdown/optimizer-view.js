@@ -6,7 +6,7 @@
 import { escapeHtml, dec1 } from "../format.js";
 import { buildingHtml, goLabelHtml, buildingRowClass, BUILDING_LABEL } from "../lineup-stop.js";
 import { statusLineHtml, statusToneClass } from "../row-message.js"; // A14: red only for an error
-import { settingRowHtml, settingGroupHtml, settingSubtitleHtml, numberBoxHtml } from "../lineup-settings.js";
+import { settingRowHtml, settingGroupHtml, settingSubtitleHtml, numberBoxHtml, countNote } from "../lineup-settings.js";
 import { modeSwitchHtml, cashChipHtml, cashMedianText, unusedCapText, builtInTextCash } from "../lineup-cash.js";
 import { lineupTotals, lineupTotalsHtml } from "../lineup-totals.js"; // A11
 import { cardPlayerRowHtml, teamColours } from "../lineup-card.js";
@@ -19,6 +19,8 @@ import { likelyRangeText, likelyFactText } from "./likely-copies.js";
 import { calcSentence, modelNote, isEstimate, estimateTitle, estimateLabelHtml } from "./field-explain.js"; // the field model's words (D82)
 import { OBJECTIVES, TEAM_OPTIONS, MAX_COUNT, MAX_UNIQUE, effectiveObjective, boardHasTg, cashBasisText, statusLineText, isLocked, isIncluded, excludeState, exposureTables, sdPlayersOf } from "./optimizer-state.js";
 import { filterLineups, bulkLabel, filterBarHtml } from "../lineup-filter.js";
+import { LOCK_SVG, rowIconButtonHtml } from "../row-controls.js"; // round 3: Lock, In and Exclude are the same small buttons in classic and Showdown
+import { confirmHtml, anchorHtml, REPLACE_QUESTION } from "../confirm-inline.js"; // A13, C11: Load on a result card asks before replacing unsaved slots
 
 // Classic's words (lineup-view.js NO_MATCH_TEXT) for a filter no lineup passes.
 export const NO_MATCH_TEXT = "No lineups here have all of the chosen players."; // the saved section's too (optimizer.js optimizerSavedFilter)
@@ -26,8 +28,6 @@ export const NO_MATCH_TEXT = "No lineups here have all of the chosen players."; 
 // The pool's own position chips are gone (2026-10-26, as classic's step 4): the filter bar above the builder (view.js) filters the pool.
 const OBJECTIVE_TITLE = { proj: "Build the lineups with the highest total projection", median: "Build the lineups with the highest total of TwoGun's medians" };
 const OBJECTIVE_WORD = { proj: "projection", median: "median" };
-// The lock button's padlock, drawn in the text colour (the sketch's, approved 2026-10-19).
-const LOCK_SVG = `<svg viewBox="0 0 16 16" width="13" height="13" fill="currentColor" aria-hidden="true"><rect x="3" y="7" width="10" height="8" rx="1.5"/><path d="M5 7V5a3 3 0 016 0v2" fill="none" stroke="currentColor" stroke-width="1.7"/></svg>`;
 
 // ---------- the heading and the settings ----------
 
@@ -63,7 +63,7 @@ export function bandHeadHtml(v) {
   return `
     <div class="sd-opt-head" id="sd-opt-head">
       <div class="opt-settings-head">
-        <h3 class="opt-title">Optimizer${cash ? ` ${cashChipHtml()}` : ""}${modeSwitchHtml(v.mode)}</h3>
+        <h3 class="opt-title">Settings${cash ? ` ${cashChipHtml()}` : ""}${modeSwitchHtml(v.mode)}</h3>
         ${v.error ? `<span class="${statusToneClass(v.errorTone ?? "error").trim()} opt-go-error">${escapeHtml(v.error)}</span>` : ""}
       </div>
       ${v.formError ? statusLineHtml(v.formError, "warn", "opt-form-error") : ""}
@@ -73,20 +73,21 @@ export function bandHeadHtml(v) {
 /** The Pool and Build boxes (the included / locked line in Build). Its own element, #sd-opt-panel. */
 export function bandBoxesHtml(v) {
   const cash = v.mode === "cash";
-  const status = statusLineText(v.ms, v.board);
+  const status = statusLineText(v.ms, v.board, v.seated ?? []);
   const pool = settingRowHtml("Max per team", teamSelectHtml(v.ms.maxPerTeam), "5 = DraftKings' rule: at most 5 men from one team");
   // The included / locked line is the count row's second hint, inside the Build box as classic's "1 starred QB qualifies" sits
   // in its row (👁 V7: above the boxes it pushed them down); optimizer.js refreshLines rewrites it in place.
   const lockLine = `<div class="opt-set-hint opt-lockinfo" id="sd-opt-lockinfo"${status ? "" : " hidden"}>${escapeHtml(status)}</div>`;
   const countRow = settingRowHtml(
     "Lineups to make",
-    numberBoxHtml(`type="number" min="1" max="${MAX_COUNT}" class="opt-input opt-input-num" id="sd-opt-count" value="${escapeHtml(v.ms.count)}" aria-label="How many lineups"`),
+    numberBoxHtml(`type="number" min="1" max="${MAX_COUNT}" class="opt-input opt-input-num" id="sd-opt-count" value="${escapeHtml(v.ms.count)}" aria-label="How many lineups"`, countNote(v.ms.count), "opt-unit-note"),
     cash ? "The best first, then the next best" : "Around the pool's locks and includes"
   ).replace(/<\/div>$/, `${lockLine}</div>`);
   // Cash builds by the board's own reading (board.mode.cashMode): TwoGun's median while TwoGun is this game's only ticked projection source.
   const cashMode = v.board?.mode?.cashMode;
+  // A13 (round 3): no Build by line while Projection is the only way a build is made (Cash on a board where TwoGun is not the only source); the median basis still says so.
   const build = cash
-    ? [countRow, settingRowHtml("Build by", `<span class="cash-basis">${escapeHtml(cashBasisText(cashMode))}</span>`, cashMode === "twogun" ? "Fixed in cash: TwoGun is this game's only projection source" : "Fixed in cash: TwoGun's median only when he is this game's only projection source")].join("")
+    ? [countRow, cashMode === "twogun" ? settingRowHtml("Build by", `<span class="cash-basis">${escapeHtml(cashBasisText(cashMode))}</span>`, "Fixed in cash: TwoGun is this game's only projection source") : ""].join("")
     : [
         countRow,
         settingRowHtml("Min unique players", numberBoxHtml(`type="number" min="1" max="${MAX_UNIQUE}" class="opt-input opt-input-num" id="sd-opt-min-unique" value="${escapeHtml(v.ms.minUnique)}" aria-label="Minimum unique players between lineups"`), "Between any two lineups"),
@@ -104,19 +105,20 @@ export function bandBoxesHtml(v) {
     </div>`;
 }
 
-/** "Make 20 lineups" ("Building..." while out, optimizer standard D15). */
-export function goLabel(count, generating) {
-  return generating ? BUILDING_LABEL : `Make ${count} lineup${count === 1 ? "" : "s"}`;
+/** The one Build button's words (optimizer standard A13, round 3: Showdown's top Build folded into this one): "Build", "Building..." while out (D15);
+ *  the count is in the summary beside it, as classic's. */
+export function goLabel(generating) {
+  return generating ? BUILDING_LABEL : "Build";
 }
 
-/** The Make row (classic optimizerFooterHtml and its sticky footer, 👁 V3): the summary and the button, the last piece of the builder's column. */
-export function goRowHtml({ summary, count, generating: showing, busy, formError, canStop = false, below = false, stopping = false, stopError = "" }) {
+/** The Build row (classic optimizerFooterHtml and its sticky footer, 👁 V3): the summary and the button, the last piece of the builder's column. */
+export function goRowHtml({ summary, generating: showing, busy, formError, canStop = false, below = false, stopping = false, stopError = "" }) {
   return `
     <div class="opt-footer sd-opt-go${buildingRowClass({ showing, below })}">
       ${formError ? statusLineHtml(formError, "warn", "opt-form-error-footer") : ""}
       <span class="opt-summary" id="sd-opt-summary">${escapeHtml(summary)}</span>
       ${buildingHtml({ showing, canStop, stopId: "sd-opt-stop-btn", stopping, stopError })}
-      <button type="button" id="sd-opt-go-btn" class="lineup-build-btn opt-go opt-go-big"${busy ? " disabled" : ""}>${goLabelHtml({ showing, idle: goLabel(count, false), busy: goLabel(count, true) })}</button>
+      <button type="button" id="sd-opt-go-btn" class="lineup-build-btn opt-go opt-go-big"${busy ? " disabled" : ""}>${goLabelHtml({ showing, idle: goLabel(false), busy: goLabel(true) })}</button>
     </div>`;
 }
 
@@ -192,6 +194,7 @@ export function cardHtml(lineup, index, o) {
         <span class="opt-card-title">${o.cash ? "Cash" : "Lineup"} ${index + 1}</span>
         <span class="opt-card-actions">
           ${saveBtn}
+          ${anchorHtml(`<button type="button" class="saved-lineup-btn" data-sd-opt-load="${uid}"${o.busy ? " disabled" : ""} title="Put this lineup in the builder's seats">Load</button>`, o.confirm === `load:result:${lineup.uid}` ? confirmHtml(REPLACE_QUESTION, { data: `load:result:${lineup.uid}` }) : "", { align: "right" })}
           <button type="button" class="saved-lineup-btn danger" data-sd-opt-discard="${uid}"${o.busy ? " disabled" : ""}>Discard</button>
         </span>
       </div>
@@ -203,12 +206,12 @@ export function cardHtml(lineup, index, o) {
 
 // ---------- the batch ----------
 
-/** The words a batch is labelled with (classic builtInText / builtInTextCash): "20 lineups from the last Make (TwoGun's projections, by
+/** The words a batch is labelled with (classic builtInText / builtInTextCash): "20 lineups from the last Build (TwoGun's projections, by
  *  median)" when TwoGun is the game's only projection source (boardMode "twogun"; its ownership may come from other files), else
  *  "this game's sources". */
 export function batchHeadText(r, n) {
-  if (r.mode === "cash") return builtInTextCash(n, r.basis).replace("from the last Build", "from the last Make");
-  return `${n} lineup${n === 1 ? "" : "s"} from the last Make (${r.boardMode === "twogun" ? "TwoGun's projections" : "this game's sources"}, by ${OBJECTIVE_WORD[r.objective] ?? "projection"})`;
+  if (r.mode === "cash") return builtInTextCash(n, r.basis);
+  return `${n} lineup${n === 1 ? "" : "s"} from the last Build (${r.boardMode === "twogun" ? "TwoGun's projections" : "this game's sources"}, by ${OBJECTIVE_WORD[r.objective] ?? "projection"})`;
 }
 
 /** The source and as-of of the batch's figures (every figure carries its source): "Projections: TwoGun, Oct 19, 6:07 PM ·
@@ -290,7 +293,7 @@ export function resultsHtml(v) {
            <button type="button" class="saved-lineup-btn danger" data-sd-opt-discard-all${v.busy || noneShown ? " disabled" : ""}>${bulkLabel("Discard", nShown, filtered)}</button>
          </span>
        </div>`
-    : `<div class="opt-sub">${r.made ? "None left from the last Make." : "No lineups were made."}</div>`);
+    : `<div class="opt-sub">${r.made ? "None left from the last Build." : "No lineups were made."}</div>`);
   const prov = provenanceText(r);
   const provTitle = provenanceTitle(r);
   if (prov) parts.push(`<div class="opt-note"${provTitle ? ` title="${escapeHtml(provTitle)}"` : ""}>${escapeHtml(prov)}</div>`);
@@ -303,7 +306,7 @@ export function resultsHtml(v) {
     const whole = n === r.made;
     // Adam 2026-10-17 (classic newLineupsTabHtml): the exposure tables above the cards, so they are high on the screen.
     parts.push(exposureSectionHtml(r, v.board, v.expSortDir, mustHave));
-    parts.push(`<div class="opt-cards">${shown.map((e) => cardHtml(e.item, e.item.index, { cash, basis: r.basis, objective: r.objective, busy: v.busy, saved: v.savedFlags[e.index], board: v.board })).join("")}</div>`);
+    parts.push(`<div class="opt-cards">${shown.map((e) => cardHtml(e.item, e.item.index, { cash, basis: r.basis, objective: r.objective, busy: v.busy, saved: v.savedFlags[e.index], board: v.board, confirm: v.confirm ?? null })).join("")}</div>`);
     if (whole) parts.push(bendsLineHtml(r.bends, r.made));
   }
   return `<div class="opt-results sd-opt-results" id="sd-opt-results">${parts.join("")}</div>`;
@@ -346,18 +349,17 @@ export function poolButtonHtml(row, kind, action, ms) {
   const role = kind === "cpt" ? "Captain" : "FLEX";
   const ex = excludeState(ms, row, kind);
   const noCpt = kind === "cpt" && row.cptId == null;
-  const btn = (on, extraCls, title, inner, disabled) =>
-    `<button type="button" class="lineup-row-btn sd-row-ico${extraCls}${on ? " active" : ""}" data-sd-opt="${action}" data-kind="${kind}" data-id="${id}" aria-pressed="${on}" title="${escapeHtml(title)}" aria-label="${escapeHtml(title)}"${disabled ? " disabled" : ""}>${inner}</button>`;
+  const attrs = `data-sd-opt="${action}" data-kind="${kind}" data-id="${id}"`;
   if (action === "lock") {
     const locked = isLocked(ms, row, kind);
-    return btn(locked, "", locked ? `Locked at ${role} in every lineup` : `Lock at ${role} in every lineup`, LOCK_SVG, ex.whole || noCpt);
+    return rowIconButtonHtml({ kind: "lock", on: locked, title: locked ? `Locked at ${role} in every lineup` : `Lock at ${role} in every lineup`, attrs, disabled: ex.whole || noCpt });
   }
   if (action === "include") {
     const inc = isIncluded(ms, row);
-    return btn(inc, " sd-row-in", inc ? "Included: in every lineup at Captain or FLEX, the optimizer picks the role" : "Include: in every lineup at Captain or FLEX, the optimizer picks the role", "In", ex.whole);
+    return rowIconButtonHtml({ kind: "in", on: inc, title: inc ? "Included: in every lineup at Captain or FLEX, the optimizer picks the role" : "Include: in every lineup at Captain or FLEX, the optimizer picks the role", attrs, disabled: ex.whole });
   }
   const exTitle = kind === "cpt" ? (ex.whole ? "Excluded from every lineup (the FLEX exclude)" : ex.on ? "Excluded as Captain; he can still be FLEX" : "Exclude as Captain; he can still be FLEX") : ex.on ? "Excluded from every lineup" : "Exclude from every lineup";
-  return btn(ex.on, ex.on ? " danger" : "", exTitle, "&times;", (kind === "cpt" && ex.whole) || noCpt);
+  return rowIconButtonHtml({ kind: "exclude", on: ex.on, title: exTitle, attrs, disabled: (kind === "cpt" && ex.whole) || noCpt });
 }
 
 /** The row's look: excluded (dimmed). A lock is not a tint (C20): it is the padlock icon beside the name (poolLockIconHtml). */

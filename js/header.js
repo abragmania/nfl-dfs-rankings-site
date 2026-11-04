@@ -420,7 +420,7 @@ function paintThemeToggle(btn) {
   btn.title = theme === "dark" ? "Switch to light mode" : "Switch to dark mode";
 }
 
-export function wireThemeToggle(btn) {
+export function wireThemeToggle(btn, { onChange = null } = {}) {
   if (!btn) return;
   paintThemeToggle(btn);
   btn.addEventListener("click", () => {
@@ -432,6 +432,7 @@ export function wireThemeToggle(btn) {
       /* localStorage unavailable — the toggle still works for this page load */
     }
     paintThemeToggle(btn);
+    onChange?.(next); // C15 (round 3): the page draws its logos again in the new theme's variant
   });
 }
 

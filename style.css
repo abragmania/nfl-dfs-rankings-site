@@ -1239,6 +1239,7 @@ tr:last-child .cell-edit-hint { top: auto; bottom: 100%; margin-top: 0; margin-b
    search box made Tab into it scroll the page by the bar's height (👁 step 4). app.js keeps --filterbar-h on #lineup-panel to the
    bar's height while it sticks, else 0. */
 #lineup-mount [id] { scroll-margin-top: calc(var(--filterbar-h, 0px) + var(--sp-2)); }
+#lineup-mount .lineup-slots { scroll-margin-top: calc(var(--filterbar-h, 0px) + var(--sp-2)); } /* A12: a Load brings the slots into view below the sticky bar */
 /* On a phone the bar stays in the page: one rule for both slates' bars, after the Showdown bar's sticky rule (the Showdown Optimizer
    screen, below). */
 /* The ranked list under the builder: a fixed height of 60% of the window (420px at least) snapped to whole rows, with its own
@@ -1436,9 +1437,7 @@ tr:last-child .cell-edit-hint { top: auto; bottom: 100%; margin-top: 0; margin-b
 .lineup-pool-table .lp-name .row-msg { max-width: 300px; }
 .lineup-pool-table th:not(.lp-fill), .lineup-pool-table td:not(.lp-fill) { padding-left: 5px; padding-right: 5px; }
 .lineup-pool-table .lineup-thumbs-cell { padding-left: 2px; padding-right: 2px; }
-.lineup-pool-table .lineup-row-btn { padding: 2px 5px; }
-.lineup-pool-table .lineup-row-btn[data-action="row-lock"] { min-width: 50px; }
-.lineup-pool-table .lineup-row-btn[data-action="row-exclude"] { min-width: 58px; }
+.lineup-pool-table .lineup-row-btn:not(.row-ico) { padding: 2px 5px; }
 /* A20: the list's rows carry the team's colour as a much lighter flare than the lineup's rows (.opt-p): the lineup's 8% gradient and 3px stripe become 3% over the first 120px and a 2px stripe at 45%; B8: a row lights up
    under the pointer in the team's colour (7%, 10% on the light theme). */
 /* --tcv: the team colour every tint and stripe below is drawn in: the team's own (--tc) on the light theme, the colour lifted until it reads on the dark card (--tcd, team-palette.js liftForDark) on the dark one. */
@@ -1474,11 +1473,10 @@ tr:last-child .cell-edit-hint { top: auto; bottom: 100%; margin-top: 0; margin-b
 .player-cell .pos-mini { font-size: 12px; font-weight: 600; line-height: 16px; padding: 0 5px; border: 1px solid var(--border); border-radius: 4px; color: var(--text-muted); }
 .meta-pill { font-size: var(--fs-sm); font-weight: 400; color: var(--text-muted); background: var(--bg-elevated-2); border: 1px solid var(--border); border-radius: 10px; padding: 0 8px; line-height: 17px; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .rankings-table tr.row-dimmed .meta-pill, .rankings-table tr.row-dimmed .pos-mini,
-.lineup-pool-table tr.row-dimmed .meta-pill, .lineup-pool-table tr.row-dimmed .pos-mini,
-.lineup-pool-table tr.lineup-row-excluded .meta-pill, .lineup-pool-table tr.lineup-row-excluded .pos-mini { color: var(--row-dim-text); }
+.lineup-pool-table tr.row-dimmed .meta-pill, .lineup-pool-table tr.row-dimmed .pos-mini { color: var(--row-dim-text); }
 .lineup-rows-table tbody tr.row-dimmed td, .lineup-rows-table tbody tr.lineup-row-excluded td { color: inherit; }
 .lineup-row.lineup-row-locked { background: rgba(var(--accent-rgb), 0.1); }
-.lineup-row.lineup-row-excluded { color: var(--row-dim-text); opacity: 0.6; }
+/* An excluded row is greyed like any other (round 3 fixes): the cells carry the opacity (the round 3 block at the end), not the row, so it never stacks with the greyed one and the Exclude button, the way back, stays at full strength. */
 /* Same out/doubtful/IR dimming as the Rankings table (public/js/table.js's row-dimmed), reused here since
    the pool reuses the Rankings rows read-only (🔵 finding 8). */
 .lineup-rows-table tbody tr.row-dimmed { color: var(--row-dim-text); }
@@ -1512,9 +1510,6 @@ tr:last-child .cell-edit-hint { top: auto; bottom: 100%; margin-top: 0; margin-b
   font-size: var(--fs-sm);
   white-space: nowrap;
 }
-/* Lock/Locked and Exclude/Excluded keep one width each, so the row's buttons do not shift as they toggle (🔵 c8f3752 review). */
-.lineup-row-btn[data-action="row-lock"] { min-width: 58px; text-align: center; }
-.lineup-row-btn[data-action="row-exclude"] { min-width: 66px; text-align: center; }
 .lineup-row-btn.active { background: var(--accent); border-color: var(--accent); color: #ffffff; }
 .lineup-row-btn.active.danger { background: var(--danger); border-color: var(--danger); }
 .lineup-row-btn:disabled { opacity: 0.4; cursor: default; color: var(--text-dim); }
@@ -1819,6 +1814,7 @@ th.sd-cpt-col.sorted { color: var(--amber); }
   border-bottom: 1px solid var(--border);
 }
 #sd-lineup-mount [id] { scroll-margin-top: calc(var(--filterbar-h, 0px) + var(--sp-2)); }
+#sd-lineup-mount .lineup-slots { scroll-margin-top: calc(var(--filterbar-h, 0px) + var(--sp-2)); }
 /* On a phone neither slate's filter bar sticks (2026-10-26 Phase B item 6: classic's wrapped to 303px at 375 and covered over a third
    of the screen; the phone layout keeps the bar in the page). */
 @media (max-width: 700px) { #lineup-panel > .filterbar, #sd-lineup-panel > .sd-filterbar { position: static; } }
@@ -1851,7 +1847,6 @@ th.sd-cpt-col.sorted { color: var(--amber); }
 .sd-pool-table :is(th, td).sd-fill { width: 100%; min-width: 0; padding: 0; }
 .sd-pool-table .note-preview { display: inline-block; max-width: 4em; overflow: hidden; text-overflow: ellipsis; vertical-align: middle; } /* the start of the note; its hover has it whole (Q1: the pool fits beside the builder) */
 .sd-pool-table tbody tr.sd-row-seated { background: rgba(var(--accent-rgb), 0.1); } /* C20, C21: a man in the lineup, on either list, keeps this tint; a lock is the padlock beside his name (.sd-lock-ico), not a tint */
-.sd-pool-table tbody tr.lineup-row-excluded { color: var(--row-dim-text); opacity: 0.6; }
 .sd-pool-table td.sd-pool-empty { text-align: center; color: var(--text-muted); }
 /* The cells pack 5px a side, half the Rankings table's 10px (Q1: the pool beside the 600px builder fits 1920's column, and a 1366px
    window's full-width pool). */
@@ -2250,7 +2245,7 @@ td.opt-exp-opp { color: var(--text-muted); } /* the cells only: the Matchup head
 .sd-controls-row .lineup-control { flex: 1 1 auto; min-width: 0; }
 .sd-controls-row :is(select, input, button) { box-sizing: border-box; height: 32px; }
 .sd-controls-row .lineup-control :is(select, input) { width: 100%; }
-.sd-controls-row button { flex: 0 0 96px; padding-left: 0; padding-right: 0; white-space: nowrap; }
+.sd-controls-row button { flex: 0 0 auto; min-width: 96px; padding-left: var(--sp-3); padding-right: var(--sp-3); white-space: nowrap; } /* round 3: "Save working lineup" is longer than "Save lineup" was */
 
 /* ---------- Showdown swaps panel (Adam 2026-10-18 9:09 PM: "make it ... good like the classic one at least"; public/js/showdown/lineup-swaps.js) ----------
    Round 2 (Adam 2026-10-18): a full-width section below both columns, so the salary bar and totals stay under the meter. The seats sit in a grid of cards
@@ -2452,7 +2447,7 @@ td.opt-exp-opp { color: var(--text-muted); } /* the cells only: the Matchup head
 .sd-card-meter > span.sd-card-offboard { white-space: normal; }
 .sd-card-meter > span:not(:last-child)::after { content: " \00b7"; }
 /* The pool rows' lock, In and exclude: small square buttons, so the rows keep their Min % and Max % boxes and Add at 1920. */
-.lineup-row-btn.sd-row-ico { min-width: 23px; width: 23px; padding: 3px 0; margin-right: 2px; display: inline-flex; align-items: center; justify-content: center; font-size: 15px; line-height: 1; vertical-align: middle; }
+.lineup-row-btn.sd-row-ico { min-width: 23px; width: 23px; height: 23px; box-sizing: border-box; padding: 0; margin-right: 2px; display: inline-flex; align-items: center; justify-content: center; font-size: 15px; line-height: 1; vertical-align: middle; }
 .lineup-row-btn.sd-row-in { font-size: 12px; font-weight: 700; }
 .lineup-row-btn.sd-row-in.active { background: var(--amber); border-color: var(--amber); color: #1b1b1b; }
 /* The pool's row controls (pool.js, A1: after Own and Val in Adam's column order, columns.js): thumbs, In, Lock, Excl, Min %, Max % (the list's seat) and, on the FLEX list, the Captain's own lock and exclude, each in its own cell. */
@@ -2677,7 +2672,7 @@ td.opt-exp-opp { color: var(--text-muted); } /* the cells only: the Matchup head
 [data-theme="dark"] .sd-pool-table tbody tr.sd-row-seated { background: rgba(var(--accent-rgb), 0.18); }
 [data-theme="dark"] .sd-pool-table tbody tr.sd-row-seated > td:first-child:not([colspan]) { background: color-mix(in srgb, var(--accent) 18%, var(--bg)); }
 /* A20: the Showdown list's rows carry the same much lighter team flare as classic's: a 2px stripe and a 3% wash over the name cell's first 120px (the first cell is sticky and opaque, so the flare sits on it). */
-.sd-pool-table tbody tr.sd-pool-pick > td:first-child:not([colspan]) { background-image: linear-gradient(90deg, color-mix(in srgb, var(--tcv) 3%, transparent) 0, transparent 120px); box-shadow: inset 2px 0 color-mix(in srgb, var(--tcv) 45%, transparent); }
+.sd-pool-table tbody tr:is(.sd-pool-pick, .sd-row-greyed) > td:first-child:not([colspan]) { background-image: linear-gradient(90deg, color-mix(in srgb, var(--tcv) 3%, transparent) 0, transparent 120px); box-shadow: inset 2px 0 color-mix(in srgb, var(--tcv) 45%, transparent); }
 /* C20 and C21: the seat tag (CPT in gold, FLEX) beside the name of a man in the lineup, and the padlock of a locked man. */
 .sd-seat { display: inline-flex; align-items: center; height: 18px; padding: 0 5px; border: 1px solid var(--border); border-radius: 4px; font-size: 11px; font-weight: 700; letter-spacing: 0.03em; color: var(--text-muted); }
 .sd-seat.sd-seat-cpt { color: var(--amber); border-color: var(--amber); }
@@ -2716,3 +2711,67 @@ td.opt-exp-opp { color: var(--text-muted); } /* the cells only: the Matchup head
   .filter-salary input { width: 64px; }
   .filter-search input { width: 150px; }
 }
+
+/* ---------- Optimizer standard round 3: controls ---------- */
+/* A18: a pool row that cannot go into the lineup being built is greyed (its figures stay readable, its name still opens his card, the reason is its hover);
+   the row's own buttons and boxes (Lock, Exclude, In, thumbs, Min % and Max %) keep their full strength, since unlocking or un-excluding is how a greyed man gets back. */
+.lineup-pool-table tbody tr:is(.lineup-row-greyed, .lineup-row-excluded) > td:not(.lineup-row-actions, .lineup-thumbs-cell, .lineup-min-cell, .lineup-max-cell, .lineup-cash-cell, .lp-fill, .lp-name),
+.sd-pool-table tbody tr:is(.sd-row-greyed, .lineup-row-excluded) > td:not(.sd-pool-btn, .sd-pool-in, .lineup-thumbs-cell, .lineup-min-cell, .lineup-max-cell, .sd-fill, :first-child) { opacity: 0.5; } /* an excluded row is the same grey (item 14) */
+/* A refused click's message in a greyed row keeps full strength (the name cell's other children are dimmed, not the cell) and stays on one line when the cell has room. */
+.lineup-pool-table tbody tr:is(.lineup-row-greyed, .lineup-row-excluded) > td.lp-name > :not(.row-msg),
+.sd-pool-table tbody tr:is(.sd-row-greyed, .lineup-row-excluded) > td:first-child > :not(.row-msg) { opacity: 0.5; }
+.lineup-pool-table .lp-name .row-msg, .sd-pool-table td:first-child .row-msg { width: max-content; max-width: min(640px, 60vw); }
+.lineup-pool-table tbody tr.lineup-row-greyed, .sd-pool-table tbody tr.sd-row-greyed { cursor: not-allowed; }
+.lineup-pool-table tbody tr.lineup-row-greyed .player-name, .sd-pool-table tbody tr.sd-row-greyed .player-name { cursor: pointer; }
+/* D3: a man clicked into the lineup (not locked) wears the same light tint as a locked one, so the list shows who is in. */
+.lineup-row.lineup-row-in { background: rgba(var(--accent-rgb), 0.1); }
+
+/* The row controls (row-controls.js): one small square button in both Optimizers; the head over the column says the word. */
+.lineup-pool-table .lineup-row-btn.row-ico { margin-right: 0; }
+.lineup-pool-table td.lineup-row-actions { text-align: center; padding-left: 4px; padding-right: 4px; }
+.lineup-pool-table th.lineup-lock-head, .lineup-pool-table th.lineup-exclude-head { padding-left: 4px; padding-right: 4px; }
+
+/* B12: the row's reset x sits in the projection cell's right padding, just after the figure, as the ranked list's does (.editable-cell .reset-icon). */
+.lineup-pool-table td.lp-proj, .sd-pool-table td:has(.row-reset) { position: relative; } /* the x is inside the figure's span in Showdown: not a direct child of the cell */
+.row-reset.reset-icon { position: absolute; right: -2px; top: 50%; transform: translateY(-50%); width: 10px; text-align: center; padding: 0; }
+/* Classic's x: a bigger target (16px by 24px) and a gap from the bumped figure, which keeps 18px of the cell's right side for it in every row so the figures stay in line. */
+.lineup-pool-table td.lp-proj { padding-right: 18px; }
+.lineup-pool-table td.lp-proj .row-reset.reset-icon { right: 0; width: 16px; height: 24px; font-size: 15px; display: inline-flex; align-items: center; justify-content: center; }
+/* Showdown's x: the same room beside the bumped figure's chip (it overlapped the green chip), kept in every row's projection cell (the cell of the figure), so the figures stay in line. */
+.sd-pool-table td:has(.bump-fig) { padding-right: 18px; }
+.sd-pool-table td .row-reset.reset-icon { right: 0; width: 16px; height: 24px; font-size: 15px; display: inline-flex; align-items: center; justify-content: center; }
+.row-reset.reset-icon:disabled { opacity: 0.3; cursor: default; }
+
+/* A3: a refused number on a click away shows "Not saved" under the cell, as the editor's own message does (.cell-edit-error); the note box carries the same hint. */
+.rankings-table td:has(.cell-not-saved) { overflow: visible; }
+.note-edit-wrap { display: inline-block; }
+.note-edit-wrap .cell-edit-hint { right: auto; left: 0; }
+.lineup-pool-table td.lineup-min-cell, .lineup-pool-table td.lineup-max-cell { position: relative; } /* the Min % and Max % boxes' hint and "Not saved" hang under the cell (limit-box.js) */
+
+/* B13, A6, C11: the confirm beside the control that asked (confirm-inline.js). */
+.inline-confirm { display: inline-flex; align-items: center; gap: var(--sp-1); margin-left: var(--sp-2); padding: 2px 8px; font-size: var(--fs-sm); color: var(--amber); background: var(--bg-elevated-2); border: 1px solid var(--amber); border-radius: 6px; white-space: nowrap; }
+.inline-confirm-text { margin-right: var(--sp-1); }
+.filterbar .inline-confirm, .sd-filterbar .inline-confirm { margin-left: 0; }
+.button-error { display: inline-block; margin-left: var(--sp-2); }
+.saved-lineup-actions { flex-wrap: wrap; } /* a card is narrow: Load, Delete and a question wrap rather than run past its edge */
+.saved-lineup-actions .inline-confirm { margin-left: 0; }
+.saved-lineup-actions .row-msg-error { margin-top: 0; align-self: center; color: color-mix(in srgb, var(--danger) 55%, var(--text)); } /* a failed delete: one red sentence, lighter toward the text colour so it reads on both themes */
+.filterbar .inline-confirm, .sd-filterbar .inline-confirm { margin-right: var(--sp-2); }
+/* The confirm floats right under the control that asked (confirm-inline.js anchorHtml): positioned, so it never grows the bar or the row it sits in and never shifts the page. */
+.confirm-anchor { position: relative; display: inline-block; }
+.filter-row > .confirm-anchor:has(> .reset-btn) { margin-left: auto; }
+.confirm-anchor > .inline-confirm { position: absolute; top: calc(100% + 4px); margin: 0; z-index: 40; box-shadow: 0 4px 14px rgba(0, 0, 0, 0.3); }
+.confirm-right > .inline-confirm { right: 0; }
+.confirm-left > .inline-confirm { left: 0; }
+
+/* A12: the Cash or GPP mark on every saved card, the tick box and the Download DK CSV bar. */
+.saved-lineup-badge-gpp { color: var(--text-muted); background: var(--bg-elevated-2); font-weight: 600; }
+.dk-pick { display: inline-flex; align-items: center; }
+.dk-pick input { margin: 0; cursor: pointer; }
+.dk-download { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2) var(--sp-3); margin: 0 0 var(--sp-2); font-size: var(--fs-sm); color: var(--text-muted); }
+.dk-download .saved-lineup-btn:disabled { opacity: 0.5; cursor: default; }
+.dk-status { color: var(--text); flex: 1 1 14rem; min-width: 0; }
+.dk-status-line { display: block; }
+.dk-status-bad { color: var(--danger); }
+.dk-status-note { color: var(--amber); }
+.link-btn:disabled { opacity: 0.4; cursor: default; }

@@ -21,14 +21,20 @@ import { bumpControlHtml, bumpFigureOnlyHtml } from "./bump-control.js"; // Adam
 import { lineupRoles, roleTagsHtml } from "./lineup-marks.js";
 import { statusLineHtml, statusToneClass, rowMessageHtml, messageIsFor, TONE_WARN, TONE_NOTICE } from "./row-message.js";
 import { paletteForRows } from "./team-palette.js";
-import { settingRowHtml, settingGroupHtml, settingChipsRowHtml, settingSubtitleHtml, activeRulesSummary, switchButtonHtml, switchCheckboxHtml, numberBoxHtml, ruleOn } from "./lineup-settings.js";
+import { settingRowHtml, settingGroupHtml, settingChipsRowHtml, settingSubtitleHtml, activeRulesSummary, switchButtonHtml, switchCheckboxHtml, numberBoxHtml, ruleOn, countNote } from "./lineup-settings.js";
 import { listedQbs, qbStacksPayload, qbListHtml, qbPanelsHtml, defaultsApply, SPREAD_HINT } from "./lineup-qb-stacks.js";
 import { slateLineups } from "./entries.js";
 import { TAG_OPTIONS, numberLineups, lineupPrefix } from "./lineup-tags.js";
 import {
   cashChipHtml, convictionChipsHtml, cashHeadLine, modeSwitchHtml, boardHasMedians,
-  cashMedianText, unusedCapText, cashBadgeHtml, builtInTextCash, scoreOfRow,
+  cashMedianText, unusedCapText, modeBadgeHtml, builtInTextCash, scoreOfRow,
 } from "./lineup-cash.js";
+import { poolPicker } from "./lineup-pool-fit.js"; // A18, D3: what a click on each pool row may do, and why a row is greyed
+import { rowIconButtonHtml } from "./row-controls.js"; // round 3: Lock and Exclude are the same small buttons in both Optimizers
+import { rowResetHtml } from "./row-reset.js"; // B12: the x beside a projection that clears his typed numbers and bump
+import { refusalNoteHtml } from "./limit-box.js"; // item 7: a refused Min % / Max % text is drawn beside its row until the next press
+import { confirmHtml, anchorHtml, CLEAR_QUESTION, DELETE_QUESTION, REPLACE_QUESTION } from "./confirm-inline.js"; // B13, C11, A12: the confirms beside their buttons
+import { dkSelectHtml, dkDownloadHtml } from "./dk-lineup-ui.js"; // A12: Download DK CSV for the saved lineups ticked
 import {
   state, opt, LINEUP_SLOTS, SALARY_CAP, MAX_TEAM_OPTIONS, OPT_MAX_COUNT, OPT_MAX_UNIQUE, OPT_DEFAULT_UNIQUE, OPT_STACK_OWN_MAX, OPT_STACK_OPP_MAX,
   OPT_RULES, RULE_GROUPS, dkIdentity, lineupBusy, computeTotals, placeBySlotName, effectiveObjective, boardRowMap, qbGlobals, listedQbIds,
@@ -79,7 +85,8 @@ export function panelHtml() {
     ${optimizerFooterHtml(board)}`;
 }
 
-/** The Save controls (PROJECT.md Part 4 Lineups): Save and Copy when a saved lineup is loaded, else Save lineup. */
+/** The Save controls (PROJECT.md Part 4 Lineups; optimizer standard A13, round 3): the working lineup's button is `Save working lineup`, on a loaded
+ *  lineup too (it updates that one), with Copy beside it; the result cards keep their own Save and Discard. */
 export function saveControlsHtml({ loaded, hasAnySlot, saving, saveName }) {
   const off = !hasAnySlot || saving ? " disabled" : "";
   const btn = (id, label, title = "") =>
@@ -88,15 +95,18 @@ export function saveControlsHtml({ loaded, hasAnySlot, saving, saveName }) {
       <label class="lineup-control">${loaded ? "Name" : "Save as"}
         <input type="text" id="lineup-save-name" class="lineup-save-name-input" placeholder="Name (optional)" value="${escapeHtml(saveName)}" />
       </label>
-      ${loaded ? `${btn("lineup-save-btn", "Save")}${btn("lineup-save-new-btn", "Copy", "Save as a new lineup and keep this one")}` : btn("lineup-save-btn", "Save lineup")}`;
+      ${loaded ? `${btn("lineup-save-btn", "Save working lineup", "Save your changes to the loaded lineup")}${btn("lineup-save-new-btn", "Copy", "Save as a new lineup and keep this one")}` : btn("lineup-save-btn", "Save working lineup")}`;
 }
+
+/** B13 (round 3): Clear all asks `Clear the lineup?` beside itself before it empties the slots, locks and excludes; `confirm` is the open confirm's key. */
+export { CLEAR_QUESTION }; // confirm-inline.js has the words, one copy for both Optimizers
 
 function controlsHtml() {
   const hasAnySlot = state.slots.some(Boolean);
   const loaded = state.loadedId != null && state.savedLineups.some((l) => l.id === state.loadedId);
   return `
     <div class="lineup-controls">
-      <button type="button" id="lineup-clear-all-btn" class="lineup-clear-all-btn">Clear all</button>${saveControlsHtml({ loaded, hasAnySlot, saving: state.saving, saveName: state.saveName })}
+      ${anchorHtml(`<button type="button" id="lineup-clear-all-btn" class="lineup-clear-all-btn">Clear all</button>`, state.confirm === "clear" ? confirmHtml(CLEAR_QUESTION, { data: "clear" }) : "", { align: "left" })}${saveControlsHtml({ loaded, hasAnySlot, saving: state.saving, saveName: state.saveName })}
     </div>`;
 }
 
@@ -140,7 +150,7 @@ export function slotPlayerHtml(row, tags = [], slotName = "", palette = null) {
 // when no row of the pool on screen carries it (`addInRow`). Save's messages have no clicked row, so they stay here; red only for a failure.
 function buildStatusHtml(addInRow = false) {
   const parts = [];
-  if (state.addError && !addInRow) parts.push(statusLineHtml(state.addError, TONE_WARN));
+  if (state.addError && !addInRow) parts.push(statusLineHtml(state.addError, state.addTone ?? TONE_WARN));
   if (state.saveError) parts.push(statusLineHtml(state.saveError, state.saveTone));
   else if (state.saveConfirm) parts.push(statusLineHtml(state.saveConfirm, TONE_NOTICE));
   return parts.join("");
@@ -222,7 +232,7 @@ export function savedLineupCardHtml(lineup, rowById, numbers = null) {
 
   const badges = [
     state.loadedId === lineup.id ? `<span class="saved-lineup-badge saved-lineup-badge-loaded">Loaded</span>` : "",
-    isCash ? cashBadgeHtml() : "", // Cash mode job 3b
+    modeBadgeHtml(lineup), // A12 (round 3): every card says Cash or GPP
     state.lineupErrors[lineup.id] ? `<span class="saved-lineup-badge saved-lineup-badge-danger">${escapeHtml(state.lineupErrors[lineup.id])}</span>` : "",
     incomplete ? `<span class="saved-lineup-badge saved-lineup-badge-warning">Incomplete</span>` : "",
     overCap ? `<span class="saved-lineup-badge saved-lineup-badge-danger">Over cap</span>` : "",
@@ -250,17 +260,19 @@ export function savedLineupCardHtml(lineup, rowById, numbers = null) {
   const geoPart = isCash ? "" : `${geoText(savedLineupFigures(lineup, rowById).geo, "a player has no ownership figure or is no longer on the slate")}`;
   const totalsBlock = lineupTotalsHtml(lineupTotals(men, { cap: SALARY_CAP }), { cap: SALARY_CAP, extra: [medianPart, geoPart].filter(Boolean).join(" &middot; ") });
 
+  // A12/B13 (round 3): the delete asks `Delete this saved lineup?`; a Load over an unsaved working lineup asks `Replace your working lineup?` (C11).
   const deleteHtml = isConfirmingDelete
-    ? `<span class="saved-lineup-confirm">Delete this lineup?
+    ? `<span class="saved-lineup-confirm">${DELETE_QUESTION}
         <button type="button" class="saved-lineup-mini-btn danger" data-action="lineup-delete-yes" data-id="${escapeHtml(lineup.id)}">Yes</button>
         <button type="button" class="saved-lineup-mini-btn" data-action="lineup-delete-no">No</button>
       </span>`
     : `<button type="button" class="saved-lineup-btn danger" data-action="lineup-delete-start" data-id="${escapeHtml(lineup.id)}">Delete</button>`;
+  const loadConfirm = state.confirm === `load:${lineup.id}` ? confirmHtml(REPLACE_QUESTION, { data: `load:${lineup.id}` }) : "";
 
   return `
-    <div class="saved-lineup-card">
+    <div class="saved-lineup-card" data-lineup-id="${escapeHtml(lineup.id)}">
       <div class="saved-lineup-card-head">
-        ${prefix ? `<span class="saved-lineup-prefix">${escapeHtml(prefix)} &middot;</span>` : ""}${nameHtml}
+        ${dkSelectHtml(lineup.id, state.dkSelected.has(lineup.id))}${prefix ? `<span class="saved-lineup-prefix">${escapeHtml(prefix)} &middot;</span>` : ""}${nameHtml}
         ${tagHtml}
         <span class="saved-lineup-time">${escapeHtml(formatSavedAt(lineup.savedAt))}</span>
         ${buildBadge}${badges}
@@ -268,11 +280,13 @@ export function savedLineupCardHtml(lineup, rowById, numbers = null) {
       <div class="saved-lineup-slots">${rowsHtml}</div>
       ${totalsBlock}
       <div class="saved-lineup-actions">
-        <button type="button" class="saved-lineup-btn" data-action="lineup-load" data-id="${escapeHtml(lineup.id)}">Load</button>
-        ${deleteHtml}
+        ${anchorHtml(`<button type="button" class="saved-lineup-btn" data-action="lineup-load" data-id="${escapeHtml(lineup.id)}">Load</button>`, loadConfirm, { align: "left" })}
+        ${deleteHtml}${state.deleteErrors[lineup.id] ? rowMessageHtml(state.deleteErrors[lineup.id], "error") : ""}
       </div>
     </div>`;
 }
+
+export { DELETE_QUESTION, REPLACE_QUESTION };
 
 /** The Saved tab's cards in "As built" order as ONE flat grid, no build sections or headers (Adam 2026-10-18: "i dont need them
  *  sectioned off", "consistent 4 across"): newest build first, cards in their order within a build, lineups saved before builds were recorded last.
@@ -320,7 +334,8 @@ function savedLineupsSectionHtml(rowById, savedHere) {
       const cards = sort.key === "built"
         ? savedGroupsHtml(items, cardOf)
         : `<div class="saved-lineups-list">${sortLineups(items, sort.key, sort.dir, (l) => savedLineupFigures(l, rowById)).map(cardOf).join("")}</div>`;
-      body = (k >= 2 ? sortRowHtml("saved", keys, sort) : "") + cards;
+      const ticked = items.filter((l) => state.dkSelected.has(l.id)).length; // A12: Download DK CSV acts on the ticked cards that are shown
+      body = dkDownloadHtml({ count: ticked, total: k, status: state.dkStatus }) + (k >= 2 ? sortRowHtml("saved", keys, sort) : "") + cards;
       const subtitle = opt.mustHave.length ? `${k} of ${n} saved lineup${n === 1 ? "" : "s"}, filtered` : `${n} saved lineup${n === 1 ? "" : "s"}`;
       lastExposure = { exposure: exposureOfLineups(shown.map((e) => savedLineupPlayers(e.item, rowById))), subtitle };
       exposureHtml = optExposureHtml(lastExposure.exposure, lastExposure.subtitle, opt.expSortDir, pick);
@@ -345,6 +360,11 @@ function otherModeSavedHtml() {
 }
 
 const NO_MATCH_TEXT = "No lineups here have all of the chosen players.";
+
+/** The saved lineups on screen (this slate's, minus those the "only lineups with" list hides): what Download DK CSV acts on. */
+export function shownSavedLineups(rowById) {
+  return filterLineups(savedOfActiveSlate(), opt.mustHave, (l) => savedLineupPlayers(l, rowById)).map((e) => e.item);
+}
 
 /** The click-to-filter hooks the card and exposure builders take: `isChosen(boardId)` says whether that player is in
  *  the "only lineups with" list (matched by DraftKings identity, as exposure counts him). */
@@ -426,20 +446,37 @@ export function poolStarClick(id) {
 
 let poolMessageDrawn = false; // set by the last rightColumnHtml: a pool row carries the click's message (A14), so the line under the slots stays empty
 
+/** A18, D3: what each row's click may do (add, remove, or nothing with a reason), counted from the working lineup and the whole slate's men. The pool draws
+ *  every row from it, and the Lock button asks it too (lineup.js lockPool): Lock is no way round the greying. */
+export function poolPickerFor(rows, rowById) {
+  const placed = placedIdentities(rowById);
+  return poolPicker({
+    rows, rowById, slotNames: LINEUP_SLOTS, slots: state.slots, locks: state.locks, excludes: state.excludes, cap: SALARY_CAP, identityOf: dkIdentity,
+    base: (row) => classicPickAction(row, placed, state.excludes),
+  });
+}
+
+/** The picker for the slate on screen (lockPool's). */
+export function poolPickerNow(rowById) {
+  return poolPickerFor(activeSlateRows(store.get().board), rowById);
+}
+
 export function rightColumnHtml(rows, rowById) {
   poolMessageDrawn = false;
   const { filters, sort } = store.get();
   // The classic projection floor (D52) applies to this pool like every other classic list, with one exception:
-  // a player already locked or excluded stays listed so his lock or exclude can still be undone here.
+  // a player already locked, excluded or clicked into the lineup stays listed so his lock, exclude or place can still be undone here.
   // D33: Value colours as on Rankings, FLEX included.
   const graded = rowsGradedForView(rows, filters.pos, store.get().board?.rows ?? rows);
   const cash = opt.mode === "cash"; // Cash mode job 3b, 2026-10-17: one Cash column of Must | Want | Fine in place of Min % and Max %
   const wantSet = new Set(cash ? wantIdsFor(slateKeyOf(store.get().board)) : []);
+  const slotIds = new Set(state.slots.filter(Boolean).map((s) => String(s.id))); // D3 (round 3 fixes): a man clicked into the lineup stays listed under the floor too, so his click can undo it
   const filtered = filterRows(graded, { ...filters, showAllPlayers: true }).filter(
-    (row) => passesProjFloor(row, filters) || state.locks.has(String(row.id)) || state.excludes.has(String(row.id)) || wantSet.has(String(row.id))
+    (row) => passesProjFloor(row, filters) || state.locks.has(String(row.id)) || state.excludes.has(String(row.id)) || wantSet.has(String(row.id)) || slotIds.has(String(row.id))
   );
   const sorted = sortRows(filtered, sort.col, sort.dir);
   const placed = placedIdentities(rowById);
+  const pickOf = poolPickerFor(rows, rowById);
   // The columns are Adam's own ticks and order (A17, columns.js), the standard's order until he changes it (A1): star, Player, Sal, Proj, Own, Val,
   // then the row controls, thumbs, Lock, Exclude, Min % and Max % (Cash: its chips in place of Lock, Min % and Max %). Headers sort through the
   // same store sort the Rankings table uses (sort.col / sort.dir; keys player, salary, proj, own, value, star are the ones state.js sortRows reads).
@@ -465,7 +502,7 @@ export function rightColumnHtml(rows, rowById) {
   const maxMap = playerMaxFor(slateKey);
   const minMap = playerMinFor(slateKey);
   const palette = paletteForRows(rowById);
-  const bodyRows = sorted.map((row) => rightRowHtml(row, placed, showPos(filters.pos), maxMap, minMap, cash ? wantSet : null, keys, palette)).join("");
+  const bodyRows = sorted.map((row) => rightRowHtml(row, pickOf(row), placed, showPos(filters.pos), maxMap, minMap, cash ? wantSet : null, keys, palette)).join("");
   const emptyRow = sorted.length === 0 && filters.starredOnly ? poolEmptyRowHtml(graded, filters.pos, keys.length + 1) : "";
   return `
     <div class="lineup-rows-wrap scroll-panel">
@@ -493,16 +530,17 @@ export function classicPickAction(row, placedSet, excludes) {
 }
 
 /** A pool row's pick attributes: the pick its click makes, a keyboard stop and its words as the hover and the label (no button role: the
- *  row holds buttons of its own); none for a row that cannot be picked. */
-function poolPickAttrs(action) {
-  return action ? ` data-pick="${action}" tabindex="0" title="${POOL_PICK_TITLES[action]}" aria-label="${POOL_PICK_TITLES[action]}"` : "";
+ *  row holds buttons of its own). A row that cannot be picked has no pick and no keyboard stop; its reason is the hover (A18). */
+function poolPickAttrs(action, reason = "") {
+  if (action) return ` data-pick="${action}" tabindex="0" title="${POOL_PICK_TITLES[action]}" aria-label="${POOL_PICK_TITLES[action]}"`;
+  return reason ? ` title="${escapeHtml(reason)}" aria-disabled="true"` : "";
 }
 
 /** The click's message beside row `id` (A14), "" for every other row; marks the pool as carrying it. */
 function poolRowMessageHtml(id) {
   if (!messageIsFor({ id: state.addErrorId, text: state.addError }, id)) return "";
   poolMessageDrawn = true;
-  return rowMessageHtml(state.addError, TONE_WARN);
+  return rowMessageHtml(state.addError, state.addTone ?? TONE_WARN);
 }
 
 /** The columns the pool is set up with: the classic GPP list or the Cash list, and the browser's place for Adam's own ticks and order (A17). */
@@ -516,7 +554,7 @@ export function poolColumnKeys(mode = opt.mode) {
   return shownKeys(loadColumns(defs, scope));
 }
 
-function rightRowHtml(row, placedSet, posShown, maxMap = {}, minMap = {}, cashWant = null, keys = poolColumnKeys(), palette = null) { // cashWant: a Set of Want ids in cash mode, else null
+function rightRowHtml(row, picked, placedSet, posShown, maxMap = {}, minMap = {}, cashWant = null, keys = poolColumnKeys(), palette = null) { // cashWant: a Set of Want ids in cash mode, else null; picked: poolPicker's {action, reason}
   const id = String(row.id);
   const maxText = maxMap[id] ?? "";
   const maxBad = Number.isNaN(parsePct(maxText));
@@ -524,31 +562,34 @@ function rightRowHtml(row, placedSet, posShown, maxMap = {}, minMap = {}, cashWa
   const minBad = Number.isNaN(parsePct(minText));
   const locked = state.locks.has(id);
   const excluded = state.excludes.has(id);
-  // 🔵 finding 6: "already placed" is a DraftKings-identity comparison, not a board-id comparison (classicPickAction).
-  const pick = classicPickAction(row, placedSet, state.excludes);
+  // 🔵 finding 6: "already placed" is a DraftKings-identity comparison, not a board-id comparison (classicPickAction); A18: poolPicker also greys a row that cannot go in.
+  const pick = picked.action;
+  const inLineup = placedSet.has(dkIdentity(row));
   // 🔵 finding 8: same dimming rule as the Rankings table.
   const dimmed = rowIsOut(row);
-  const rowClass = `${excluded ? " lineup-row-excluded" : locked ? " lineup-row-locked" : ""}${dimmed ? " row-dimmed" : ""}${pick ? " lineup-pool-pick" : ""}`;
+  const greyed = !pick && !excluded; // an excluded row keeps its own look; every other row that cannot be clicked is greyed (A18)
+  const rowClass = `${excluded ? " lineup-row-excluded" : locked ? " lineup-row-locked" : ""}${inLineup && !locked ? " lineup-row-in" : ""}${dimmed ? " row-dimmed" : ""}${pick ? " lineup-pool-pick" : ""}${greyed ? " lineup-row-greyed" : ""}`;
   const name = escapeHtml(row.name ?? "");
   // A1: the name cell is the logo, name, position and injury letter on one line and the matchup in small type on a second; its width is its content's.
   const cells = {
     star: () => `<td class="lineup-star-col"><button type="button" class="star-btn${row.starred ? " active" : ""}" title="${row.starred ? "Starred" : "Star"}" data-action="toggle-star" data-id="${escapeHtml(id)}"${poolCallbacks?.onToggleStar ? "" : " disabled"}>${row.starred ? "★" : "☆"}</button></td>`,
     player: () => `<td class="lp-name"><span class="player-cell lp-l1">${playerLineHtml(row, { pos: posShown, pill: false })}</span><span class="lp-l2">${matchupPillHtml(row)}</span>${poolRowMessageHtml(id)}</td>`,
     salary: () => `<td class="lp-num">${money(row.salary)}</td>`,
-    proj: () => `<td class="lp-num">${row.proj == null ? "no proj" : bumpFigureOnlyHtml(row, row.proj)}</td>`,
+    proj: () => `<td class="lp-num lp-proj">${row.proj == null ? "no proj" : bumpFigureOnlyHtml(row, row.proj)}${rowResetHtml(row, { disabled: !poolCallbacks?.onBump })}</td>`, // B12: the x clears his typed numbers and bump
     own: () => `<td class="lp-num">${pct1(row.own) ?? "—"}</td>`,
     value: () => `<td class="lp-num lp-val">${gradedCellHtml(row.value, row.valueGrade)}</td>`,
     thumbs: () => `<td class="lineup-thumbs-cell">${bumpControlHtml(row, { enabled: Boolean(poolCallbacks?.onBump) })}</td>`,
-    cash: () => `<td class="lineup-cash-cell">${convictionChipsHtml(row, { locked, wanted: Boolean(cashWant?.has(id)), excluded })}</td>`,
-    lock: () => `<td class="lineup-row-actions"><button type="button" class="lineup-row-btn${locked ? " active" : ""}" data-action="row-lock" data-id="${escapeHtml(id)}"${excluded ? " disabled" : ""}>${locked ? "Locked" : "Lock"}</button></td>`,
-    exclude: () => `<td class="lineup-row-actions"><button type="button" class="lineup-row-btn${excluded ? " active danger" : ""}" data-action="row-exclude" data-id="${escapeHtml(id)}">${excluded ? "Excluded" : "Exclude"}</button></td>`,
-    min_pct: () => `<td class="lineup-min-cell"><input type="text" inputmode="decimal" maxlength="5" class="opt-input lineup-min-input${minBad ? " invalid" : ""}" data-player-min="${escapeHtml(id)}" value="${escapeHtml(minText)}" aria-label="Min % for ${name}" /></td>`,
-    max_pct: () => `<td class="lineup-max-cell"><input type="text" inputmode="decimal" maxlength="5" class="opt-input lineup-max-input${maxBad ? " invalid" : ""}" data-player-max="${escapeHtml(id)}" value="${escapeHtml(maxText)}" aria-label="Max % for ${name}" /></td>`,
+    cash: () => `<td class="lineup-cash-cell">${convictionChipsHtml(row, { locked, wanted: Boolean(cashWant?.has(id)), excluded, inLineup })}</td>`,
+    // Round 3: Lock and Exclude are the same small buttons the Showdown pool draws (row-controls.js); the heads say the words.
+    lock: () => `<td class="lineup-row-actions">${rowIconButtonHtml({ kind: "lock", on: locked, title: locked ? "Locked in every lineup. Click to unlock" : "Lock him into your lineup and every build", attrs: `data-action="row-lock" data-id="${escapeHtml(id)}"`, disabled: excluded })}</td>`,
+    exclude: () => `<td class="lineup-row-actions">${rowIconButtonHtml({ kind: "exclude", on: excluded, title: excluded ? "Excluded from every lineup. Click to include again" : "Exclude from every lineup", attrs: `data-action="row-exclude" data-id="${escapeHtml(id)}"` })}</td>`,
+    min_pct: () => `<td class="lineup-min-cell"><input type="text" inputmode="decimal" maxlength="5" class="opt-input lineup-min-input${minBad ? " invalid" : ""}" data-player-min="${escapeHtml(id)}" value="${escapeHtml(minText)}" aria-label="Min % for ${name}" />${refusalNoteHtml(`[data-player-min="${id}"]`)}</td>`,
+    max_pct: () => `<td class="lineup-max-cell"><input type="text" inputmode="decimal" maxlength="5" class="opt-input lineup-max-input${maxBad ? " invalid" : ""}" data-player-max="${escapeHtml(id)}" value="${escapeHtml(maxText)}" aria-label="Max % for ${name}" />${refusalNoteHtml(`[data-player-max="${id}"]`)}</td>`,
   };
   // A20: the list wears a much lighter version of the lineup's team tint and stripe (style.css .lineup-row), from the same slate palette.
   const c = teamColours(palette, row.team);
   return `
-    <tr class="lineup-row${rowClass}" data-id="${escapeHtml(id)}"${poolPickAttrs(pick)} style="${teamColourStyle(c)}">
+    <tr class="lineup-row${rowClass}" data-id="${escapeHtml(id)}"${poolPickAttrs(pick, picked.reason)} style="${teamColourStyle(c)}">
       ${keys.map((k) => cells[k]?.() ?? "").join("")}<td class="lp-fill"></td>
     </tr>`;
 }
@@ -684,6 +725,14 @@ export function lockedNames(rowById) {
     .filter(Boolean);
 }
 
+/** D3 (round 3 fixes): the men a Build holds, said as they are: clicked into the lineup (held, no padlock) and padlocked. A padlock counts only as locked, a clicked-in
+ *  man only as in the lineup, so the two counts add up to what the Build keeps. */
+export function heldSplit(rowById) {
+  const held = lockedNames(rowById);
+  const isPadlocked = (r) => state.locks.has(String(r.id));
+  return { inLineup: held.filter((r) => !isPadlocked(r)), padlocked: held.filter(isPadlocked) };
+}
+
 /** The pool the starred-QB count is taken over (ChatGPT wish k): excluded and avoided QBs fall out. */
 function starredQbPool() {
   return { excludes: state.excludes, avoid: new Set([...opt.avoid].map((g) => String(g).toUpperCase())) };
@@ -729,11 +778,11 @@ export function starredQbChipView(board) {
 function optimizerControlsHtml(rowById) {
   if (opt.mode === "cash") return cashControlsHtml(rowById); // Cash mode job 3b
   const board = store.get().board;
-  const locked = lockedNames(rowById);
+  const { inLineup, padlocked } = heldSplit(rowById);
   const games = activeSlateGames(board);
-  const info = locked.length
-    ? `<span class="opt-lockinfo">${locked.length} locked: ${escapeHtml(locked.map((r) => r.name).join(", "))}</span>`
-    : ""; // Adam 2026-10-18 (Q8): no amber rules line when nothing is locked
+  const heldNames = (rs) => escapeHtml(rs.map((r) => r.name).join(", "));
+  const heldParts = [inLineup.length ? `${inLineup.length} in the lineup: ${heldNames(inLineup)}` : "", padlocked.length ? `${padlocked.length} locked: ${heldNames(padlocked)}` : ""].filter(Boolean);
+  const info = heldParts.length ? `<span class="opt-lockinfo">${heldParts.join(" &middot; ")}</span>` : ""; // Adam 2026-10-18 (Q8): no amber rules line when nothing is held
   // 🔵 2026-10-17 (👁 render): the five position caps are one row of five small boxes, not five rows.
   const expRows = `<div class="opt-cap-row">${OPT_POSITIONS.map((pos) =>
     `<label class="opt-cap"><span class="opt-cap-pos">${pos}</span>${numberBoxHtml(`type="text" inputmode="decimal" class="opt-input opt-input-pct" data-opt-exp="${pos}" value="${escapeHtml(opt.maxExp[pos])}" placeholder="no cap" aria-label="${pos} maximum exposure percent"`, "%")}</label>`
@@ -748,7 +797,7 @@ function optimizerControlsHtml(rowById) {
   const select = (id, label, values, current, text) => `<select id="${id}" class="opt-input opt-select-n" aria-label="${label}">${options(values, current, text)}</select>`;
   // ChatGPT wish i, Adam 2026-10-17: three groups, Pool (who may be used), Stacks, Build; the exposure caps are a sub-block of Build.
   const build = [
-    settingRowHtml("Lineups to make", numberBoxHtml(`type="number" min="1" max="${OPT_MAX_COUNT}" class="opt-input opt-input-num" id="opt-count" value="${escapeHtml(opt.count)}" aria-label="How many lineups"`, `Maximum ${OPT_MAX_COUNT}`, "opt-unit-note"), "From the slots you have locked"),
+    settingRowHtml("Lineups to make", numberBoxHtml(`type="number" min="1" max="${OPT_MAX_COUNT}" class="opt-input opt-input-num" id="opt-count" value="${escapeHtml(opt.count)}" aria-label="How many lineups"`, countNote(opt.count, OPT_MAX_COUNT), "opt-unit-note"), "Each keeps the men in your slots, locked or not"),
     settingRowHtml("Min unique players", numberBoxHtml(`type="number" min="1" max="${OPT_MAX_UNIQUE}" class="opt-input opt-input-num" id="opt-min-unique" value="${escapeHtml(opt.minUnique)}" aria-label="Minimum unique players between lineups"`, `Maximum ${OPT_MAX_UNIQUE}`, "opt-unit-note"), "Between any two lineups"),
     settingSubtitleHtml("Max %"),
     expRows,
@@ -789,7 +838,7 @@ function optimizerControlsHtml(rowById) {
  *  Must / lock line and a refused Build's sentence (cash mode job 3b, 2026-10-17). */
 function optHeadHtml(infoHtml) {
   return `<div class="opt-settings-head">
-        <h3 class="opt-title">Optimizer${opt.mode === "cash" ? ` ${cashChipHtml()}` : ""}${modeSwitchHtml(opt.mode)}</h3>
+        <h3 class="opt-title">Settings${opt.mode === "cash" ? ` ${cashChipHtml()}` : ""}${modeSwitchHtml(opt.mode)}</h3>
         ${infoHtml}
         ${opt.error ? `<span class="${statusToneClass(opt.errorTone).trim()} opt-go-error">${escapeHtml(opt.error)}</span>` : ""}
       </div>`;
@@ -801,7 +850,8 @@ function cashControlsHtml(rowById) {
   const board = store.get().board;
   const basis = cashBasisInfo(board);
   const games = activeSlateGames(board);
-  const info = `<span class="opt-lockinfo">${cashHeadLine(lockedNames(rowById), wantRowsFor(slateKeyOf(board), rowById))}</span>`;
+  const held = heldSplit(rowById);
+  const info = `<span class="opt-lockinfo">${cashHeadLine(held.padlocked, wantRowsFor(slateKeyOf(board), rowById), held.inLineup)}</span>`;
   const formError = opt.formError ? statusLineHtml(opt.formError, TONE_WARN, "opt-form-error") : "";
   const teamOptions = MAX_TEAM_OPTIONS.map((v) => `<option value="${v}"${String(opt.cash.maxPerTeam) === v ? " selected" : ""}>${v === "" ? "No limit" : v}</option>`).join("");
   const pool = [
@@ -809,8 +859,9 @@ function cashControlsHtml(rowById) {
     games.length ? settingChipsRowHtml("Avoid game", avoidChipsHtml(games, new Set(opt.cash.avoid))) : "",
   ].join("");
   const build = [
-    settingRowHtml("Lineups to make", numberBoxHtml(`type="number" min="1" max="${OPT_MAX_COUNT}" class="opt-input opt-input-num" id="opt-cash-count" value="${escapeHtml(opt.cash.count)}" aria-label="How many lineups"`, `Maximum ${OPT_MAX_COUNT}`, "opt-unit-note"), "The best first, then the next best"),
-    basis.blocked ? settingRowHtml("Build by", "", basis.text, "opt-warn") : settingRowHtml("Build by", `<span class="cash-basis">${escapeHtml(basis.text)}</span>`),
+    settingRowHtml("Lineups to make", numberBoxHtml(`type="number" min="1" max="${OPT_MAX_COUNT}" class="opt-input opt-input-num" id="opt-cash-count" value="${escapeHtml(opt.cash.count)}" aria-label="How many lineups"`, countNote(opt.cash.count, OPT_MAX_COUNT), "opt-unit-note"), "The best first, then the next best"),
+    // A13 (round 3): no Build by line while Projection is the only way a build is made; it shows when the basis is TwoGun's median or the build is blocked (the reason).
+    basis.blocked ? settingRowHtml("Build by", "", basis.text, "opt-warn") : basis.basis === "proj" ? "" : settingRowHtml("Build by", `<span class="cash-basis">${escapeHtml(basis.text)}</span>`),
   ].join("");
   return `
     <div class="opt-panel opt-settings" id="opt-panel">

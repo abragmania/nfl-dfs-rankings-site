@@ -6,7 +6,10 @@ import { TAG_OPTIONS, numberLineups, lineupPrefix } from "../lineup-tags.js"; //
 import { filterLineups } from "../lineup-filter.js";
 import { requestFailureText } from "./read-json.js";
 import { posPillHtml } from "./table.js";
-import { lineupModeOf, cashBadgeHtml } from "../lineup-cash.js";
+import { modeBadgeHtml } from "../lineup-cash.js";
+import { dkSelectHtml, dkDownloadHtml } from "../dk-lineup-ui.js"; // A12 (round 3): Download DK CSV for the saved lineups ticked
+import { confirmHtml, anchorHtml, REPLACE_QUESTION, DELETE_QUESTION } from "../confirm-inline.js"; // C11: the replace question beside Load
+import { rowMessageHtml } from "../row-message.js"; // A12: a failed delete, one red sentence on the Load and Delete row
 import { showdownPalette } from "./lineup-look.js";
 import { teamColours, cardPlayerRowHtml } from "../lineup-card.js";
 import { lineupTotals, lineupTotalsHtml } from "../lineup-totals.js"; // A11
@@ -87,7 +90,7 @@ export function savedSlotsHtml(lineup, board, figures = playerFigures) {
 // this card's refused change (a badge on the card, as classic's lineupErrors badge); `editableTag` = false leaves the letter select out
 // (the public site, where a letter can only be refused; the prefix still shows the letter), default true.
 export function savedLineupCardHtml(lineup, board, figures = playerFigures, ui = {}) {
-  const { renamingId = null, deleteConfirmId = null, numbers = null, busy = false, error = null, editableTag = true } = ui;
+  const { renamingId = null, deleteConfirmId = null, numbers = null, busy = false, error = null, editableTag = true, ticked = false, confirm = null, deleteError = null } = ui; // confirm: the open confirm's key (C11: `load:saved:<id>` asks before replacing unsaved slots)
   const busyAttr = busy ? " disabled" : "";
   const prefix = lineupPrefix(lineup, numbers);
   const tagOptions = `<option value=""${lineup.tag ? "" : " selected"}>no letter</option>${TAG_OPTIONS.map((t) => `<option value="${t}"${t === lineup.tag ? " selected" : ""}>${t}</option>`).join("")}`;
@@ -109,7 +112,7 @@ export function savedLineupCardHtml(lineup, board, figures = playerFigures, ui =
   const isRenaming = renamingId === lineup.id;
   const isConfirmingDelete = deleteConfirmId === lineup.id;
   const badges = [
-    lineupModeOf(lineup) === "cash" ? cashBadgeHtml() : "", // a lineup saved from a Cash batch says so, as classic's Saved card does
+    modeBadgeHtml(lineup), // A12 (round 3): every card says Cash or GPP, as classic's Saved card does
     error ? `<span class="saved-lineup-badge saved-lineup-badge-danger">${escapeHtml(error)}</span>` : "",
     incomplete ? `<span class="saved-lineup-badge saved-lineup-badge-warning">Incomplete</span>` : "",
     overCap ? `<span class="saved-lineup-badge saved-lineup-badge-danger">Over cap</span>` : "",
@@ -124,7 +127,7 @@ export function savedLineupCardHtml(lineup, board, figures = playerFigures, ui =
   const rowsHtml = savedSlotsHtml(lineup, board, figures);
   const totalsBlock = savedTotalsHtml(lineup, board, figures);
   const deleteHtml = isConfirmingDelete
-    ? `<span class="saved-lineup-confirm">Delete this lineup?
+    ? `<span class="saved-lineup-confirm">${DELETE_QUESTION}
         <button type="button" class="saved-lineup-mini-btn danger" data-action="sd-delete-yes" data-id="${escapeHtml(lineup.id)}">Yes</button>
         <button type="button" class="saved-lineup-mini-btn" data-action="sd-delete-no">No</button>
       </span>`
@@ -132,7 +135,7 @@ export function savedLineupCardHtml(lineup, board, figures = playerFigures, ui =
   return `
     <div class="saved-lineup-card">
       <div class="saved-lineup-card-head">
-        ${prefix ? `<span class="saved-lineup-prefix">${escapeHtml(prefix)} &middot;</span>` : ""}${nameHtml}
+        ${dkSelectHtml(lineup.id, ticked)}${prefix ? `<span class="saved-lineup-prefix">${escapeHtml(prefix)} &middot;</span>` : ""}${nameHtml}
         ${tagHtml}
         <span class="saved-lineup-time">${escapeHtml(formatSavedAt(lineup.savedAt))}</span>
         ${badges}
@@ -140,19 +143,20 @@ export function savedLineupCardHtml(lineup, board, figures = playerFigures, ui =
       <div class="saved-lineup-slots" data-lineup-id="${escapeHtml(lineup.id)}">${rowsHtml}</div>
       ${totalsBlock}
       <div class="saved-lineup-actions">
-        <button type="button" class="saved-lineup-btn" data-action="sd-load" data-id="${escapeHtml(lineup.id)}">Load</button>
-        ${deleteHtml}
+        ${anchorHtml(`<button type="button" class="saved-lineup-btn" data-action="sd-load" data-id="${escapeHtml(lineup.id)}">Load</button>`, confirm === `load:saved:${lineup.id}` ? confirmHtml(REPLACE_QUESTION, { data: `load:saved:${lineup.id}` }) : "", { align: "left" })}
+        ${deleteHtml}${deleteError ? rowMessageHtml(deleteError, "error") : ""}
       </div>
     </div>`;
 }
 
 // `saved`: { loaded, error, lineups } (lineup.js's state); `cardOf(lineup, numbers)`: one card's html, `numbers` = numberLineups over all
 // of this game's saved lineups, so a card's number is the Entries tab's number for the same lineup even while the filter hides others.
+// `dk` (A12, round 3): { selected (Set of ticked saved lineup ids), status } draws the Download DK CSV bar over the cards; null draws none.
 // `filter` (the live app only, null elsewhere: the section is then drawn without it): the Optimizer's "only lineups with" list (D77),
 // { mustHave (the chosen role-aware keys), playersOf(lineup) (a saved lineup's men as lineup-filter.js reads them), exposureHtml(shown, of)
 // (the Captain and FLEX tables over the shown saved lineups; `of` = all of them while the filter hides some, else null), barHtml(shown, total)
 // (the chips bar with Clear, drawn whenever the filter is on, so it is in view of the cards even under a long batch), noMatchText }. The filter only hides; nothing saved is changed.
-export function savedLineupsSectionHtml(board, saved, cardOf, filter = null) {
+export function savedLineupsSectionHtml(board, saved, cardOf, filter = null, dk = null) {
   let body;
   let titleCount = "";
   if (!saved.loaded) {
@@ -171,6 +175,7 @@ export function savedLineupsSectionHtml(board, saved, cardOf, filter = null) {
     body = [
       filtered ? filter.barHtml(k, n) : "",
       filter && k ? filter.exposureHtml(shown, filtered ? n : null) : "",
+      dk && k ? dkDownloadHtml({ count: shown.filter((l) => dk.selected.has(l.id)).length, total: k, status: dk.status }) : "", // A12: Download DK CSV over the cards
       k ? `<div class="saved-lineups-list">${shown.map((l) => cardOf(l, numbers)).join("")}</div>` : `<div class="saved-lineups-empty">${escapeHtml(filter.noMatchText)}</div>`,
     ].join("");
   }

@@ -4,7 +4,8 @@
 // #sd-lineup-mount (sticky at the window's top, static on a phone) so a redraw of the Optimizer never replaces a box Adam is typing in.
 // Markup and wiring only: the caller (view.js) passes the typed boxes' pause (classic's 150 ms one), the bar's own redraw and the pool's.
 import { escapeHtml } from "../format.js";
-import { showAllToggleHtml, wireShowAllButtons } from "../filterbar.js";
+import { showAllToggleHtml, wireShowAllButtons, RESET_ALL_QUESTION, showButtonError } from "../filterbar.js";
+import { askInline, anchorHtml } from "../confirm-inline.js";
 import { poolState, resetPoolFilters } from "./pool.js";
 
 // Position chips, same six positions the showdown board actually carries (server/showdown/board.js rows:
@@ -12,9 +13,10 @@ import { poolState, resetPoolFilters } from "./pool.js";
 // position of its own to combine RB/WR/TE into). Colours match the sd-pos-<pos> pill classes (style.css).
 export const SD_POSITION_CHIPS = ["All", "QB", "RB", "WR", "TE", "K", "DST"];
 
-/** The bar's markup for the filters `f` (poolState.filters), the game's two teams and the Show all players state. Pure. The two
- *  wrappers do nothing on a wide window (display: contents); under 600px each is one sideways-scrolling line (style.css). */
-export function filterBarHtml(f, game, showAll) {
+/** The bar's markup for the filters `f` (poolState.filters), the game's two teams and the Show all players state. `reset` (A6, round 3): {enabled} draws the
+ *  one Reset all overrides button, off when no man has a typed number or a bump; null draws none (the public site cannot write overrides, D71, and sample mode
+ *  refuses every write). Pure. The two wrappers do nothing on a wide window (display: contents); under 600px each is one sideways-scrolling line (style.css). */
+export function filterBarHtml(f, game, showAll, reset = null) {
   const g = game ?? {};
   const num = (v) => (v == null ? "" : escapeHtml(String(v)));
   const posChipsHtml = SD_POSITION_CHIPS.map(
@@ -44,6 +46,7 @@ export function filterBarHtml(f, game, showAll) {
       ${showAllToggleHtml(showAll, `data-action="show-all"`)}
       <span id="sd-filter-count" class="filter-count"></span>
       <button type="button" id="sd-clear-filters-btn" class="link-btn">Clear filters</button>
+      ${reset ? anchorHtml(`<button type="button" id="sd-reset-overrides-btn" class="reset-btn"${reset.enabled ? "" : " disabled"}>Reset all overrides</button>`) : ""}
     </div>`;
 }
 
@@ -76,6 +79,15 @@ export function wireFilterBar(bar, deps) {
     deps.clearShowAll();
     deps.rebuild();
     deps.repaint();
+  });
+  // A6 (round 3): the same question as classic's Reset all overrides, asked beside the button; Yes clears this game's typed numbers and bumps.
+  const resetBtn = bar.querySelector("#sd-reset-overrides-btn");
+  resetBtn?.addEventListener("click", () => {
+    if (resetBtn.disabled) return;
+    askInline(resetBtn, RESET_ALL_QUESTION, async () => {
+      const taken = await deps.onResetOverrides?.();
+      if (!taken) showButtonError(resetBtn, "The reset was not saved. The message above says why.");
+    });
   });
   const minSalary = bar.querySelector("#sd-min-salary");
   const maxSalary = bar.querySelector("#sd-max-salary");

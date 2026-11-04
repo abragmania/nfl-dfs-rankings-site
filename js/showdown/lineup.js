@@ -1,21 +1,19 @@
 // Showdown Lineup Builder tab (D39/D40, brief): one Captain slot and five FLEX (any position including
-// kicker and defence, both teams required), salary remaining, a Build button posting to
-// POST /api/showdown/<key>/lineup/optimize (by projection; no objective choice), Save lineup and the saved-lineups list against
+// kicker and defence, both teams required), salary remaining, Save working lineup and the saved-lineups list against
 // /api/showdown/<key>/lineups (same request/response shapes as classic's lineup routes — see
 // public/js/lineup.js, which this module mirrors in structure). The pool rows' lock / In / exclude buttons belong to
-// the Showdown Optimizer (./optimizer.js, Adam 2026-10-19) and drive its Make only: the one-lineup Build always runs a
-// fresh optimize with empty locks/excludes and replaces whatever is currently placed with the result (D70: Adam's ruling
-// keeps Build unchanged). The Optimizer's band heads the left column, its Make row ends it, and its batch is drawn full
-// width below both columns, above the swaps and the saved lineups.
+// the Showdown Optimizer (./optimizer.js, Adam 2026-10-19) and drive its one Build (optimizer standard A13, round 3: the old one-lineup Build, which ignored
+// locks and excludes and replaced the placed men, is folded into it). The Optimizer's band heads the left column, its Build row ends it, and its batch is
+// drawn full width below both columns, above the swaps and the saved lineups.
 import { escapeHtml } from "../format.js";
-import { postShowdownLineupOptimize, getShowdownLineups, postShowdownLineup, deleteShowdownLineup, putShowdownLineupName, putShowdownLineupTag } from "./api.js";
+import { getShowdownLineups, postShowdownLineup, deleteShowdownLineup, putShowdownLineupName, putShowdownLineupTag } from "./api.js";
 import { poolHtml, poolVisibleRows, paintPool, wirePool, wirePoolTabs, setPoolControls, POOL_PICK_SKIP } from "./pool.js"; // the one player pool, the Rankings table with both roles on each row (Adam 2026-10-26)
 import { wirePick, wirePickRows, SLOT_PICK_SKIP } from "../pick-rows.js"; // click-to-pick, the one wiring classic's Optimizer shares (D81)
 // The Showdown Optimizer (Adam 2026-10-19, sketch A): its band over the builder, its Make row under it, its batch full width below, its controls on the pool rows.
-import { syncOptimizer, optimizerLive, optimizerBandHeadHtml, optimizerBandBoxesHtml, optimizerGoRowHtml, optimizerResultsBlockHtml, optimizerExcludes, optimizerSavedFilter, poolControls, wirePoolControls, wireOptimizer } from "./optimizer.js";
+import { syncOptimizer, optimizerState, optimizerLive, optimizerBandHeadHtml, optimizerBandBoxesHtml, optimizerGoRowHtml, optimizerResultsBlockHtml, optimizerExcludes, releaseAllLocks, resultLineup, optimizerSavedFilter, poolControls, wirePoolControls, wireOptimizer } from "./optimizer.js";
 import { handBuild } from "../lineup-builds.js";
-import { afterBuildingDelay } from "../lineup-stop.js";
-import { statusBlockHtml, addMessageOf, messageRowShown as messageRowShownIn, BUILD_STATUS_ID } from "./lineup-status.js"; // A14: the status block and the click's message beside its pool row
+import { filterLineups } from "../lineup-filter.js";
+import { statusBlockHtml, messageRowShown as messageRowShownIn, BUILD_STATUS_ID } from "./lineup-status.js"; // A14: the status block and the click's message beside its pool row
 import { requestFailureText } from "./read-json.js";
 import { controlsHtml as controlsMarkup } from "./lineup-look.js"; // the two-row controls (Adam 2026-10-18 9:09 PM)
 import { slotsHtml as slotsMarkup, repaintSlots } from "./lineup-slots.js"; // the six slots' markup and figure repaint (Adam 2026-10-21 Q3 option A split)
@@ -28,33 +26,14 @@ export { savedLineupSlotHtml, savedProjTotal } from "./lineup-saved.js";
 import { syncSwaps, swapsPanelHtml, wireSwaps } from "./lineup-swaps.js"; // the uniqueness swaps, full width below both columns (Adam 2026-10-18)
 import { showdownPerSpotText, shownTotal } from "../totals.js";
 import { syncMeter, meterStripHtml, wireMeter, playerFigures } from "./lineup-meter.js"; // uniqueness / projection strip under the slots; every figure on the screen is the served board's (Adam 2026-10-20)
-import { builtOnText } from "./figures-label.js"; // the board's sources in words (the retired Figures switch's place)
 import { lineupReadHtml } from "./lineup-read.js"; // the "Lineup read" sentences under the meter (Adam 2026-10-29 5:10 PM: "just make it not suck")
-
-// "Projection minus ownership" was removed and Leverage has no measure (Adam 2026-10-15, Lev measure to be
-// redesigned); the server answers either name by building by projection with an objectiveNote. state.objective stays "proj"
-// and no Objective choice is drawn while Projection is the only objective (optimizer standard A13, A21).
-
-const state = {
-  cpt: null, // {id} or null
-  flex: new Array(FLEX_COUNT).fill(null), // each {id} or null
-  objective: "proj",
-  lastResult: null,
-  building: false,
-  buildingShown: false, // the one-lineup Build has run a second: its button reads Building... (lineup-look.js)
-  addError: null,
-  addErrorId: null, // the pool row whose click made addError (row-message.js)
-  savedLineups: [],
-  savedLoaded: false,
-  savedError: null,
-  saveName: "",
-  saving: false,
-  saveError: null,
-  saveTone: "error", // "warn" for the nothing-to-save refusal, "error" for a failure (row-message.js)
-  saveConfirm: null,
-  renamingId: null,
-  deleteConfirmId: null,
-};
+import { onConfirmDismiss } from "../confirm-inline.js"; // B13, C11: Esc and a click outside close an open confirm
+import { notDeletedText } from "../delete-words.js"; // A12: the one sentence a failed delete leaves, the classic Optimizer's words
+import { wireStaleMessages } from "../stale-messages.js"; // item 17: a one-shot message goes at the next click on any control
+import { wireDkDownload } from "../dk-lineup-ui.js"; // A12: Download DK CSV for the saved lineups ticked
+// The working lineup, its click rules, Lock/Unlock, Clear all and the saved-or-not question: ./seats.js (split out to keep this file under its cap).
+import { state, setSeatBoard, reseatStoredLocks, pickPoolRow, lineupPicks, listPlacement, lockSeat, unlockSeat, clearCaptain, clearFlex, clearAll, clearAllHasContent, workingUnsaved, rowIdOf } from "./seats.js";
+export { pickPoolRow, lineupPicks };
 
 let lastContainer = null;
 let lastBoard = null;
@@ -93,10 +72,6 @@ function loadSavedLineups(key) {
 
 function commit() {
   if (lastContainer) renderShowdownLineupPanel(lastContainer, lastBoard, lastKey);
-}
-
-function isPlacedFlex(id) {
-  return state.flex.some((s) => s && String(s.id) === String(id));
 }
 
 /**
@@ -145,137 +120,6 @@ export function workingTotalsHtml(board, picked = state, figures = playerFigures
   const t = computeTotals(board, picked, figures);
   const perSpot = t.salaryLeft === null ? null : showdownPerSpotText(t.salaryLeft, !picked.cpt, FLEX_COUNT - (picked.flex ?? []).filter(Boolean).length);
   return lineupTotalsHtml(lineupTotals(men, { cap: SALARY_CAP, notLoaded }), { cap: SALARY_CAP, attrs: " data-working-totals", extra: perSpot ? escapeHtml(perSpot) : "" });
-}
-
-function addCaptain(row) {
-  if (!row) return;
-  state.addErrorId = String(row.id); // a refusal is drawn beside his row (row-message.js, standard A14)
-  if (row.cptSalary == null) {
-    state.addError = `${row.name} has no showdown Captain salary.`;
-    return;
-  }
-  if (state.cpt && String(state.cpt.id) === String(row.id)) {
-    state.addError = `${row.name} is already the Captain.`;
-    return;
-  }
-  state.cpt = { id: String(row.id) };
-  state.flex = state.flex.map((s) => (s && String(s.id) === String(row.id) ? null : s));
-  state.lastResult = null;
-  state.addError = null;
-}
-
-function addFlex(row) {
-  if (!row) return;
-  state.addErrorId = String(row.id);
-  if (row.salary == null) {
-    state.addError = `${row.name} has no showdown FLEX salary.`;
-    return;
-  }
-  if (state.cpt && String(state.cpt.id) === String(row.id)) {
-    state.addError = `${row.name} is already the Captain.`;
-    return;
-  }
-  if (isPlacedFlex(row.id)) {
-    state.addError = `${row.name} is already in a FLEX slot.`;
-    return;
-  }
-  const idx = state.flex.findIndex((s) => !s);
-  if (idx === -1) {
-    state.addError = "All five FLEX slots are full.";
-    return;
-  }
-  state.flex[idx] = { id: String(row.id) };
-  state.lastResult = null;
-  state.addError = null;
-}
-
-/**
- * A click on a pool row (pool.js poolPickAction names `action`; Adam 4:45 PM 2026-10-29): the same add and clear rules the Add and Clear
- * buttons ran. A Captain moved to FLEX goes back to Captain when FLEX refuses him (full, or no FLEX salary), with the refusal shown.
- */
-export function pickPoolRow(row, action) {
-  if (!row) return;
-  if (action === "remove-flex") {
-    const idx = state.flex.findIndex((s) => s && String(s.id) === String(row.id));
-    if (idx !== -1) clearFlex(idx);
-  } else if (action === "remove-cpt") {
-    clearCaptain();
-  } else if (action === "add-cpt") {
-    addCaptain(row);
-  } else if (action === "move-to-flex") {
-    const was = { cpt: state.cpt, lastResult: state.lastResult };
-    clearCaptain();
-    addFlex(row);
-    if (state.addError) Object.assign(state, was);
-  } else {
-    addFlex(row);
-  }
-}
-
-/** Test hook: who is placed now, {cpt, flex, addError, addErrorId} (copies). */
-export function lineupPicks() {
-  return { cpt: state.cpt ? { ...state.cpt } : null, flex: state.flex.map((s) => (s ? { ...s } : null)), addError: state.addError, addErrorId: state.addErrorId };
-}
-
-function clearCaptain() {
-  state.cpt = null;
-  state.lastResult = null;
-  state.addError = null;
-}
-
-function clearFlex(idx) {
-  state.flex[idx] = null;
-  state.lastResult = null;
-  state.addError = null;
-}
-
-function clearAll() {
-  state.cpt = null;
-  state.flex = new Array(FLEX_COUNT).fill(null);
-  state.lastResult = null;
-  state.addError = null;
-}
-
-async function doBuild(key) {
-  if (state.building) return;
-  state.building = true;
-  state.buildingShown = false; // the button reads "Building..." only after a second, like Make and Build (lineup-stop.js, standard D15)
-  state.addError = null;
-  commit();
-  const cancelShow = afterBuildingDelay(() => {
-    if (!state.building) return;
-    state.buildingShown = true;
-    commit();
-  });
-  try {
-    const data = await postShowdownLineupOptimize(key, { objective: state.objective, locks: [], excludes: [] }); // no mode: the server builds on the served board, the figures on screen
-    if (!data || data.ok === false) {
-      state.lastResult = { feasible: false, tone: "error", message: data?.error?.message ?? "Could not build a lineup." };
-    } else if (data.feasible) {
-      const lineup = Array.isArray(data.lineup) ? data.lineup : [];
-      const cptEntry = lineup.find((e) => String(e.slot ?? "").toUpperCase() === "CPT" || String(e.slot ?? "").toUpperCase() === "CAPTAIN");
-      const flexEntries = lineup.filter((e) => e !== cptEntry).slice(0, FLEX_COUNT);
-      // The optimiser's Captain entry has id = row.cptId (server/lineup/showdown.js's showdownCandidates:
-      // the Captain candidate's own id IS the Captain id), which findRow below can never match since board
-      // rows are keyed by the FLEX/person id. personId is the same person id findRow needs, on both the
-      // Captain and FLEX entries (🔵 review item 1) — that's what makes the Captain's salary/points count
-      // in the totals and the both-teams line instead of silently resolving to nothing.
-      const personIdOf = (e) => String(e.personId ?? e.playerId ?? e.id);
-      state.cpt = cptEntry ? { id: personIdOf(cptEntry) } : null;
-      state.flex = new Array(FLEX_COUNT).fill(null).map((_, i) => (flexEntries[i] ? { id: personIdOf(flexEntries[i]) } : null));
-      const message = [data.objectiveNote, data.message].filter(Boolean).join(" ");
-      state.lastResult = { feasible: true, message, builtOn: builtOnText(lastBoard), salaryUsed: data.salaryUsed, totalProj: data.totalProj };
-    } else {
-      const message = [data.objectiveNote, data.message ?? "No legal lineup fits the salary cap and both-teams rule."].filter(Boolean).join(" ");
-      state.lastResult = { feasible: false, tone: "warn", message }; // no lineup fits: an answer, not a failure (amber)
-    }
-  } catch (e) {
-    state.lastResult = { feasible: false, tone: "error", message: requestFailureText(e) };
-  }
-  cancelShow();
-  state.building = false;
-  state.buildingShown = false;
-  commit();
 }
 
 /**
@@ -331,28 +175,53 @@ async function putCard(key, id, send) {
   commit();
 }
 
+/** A12 (round 3): a delete that did not happen says so on the card, in red, until the next try (it was swallowed before). */
 async function doDeleteLineup(key, id) {
   state.deleteConfirmId = null;
+  delete state.deleteErrors[id];
   commit();
   try {
     const data = await deleteShowdownLineup(key, id);
     if (data && data.ok !== false && Array.isArray(data.lineups)) state.savedLineups = data.lineups;
+    else state.deleteErrors[id] = notDeletedText({ data });
   } catch (e) {
-    // Best-effort.
+    console.warn("Delete: the request did not come back", e);
+    state.deleteErrors[id] = notDeletedText({ error: e });
   }
   commit();
 }
 
-function doLoadLineup(id) {
-  const lineup = state.savedLineups.find((l) => l.id === id);
-  if (!lineup) return;
+/** A Load (a saved card's, or a generated card's: A13): over slots that are not saved it asks `Replace your working lineup?` first (C11); `kind` "saved" or "result". */
+function requestLoad(kind, id) {
+  if (workingUnsaved()) {
+    state.confirm = `load:${kind}:${id}`;
+    commit();
+    return;
+  }
+  doLoadLineup(kind, id);
+}
+
+/** Puts a saved or generated lineup in the slots (a Load) and brings the slots into view (A12, round 3: a card can be far below them). The old men's locks go with them. */
+function doLoadLineup(kind, id) {
+  state.confirm = null;
+  const lineup = kind === "result" ? resultLineup(id) : state.savedLineups.find((l) => l.id === id);
+  if (!lineup) {
+    commit();
+    return;
+  }
+  const personOf = (s) => rowIdOf(s.personId ?? s.playerId);
   const cptSlot = (lineup.slots ?? []).find((s) => String(s.slot ?? "").toUpperCase() === "CPT");
   const flexSlots = (lineup.slots ?? []).filter((s) => s !== cptSlot);
-  state.cpt = cptSlot ? { id: String(cptSlot.playerId) } : null;
-  state.flex = new Array(FLEX_COUNT).fill(null).map((_, i) => (flexSlots[i] ? { id: String(flexSlots[i].playerId) } : null));
-  state.lastResult = null;
+  state.cpt = cptSlot ? { id: personOf(cptSlot) } : null;
+  state.flex = new Array(FLEX_COUNT).fill(null).map((_, i) => (flexSlots[i] ? { id: personOf(flexSlots[i]) } : null));
   state.addError = null;
+  releaseAllLocks(); // the whole lineup is replaced: every lock of this game goes, in both modes
   commit();
+  try {
+    lastContainer?.querySelector?.(".lineup-slots")?.scrollIntoView?.({ block: "start", behavior: "smooth" });
+  } catch (e) {
+    console.warn("Load: the slots could not be scrolled into view", e); // a convenience only; the lineup is loaded either way
+  }
 }
 
 // --------------------------------------------------------------------------------------------------------
@@ -382,7 +251,7 @@ const slotsHtml = (board) => slotsMarkup(board, state); // the placed slots go i
 
 function controlsHtml() {
   const hasAnySlot = Boolean(state.cpt) || state.flex.some(Boolean);
-  return controlsMarkup({ building: state.building, buildingShown: state.buildingShown, saving: state.saving, saveName: state.saveName, hasAnySlot });
+  return controlsMarkup({ saving: state.saving, saveName: state.saveName, hasAnySlot, confirm: state.confirm });
 }
 
 // The status block under the slots and the click's message beside its pool row (standard A14): lineup-status.js.
@@ -393,12 +262,6 @@ const messageRowShown = (rows) => messageRowShownIn(state, rows);
 function repaintBuildStatus(board, rows) {
   const el = lastContainer?.querySelector?.(`#${BUILD_STATUS_ID}`);
   if (el) el.innerHTML = buildStatusHtml(board, messageRowShown(rows));
-}
-
-// What the pool needs from the lineup: who is placed (a placed man's row is tinted on the tab where he sits); a click on a row runs
-// pickPoolRow (poolCtx's pick), where the add and clear rules stay.
-function listPlacement() {
-  return { cptId: state.cpt ? String(state.cpt.id) : null, flexIds: new Set(state.flex.filter(Boolean).map((s) => String(s.id))), message: addMessageOf(state) };
 }
 
 function poolCtx(board) {
@@ -421,12 +284,18 @@ export function repaintShowdownPool() {
 
 // The saved card with the panel's rename box, delete prompt and PUT state (lineup-saved.js draws it); `numbers`: numberLineups of this game's saved lineups.
 export function savedLineupCardHtml(lineup, board, figures = playerFigures, numbers = null) {
-  return savedCardHtml(lineup, board, figures, { renamingId: state.renamingId, deleteConfirmId: state.deleteConfirmId, numbers, busy: cardPuts.busy.has(lineup.id), error: cardPuts.errors[lineup.id] ?? null, editableTag: !onSitePage() });
+  return savedCardHtml(lineup, board, figures, { renamingId: state.renamingId, deleteConfirmId: state.deleteConfirmId, numbers, busy: cardPuts.busy.has(lineup.id), error: cardPuts.errors[lineup.id] ?? null, deleteError: state.deleteErrors[lineup.id] ?? null, editableTag: !onSitePage(), ticked: state.dkSelected.has(lineup.id), confirm: state.confirm });
 }
 
 // The Optimizer's "only lineups with" list filters these cards too, live app only (D77; optimizer.js optimizerSavedFilter).
 function savedLineupsSectionHtml(board) {
-  return savedSectionHtml(board, { loaded: state.savedLoaded, error: state.savedError, lineups: state.savedLineups }, (l, numbers) => savedLineupCardHtml(l, board, undefined, numbers), optimizerSavedFilter(board));
+  return savedSectionHtml(board, { loaded: state.savedLoaded, error: state.savedError, lineups: state.savedLineups }, (l, numbers) => savedLineupCardHtml(l, board, undefined, numbers), optimizerSavedFilter(board), { selected: state.dkSelected, status: state.dkStatus });
+}
+
+/** The saved lineups on screen (A12): all of them, or only those the "only lineups with" list keeps; what Download DK CSV acts on. */
+function shownSavedLineups(board) {
+  const f = optimizerSavedFilter(board);
+  return f && f.mustHave.length ? filterLineups(state.savedLineups, f.mustHave, f.playersOf).map((e) => e.item) : state.savedLineups;
 }
 
 // `poolRows`: the pool's rows (pool.js poolVisibleRows), read once per draw so the filter bar's count is the same list.
@@ -454,7 +323,7 @@ function panelHtml(board, poolRows) {
       </div>
       <div class="lineup-right sd-pool-col">${poolHtml(board, listPlacement(), poolRows)}</div>
     </div>
-    ${optimizerResultsBlockHtml(board, state.savedLineups)}
+    ${optimizerResultsBlockHtml(board, state.savedLineups, state.confirm)}
     ${swapsPanelHtml()}
     ${savedLineupsSectionHtml(board)}`;
 }
@@ -469,7 +338,15 @@ function optCtx(board, key) {
     getSaved: () => state.savedLineups,
     setSaved: (list) => { state.savedLineups = list; },
     repaintPool: () => { if (lastContainer) paintPool(lastContainer, poolCtx(board)); },
+    onLock: (row, kind, on) => (on ? lockSeat(row, kind) : unlockSeat(row, kind)), // D3: Lock seats the man; Unlock takes him out
+    loadResult: (uid) => requestLoad("result", uid), // A13: a generated card into the builder's seats
     boardWrite: (send, label) => (boardWrite ? boardWrite(send, label) : console.error("A Showdown board write was asked for, but view.js passed no board writer.")), // the ± bump (Adam 2026-10-22)
+    rowError: (id, text) => { // B12: a failed write for a pool row is said beside that row, in red
+      state.addErrorId = String(id);
+      state.addError = text;
+      state.addTone = "error";
+      commit();
+    },
   };
 }
 
@@ -477,7 +354,7 @@ function optCtx(board, key) {
 function wireRowButtons(container, board) {
   wirePoolControls(container, optCtx(board, lastKey));
   wirePickRows(container, POOL_PICK_SKIP, (id, action) => { // a click on a pool row (D39): the man goes in or out, and the panel is redrawn
-    pickPoolRow(findRow(board, id), action);
+    pickPoolRow(findRow(board, id), action, board);
     commit();
   });
 }
@@ -485,10 +362,31 @@ function wireRowButtons(container, board) {
 function wire(container, board, key) {
   wireMeter(container);
   wireSwaps(container);
-  container.querySelector("#sd-lineup-build-btn")?.addEventListener("click", () => doBuild(key));
+  wireConfirmDismiss();
+  // B13: Clear all asks `Clear the lineup?` beside itself when it would lose a man, as classic's does (confirm-inline.js); with nothing in the seats it just clears.
   container.querySelector("#sd-lineup-clear-all-btn")?.addEventListener("click", () => {
-    clearAll();
+    if (!clearAllHasContent()) {
+      clearAll();
+      commit();
+      return;
+    }
+    state.confirm = "clear";
     commit();
+  });
+  container.querySelectorAll("[data-confirm]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const which = btn.dataset.confirmFor ?? "";
+      if (btn.dataset.confirm !== "yes") {
+        state.confirm = null;
+        commit();
+      } else if (which === "clear") {
+        clearAll();
+        commit();
+      } else if (which.startsWith("load:")) {
+        const [, kind, ...rest] = which.split(":");
+        doLoadLineup(kind, rest.join(":"));
+      }
+    });
   });
   // A click (or Enter / Space) on a filled slot card takes his man out (D39, Adam 4:45 PM 2026-10-29: no Clear buttons); his name keeps opening his card.
   const onSlot = (el, remove) => wirePick(el, SLOT_PICK_SKIP, () => { remove(); commit(); });
@@ -505,6 +403,15 @@ function wire(container, board, key) {
     const nameInput = container.querySelector("#sd-lineup-save-name");
     doSaveLineup(key, nameInput ? nameInput.value : "");
   });
+  wireDkDownload(container, {
+    selected: state.dkSelected,
+    shown: () => shownSavedLineups(board),
+    kind: "showdown",
+    board: () => board,
+    slateLabel: () => key ?? "",
+    setStatus: (text) => { state.dkStatus = text; },
+    redraw: commit,
+  });
   wireSavedCards(container, {
     renameStart: (id) => {
       state.renamingId = id;
@@ -520,6 +427,7 @@ function wire(container, board, key) {
     deleteStart: (id) => {
       state.deleteConfirmId = id;
       state.renamingId = null;
+      delete state.deleteErrors[id]; // a new try clears the last delete's failure sentence (A12)
       commit();
     },
     deleteNo: () => {
@@ -527,12 +435,49 @@ function wire(container, board, key) {
       commit();
     },
     deleteYes: (id) => doDeleteLineup(key, id),
-    load: (id) => doLoadLineup(id),
+    load: (id) => requestLoad("saved", id),
   });
+  focusOpenConfirm(container);
   wireOptimizer(optCtx(board, key));
 }
 
+/** Esc and a click outside close every open confirm alike: Clear all, Load over unsaved slots and a saved card's Delete (confirm-inline.js onConfirmDismiss). */
+let dismissWired = false;
+function wireConfirmDismiss() {
+  if (dismissWired || typeof document === "undefined" || typeof document.addEventListener !== "function") return; // a test's stand-in page has none
+  dismissWired = true;
+  onConfirmDismiss(() => {
+    if (!state.confirm && !state.deleteConfirmId) return;
+    state.confirm = null;
+    state.deleteConfirmId = null;
+    commit();
+  });
+}
+
+let focusedConfirm = null; // the confirm that last took the keyboard, so a redraw while it stays open does not take it again
+/** A confirm that has just opened takes the keyboard on its safe button (No); Yes and No are in the tab order right after the control. */
+function focusOpenConfirm(container) {
+  const key = state.confirm ?? (state.deleteConfirmId ? `delete:${state.deleteConfirmId}` : null);
+  if (key && key !== focusedConfirm) container.querySelector(state.confirm ? "[data-confirm='no']" : "[data-action='sd-delete-no']")?.focus?.();
+  focusedConfirm = key;
+}
+
 let lastValidatedKey = null;
+let lastMessageScope = null; // "game|optimizer mode" the one-shot messages were made under
+
+/** Item 17 (round 3 fixes): the messages a click leaves (`Saved "..."`, the DK status, a refused pool click) belong to the game and mode they
+ *  were made in; a different game or mode starts clean. */
+function dropStaleMessages(key) {
+  const scope = `${key}|${optimizerState().ks?.mode ?? ""}`;
+  if (lastMessageScope !== null && scope !== lastMessageScope) {
+    state.dkStatus = "";
+    state.saveConfirm = null;
+    state.addError = null;
+    state.addErrorId = null;
+    state.addTone = undefined;
+  }
+  lastMessageScope = scope;
+}
 
 // `onOpenSources`: what the meter's figures label's Sources link does (view.js: the Showdown header's Sources button's opener).
 // `onBoardWrite(send, label)`: view.js's runner of a write that answers this game's board, which it applies as a refresh's (the ± bump).
@@ -542,6 +487,7 @@ let lastValidatedKey = null;
 export function renderShowdownLineupPanel(container, board, key, { onOpenSources = openSources, onBoardWrite = boardWrite, onPoolCount = poolCount, onDrawn = afterDraw } = {}) {
   lastContainer = container;
   lastBoard = board;
+  setSeatBoard(board);
   lastKey = key;
   openSources = onOpenSources;
   boardWrite = onBoardWrite;
@@ -553,17 +499,28 @@ export function renderShowdownLineupPanel(container, board, key, { onOpenSources
     state.savedLineups = [];
     state.savedError = null;
     // A different showdown means a different player pool: last week's (or the other game's) placed
-    // Captain/FLEX, build result and open rename/delete prompts must never carry over (🔵 review item 7).
+    // Captain/FLEX, ticked saved lineups and open rename/delete prompts must never carry over (🔵 review item 7).
     state.cpt = null;
     state.flex = new Array(FLEX_COUNT).fill(null);
-    state.lastResult = null;
     state.addError = null; // a refusal beside a row of the other game's pool is not this game's
     state.addErrorId = null;
+    state.addTone = undefined;
+    state.dkSelected.clear();
+    state.dkStatus = "";
+    state.deleteErrors = {};
     state.renamingId = null;
     state.deleteConfirmId = null;
+    state.confirm = null;
     if (key) loadSavedLineups(key);
   }
   syncOptimizer(key, board); // this showdown's Optimizer settings; another showdown's batch is dropped (first: the meter reads its excludes)
+  dropStaleMessages(key);
+  reseatStoredLocks(`${key}|${optimizerState().ks?.mode ?? ""}`); // stored locks get their seats (or are dropped, with a sentence) at a game's first draw and at a mode switch
+  wireStaleMessages(container, {
+    hasAny: () => Boolean(state.dkStatus || state.saveConfirm || state.addError),
+    clear: () => { state.dkStatus = ""; state.saveConfirm = null; state.addError = null; state.addErrorId = null; state.addTone = undefined; },
+    selector: ".dk-status, .row-msg-warn, .row-msg-notice, .lineup-status:not(.lineup-status-error):not(.lineup-status-warning)",
+  });
   syncMeter({ board, key, cpt: state.cpt, flex: state.flex, container, excludes: optimizerExcludes(), onSources: openSources, onModes: repaintSlotFigures }); // the meter repaints only its own strip and the slots' notes; the on-screen mode's excludes, as a batch card's meter has them (🔵 866b0ce B1)
   syncSwaps({ board, key, cpt: state.cpt, flex: state.flex, container, excludes: optimizerExcludes() }); // after the meter: the swaps exist while it has a complete live lineup; the meter's excludes, so no excluded man is offered
   const poolRows = poolVisibleRows(board);

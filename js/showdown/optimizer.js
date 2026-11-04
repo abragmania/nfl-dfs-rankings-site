@@ -7,8 +7,10 @@
 // Live app only (as the meter): the published site and sample mode have no generate route, so nothing here is drawn there.
 import { isSampleMode, sampleRefusal } from "../api.js";
 import { bumpControlHtml, bumpFigureOnlyHtml, wireBumpButtons, bumpPatch } from "../bump-control.js"; // Adam 2026-10-22: ± bump on the pool rows' projection (its own column since A1)
+import { rowResetHtml, rowResetPatch } from "../row-reset.js"; // B12 (round 3): the row's reset
 import { onSitePage } from "../tabs.js"; // the one is-site check
 import { parsePct, uniqueSavedName, duplicateSaveStatus } from "../lineup.js";
+import { countBelowMin, syncCountNote, COUNT_MIN_SENTENCE, fullLineupText } from "../lineup-settings.js";
 import { newBuildId, batchBuild } from "../lineup-builds.js";
 import { toggleMustHave, bulkUids, filterBarHtml } from "../lineup-filter.js";
 import { lineupModeOf } from "../lineup-cash.js";
@@ -71,6 +73,48 @@ const modeState = () => opt.ks[opt.ks.mode];
 export function optimizerExcludes() {
   return optimizerLive() ? [...modeState().excludes] : [];
 }
+
+/** The locks of the mode on screen as the builder's seats see them (A18, D3): {cpt: Set of person ids locked as Captain, flex: Set locked in FLEX}. Empty off the live app. */
+export function optimizerLocks(board) {
+  const out = { cpt: new Set(), flex: new Set() };
+  if (!optimizerLive()) return out;
+  const { candOf } = S.boardIndex(board);
+  for (const id of modeState().locks) {
+    const c = candOf.get(id);
+    if (c) (c.role === "CPT" ? out.cpt : out.flex).add(c.person);
+  }
+  return out;
+}
+
+/** The man left a seat (his slot was clicked, Unlock): his lock in that seat goes with him, in both modes (the seats are one set; a lock left in the other mode would come back on
+ *  with nobody in the seat), as classic's removeSlot drops it. */
+export function releaseSeatLock(row, kind) {
+  if (!optimizerLive() || !row) return;
+  const id = kind === "cpt" ? (row.cptId == null ? null : String(row.cptId)) : String(row.id);
+  if (id === null) return;
+  let next = opt.ks;
+  for (const mode of S.MODES) if (next[mode].locks.includes(id)) next = { ...next, [mode]: { ...next[mode], locks: next[mode].locks.filter((x) => x !== id) } };
+  if (next !== opt.ks) {
+    opt.ks = next;
+    persist();
+  }
+}
+
+/** Clear all and Load replace the whole lineup: every lock of this game goes, in both modes (none is left pointing at a seat that is not his any more). */
+export function releaseAllLocks() {
+  if (!optimizerLive()) return;
+  if (!S.MODES.some((mode) => opt.ks[mode].locks.length)) return;
+  opt.ks = { ...opt.ks, gpp: { ...opt.ks.gpp, locks: [] }, cash: { ...opt.ks.cash, locks: [] } };
+  persist();
+}
+
+// The men in the builder's seats, as candidate ids (the Captain by his Captain id): seats.js registers the reader, so the Optimizer can hold them in a Build and say so (item 11)
+// without importing the builder.
+let seatedSource = () => [];
+export function setSeatedSource(fn) {
+  seatedSource = typeof fn === "function" ? fn : () => [];
+}
+const seatedNow = (board) => (optimizerLive() ? seatedSource(board) : []);
 
 function persist() {
   if (opt.key) S.writeKeyState(storage, opt.key, opt.ks);
@@ -146,6 +190,14 @@ export async function putShowdownOverrides(key, patch, fetchImpl = fetch) {
   return readJson(res);
 }
 
+/** DELETE /api/showdown/<key>/overrides (Reset all overrides, A6): clears this game's typed numbers and bumps; answers the game's recomputed board. Same refusals as the PUT. */
+export async function deleteShowdownOverrides(key, fetchImpl = fetch) {
+  if (isSampleMode()) return sampleRefusal();
+  if (!supports("overrides")) return Promise.reject(new Error("Reset all overrides runs in the app.")); // D71: the public site has no stand-in for it
+  const res = await fetchImpl(`/api/showdown/${encodeURIComponent(key)}/overrides`, { method: "DELETE" });
+  return readJson(res);
+}
+
 /** The batch kept from a generate answer: the lineups in the server's order (each with a page id and its number), and what it was
  *  made with. Pure; `seqStart` numbers the page ids; `board` is the served board it was made on: its build time is the as-of of a
  *  batch whose answer names none, its reading (board.mode.cashMode) the build record's boardMode when the answer names none (as
@@ -178,9 +230,11 @@ export function resultsFromAnswer(data, sent, seqStart = 0, board = null) {
 async function doGenerate(ctx) {
   if (opt.generating || opt.saving) return;
   const mode = opt.ks.mode;
-  opt.formError = S.capProblem(modeState(), mode, ctx.board);
+  const seated = seatedNow(ctx.board); // the men in the seats are held as classic holds its slots (item 11)
+  const held = S.heldCandidates(modeState(), seated);
+  opt.formError = countBelowMin(modeState().count) ? COUNT_MIN_SENTENCE : held.length >= 6 ? fullLineupText(6) : S.capProblem(modeState(), mode, ctx.board); // item 18: a count below 1 is said, not made into 1
   if (opt.formError) return ctx.commit();
-  const sent = S.buildGenerateBody(modeState(), mode, ctx.board); // no boardMode: the server builds on this game's served board
+  const sent = S.buildGenerateBody(modeState(), mode, ctx.board, seated); // no boardMode: the server builds on this game's served board
   const madeFor = opt.key;
   opt.generating = true;
   opt.stopping = false;
@@ -298,7 +352,7 @@ async function saveCards(uids, ctx) {
 const showing = () => opt.generating && opt.buildingShown; // a build under a second shows nothing (lineup-stop.js); doGenerate itself refuses a second click
 const busy = () => opt.generating || opt.saving;
 
-const bandView = (board) => ({ mode: opt.ks.mode, ms: modeState(), board, error: opt.error, errorTone: opt.errorTone, formError: opt.formError });
+const bandView = (board) => ({ mode: opt.ks.mode, ms: modeState(), board, error: opt.error, errorTone: opt.errorTone, formError: opt.formError, seated: seatedNow(board) });
 
 /** The Optimizer band's head (title, GPP | Cash switch, refusal sentences), at the top of the left column; "" off the live app. */
 export function optimizerBandHeadHtml(board) {
@@ -322,18 +376,23 @@ export function optimizerBandHtml(board) {
  *  `board`: the served board (its reading names the cash basis, its rows whether Median can be built). */
 export function optimizerGoRowHtml(board) {
   if (!optimizerLive()) return "";
-  return V.goRowHtml({ summary: S.summaryText(modeState(), opt.ks.mode, board), count: S.requestCount(modeState().count, opt.ks.mode), generating: showing(), busy: showing() || opt.saving, formError: opt.formError, canStop: canStopShowdownLineupGenerate(), below: opt.buildingBelow, stopping: opt.stopping, stopError: opt.stopError });
+  return V.goRowHtml({ summary: S.summaryText(modeState(), opt.ks.mode, board), generating: showing(), busy: showing() || opt.saving, formError: opt.formError, canStop: canStopShowdownLineupGenerate(), below: opt.buildingBelow, stopping: opt.stopping, stopError: opt.stopError });
 }
 
 /** The batch (its head, source line, exposure tables and cards), drawn full width below both columns (Adam 2026-10-19 11:17 PM:
  *  "generated lineups should go 4 across"); "" off the live app. */
-export function optimizerResultsBlockHtml(board, saved) {
+export function optimizerResultsBlockHtml(board, saved, confirm = null) {
   if (!optimizerLive()) return "";
   const r = opt.results;
   const keys = r ? savedKeysOf(saved, r.mode, board) : new Set();
   const { personOf } = S.boardIndex(board);
   const savedFlags = r ? r.lineups.map((l) => keys.has(S.sdSetKey(l.slots, personOf))) : [];
-  return V.resultsHtml({ results: r, generating: showing(), saveError: opt.saveError, saveTone: opt.saveTone, busy: busy(), savedFlags, board, expSortDir: opt.expSortDir, mustHave: opt.mustHave, mustHaveNames: opt.mustHaveNames });
+  return V.resultsHtml({ results: r, generating: showing(), saveError: opt.saveError, saveTone: opt.saveTone, busy: busy(), savedFlags, board, expSortDir: opt.expSortDir, mustHave: opt.mustHave, mustHaveNames: opt.mustHaveNames, confirm });
+}
+
+/** The generated lineup `uid` of the batch on screen (a result card's Load), or null. */
+export function resultLineup(uid) {
+  return opt.results?.lineups.find((l) => l.uid === uid) ?? null;
 }
 
 /**
@@ -378,7 +437,8 @@ export function poolThumbsHtml(row, isCpt, canSave = supports("overrides")) {
 /** The projection figure of a pool row with the bump's tint and hover (the thumbs have their own column, A1); null off the live screen, where the pool draws its own figure. */
 export function poolBumpHtml(row, proj, isCpt) {
   if (!optimizerLive()) return null;
-  return bumpFigureOnlyHtml(row, proj, { kind: isCpt ? "cpt" : null });
+  // B12 (round 3): the row's reset x beside the figure, for a man who has a typed number or a bump; the public site cannot write overrides, so it has none there (D71).
+  return `${bumpFigureOnlyHtml(row, proj, { kind: isCpt ? "cpt" : null })}${supports("overrides") ? rowResetHtml(row) : ""}`;
 }
 
 /**
@@ -397,6 +457,7 @@ export const poolControls = {
   // Excluded from every lineup dims the row (a Captain-only exclude leaves the row as it is: he can still be FLEX); a lock is the icon beside the name, not a tint (C20).
   rowClass: (row, tab) => (optimizerLive() ? V.poolRowClass(row, tab === "cpt" ? "cpt" : "flex", modeState()) : ""), // C21: a man excluded as Captain dims on the Captain list as a FLEX-excluded man does on FLEX
   lockIcon: (row) => (optimizerLive() ? V.poolLockIconHtml(row, modeState()) : ""),
+  excluded: (row, tab) => optimizerLive() && S.excludeState(modeState(), row, tab === "cpt" ? "cpt" : "flex").on, // A18: an excluded man's row on that list is greyed (seat-picker.js)
   thumbs: (row, isCpt = false) => poolThumbsHtml(row, isCpt), // the ± pair (Adam 2026-10-22), in its own column; one pair per man moves both his figures
   projCell: (row, proj, isCpt = false) => poolBumpHtml(row, proj, isCpt), // the Proj figure (FLEX tab) or the CPT proj figure (Captain tab) with the bump's tint
   readTab: () => S.readPoolTab(storage), // the pool's Captain | FLEX tab, kept in the browser on the site too (D71)
@@ -405,15 +466,13 @@ export const poolControls = {
 
 // ---------- wiring ----------
 
-/** Puts the summary, the Make label and the included / locked line back after a box changed, without a redraw (focus stays). */
+/** Puts the summary (which names the count) and the included / locked line back after a box changed, without a redraw (focus stays). */
 function refreshLines(container, board) {
   const summary = container.querySelector("#sd-opt-summary");
   if (summary) summary.textContent = S.summaryText(modeState(), opt.ks.mode, board);
-  const go = container.querySelector("#sd-opt-go-btn");
-  if (go && !opt.generating) go.textContent = V.goLabel(S.requestCount(modeState().count, opt.ks.mode), false);
   const info = container.querySelector("#sd-opt-lockinfo");
   if (info) {
-    const text = S.statusLineText(modeState(), board);
+    const text = S.statusLineText(modeState(), board, seatedNow(board));
     info.textContent = text;
     info.hidden = !text;
   }
@@ -435,6 +494,15 @@ export function wirePoolControls(listEl, ctx) {
   if (!optimizerLive()) return;
   const rowOf = (id) => (ctx.board?.rows ?? []).find((r) => String(r.id) === String(id));
   wireBumpButtons(listEl, { rowOf, onBump: (id, steps) => ctx.boardWrite?.((key) => putShowdownOverrides(key, bumpPatch(id, steps)), "the projection bump") }); // true once taken, false when refused
+  listEl.querySelectorAll("[data-action='row-reset']").forEach((btn) => { // B12: clears his typed numbers and bump; a refusal is said beside his row, in red
+    btn.addEventListener("click", async () => {
+      const row = rowOf(btn.dataset.id);
+      if (!row || btn.disabled) return;
+      btn.disabled = true;
+      const taken = await ctx.boardWrite?.((key) => putShowdownOverrides(key, rowResetPatch(row)), "the reset");
+      if (!taken) ctx.rowError?.(row.id, "The reset was not saved. The message above says why.");
+    });
+  });
   listEl.querySelectorAll("[data-sd-opt]").forEach((btn) => {
     btn.addEventListener("click", () => {
       const row = rowOf(btn.dataset.id);
@@ -443,6 +511,13 @@ export function wirePoolControls(listEl, ctx) {
       const kind = btn.dataset.kind === "cpt" ? "cpt" : "flex";
       const next = btn.dataset.sdOpt === "lock" ? S.toggleLock(ms, row, kind, ctx.board) : btn.dataset.sdOpt === "include" ? S.toggleInclude(ms, row) : S.toggleExclude(ms, row, kind);
       if (next === ms) return;
+      if (btn.dataset.sdOpt === "lock" && ctx.onLock) {
+        // D3 (round 3 fixes): Lock seats him in that seat by the click's rules; a man who cannot sit is not locked, and the message is beside his row. Unlock takes him out.
+        const taken = ctx.onLock(row, kind, !S.isLocked(ms, row, kind));
+        if (taken) setModeState(next);
+        ctx.commit();
+        return;
+      }
       setModeState(next);
       ctx.repaintPool();
       refreshLines(ctx.container, ctx.board);
@@ -482,6 +557,10 @@ function wireBand(root, ctx) {
     const el = root.querySelector(sel);
     el?.addEventListener("input", () => {
       setModeState({ ...modeState(), [field]: el.value });
+      if (field === "count") {
+        syncCountNote(el); // `Minimum 1` beside the box while it is below 1
+        if (opt.formError === COUNT_MIN_SENTENCE && !countBelowMin(el.value)) clearFormError(ctx.container);
+      }
       refreshLines(ctx.container, ctx.board);
     });
   }
@@ -568,6 +647,7 @@ export function wireOptimizer(ctx) {
     }
   });
   c.querySelectorAll("[data-sd-opt-save]").forEach((btn) => btn.addEventListener("click", () => saveCards([btn.dataset.sdOptSave], ctx)));
+  c.querySelectorAll("[data-sd-opt-load]").forEach((btn) => btn.addEventListener("click", () => ctx.loadResult?.(btn.dataset.sdOptLoad))); // A13: the card's six men into the builder's seats (lineup.js)
   c.querySelector("[data-sd-opt-save-all]")?.addEventListener("click", () => saveCards(shownUids(), ctx)); // the shown lineups only while filtered (D77)
   c.querySelectorAll("[data-sd-opt-discard]").forEach((btn) => {
     btn.addEventListener("click", () => {

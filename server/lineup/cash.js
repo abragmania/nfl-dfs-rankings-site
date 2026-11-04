@@ -9,7 +9,7 @@ import { rowIsOut } from "../rank/sidelined.js";
 const num = (v) => (typeof v === "number" && Number.isFinite(v) ? v : null);
 
 /** The browser keeps a copy (public/js/lineup-cash.js) that a test compares with this one. */
-export const CASH_DEFAULTS = Object.freeze({ count: 1, minUnique: 1, maxPerTeam: null });
+export const CASH_DEFAULTS = Object.freeze({ count: 5, minUnique: 1, maxPerTeam: null }); // optimizer standard D9: five lineups, as GPP
 
 // Code review of a9455a0, MUST 1: true on a preset, a custom board (TwoGun the only projection source ticked) and the Showdown
 // Optimizer's TwoGun figures alike, so it names no header mode and no one control. The browser keeps a copy of this sentence and

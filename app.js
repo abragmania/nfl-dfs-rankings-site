@@ -19,6 +19,7 @@ import {
   postRefresh,
   putOverrides,
   deleteAllOverrides,
+  deleteOverride,
   postProjectionsPaste,
   postMode,
 } from "./js/api.js";
@@ -30,10 +31,10 @@ import { adjustScrollPanels } from "./js/scroll-panels.js";
 import { normalizeBoard } from "./js/normalize.js";
 import { applyGrades, rowsGradedForView } from "./js/grade.js";
 import { favoriteRows } from "./js/favorites.js";
-import { toggleStarredQbOnly, starredQbViewNow } from "./js/lineup.js";
+import { toggleStarredQbOnly, starredQbViewNow, setPoolRowError } from "./js/lineup.js";
 import { renderGameStrip, getGamestripCollapsed, setGamestripCollapsed } from "./js/gamestrip.js";
-import { renderFilterBar, updateFilterSummary } from "./js/filterbar.js";
-import { renderTableHead, renderTableBody, updateRow } from "./js/table.js";
+import { renderFilterBar, updateFilterSummary, showButtonError, hasAnyOverride } from "./js/filterbar.js";
+import { renderTableHead, renderTableBody, updateRow, showRowError } from "./js/table.js";
 import { renderTabs, isSourcesTab, sourcesTabToOpen, shownTab, renderProjectionsPanel, renderOwnershipPanel, renderLineupPanel, renderEntriesPanel } from "./js/tabs.js";
 import { renderSourcesPage, APPLIED_ALL_EVENT } from "./js/sources-page.js"; // the one Sources page (Adam 2026-10-18), shared with the Showdown view
 import { teamsSampleHtml } from "./js/teams-sample.js"; // Temporary (Adam 2026-10-18)
@@ -41,6 +42,9 @@ import { initExpand, syncExpandUi } from "./js/expand.js";
 import { makeFilterDebounce } from "./js/filter-debounce.js";
 import { initPlayerCard } from "./js/player-card.js";
 import { delegateBumpClicks, bumpPatch } from "./js/bump-control.js"; // Adam 2026-10-22: ± bump
+import { delegateRowReset } from "./js/row-reset.js"; // B12: the pool's row reset (typed numbers and bump)
+import { makeWriteSeq } from "./js/write-seq.js"; // A3: an older write's answer never paints over a newer one's
+import { makeBoardFlow } from "./js/write-runner.js"; // A3: every board write and read goes through the one numbered flow
 
 const el = {
   modeRow: document.getElementById("mode-row"),
@@ -92,21 +96,18 @@ const setUploadStatus = uploadStatusSetter({ statusEl: el.status, sdStatusEl: ()
 // success the whole board is reloaded as usual; on failure (a thrown network error, or a response that
 // came back but isn't ok) a plain message goes into #status and, when a row id is given, exactly that
 // row is redrawn to its last-known-good state so a still-open input is never left dangling.
-async function runWrite(action, { rowId, label = "the override" } = {}) {
-  try {
-    const data = await action();
-    if (!data || !data.ok) {
-      setStatusMessage(`Could not save ${label}: ${data?.error?.message ?? "unknown error"}`, true);
-      if (rowId != null) restoreRow(rowId);
-      return null;
-    }
-    handleBoardLoaded(data);
-    return data;
-  } catch (e) {
-    setStatusMessage(`Could not save ${label}: ${e.message}`, true);
-    if (rowId != null) restoreRow(rowId);
-    return null;
-  }
+// A3 (round 3 fixes): writes are numbered as they start; an answer older than one already painted is not painted (its board is the older one),
+// so a slow first answer can never put the screen back over a newer one. A refusal is still said.
+// Every board read is numbered too (write-runner.js): a read that began before a write cannot paint over it, and a dropped older write answer is followed by one fresh read.
+const writeSeq = makeWriteSeq();
+const { runWrite, loadBoard } = makeBoardFlow({ seq: writeSeq, getBoard, paint: (board, n) => handleBoardLoaded(board, n), fail: (text, rowId) => failWrite(text, rowId) });
+
+// A refused or lost write is said in the status line and, when it was for a row, beside that row (the project's rule), in red.
+function failWrite(text, rowId) {
+  setStatusMessage(text, true);
+  if (rowId == null) return;
+  restoreRow(rowId);
+  showRowError(el.tbody, rowId, text);
 }
 
 // Redraws one row from the board already in the store (i.e. as it stood before the failed edit), used
@@ -136,7 +137,7 @@ function handleBoardFailure(raw) {
     });
 }
 
-async function handleBoardLoaded(raw) {
+async function handleBoardLoaded(raw, seq = null) {
   if (!raw || !raw.ok) {
     handleBoardFailure(raw);
     return;
@@ -151,6 +152,7 @@ async function handleBoardLoaded(raw) {
   } catch (e) {
     data.warnings = [];
   }
+  if (seq !== null && !writeSeq.current(seq)) return; // a newer write's answer was taken while this one waited for the slate: the newer board stands
   setStatusMessage("", false);
   // A sort on a TwoGun column falls back to Proj high to low once the board is not in TwoGun mode (state.js).
   store.set({ board: data, boardError: null, loading: false, sort: sortForBoard(store.get().sort, data) });
@@ -164,15 +166,6 @@ function uniqueTeams(games) {
     if (g.home) teams.add(g.home);
   }
   return [...teams].sort();
-}
-
-// "Reset all overrides" (D28) clears only typed projection and ownership numbers, never stars or notes (D72), so
-// it has nothing to do while no row carries a typed number; it starts muted and inert rather than reading as a
-// live destructive action (👁 visual-qa third pass). On the public site the board says whether the visitor typed
-// any number (site-src/site-overrides.js), since there Reset all puts back the published numbers (D71, D72).
-function hasAnyOverride(rows, siteTypedNumbers) {
-  if (typeof siteTypedNumbers === "boolean") return siteTypedNumbers;
-  return (rows ?? []).some((r) => r.override && (r.override.proj != null || r.override.own != null));
 }
 
 // Optimizer-first step 4: the typed boxes (search, salary min and max) reach the store once typing pauses (public/js/filter-debounce.js,
@@ -206,7 +199,8 @@ const filterCallbacks = {
     }
   },
   onResetOverrides: async () => {
-    await runWrite(() => deleteAllOverrides());
+    const data = await runWrite(() => deleteAllOverrides(), { label: "the reset" });
+    if (data === null) showButtonError(document.getElementById("reset-overrides-btn"), el.status.textContent); // A refusal is said beside the button too
   },
 };
 
@@ -229,6 +223,8 @@ const tableCallbacks = {
   onResetField: async (id, field) => {
     await runWrite(() => putOverrides({ [field]: { [id]: null } }), { rowId: id });
   },
+  // B12 (round 3): a row's reset clears his typed numbers and his bump together (DELETE /api/overrides/<id>; the site's stand-in does the same in the browser).
+  onResetRow: (id) => runWrite(() => deleteOverride(id), { rowId: id, label: "the reset" }), // the board it answers, null when refused
   onEditValue: async (id, field, value) => {
     await runWrite(() => putOverrides({ [field]: { [id]: value } }), { rowId: id });
   },
@@ -241,13 +237,19 @@ const tableCallbacks = {
 };
 // The pool's ± pairs are redrawn with the Optimizer's mount, so one listener on the mount serves them all (bump-control.js).
 delegateBumpClicks(el.lineupMount, { rowOf: findRow, onBump: tableCallbacks.onBump });
+// B12: the pool's row reset (the x beside a projection that carries a typed number or a bump); a refusal is said under his name in the pool.
+delegateRowReset(el.lineupMount, {
+  onReset: async (id) => {
+    const data = await tableCallbacks.onResetRow(id);
+    if (data === null) setPoolRowError(id, el.status.textContent);
+  },
+});
 
 // The Sources page saves its own choices (public/js/sources-page.js); this is the board repaint it asks for afterwards: a plain
 // board read, so nothing is re-downloaded from a source. A board that cannot be read leaves the one on screen and says so under the row.
 async function repaintAfterSourceSave() {
-  const board = await getBoard();
+  const board = await loadBoard({ okOnly: true });
   if (!board?.ok) throw new Error(board?.error?.message ?? "the server did not return the board");
-  await handleBoardLoaded(board);
 }
 // "Apply to the main slate and every game" on a Showdown game's Sources page saved the main slate's choices too (Adam 2026-10-20),
 // so the main slate's board held here is reloaded the same way; one that cannot be read stays and the status line says so.
@@ -263,8 +265,7 @@ const sourceCallbacks = {
       const result = await postProjectionsPaste(payload);
       if (result?.ok) {
         try {
-          const board = await getBoard();
-          handleBoardLoaded(board);
+          await loadBoard();
         } catch (e) {
           // Board reload failing after a paste isn't fatal to reporting the paste result itself.
         }
@@ -481,8 +482,7 @@ const { handleFile } = wireUpload(
     }),
     onUploaded: async (data) => {
       try {
-        const board = await getBoard();
-        await handleBoardLoaded(board);
+        await loadBoard();
       } catch (e) {
         // /api/board may not be live yet; the upload's own status/pills are already shown.
       }
@@ -499,7 +499,7 @@ const { handleFile } = wireUpload(
 setRouteDkFile(handleFile);
 setUploadRouter(handleFile);
 
-wireThemeToggle(el.themeToggleBtn);
+wireThemeToggle(el.themeToggleBtn, { onChange: () => store.set({}) }); // C15: the team logos come in the theme's variant, so every list is drawn again on a switch
 wireSourcesLink(el.sourcesBtn, { onOpen: onSourcesOpen });
 // The Tracked button sits on both headers (main slate and Showdown); both are in index.html, so both are wired here.
 wireTrackedLink(document.getElementById("tracked-btn"));
@@ -520,8 +520,7 @@ wireRefresh({ refreshBtn: el.refreshBtn, statusEl: el.status }, {
 async function init() {
   store.set({ loading: true, boardError: null });
   try {
-    const board = await getBoard();
-    handleBoardLoaded(board);
+    await loadBoard();
   } catch (e) {
     handleBoardFailure({ ok: false, error: { code: "NETWORK_ERROR", message: e.message }, stale: [] });
   }

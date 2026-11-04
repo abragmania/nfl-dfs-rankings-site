@@ -72,6 +72,44 @@ export function switchCheckboxHtml(id, on, words, offWords = "") {
   return `<label class="opt-toggle"><input type="checkbox" id="${escapeHtml(id)}"${on ? " checked" : ""} /><span class="opt-switch" aria-hidden="true"></span>${text}</label>`;
 }
 
+// Lineups to make (round 3 fix batch item 18): a count below 1 is said, not quietly made into 1. One copy for the classic and Showdown Optimizers.
+export const COUNT_MIN_NOTE = "Minimum 1";
+export const COUNT_MIN_SENTENCE = "Lineups to make must be at least 1. Type 1 or more.";
+
+/** A Build with every seat held (item 11, both Optimizers): a plain sentence, not the server's refusal of locks that fill the lineup. `seats`: 9 (classic) or 6 (Showdown). */
+export function fullLineupText(seats) {
+  return `Your lineup is full: all ${seats === 9 ? "nine" : "six"} seats are held, so there is nothing to build around. Save it from the slots, or take someone out to build around the rest.`;
+}
+
+/** True when the count box holds a number below 1 (a 0 or a negative). A blank box (the default) or words are not "below"; they keep their old reading. */
+export function countBelowMin(text) {
+  const t = String(text ?? "").trim();
+  return t !== "" && Number.isFinite(Number(t)) && Number(t) < 1;
+}
+
+/** The note beside the count box: `Minimum 1` while the typed count is below 1, else `Maximum <max>` (or nothing when the box has no maximum note). */
+export function countNote(text, max = null) {
+  return countBelowMin(text) ? COUNT_MIN_NOTE : max === null ? "" : `Maximum ${max}`;
+}
+
+/** Brings the note beside the count box in line with what is typed in it, without a redraw (the box keeps its focus). */
+export function syncCountNote(input, max = null) {
+  const box = input?.closest?.(".opt-numbox") ?? input?.parentNode;
+  if (!box?.querySelector) return;
+  const text = countNote(input.value, max);
+  let note = box.querySelector(".opt-unit");
+  if (!text) {
+    note?.remove();
+    return;
+  }
+  if (!note && typeof document !== "undefined") {
+    note = document.createElement("span");
+    note.className = "opt-unit opt-unit-note";
+    box.appendChild(note);
+  }
+  if (note) note.textContent = text;
+}
+
 /** `unitCls`: an extra class on the note beside the box ("opt-unit-note" for the "Maximum 150" notes, which share one width so the boxes line up). */
 export function numberBoxHtml(attrs, unit = "", unitCls = "") {
   return `<span class="opt-numbox"><input ${attrs} />${unit ? `<span class="opt-unit${unitCls ? ` ${unitCls}` : ""}">${escapeHtml(unit)}</span>` : ""}</span>`;

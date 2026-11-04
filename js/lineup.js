@@ -32,13 +32,18 @@ import { newQbState, listedQbs, pruneEntries, cleanSavedEntries, qbStacksPayload
 import { getLineups, postLineup, putLineup, deleteLineup } from "./api.js";
 import { renderEntriesSection, wireEntries } from "./entries-wire.js";
 import { phoneMinHeight, panelMinHeight } from "./expand.js";
-import { defaultCashState, cleanCashState, swapModeStash } from "./lineup-cash.js";
+import { defaultCashState, cleanCashState, swapModeStash, COUNT_DEFAULTS_VERSION } from "./lineup-cash.js";
 import { ruleOn } from "./lineup-settings.js";
 import { paintStarredQbChip } from "./filterbar.js";
-import { setPoolCallbacks, poolStarClick, panelHtml, savedOfActiveSlate, starredQbChipView, poolColumnSetup, CLASSIC_POOL_PICK_SKIP } from "./lineup-view.js";
+import { setPoolCallbacks, poolStarClick, panelHtml, savedOfActiveSlate, starredQbChipView, poolColumnSetup, CLASSIC_POOL_PICK_SKIP, shownSavedLineups, poolPickerNow } from "./lineup-view.js";
 import { wireColumns } from "./columns.js";
+import { wireDkDownload } from "./dk-lineup-ui.js"; // A12: Download DK CSV for the saved lineups ticked
+import { takeOpenLimit, restoreOpenLimit, limitRefusals, dropOlderLimitRefusals, noteLimitPress } from "./limit-box.js"; // A3: the Min % and Max % boxes survive a redraw; a refused text is held
+import { onConfirmDismiss } from "./confirm-inline.js"; // B13: Esc and a click outside close an open confirm
+import { notDeletedText } from "./delete-words.js"; // A12: the one sentence a failed delete leaves
+import { wireStaleMessages } from "./stale-messages.js"; // item 17: a one-shot message goes at the next click on any control
 import { wirePick, wirePickRows, SLOT_PICK_SKIP } from "./pick-rows.js"; // click-to-pick, the one wiring the Showdown Optimizer shares (D81)
-import { cleanPlayerMax, boardModeOf, slateKeyOf, uniqueSavedName, lockedIds, cashPick, wireOptimizer } from "./lineup-optimizer.js";
+import { cleanPlayerMax, boardModeOf, slateKeyOf, uniqueSavedName, lockedIds, cashPick, wireOptimizer, savedSetKeys, lineupSetKey, wantIdsFor } from "./lineup-optimizer.js";
 
 export const LINEUP_SLOTS = ["QB", "RB", "RB", "WR", "WR", "WR", "TE", "FLEX", "DST"];
 export const SALARY_CAP = 50000;
@@ -70,6 +75,10 @@ export const state = {
   excludes: new Set(), // player ids (strings) that must never appear
   addError: null, // set when Add is blocked, or as a non-blocking warning after a successful Add
   addErrorId: null, // the pool row (board id) whose click made addError: the message is drawn beside that row (row-message.js, standard A14)
+  addTone: undefined, // how addError is drawn: undefined is amber (a refusal); "error" for a write that failed (setPoolRowError)
+  confirm: null, // the inline confirm that is open (confirm-inline.js): "clear" (Clear all) or "load:<saved lineup id>" (Load over an unsaved working lineup)
+  dkSelected: new Set(), // saved lineup ids ticked for Download DK CSV (dk-lineup-ui.js); page-only
+  dkStatus: "", // the sentence the last Download DK CSV left under its button
 
   // Saved lineups (Adam's "draw up a lineup, press Save, see it in a list").
   savedLineups: [], // server records: [{id, name, savedAt, slots:[{slot,playerId,name,team,pos,salary,proj,own}], salaryUsed, totalProj}]
@@ -84,6 +93,7 @@ export const state = {
   renamingId: null, // id of the saved lineup currently showing its inline rename box, or null
   deleteConfirmId: null, // id of the saved lineup currently showing its inline "Delete this lineup?" prompt, or null
   lineupErrors: {}, // saved lineup id -> the server's message for a refused letter change; cleared by its next good PUT
+  deleteErrors: {}, // saved lineup id -> why its delete did not happen (A12), one sentence on the card's Load and Delete row until the next try
 };
 
 let savedFetchInFlightKey = null; // the season-week key a GET is currently in flight for, else null
@@ -92,6 +102,15 @@ let savedFetchInFlightKey = null; // the season-week key a GET is currently in f
 export function clearAddMessage() {
   state.addError = null;
   state.addErrorId = null;
+  state.addTone = undefined;
+}
+
+/** A write for a pool row failed (the reset x): the sentence sits beside that row in red (the project's rule: a failed write is shown beside the row). */
+export function setPoolRowError(id, text) {
+  state.addErrorId = String(id);
+  state.addError = text || "The change was not saved.";
+  state.addTone = "error";
+  commit();
 }
 
 /** Forgets the loaded saved lineup and its prefilled name together (PROJECT.md Part 4 Lineups). */
@@ -163,6 +182,7 @@ export function savePersisted() {
         cash: opt.cash,
         stash: opt.stash,
         sort: opt.sort,
+        countsV: COUNT_DEFAULTS_VERSION, // D9: a saved state without it that remembers a count of 1 takes the new default once (hydrateFromStorage)
       })
     );
   } catch (e) {
@@ -198,7 +218,7 @@ function hydrateFromStorage() {
   const slots = normalSlots(persisted.slots);
   if (slots) state.slots = slots;
   opt.mode = persisted.mode === "cash" ? "cash" : "gpp"; // Cash mode job 3b
-  opt.cash = cleanCashState(persisted.cash);
+  opt.cash = cleanCashState(persisted.cash, persisted.countsV ?? null); // null: a state saved before the count defaults changed (D9)
   opt.stash = cleanStash(persisted.stash);
   opt.sort = cleanSortState(persisted.sort);
   if (Array.isArray(persisted.locks)) state.locks = new Set(persisted.locks.map(String));
@@ -249,6 +269,8 @@ function validateAgainstBoard(board) {
     opt.avoid.clear(); // avoid-game picks are games of that week
     opt.cash.avoid = []; // Cash mode job 3b: the same for cash's avoided games
     clearAddMessage(); // a refusal beside a row of last week's pool is not this week's
+    state.dkSelected.clear(); // last week's ticked saved lineups, and the last download's sentence, are not this week's
+    state.dkStatus = "";
   }
   const rowById = new Map((board.rows ?? []).map((r) => [String(r.id), r]));
   for (const id of [...state.locks]) if (!rowById.has(id)) state.locks.delete(id);
@@ -269,19 +291,42 @@ function entriesWeekKey(board) {
   return board?.slate?.season != null && board?.slate?.week != null ? seasonWeekKey(board) : null;
 }
 
+let lastMessageScope = null; // "slate|optimizer mode|board mode" the one-shot messages were made under
+/** Item 17 (round 3 fixes): the messages a click leaves (`Saved "..."`, the DK status, a refused pool click) belong to the slate and mode they
+ *  were made in; a different slate or mode starts clean. */
+function dropStaleMessages(board) {
+  const scope = `${slateKeyOf(board)}|${opt.mode}|${boardModeOf(board)}`;
+  if (lastMessageScope !== null && scope !== lastMessageScope) {
+    state.dkStatus = "";
+    state.saveConfirm = null;
+    clearAddMessage();
+  }
+  lastMessageScope = scope;
+}
+
 export function renderLineupPanel(container, callbacks) {
   lastContainer = container;
   if (callbacks) setPoolCallbacks(callbacks);
   hydrateFromStorage();
   validateAgainstBoard(store.get().board);
+  dropStaleMessages(store.get().board);
   if (state.loadedId && state.savedLoaded && !state.savedLineups.some((l) => l.id === state.loadedId)) clearLoaded();
   pruneQbStacks(store.get().board);
   syncOptimizerSlate();
   // 🔵 finding 9: the pool's scroll position must survive the innerHTML rebuild below.
   const prevPool = container.querySelector(".lineup-rows-wrap");
   const savedScrollTop = prevPool ? prevPool.scrollTop : 0;
+  wireStaleMessages(container, {
+    hasAny: () => Boolean(state.dkStatus || state.saveConfirm || state.addError || limitRefusals().length),
+    clear: () => { state.dkStatus = ""; state.saveConfirm = null; clearAddMessage(); dropOlderLimitRefusals(container); }, // a refused Min % / Max % text made in this very press stays (limit-box.js)
+    press: noteLimitPress,
+    selector: ".dk-status, .row-msg-warn, .row-msg-notice, .lineup-status:not(.lineup-status-error):not(.lineup-status-warning)", // a notice such as `Saved "..."`, the DK status, an amber refusal
+  });
+  const openLimit = takeOpenLimit(); // a Min % or Max % box he is typing in survives the redraw with its text and focus (A3)
   container.innerHTML = panelHtml();
   wire(container);
+  restoreOpenLimit(container, openLimit);
+  focusOpenConfirm(container);
   const newPool = container.querySelector(".lineup-rows-wrap");
   if (newPool) newPool.scrollTop = savedScrollTop;
   resizeLineupScrollPanels(container);
@@ -485,36 +530,39 @@ function addWarning(row) {
   return `${row.name} ${reasons.join(" and ")} — added anyway.`;
 }
 
+/** Puts him in the first slot his position can fill. True when he went in. Optimizer standard D3 (round 3): the click that puts him in never locks him;
+ *  the slots are the base lineup a Build starts from (lockedIds), and his Lock button is his own. */
 function addPlayer(row, rowById) {
   const rowId = String(row.id);
-  if (state.excludes.has(rowId)) return;
+  if (state.excludes.has(rowId)) return false;
   const identity = dkIdentity(row);
   const alreadyPlaced = state.slots.some((s) => {
     if (!s) return false;
     const placedRow = rowById.get(String(s.id));
     return placedRow && dkIdentity(placedRow) === identity;
   });
-  if (alreadyPlaced) return;
+  if (alreadyPlaced) return false;
   // 🔵 finding 4: a player with no DraftKings salary can never be weighed against the cap.
   state.addErrorId = rowId; // whatever this click says is drawn beside his row (row-message.js)
+  state.addTone = undefined;
   if (row.salary == null) {
     state.addError = `${row.name} has no DraftKings salary, so he cannot be costed against the cap.`;
-    return;
+    return false;
   }
   const idx = legalSlotIndex(row.pos);
   if (idx === -1) {
     const flexNote = FLEX_POS.has(row.pos) ? " or FLEX" : "";
     state.addError = `No empty ${row.pos}${flexNote} slot is open for ${row.name}.`;
-    return;
+    return false;
   }
   state.slots[idx] = { id: rowId, slot: LINEUP_SLOTS[idx] };
-  state.locks.add(rowId);
   state.addError = addWarning(row);
+  return true;
 }
 
 // DECISIONS.md D70: pool Lock = in the base lineup, unlock = out of it. Unlock clears his slot too (a pool-only
-// lock from older saved state has no slot and just loses the lock). Lock places him like Add does (which also
-// adds the lock); already placed (under this id, or the same DraftKings player under another id): lock that
+// lock from older saved state has no slot and just loses the lock). Lock places him like a click does and then
+// locks him (a click alone never does, D3); already placed (under this id, or the same DraftKings player under another id): lock that
 // placed copy. Excluded or refused: nothing locks, and addPlayer's state.addError sentence shows.
 export function unlockPool(id) {
   state.locks.delete(id);
@@ -535,8 +583,20 @@ export function lockPool(id) {
     const placedRow = s ? rowById.get(String(s.id)) : null;
     return placedRow && dkIdentity(placedRow) === identity;
   });
-  if (placedSlot) state.locks.add(String(placedSlot.id));
-  else addPlayer(row, rowById);
+  if (placedSlot) {
+    state.locks.add(String(placedSlot.id));
+    return;
+  }
+  // A18 (round 3 fixes): Lock seats a man by the same rules as a click. A row the pool greys (it does not fit the salary left, no seat is open, no figure)
+  // is refused with the greying's own sentence beside his row, and nothing locks.
+  const pick = poolPickerNow(rowById)(row);
+  if (pick.action !== "add") {
+    state.addErrorId = String(row.id);
+    state.addError = pick.reason;
+    state.addTone = undefined;
+    return;
+  }
+  if (addPlayer(row, rowById)) state.locks.add(String(row.id));
 }
 
 /** Takes slot `i`'s man out (a click on the filled slot card, the old Clear button's rule): his lock goes, and an Undo made before it is
@@ -564,7 +624,14 @@ export function pickPoolRow(row, action, rowById) {
   const identity = dkIdentity(row);
   state.slots.forEach((s, i) => {
     const placedRow = s ? rowById.get(String(s.id)) : null;
-    if (placedRow && dkIdentity(placedRow) === identity) removeSlot(i);
+    if (!placedRow || dkIdentity(placedRow) !== identity) return;
+    if (state.locks.has(String(s.id))) { // A18: a locked man is not taken out by a click (his row is greyed); Unlock does it
+      state.addErrorId = String(row.id);
+      state.addTone = undefined;
+      state.addError = `${row.name} is locked into your lineup. Unlock him first, or click his slot.`;
+      return;
+    }
+    removeSlot(i);
   });
 }
 
@@ -704,25 +771,32 @@ async function doLineupPut(id, payload) {
   commit();
 }
 
+/** A12 (round 3): a delete that did not happen says so on the card (the badge the card keeps for a refused change), in red, until the next try or a good answer. */
 async function doDeleteLineup(id) {
   state.deleteConfirmId = null;
+  delete state.deleteErrors[id];
   commit();
   try {
     const data = await deleteLineup(id);
     if (data && data.ok !== false && Array.isArray(data.lineups)) state.savedLineups = data.lineups;
+    else state.deleteErrors[id] = notDeletedText({ data }); // one plain red sentence on the card's Load and Delete row, the same words as Showdown's (A12, item 16)
   } catch (e) {
-    // Best-effort: nothing destructive happened locally, the list just won't reflect the delete until reloaded.
+    console.warn("Delete: the request did not come back", e);
+    state.deleteErrors[id] = notDeletedText({ error: e });
   }
   commit();
 }
 
 /** Puts a saved lineup's players back into the builder's slots, replacing whatever is there, via
  *  placeBySlotName() — so an off-slate player (dropped by validateAgainstBoard on the next render) and
- *  totals/locks behave exactly as they do after any other slot change. */
+ *  totals/locks behave exactly as they do after any other slot change. C11 (round 3): the old locks go with the old lineup, and the slots come into
+ *  view (A12), since a saved card can be far below them. */
 function doLoadLineup(id) {
   const lineup = state.savedLineups.find((l) => l.id === id);
   if (!lineup) return;
+  state.confirm = null;
   state.slots = placeBySlotName((lineup.slots ?? []).map((s) => ({ slot: s.slot, id: s.playerId })));
+  state.locks = new Set();
   state.loadedId = lineup.id;
   state.saveName = lineup.name ?? "";
   state.saveError = null;
@@ -730,24 +804,110 @@ function doLoadLineup(id) {
   state.addError = null;
   opt.cashUndo = null; // Cash 3b fix round 2, 2026-10-17: Undo never replaces a loaded lineup
   commit();
+  scrollToSlots();
+}
+
+/** A12: brings the working lineup's slots into view (a Load from a card far below them). */
+function scrollToSlots() {
+  try {
+    lastContainer?.querySelector?.(".lineup-slots")?.scrollIntoView?.({ block: "start", behavior: "smooth" });
+  } catch (e) {
+    console.warn("Load: the slots could not be scrolled into view", e); // a convenience only; the lineup is loaded either way
+  }
+}
+
+/** C11: whether the working lineup holds men that no saved lineup of this slate has as its set: loading over it would lose them, so Load asks first. */
+export function workingLineupUnsaved(slots, saved, rowById) {
+  const ids = slots.filter(Boolean).map((s) => s.id);
+  if (!ids.length) return false;
+  return !savedSetKeys(saved, rowById).has(lineupSetKey(ids, rowById));
+}
+
+/** Load: straight away, or after `Replace your working lineup?` when the working lineup is not saved (C11). */
+function requestLoad(id) {
+  const rowById = boardRowMap(store.get().board);
+  if (workingLineupUnsaved(state.slots, savedOfActiveSlate(null), rowById)) {
+    state.confirm = `load:${id}`;
+    commit();
+    return;
+  }
+  doLoadLineup(id);
+}
+
+/** B13: what Clear all would lose (a man, a lock, an exclude, or in Cash the slate's Want list): the question is asked only when there is something to lose. */
+export function clearAllHasContent() {
+  const wants = opt.mode === "cash" && wantIdsFor(slateKeyOf(store.get().board)).length > 0;
+  return state.slots.some(Boolean) || state.locks.size > 0 || state.excludes.size > 0 || wants;
+}
+
+function doClearAll() {
+  state.confirm = null;
+  state.slots = new Array(LINEUP_SLOTS.length).fill(null);
+  state.locks = new Set();
+  state.excludes = new Set();
+  state.addError = null;
+  if (opt.mode === "cash") {
+    delete opt.cash.want[slateKeyOf(store.get().board)]; // Cash mode job 3b: Clear all in cash clears cash's slots, Must, Want and excludes only (Cash 3b fix round: the Wants of the slate on screen only)
+    opt.cashUndo = null;
+  }
+  clearLoaded();
+  commit();
 }
 
 // --------------------------------------------------------------------------------------------------------
 // Wiring
 // --------------------------------------------------------------------------------------------------------
 
-function wire(container) {
-  container.querySelector("#lineup-clear-all-btn")?.addEventListener("click", () => {
-    state.slots = new Array(LINEUP_SLOTS.length).fill(null);
-    state.locks = new Set();
-    state.excludes = new Set();
-    state.addError = null;
-    if (opt.mode === "cash") {
-      delete opt.cash.want[slateKeyOf(store.get().board)]; // Cash mode job 3b: Clear all in cash clears cash's slots, Must, Want and excludes only (Cash 3b fix round: the Wants of the slate on screen only)
-      opt.cashUndo = null;
-    }
-    clearLoaded();
+/** Esc and a click outside close every open confirm alike (Clear all, Load over unsaved work, a saved card's Delete): one registration for the page; the
+ *  panel's markup is redrawn on every change, the state is what survives (confirm-inline.js onConfirmDismiss). */
+let dismissWired = false;
+function wireConfirmDismiss() {
+  if (dismissWired || typeof document === "undefined" || typeof document.addEventListener !== "function") return; // a test's stand-in page has none
+  dismissWired = true;
+  onConfirmDismiss(() => {
+    if (!state.confirm && !state.deleteConfirmId) return;
+    state.confirm = null;
+    state.deleteConfirmId = null;
     commit();
+  });
+}
+
+let focusedConfirm = null; // the confirm that last took the keyboard, so a redraw while it stays open does not take it again
+/** A confirm that has just opened takes the keyboard on its safe button (No); Yes and No are in the tab order after the control. */
+function focusOpenConfirm(container) {
+  const key = state.confirm ?? (state.deleteConfirmId ? `delete:${state.deleteConfirmId}` : null);
+  if (key && key !== focusedConfirm) container.querySelector(state.confirm ? "[data-confirm='no']" : "[data-action='lineup-delete-no']")?.focus?.();
+  focusedConfirm = key;
+}
+
+function wire(container) {
+  wireConfirmDismiss();
+  // B13 (round 3): Clear all asks first when it would lose something; the question sits beside the button (confirm-inline.js).
+  container.querySelector("#lineup-clear-all-btn")?.addEventListener("click", () => {
+    if (!clearAllHasContent()) return doClearAll();
+    state.confirm = "clear";
+    commit();
+  });
+  container.querySelectorAll("[data-confirm]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const which = btn.dataset.confirmFor ?? "";
+      const yes = btn.dataset.confirm === "yes";
+      if (!yes) {
+        state.confirm = null;
+        commit();
+      } else if (which === "clear") doClearAll();
+      else if (which.startsWith("load:")) doLoadLineup(which.slice(5));
+    });
+  });
+  wireDkDownload(container, {
+    selected: state.dkSelected,
+    shown: () => shownSavedLineups(boardRowMap(store.get().board)),
+    kind: "classic",
+    board: () => store.get().board,
+    slateKey: () => slateKeyOf(store.get().board),
+    slateLabel: () => slateKeyOf(store.get().board),
+    setStatus: (text) => { state.dkStatus = text; },
+    redraw: () => commit(),
   });
 
   // A click (or Enter / Space) on a filled slot card takes his man out (D81 counterpart of 336c1f5: no Clear buttons); his name keeps opening his card.
@@ -854,6 +1014,7 @@ function wire(container) {
     btn.addEventListener("click", () => {
       state.deleteConfirmId = btn.dataset.id;
       state.renamingId = null;
+      delete state.deleteErrors[btn.dataset.id]; // a new try clears the last delete's failure sentence (A12)
       commit();
     });
   });
@@ -868,7 +1029,7 @@ function wire(container) {
   });
 
   container.querySelectorAll("[data-action='lineup-load']").forEach((btn) => {
-    btn.addEventListener("click", () => doLoadLineup(btn.dataset.id));
+    btn.addEventListener("click", () => requestLoad(btn.dataset.id));
   });
 
   wireColumns(container, { ...poolColumnSetup(), onChange: () => commit() }); // A17: the Columns button on the pool's heading

@@ -22,6 +22,22 @@ export function cellId(cell) {
   return m ? m[1] : "";
 }
 
+/** The file ids of a classic lineup's nine slots, in the slots' order: the main slate's ids are the board's own; a second
+ *  slate's come through its `dkIds` map in `slates` (board.slates). Null when it is not nine slots or a man has no id in that
+ *  slate's file. The one copy of the mapping: lineupFileKey below and the DK CSV (dk-lineup-csv.js) both read it. */
+export function classicFileIds(slots, slateKey, slates) {
+  if (!Array.isArray(slots) || slots.length !== 9) return null;
+  const map = !slateKey || slateKey === "main" ? null : ((slates ?? []).find((s) => s?.key === slateKey)?.dkIds ?? {});
+  const ids = [];
+  for (const s of slots) {
+    const main = String(s?.playerId ?? "");
+    const id = map ? (Object.prototype.hasOwnProperty.call(map, main) ? String(map[main]) : "") : main;
+    if (!id) return null;
+    ids.push(id);
+  }
+  return ids;
+}
+
 /** The ids the entries file uses for a saved lineup's nine players, sorted and joined: the main slate's ids are the
  *  board's own; a second slate's come through its `dkIds` map (board.slates). Null when the lineup is not nine
  *  players or any player has no id in that slate's file. Showdown Entries plan 2026-10-20 (step 3): `fileContext` may instead
@@ -32,17 +48,8 @@ export function lineupFileKey(lineup, slateKey, fileContext) {
     const fileIds = fileContext(lineup);
     return Array.isArray(fileIds) && fileIds.length ? [...fileIds].map(String).sort().join(",") : null;
   }
-  const slots = Array.isArray(lineup?.slots) ? lineup.slots : [];
-  if (slots.length !== 9) return null;
-  const map = !slateKey || slateKey === "main" ? null : ((fileContext ?? []).find((s) => s?.key === slateKey)?.dkIds ?? {});
-  const ids = [];
-  for (const s of slots) {
-    const main = String(s?.playerId ?? "");
-    const id = map ? (Object.prototype.hasOwnProperty.call(map, main) ? String(map[main]) : "") : main;
-    if (!id) return null;
-    ids.push(id);
-  }
-  return ids.sort().join(",");
+  const ids = classicFileIds(lineup?.slots, slateKey, fileContext);
+  return ids ? ids.sort().join(",") : null;
 }
 
 /** Showdown Entries plan 2026-10-20 (step 3): the file-id context of one Showdown game, built from its board `rows`. The
