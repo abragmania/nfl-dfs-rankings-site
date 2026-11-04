@@ -6,7 +6,7 @@
 // The served board's shape (server/showdown/board.js): rows carry id, name, team, pos, salary (FLEX), cptSalary, ownFlex, ownCpt
 // (percent or null) and src; board.game carries away, home, favorite, spread, total and implied { <team>: points };
 // board.figures.twogun.notOnBoardIds names the men TwoGun's board has no row for (server/showdown/board-view.js).
-import { escapeHtml, money, dec1 } from "../format.js";
+import { escapeHtml, money, pct1 } from "../format.js";
 import { findRow, SALARY_CAP } from "./lineup-saved.js";
 import { joinWords } from "./board-shape.js";
 
@@ -16,7 +16,7 @@ const COUNT_WORDS = ["none", "one", "two", "three", "four", "five", "six"];
 const TWOGUN_ID = "twogun"; // server/sources/selection-core.js TWOGUN_ID: a row's src figure that is TwoGun's
 
 const num = (v) => (typeof v === "number" && Number.isFinite(v) ? v : null);
-const pct = (v) => `${dec1(v)}%`; // as the pool's Own cells write it (table.js ownCellHtml)
+const pct = (v) => pct1(v) ?? "—"; // as the pool's Own cells write it (format.js pct1, the one rounder)
 const bold = (text) => `<b>${escapeHtml(text)}</b>`;
 const esc = escapeHtml;
 const NOT_READ = "A placed man is no longer on the board, so the lineup is not read.";

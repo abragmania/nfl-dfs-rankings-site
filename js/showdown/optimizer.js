@@ -13,7 +13,8 @@ import { newBuildId, batchBuild } from "../lineup-builds.js";
 import { toggleMustHave, bulkUids, filterBarHtml } from "../lineup-filter.js";
 import { lineupModeOf } from "../lineup-cash.js";
 import { postShowdownLineup, getShowdowns, supports, postShowdownLineupGenerate, stopShowdownLineupGenerate, canStopShowdownLineupGenerate } from "./api.js"; // supports: D71, what the public site implements
-import { afterBuildingDelay, goSitsBelow } from "../lineup-stop.js";
+import { afterBuildingDelay, goSitsBelow, stopFailure } from "../lineup-stop.js";
+import { answerTone } from "../row-message.js";
 import { resyncMeterExcludes } from "./lineup-meter.js";
 import { halfName } from "./figures-label.js";
 import { resyncSwapsExcludes } from "./lineup-swaps.js";
@@ -30,10 +31,14 @@ const opt = {
   generating: false,
   buildingShown: false, // the build has run a second, so the screen says so (lineup-stop.js)
   buildingBelow: false, // the Make button sits on its own line under the summary, so the build keeps that layout
+  stopping: false, // Stop was pressed and the build is ending: the button reads "Stopping..." (lineup-stop.js)
+  stopError: "", // the sentence under Stop when the server did not hear it (optimizer standard D18)
   saving: false,
   error: null, // the server's sentence for a refused or failed Make
+  errorTone: "error", // "warn" for a build already running (a notice, not a failure), else "error" (row-message.js)
   formError: null, // a box that is not a percent: blocks Make
   saveError: null,
+  saveTone: "error", // "warn" when saveError is only "N saved, M already saved", else "error"
   results: null, // the batch on screen, see doGenerate
   expSortDir: "desc",
   mustHave: [], // the "only lineups with" keys, in the order chosen ("cpt:<person>" / "flex:<person>", D77); page-only, hides and never deletes
@@ -178,6 +183,8 @@ async function doGenerate(ctx) {
   const sent = S.buildGenerateBody(modeState(), mode, ctx.board); // no boardMode: the server builds on this game's served board
   const madeFor = opt.key;
   opt.generating = true;
+  opt.stopping = false;
+  opt.stopError = "";
   opt.error = null;
   opt.saveError = null;
   ctx.commit();
@@ -191,20 +198,28 @@ async function doGenerate(ctx) {
   try {
     const data = await (ctx.post ?? postShowdownGenerate)(madeFor, sent);
     // Another showdown on screen now: nothing of this answer is kept, but the screen is still redrawn below so its Make button
-    // is live again and "Making lineups…" goes (🔵 866b0ce B2).
+    // is live again and "Finding the best lineups" goes (🔵 866b0ce B2).
     stale = opt.key !== madeFor;
-    if (!stale && (!data || data.ok === false || data.error)) opt.error = data?.error?.code === "GENERATE_BUSY" ? data.error.message || BUSY_TEXT : data?.error?.message ?? "Could not make lineups.";
-    else if (!stale) {
+    if (!stale && (!data || data.ok === false || data.error)) {
+      const busy = data?.error?.code === "GENERATE_BUSY";
+      opt.error = busy ? data.error.message || BUSY_TEXT : data?.error?.message ?? "Could not make lineups.";
+      opt.errorTone = answerTone(data?.error?.code); // a refusal (bad settings, a build already running) is amber; a build that failed outright is red
+    } else if (!stale) {
       opt.results = resultsFromAnswer(data, sent, seq, ctx.board ?? null);
       clearMustHave(); // a new batch starts unfiltered (D77)
       seq += opt.results.lineups.length;
     }
   } catch (e) {
     stale = opt.key !== madeFor;
-    if (!stale) opt.error = requestFailureText(e); // a non-JSON answer reads "The server's answer could not be read (status N)." (B3)
+    if (!stale) {
+      opt.error = requestFailureText(e); // a non-JSON answer reads "The server's answer could not be read (status N)." (B3)
+      opt.errorTone = "error";
+    }
   } finally {
     cancelShow();
     opt.generating = false;
+    opt.stopping = false;
+    opt.stopError = "";
     opt.buildingShown = false;
   }
   ctx.commit();
@@ -268,8 +283,10 @@ async function saveCards(uids, ctx) {
       break;
     }
   }
+  opt.saveTone = "error";
   if (skipped.length) {
     const status = duplicateSaveStatus(uids.length, savedCount, skipped);
+    if (!opt.saveError) opt.saveTone = "warn"; // only "already saved": a notice, amber; a real failure alongside keeps it red
     opt.saveError = opt.saveError ? `${status}. ${opt.saveError}` : status;
   }
   opt.saving = false;
@@ -281,7 +298,7 @@ async function saveCards(uids, ctx) {
 const showing = () => opt.generating && opt.buildingShown; // a build under a second shows nothing (lineup-stop.js); doGenerate itself refuses a second click
 const busy = () => opt.generating || opt.saving;
 
-const bandView = (board) => ({ mode: opt.ks.mode, ms: modeState(), board, error: opt.error, formError: opt.formError });
+const bandView = (board) => ({ mode: opt.ks.mode, ms: modeState(), board, error: opt.error, errorTone: opt.errorTone, formError: opt.formError });
 
 /** The Optimizer band's head (title, GPP | Cash switch, refusal sentences), at the top of the left column; "" off the live app. */
 export function optimizerBandHeadHtml(board) {
@@ -305,7 +322,7 @@ export function optimizerBandHtml(board) {
  *  `board`: the served board (its reading names the cash basis, its rows whether Median can be built). */
 export function optimizerGoRowHtml(board) {
   if (!optimizerLive()) return "";
-  return V.goRowHtml({ summary: S.summaryText(modeState(), opt.ks.mode, board), count: S.requestCount(modeState().count, opt.ks.mode), generating: showing(), busy: showing() || opt.saving, formError: opt.formError, canStop: canStopShowdownLineupGenerate(), below: opt.buildingBelow });
+  return V.goRowHtml({ summary: S.summaryText(modeState(), opt.ks.mode, board), count: S.requestCount(modeState().count, opt.ks.mode), generating: showing(), busy: showing() || opt.saving, formError: opt.formError, canStop: canStopShowdownLineupGenerate(), below: opt.buildingBelow, stopping: opt.stopping, stopError: opt.stopError });
 }
 
 /** The batch (its head, source line, exposure tables and cards), drawn full width below both columns (Adam 2026-10-19 11:17 PM:
@@ -316,7 +333,7 @@ export function optimizerResultsBlockHtml(board, saved) {
   const keys = r ? savedKeysOf(saved, r.mode, board) : new Set();
   const { personOf } = S.boardIndex(board);
   const savedFlags = r ? r.lineups.map((l) => keys.has(S.sdSetKey(l.slots, personOf))) : [];
-  return V.resultsHtml({ results: r, generating: showing(), saveError: opt.saveError, busy: busy(), savedFlags, board, expSortDir: opt.expSortDir, mustHave: opt.mustHave, mustHaveNames: opt.mustHaveNames });
+  return V.resultsHtml({ results: r, generating: showing(), saveError: opt.saveError, saveTone: opt.saveTone, busy: busy(), savedFlags, board, expSortDir: opt.expSortDir, mustHave: opt.mustHave, mustHaveNames: opt.mustHaveNames });
 }
 
 /**
@@ -513,7 +530,7 @@ function wirePickButtons(root, ctx) {
 
 /**
  * Wires the band, the Make row and the batch. `ctx` = {container, board, key, commit(), getSaved(), setSaved(list),
- * repaintPool(), and for tests post(key, body) / save(key, body) in place of the two requests}.
+ * repaintPool(), and for tests post(key, body) / save(key, body) / stop() in place of the three requests}.
  */
 export function wireOptimizer(ctx) {
   if (!optimizerLive()) return;
@@ -524,10 +541,21 @@ export function wireOptimizer(ctx) {
   }
   c.querySelector("#sd-opt-go-btn")?.addEventListener("click", () => doGenerate(ctx));
   c.querySelector("#sd-opt-stop-btn")?.addEventListener("click", async () => {
+    if (opt.stopping) return;
+    opt.stopping = true; // the button reads "Stopping..." until the build's own answer ends it (D15)
+    opt.stopError = "";
+    ctx.commit();
+    let failure = "";
     try {
-      await stopShowdownLineupGenerate();
+      failure = stopFailure({ data: await (ctx.stop ?? stopShowdownLineupGenerate)() });
     } catch (e) {
       console.error("showdown generate: the Stop was not heard", e); // the build runs on to its answer
+      failure = stopFailure({ thrown: true });
+    }
+    if (failure && opt.generating) {
+      opt.stopping = false; // Stop is pressable again; the line under it says why (D18)
+      opt.stopError = failure;
+      ctx.commit();
     }
   });
   c.querySelectorAll("[data-sd-opt-save]").forEach((btn) => btn.addEventListener("click", () => saveCards([btn.dataset.sdOptSave], ctx)));

@@ -96,41 +96,41 @@ export function validateQbStacks(raw, ctx, ownMax, oppMax, lists) {
     for (const [pid, choice] of Object.entries(e.players)) {
       const name = ctx.nameOf(pid);
       if (!ctx.boardIds.has(pid)) return { error: `The players setting for ${who} names a player who is not on the board: ${pid}` };
-      if (!ctx.slateIds.has(pid)) return { error: `${name}, marked "${choice}" for ${who}, is not in ${where}.` };
+      if (!ctx.slateIds.has(pid)) return { error: `${name}, marked "${choice === "must" ? "Lock" : "Exclude"}" for ${who}, is not in ${where}.` };
       const row = ctx.rowOf(pid);
       if (!OFFENSE.includes(upper(row.pos))) return { error: `${name} cannot be marked for ${who}: only running backs, receivers and tight ends of his team or the team he faces can.` };
       const t = upper(row.team);
       if (t === "" || (t !== team && t !== opp)) return { error: `${name} plays for neither ${who}'s team nor the team he faces, so he cannot be marked for ${who}.` };
       side[pid] = t === team ? "own" : "opp";
-      if (choice === "no" && locked.has(pid)) return { error: `${name} is locked, so he cannot also be marked "no" for ${who}.` };
+      if (choice === "no" && locked.has(pid)) return { error: `${name} is locked, so he cannot also be marked "Exclude" for ${who}.` };
       if (choice === "must") {
-        if (rowIsOut(row)) return { error: `${name} is marked "must" for ${who} but is ruled out.` };
-        if (excluded.has(pid)) return { error: `${name} is marked "must" for ${who} but is excluded from every lineup.` };
+        if (rowIsOut(row)) return { error: `${name} is marked "Lock" for ${who} but is ruled out.` };
+        if (excluded.has(pid)) return { error: `${name} is marked "Lock" for ${who} but is excluded from every lineup.` };
         if (side[pid] === "own" && upper(row.pos) !== "RB") mustOwn++;
         else if (side[pid] === "opp") mustOpp++;
       }
     }
     if (e.opponentsMax === 0 && mustOpp > 0) {
       const pid = Object.keys(e.players).find((p) => e.players[p] === "must" && side[p] === "opp");
-      return { error: `${who}'s maximum number of opponents is 0, but ${ctx.nameOf(pid)} from the team he faces is marked "must".` };
+      return { error: `${who}'s maximum number of opponents is 0, but ${ctx.nameOf(pid)} from the team he faces is marked "Lock".` };
     }
     if (e.teammatesMax !== null && mustOwn > e.teammatesMax) {
-      return { error: `${mustOwn} of ${who}'s teammates are marked "must", but his maximum is ${e.teammatesMax}.` };
+      return { error: `${mustOwn} of ${who}'s teammates are marked "Lock", but his maximum is ${e.teammatesMax}.` };
     }
     if (e.opponentsMax !== null && mustOpp > e.opponentsMax) {
-      return { error: `${mustOpp} players from the team ${who} faces are marked "must", but his maximum number of opponents is ${e.opponentsMax}.` };
+      return { error: `${mustOpp} players from the team ${who} faces are marked "Lock", but his maximum number of opponents is ${e.opponentsMax}.` };
     }
     const free = (r) => e.players[String(r.id)] !== "no" && !rowIsOut(r) && !excluded.has(String(r.id));
     const skill = (r) => OFFENSE.includes(upper(r.pos));
     if (e.teammatesMin !== null) {
       const n = ctx.slateRows.filter((r) => skill(r) && upper(r.team) === team && free(r)).length;
-      if (n < e.teammatesMin) return { error: `${who} needs at least ${e.teammatesMin} teammates, but only ${n} of his running backs, receivers and tight ends can be picked (the rest are marked "no", ruled out or excluded).` };
+      if (n < e.teammatesMin) return { error: `${who} needs at least ${e.teammatesMin} teammates, but only ${n} of his running backs, receivers and tight ends can be picked (the rest are marked "Exclude", ruled out or excluded).` };
     }
     if (e.opponentsMin !== null && e.opponentsMin > 0) {
       const n = opp === "" ? 0 : ctx.slateRows.filter((r) => skill(r) && upper(r.team) === opp && free(r)).length;
       const need = `${who} needs at least ${e.opponentsMin} ${e.opponentsMin === 1 ? "opponent" : "opponents"}`;
-      if (n === 0) return { error: `${need}, but every running back, receiver and tight end of the team he faces is marked "no", ruled out or excluded.` };
-      if (n < e.opponentsMin) return { error: `${need}, but only ${n} of the running backs, receivers and tight ends of the team he faces can be picked (the rest are marked "no", ruled out or excluded).` };
+      if (n === 0) return { error: `${need}, but every running back, receiver and tight end of the team he faces is marked "Exclude", ruled out or excluded.` };
+      if (n < e.opponentsMin) return { error: `${need}, but only ${n} of the running backs, receivers and tight ends of the team he faces can be picked (the rest are marked "Exclude", ruled out or excluded).` };
     }
     if (!isBlankEntry(e)) out[id] = e;
   }
@@ -183,7 +183,7 @@ export function qbStackPrepare(entries, h) {
     const who = h.byId.get(qbId)?.name ?? qbId;
     const rule = ruleFromEntry(e, h.keyOfId, h.global);
     for (const [pid, choice] of Object.entries(e.players)) {
-      if (choice === "no" && lockKeys.has(h.keyOfId.get(pid))) return { fatal: `${h.byId.get(pid)?.name ?? pid} is locked, so he cannot also be marked "no" for ${who}.` };
+      if (choice === "no" && lockKeys.has(h.keyOfId.get(pid))) return { fatal: `${h.byId.get(pid)?.name ?? pid} is locked, so he cannot also be marked "Exclude" for ${who}.` };
     }
     for (const k of [...rule.withKeys, ...rule.neverKeys]) protectedKeys.add(k);
     const qbKey = h.keyOfId.get(qbId);
@@ -197,7 +197,7 @@ export function qbStackPrepare(entries, h) {
     if (missing.length) {
       const names = missing.map((pid) => h.byId.get(pid)?.name ?? pid).join(", ");
       const why = `excluded, ruled out, ruled out after TwoGun's board was made, or without a salary or projection`;
-      notes.push(`${who} cannot be in any lineup: ${names} ${missing.length === 1 ? "is" : "are"} marked "must" for him but ${missing.length === 1 ? "is" : "are"} not available (${why}).`);
+      notes.push(`${who} cannot be in any lineup: ${names} ${missing.length === 1 ? "is" : "are"} marked "Lock" for him but ${missing.length === 1 ? "is" : "are"} not available (${why}).`);
       noted.add(qbKey);
       continue;
     }
@@ -221,7 +221,7 @@ function entryClash(qb, e, rule, h, who) {
       const key = h.rules.noSameTeamRbs && a.teamIx === b.teamIx ? "noSameTeamRbs"
         : h.rules.noSameGameRbs && a.gameIx === b.gameIx && !h.allowRbGame[a.gameIx] ? "noSameGameRbs" : null;
       if (!key) continue;
-      const pair = isMust(b) ? `${a.name} and ${b.name} are both marked "must" for ${who}` : `${a.name} is marked "must" for ${who} and ${b.name} is locked`;
+      const pair = isMust(b) ? `${a.name} and ${b.name} are both marked "Lock" for ${who}` : `${a.name} is marked "Lock" for ${who} and ${b.name} is locked`;
       return `${pair}, but ${label(key)}.`;
     }
   }
@@ -230,7 +230,7 @@ function entryClash(qb, e, rule, h, who) {
   const oppSet = setsOpponents(e);
   const howHeld = (list) => {
     const nLocked = list.filter((c) => c.locked).length;
-    return nLocked === list.length ? "locked" : nLocked === 0 ? 'marked "must"' : 'locked or marked "must"';
+    return nLocked === list.length ? "locked" : nLocked === 0 ? 'marked "Lock"' : 'locked or marked "Lock"';
   };
   const unique = (list) => [...new Map(list.map((c) => [c.key, c])).values()];
   if (oppSet && rule.capOpp !== Infinity) {
@@ -257,14 +257,14 @@ function entryClash(qb, e, rule, h, who) {
   if (ownSet && rule.needOwn > 0) {
     const n = room((c) => c.stackOk && sideOf(c) === "own");
     if (n < rule.needOwn) {
-      return `${who} needs at least ${rule.needOwn} teammates, but only ${n} of his running backs, receivers and tight ends can count (the others are marked "no", unavailable, or held back by the rules on running backs).`;
+      return `${who} needs at least ${rule.needOwn} teammates, but only ${n} of his running backs, receivers and tight ends can count (the others are marked "Exclude", unavailable, or held back by the rules on running backs).`;
     }
   }
   if (oppSet && rule.needOpp > 0) {
     const n = room((c) => OFFENSE.includes(c.pos) && sideOf(c) === "opp");
     const need = `${who} needs at least ${rule.needOpp} ${rule.needOpp === 1 ? "opponent" : "opponents"}`;
-    if (n === 0) return `${need}, but no running back, receiver or tight end of the team he faces can be picked (each is marked "no" or unavailable).`;
-    if (n < rule.needOpp) return `${need}, but only ${n} of the running backs, receivers and tight ends of the team he faces can count (the others are marked "no", unavailable, or held back by the rules on running backs).`;
+    if (n === 0) return `${need}, but no running back, receiver or tight end of the team he faces can be picked (each is marked "Exclude" or unavailable).`;
+    if (n < rule.needOpp) return `${need}, but only ${n} of the running backs, receivers and tight ends of the team he faces can count (the others are marked "Exclude", unavailable, or held back by the rules on running backs).`;
   }
   return null;
 }
@@ -292,7 +292,7 @@ export function cappedMustNotes(qbs, candByKey, capOf, noted, lineupNo) {
       const cap = c && !c.locked ? capOf(c) : null;
       if (cap === null) continue;
       noted.add(qb.key);
-      out.push(`${qb.name} is left out of lineup ${lineupNo} onward: ${c.name}, marked "must" for him, has reached ${cap}.`);
+      out.push(`${qb.name} is left out of lineup ${lineupNo} onward: ${c.name}, marked "Lock" for him, has reached ${cap}.`);
       break;
     }
   }
@@ -308,7 +308,7 @@ export function mustAboveCapNotes(items, total) {
     if (!(it.count > it.capN)) continue;
     const share = String(it.capLabel).endsWith("%") ? `the ${it.capLabel} ${it.pos} share` : `the ${it.pos} cap of ${it.capLabel}`;
     const where = it.count >= total ? "in every lineup" : `in ${it.count} of ${total} lineups`;
-    out.push(`${it.name} is ${where} (Must with ${it.withText}), above ${share}; the cap holds for the other ${it.pos}s.`);
+    out.push(`${it.name} is ${where} (Lock with ${it.withText}), above ${share}; the cap holds for the other ${it.pos}s.`);
   }
   return out;
 }
@@ -337,8 +337,8 @@ export function stackTrials(entries, nameOf) {
     const has = (choice) => Object.values(e.players).includes(choice);
     if (setsTeammates(e)) parts.push({ id, label: `the number of teammates set for ${who}`, change: { teammatesMin: null, teammatesMax: null } });
     if (setsOpponents(e)) parts.push({ id, label: `the number of opponents set for ${who}`, change: { opponentsMin: null, opponentsMax: null } });
-    if (has("must")) parts.push({ id, label: `the players marked "must" for ${who}`, change: { players: without(e, "must") } });
-    if (has("no")) parts.push({ id, label: `the players marked "no" for ${who}`, change: { players: without(e, "no") } });
+    if (has("must")) parts.push({ id, label: `the players marked "Lock" for ${who}`, change: { players: without(e, "must") } });
+    if (has("no")) parts.push({ id, label: `the players marked "Exclude" for ${who}`, change: { players: without(e, "no") } });
   }
   const dropping = (id) => {
     const rest = { ...all };

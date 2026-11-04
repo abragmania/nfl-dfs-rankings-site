@@ -8,7 +8,7 @@
 // tag, a man not on TwoGun's board); a row wears one "estimate" label after its fold when a figure on it is under 10 copies (field-explain.js, RULES.md D82);
 // the seat's best-projection swap is the last card. Nothing is hidden by a tag. Pure helpers are exported
 // for tests; lineup.js calls syncSwaps (before a draw), swapsPanelHtml (inside the draw) and wireSwaps (after it).
-import { escapeHtml, money, dec1 } from "../format.js";
+import { escapeHtml, money, dec1, ownLabel } from "../format.js";
 import { sigFig2, meterRequestBody, meterState, lineupSig, onMeterAnswer, NOT_ON_BOARD_WORDS } from "./lineup-meter.js";
 import { aboutCopies, aboutCopiesWords, bestWords, answerBasis, isEstimate, swapEstimateTitle, estimateLabelHtml } from "./field-explain.js"; // the field model's words (D82)
 import { posPillHtml } from "./table.js";
@@ -118,12 +118,12 @@ function manHtml(m) {
 }
 
 /**
- * A man's ownership in words: "12% own", "(not on TwoGun's board, 0%)" for a man TwoGun's board has no row for (Q8: counted
+ * A man's ownership in words: "Own 12.3%", "(not on TwoGun's board, 0%)" for a man TwoGun's board has no row for (Q8: counted
  * at 0% and said so, in the slots' own words), "no ownership" when there is none (never a 0). `tail` follows the figure only.
  */
 export function ownWords(m, tail = "") {
   if (m?.notOnBoard) return `(${NOT_ON_BOARD_WORDS})`;
-  return typeof m?.ownPct === "number" && Number.isFinite(m.ownPct) ? `${m.ownPct}% own${tail}` : "no ownership";
+  return typeof m?.ownPct === "number" && Number.isFinite(m.ownPct) ? `${ownLabel(m.ownPct)}${tail}` : "no ownership";
 }
 
 /** A tag's chip text: the server's sentence without its bracketed reason and the Captain's name for it ("breaks story"); the whole sentence is the chip's hover. */

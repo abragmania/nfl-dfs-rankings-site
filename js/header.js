@@ -289,9 +289,9 @@ export function wireUpload({ csvInput, uploadInfo, slateLine, pillsRow }, { onUp
       const uploadedClock = localStamp(data.uploadedAt)?.clock;
       uploadInfo.textContent = `${data.savedAs ?? file.name} · uploaded ${uploadedClock ? `${uploadedClock} ET` : data.uploadedAt}`;
       renderSlateLine(slateLine, data);
-      // Show pills for this response's own stale list immediately, before the board reloads;
-      // board.sources isn't known yet so the id itself is the label (🔵 review requirement).
-      renderPills(pillsRow, { staleIds: data.stale, sources: null, warnings: data.warnings });
+      // Show the warning chips of this response immediately, before the board reloads. The per-source chips (data.stale) are off the
+      // classic header (optimizer standard C30, 2026-11-03).
+      renderPills(pillsRow, { warnings: data.warnings });
       onUploaded?.(data);
       return { ok: true, kind: "classic", message };
     }

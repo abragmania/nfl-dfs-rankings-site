@@ -27,7 +27,7 @@ export function slotPlayerHtml(row, isCpt, palette = null) {
     rolesFor: () => notesHtml(figs),
     coloursFor: (team) => teamColours(palette, team),
   };
-  return cardPlayerRowHtml(p, isCpt ? "CPT" : "FLEX", decor, { big: true, pos: true, posHtml: posPillHtml }).trim(); // every slot is FLEX, so the row names his position, as the pool does
+  return cardPlayerRowHtml(p, isCpt ? "CPT" : "FLEX", decor, { big: true, pos: true, posHtml: posPillHtml, ownDash: false }).trim(); // every slot is FLEX, so the row names his position, as the pool does
 }
 
 // Repaints only the placed slots' big rows (the panel is not redrawn, so a typed lineup name survives);

@@ -1,5 +1,5 @@
 // The Optimizer's exposure tables: one per position, over a set of lineups (lineup.js draws and re-draws them).
-import { escapeHtml } from "./format.js";
+import { escapeHtml, pct1 } from "./format.js";
 import { store } from "./state.js";
 import { playerLineHtml, matchupPillHtml } from "./player-row.js";
 import { pickButtonHtml } from "./lineup-filter.js";
@@ -65,13 +65,13 @@ export function zeroMinRows(exposure, marks, playerOf, inBatch) {
   return out;
 }
 
-// D55: exposure by position, columns Exposure, Player (the D80 shared cell, so no Team column), Matchup (the pill), Own% (D32); D74: over the new batch or the saved lineups.
+// D55: exposure by position, columns Exposure, Player (the D80 shared cell, so no Team column), Matchup (the pill), Own (one decimal, optimizer standard A4); D74: over the new batch or the saved lineups.
 // `custom` (Showdown, optional): {title, groups: [{title, rows, keyOf}], rowOpts} replaces the position boxes and the heading; each group is its own table, never summed with another.
 // `custom.rowOpts` (optional) holds presentation options only (pos, posHtml), spread under the fixed ones (pick button, no pill, the OUT rule) so it can never override them (Showdown: {pos: true}, Adam 2026-10-22); classic passes none. Neither draws a team chip while the logo is there (Adam 2026-10-25).
 export function optExposureHtml(exposure, subtitle = "", sortDir = "desc", pick = null, marks = null, custom = null) {
   const dir = sortDir === "asc" ? "asc" : "desc";
   const arrow = dir === "asc" ? " ▲" : " ▼";
-  const head = `<tr><th class="sortable sorted opt-exp-pct" data-action="opt-exp-sort" aria-sort="${dir === "asc" ? "ascending" : "descending"}">Exposure${arrow}</th><th>Player</th><th class="opt-exp-opp">Matchup</th><th class="opt-exp-own">Own%</th></tr>`;
+  const head = `<tr><th class="sortable sorted opt-exp-pct" data-action="opt-exp-sort" aria-sort="${dir === "asc" ? "ascending" : "descending"}">Exposure${arrow}</th><th>Player</th><th class="opt-exp-opp">Matchup</th><th class="opt-exp-own">Own</th></tr>`;
   const groups = custom?.groups ?? OPT_POSITIONS.map((pos) => ({ title: pos, rows: exposure?.[pos] }));
   const boxes = groups.map(({ title: pos, rows, keyOf }) => {
     const list = Array.isArray(rows) ? rows : [];
@@ -86,7 +86,7 @@ export function optExposureHtml(exposure, subtitle = "", sortDir = "desc", pick 
             <td class="opt-exp-pct">${escapeHtml(String(Math.round(e.pct ?? 0)))}% <span class="opt-exp-count">(${escapeHtml(String(e.count ?? 0))})</span></td>
             <td class="opt-exp-name"><span class="player-cell">${playerLineHtml(live, { ...(custom?.rowOpts ?? {}), nameHtml, pill: false, tag: "out" })}</span></td>
             <td class="opt-exp-opp">${matchupPillHtml(live)}</td>
-            <td class="opt-exp-own">${e.own == null ? "" : `${escapeHtml(String(Math.round(e.own)))}%`}</td>
+            <td class="opt-exp-own">${escapeHtml(pct1(e.own) ?? "—")}</td>
           </tr>`;
           })
           .join("")}</tbody></table>`

@@ -10,7 +10,7 @@
 // re-attached to every cell on every render: that lets a single row (updateRow) or a single cell
 // (restoreCell) be patched in place — on a blur/Escape cancel, or after a failed save — without
 // rebuilding the whole tbody and losing whatever the next click was about to land on.
-import { escapeHtml, money, dec1, dec2 } from "./format.js";
+import { escapeHtml, money, dec1, dec2, pct1 } from "./format.js";
 import { playerLineHtml, showPos } from "./player-row.js";
 import { store } from "./state.js";
 import { twoGunOutReason, rowIsOut, untagged, revivedStatusTitle } from "./out.js";
@@ -19,11 +19,11 @@ const BASE_COLUMNS = [
   { key: "star", label: "★" },
   { key: "player", label: "Player" },
   { key: "pos", label: "Pos" },
-  { key: "salary", label: "Salary" },
+  { key: "salary", label: "Sal" },
   { key: "proj", label: "Proj" },
-  { key: "own", label: "Own%" },
-  // Adam 2026-10-17, DQ1 and Q2: Proj/$ is this column (projection per $1,000, value-core.js); the header reads "Proj/$", the key stays "value".
-  { key: "value", label: "Proj/$", title: "Proj/$: projection per $1,000 of salary" },
+  { key: "own", label: "Own" },
+  // Adam 2026-10-17, DQ1 and Q2: this column is projection per $1,000 (value-core.js); the header reads "Val" (optimizer standard D1), the key stays "value".
+  { key: "value", label: "Val", title: "Val: projection per $1,000 of salary" },
   // Adam 2026-10-15, Lev measure to be redesigned: the column stays, every cell empty, the header says why and does
   // not sort (there is nothing to sort on).
   { key: "lev", label: "Lev", title: "Lev: no measure yet", sortable: false },
@@ -93,11 +93,11 @@ export function twoGunMarkerTexts(row, field) {
   const projFallback = Boolean(src?.proj && src.proj !== "twogun");
   const ownFallback = Boolean(src?.own && src.own !== "twogun");
   if (field === "proj") {
-    if (projFallback) texts.push(`TwoGun does not project him; this is the current sources' blend${ownFallback ? ", and so is his Own%" : ""}.`);
+    if (projFallback) texts.push(`TwoGun does not project him; this is the current sources' blend${ownFallback ? ", and so is his Own" : ""}.`);
   } else if (field === "own") {
-    if (ownFallback && !projFallback) texts.push("TwoGun publishes no ownership for him; this is the current sources' Own%.");
+    if (ownFallback && !projFallback) texts.push("TwoGun publishes no ownership for him; this is the current sources' Own.");
   } else if (field === "salary") {
-    if (flags.includes("salaryDiffers")) texts.push(`TwoGun lists ${money(tg?.salary)}; DraftKings' ${money(row.salary)} is used for Proj/$ and the Optimizer (D13).`);
+    if (flags.includes("salaryDiffers")) texts.push(`TwoGun lists ${money(tg?.salary)}; DraftKings' ${money(row.salary)} is used for Val and the Optimizer (D13).`);
   } else if (field === "status") {
     if (flags.includes("statusChangedAfterStamp")) {
       texts.push(`His status changed after TwoGun's board was made${tg?.official ? ` (TwoGun quoted ${tg.official})` : ""}${rowIsOut(row) ? "." : "; TwoGun's number is kept."}`);
@@ -251,7 +251,7 @@ function projCellInner(row) {
 function ownCellInner(row) {
   const mark = markerHtml(twoGunMarkerTexts(row, "own"));
   if (row.own == null) return editableInnerHtml(row, "own", "—", mark);
-  return editableInnerHtml(row, "own", `${dec1(row.own)}%`, mark);
+  return editableInnerHtml(row, "own", pct1(row.own), mark);
 }
 
 function cellInnerHtml(row, field) {
@@ -332,7 +332,7 @@ function rowHtml(row, hasNoteColumn, twogun = false) {
   const dimmed = rowIsOut(row);
   return `
     <tr class="rank-row${dimmed ? " row-dimmed" : ""}" data-id="${idAttr(row)}">
-      <td><button type="button" class="star-btn${row.starred ? " active" : ""}" data-action="toggle-star" data-id="${idAttr(row)}">${row.starred ? "★" : "☆"}</button></td>
+      <td><button type="button" class="star-btn${row.starred ? " active" : ""}" title="${row.starred ? "Starred" : "Star"}" data-action="toggle-star" data-id="${idAttr(row)}">${row.starred ? "★" : "☆"}</button></td>
       <td>${playerCellHtml(row)}</td>
       <td class="pos-col">${escapeHtml(row.pos)}</td>
       <td>${money(row.salary)}${markerHtml(twoGunMarkerTexts(row, "salary"))}</td>

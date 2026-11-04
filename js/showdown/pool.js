@@ -7,7 +7,8 @@
 // in the ownership figures shows.
 // The filter bar above the builder (view.js) writes poolState.filters; poolVisibleRows is the ONE call the pool's body and the bar's
 // count both read, so the two always agree. lineup.js owns the lineup and draws this pool in its panel; this file draws, sorts and wires.
-import { escapeHtml, dec1 } from "../format.js";
+import { escapeHtml, pct1 } from "../format.js";
+import { rowMessageHtml, messageIsFor } from "../row-message.js";
 import { shortName, cardNameHtml } from "../lineup-card.js"; // the cards' one name shortener (👁 V-N1: a tagged row's name; 👁 V1: every name on a phone)
 import { SD_COLUMNS, showdownHeadCellsHtml, showdownRowHtml, shownRows, sdLine, gradedValueHtml } from "./table.js";
 import { filterRows, sortRows, sortValue, defaultDirFor, joinWords } from "./board-shape.js";
@@ -213,9 +214,9 @@ export function ownTotalsLabel(t) {
 
 function ownTotalCellHtml(s, role, seats, gold) {
   if (s.sum === null) return `<th class="sd-own-total${gold ? " sd-cpt-col" : ""}" title="No man on the board has a ${role} ownership figure.">—</th>`;
-  const title = `Every man's ${role} ownership on the board adds to ${dec1(s.sum)}%; ${seats} make ${s.expected}%, so it is ${s.diffText}.${s.missing ? ` ${s.missing} with no ${role} figure are left out of the sum.` : ""}`;
+  const title = `Every man's ${role} ownership on the board adds to ${pct1(s.sum)}; ${seats} make ${s.expected}%, so it is ${s.diffText}.${s.missing ? ` ${s.missing} with no ${role} figure are left out of the sum.` : ""}`;
   const cls = s.diff > 0.05 ? " is-over" : s.diff < -0.05 ? " is-under" : "";
-  return `<th class="sd-own-total${gold ? " sd-cpt-col" : ""}" title="${escapeHtml(title)}">${dec1(s.sum)}%<span class="sd-own-diff${cls}">${escapeHtml(s.diffText)}</span></th>`;
+  return `<th class="sd-own-total${gold ? " sd-cpt-col" : ""}" title="${escapeHtml(title)}">${pct1(s.sum)}<span class="sd-own-diff${cls}">${escapeHtml(s.diffText)}</span></th>`;
 }
 
 /** The totals row under the head: the label in the Player column, the two sums under Own FLEX and Own CPT, the rest blank. */
@@ -303,7 +304,8 @@ export function poolBodyHtml(board, rows, placement, figures = playerFigures, ta
     figures,
     projCell: controls?.projCell ? (row, proj, isCpt) => controls.projCell(row, proj, isCpt) : null,
     // The Player cell names him in full and, for a phone, the cards' short name too (style.css shows one; 👁 V1: no name cut mid-word).
-    playerCell: (row) => `<div class="player-cell">${sdLine(row, { nameHtml: cardNameHtml(row) })}</div>`,
+    // A click's refusal (placement.message, lineup.js) is drawn under the name of the row that was clicked (row-message.js, standard A14).
+    playerCell: (row) => `<div class="player-cell">${sdLine(row, { nameHtml: cardNameHtml(row) })}</div>${messageIsFor(placement?.message, row.id) ? rowMessageHtml(placement.message.text, placement.message.tone) : ""}`,
     valueCell: (row) => poolValueHtml(row, figures),
     // A man placed in this tab's seat has his row tinted (the builder's), beside the Optimizer's own look (excluded, locked), each class once.
     rowClass: (row) => [...new Set([placedOnTab(placement, String(row.id), tab) ? "lineup-row-locked" : "", "sd-pool-pick", ...String(controls?.rowClass?.(row) ?? "").trim().split(/\s+/)].filter(Boolean))].join(" "),
@@ -439,7 +441,7 @@ export function wirePoolTabs(poolEl, ctx) {
 
 /**
  * Redraws the pool's head and body in place (a filter, a sort, a lock or the modes answer's notes), keeping its scroll box and its
- * place. ctx = { board, placement(), repaint(), onRepaint?(poolEl), onCount?(shown, total) }. Returns the rows shown, or null when no
+ * place. ctx = { board, placement(), repaint(), onRepaint?(poolEl, rows), onCount?(shown, total) }. Returns the rows shown, or null when no
  * pool is drawn.
  */
 export function paintPool(container, ctx) {
@@ -453,7 +455,7 @@ export function paintPool(container, ctx) {
   const note = pool.querySelector(".sd-pool-note");
   if (note) note.textContent = poolNoteText(ctx.board);
   wirePool(pool, ctx);
-  ctx.onRepaint?.(pool);
+  ctx.onRepaint?.(pool, rows);
   ctx.onCount?.(rows.length, (ctx.board?.rows ?? []).length);
   return rows;
 }

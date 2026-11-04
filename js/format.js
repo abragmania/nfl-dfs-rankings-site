@@ -25,6 +25,19 @@ export function dec2(n) {
   return n == null || Number.isNaN(n) ? null : Number(n).toFixed(2);
 }
 
+// Ownership on the optimizers (optimizer standard A4, 2026-11-03): one decimal everywhere, "12.3%", rounded here and nowhere else.
+/** "12.3%" for an ownership figure in percent; null when there is none (a missing figure is never shown as 0). */
+export function pct1(n) {
+  if (n == null || typeof n === "boolean" || (typeof n === "string" && n.trim() === "")) return null; // a blank is no figure: Number("") is 0
+  return Number.isFinite(Number(n)) ? `${Number(n).toFixed(1)}%` : null;
+}
+
+/** "Own 12.3%", the card and totals wording; "" when there is no figure. */
+export function ownLabel(n) {
+  const p = pct1(n);
+  return p === null ? "" : `Own ${p}`;
+}
+
 // Pulls the "HH:MM" clock characters out of an ISO timestamp string (e.g. fetchedAt) by slicing,
 // never by constructing a Date object. "2026-09-13T02:32:00.000Z" -> "02:32".
 export function clockPart(isoString) {

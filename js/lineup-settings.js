@@ -21,6 +21,16 @@ export function settingSubtitleHtml(title) {
 
 const plural = (n, word) => `${n} ${word}${Number(n) === 1 ? "" : "s"}`;
 
+// The D55 rules that start off: Starred QBs only is off by default so a fresh week builds at once (optimizer standard C12, 2026-11-03).
+// A rule with no value is on unless it is named here; one place decides, the box, the request, the summary and the notes all ask it.
+export const RULES_OFF_BY_DEFAULT = Object.freeze(["starredQbOnly"]);
+
+/** Whether rule `key` is on in `rules` ({key: bool}); a rule not set takes its default. */
+export function ruleOn(rules, key) {
+  const v = rules?.[key];
+  return v === undefined ? !RULES_OFF_BY_DEFAULT.includes(key) : v !== false;
+}
+
 /** ChatGPT wish i, Adam 2026-10-17: one sentence of the settings in effect, built from the same fields the controls show.
  *  `opt` carries the count and unique as numbers, `maxExp` as parsed percents (a number 0 to 100, or null for a blank or
  *  invalid box; lineup.js parsePct, one parser for the sentence and the request) and the objective as the build will
@@ -30,15 +40,15 @@ export function activeRulesSummary(opt, { games = [], starredQbCount = null, qbO
   // 🔵 2026-10-17: with one lineup there are no two to differ, so the unique part is dropped.
   const parts = [`${plural(opt.count, "lineup")} by projection${Number(opt.count) === 1 ? "" : `, ${plural(opt.minUnique, "unique player")} between any two`}`];
   const rules = opt.rules ?? {};
-  if (rules.starredQbOnly !== false) parts.push(starredQbCount === 0 ? "starred QBs only (none qualify)" : "starred QBs only");
+  if (ruleOn(rules, "starredQbOnly")) parts.push(starredQbCount === 0 ? "starred QBs only (none qualify)" : "starred QBs only");
   // "0 ... or more" sets nothing and is left out; "exactly 0" is a rule and stays.
   const side = (n, orMore, noun) => (orMore !== false && Number(n) === 0 ? "" : `${orMore === false ? "exactly " : ""}${plural(n, noun)}${orMore === false ? "" : " or more"}`);
   const stack = [side(opt.stackOwn, opt.stackOwnOrMore, "teammate"), side(opt.stackOpp, opt.stackOppOrMore, "opponent")].filter(Boolean);
   if (stack.length) parts.push(`QB + ${stack.join(", ")}`);
   if (qbOwnCount > 0) parts.push(`custom stacks on ${plural(qbOwnCount, "QB")}`);
-  if (rules.noSameTeamRbs !== false) parts.push("no same-team RBs");
-  if (rules.noSameGameRbs !== false) parts.push("no same-game RBs");
-  if (rules.noDstVsOwnPlayers !== false) parts.push("no DST vs own players");
+  if (ruleOn(rules, "noSameTeamRbs")) parts.push("no same-team RBs");
+  if (ruleOn(rules, "noSameGameRbs")) parts.push("no same-game RBs");
+  if (ruleOn(rules, "noDstVsOwnPlayers")) parts.push("no DST vs own players");
   if (String(opt.maxPerTeam ?? "") !== "") parts.push(`max ${opt.maxPerTeam} per team`);
   // The positions as lineup-exposure.js OPT_POSITIONS, not imported to keep this file pure.
   const caps = ["QB", "RB", "WR", "TE", "DST"].map((pos) => [pos, opt.maxExp?.[pos]]).filter(([, n]) => typeof n === "number" && Number.isFinite(n));
@@ -62,6 +72,7 @@ export function switchCheckboxHtml(id, on, words, offWords = "") {
   return `<label class="opt-toggle"><input type="checkbox" id="${escapeHtml(id)}"${on ? " checked" : ""} /><span class="opt-switch" aria-hidden="true"></span>${text}</label>`;
 }
 
-export function numberBoxHtml(attrs, unit = "") {
-  return `<span class="opt-numbox"><input ${attrs} />${unit ? `<span class="opt-unit">${escapeHtml(unit)}</span>` : ""}</span>`;
+/** `unitCls`: an extra class on the note beside the box ("opt-unit-note" for the "Maximum 150" notes, which share one width so the boxes line up). */
+export function numberBoxHtml(attrs, unit = "", unitCls = "") {
+  return `<span class="opt-numbox"><input ${attrs} />${unit ? `<span class="opt-unit${unitCls ? ` ${unitCls}` : ""}">${escapeHtml(unit)}</span>` : ""}</span>`;
 }

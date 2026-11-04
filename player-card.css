@@ -37,7 +37,7 @@ body.pc-open { overflow: hidden; }
 
 .pc-strip { display: flex; flex-wrap: wrap; align-items: stretch; gap: var(--sp-2) var(--sp-4); margin-top: var(--sp-3); padding: 8px 10px; background: var(--bg-elevated-2); border-radius: 8px; }
 .pc-fig { display: flex; flex-direction: column; }
-.pc-fig-label { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.03em; }
+.pc-fig-label { font-size: 11px; color: var(--text-muted); letter-spacing: 0.03em; } /* the labels are written as the standard has them: Sal, CPT Sal, Proj, Own, CPT Own (D1) */
 .pc-fig-value { font-size: var(--fs-md); font-weight: 600; }
 .pc-fig-tag { justify-content: center; }
 .pc-strip-source { margin: 3px 2px 0; font-size: 11px; color: var(--text-dim); }

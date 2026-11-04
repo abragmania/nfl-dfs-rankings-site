@@ -1,14 +1,9 @@
 // Pieces of the Optimizer's lineup slots and new-lineup cards (lineup.js).
-import { escapeHtml, money, dec1, textColourFor } from "./format.js";
+import { escapeHtml, money, dec1, textColourFor, ownLabel } from "./format.js";
 import { fillForDark, fillForLight, solidRow, barColour, ROW_FILL } from "./team-palette.js";
 import { TEAM_BY_ABBR } from "./teams-data.js";
 import { playerIdentityHtml, matchupPillHtml, teamLogoHtml } from "./player-row.js";
 import { lineupRoles, roleTagsHtml, stackLabel } from "./lineup-marks.js";
-
-// D32: any list of players carries ownership as "(NN% own)", but only when the player has a real number.
-export function ownParen(own) {
-  return own == null ? "" : ` (${Math.round(own)}% own)`;
-}
 
 const NAME_SUFFIX = /^(jr\.?|sr\.?|ii|iii|iv|v)$/i;
 
@@ -99,18 +94,20 @@ export const NAME_FIT_TAGGED = 11;
 export function bigNameNeedsShort(name, tagged) {
   return String(name ?? "").trim().length > (tagged ? NAME_FIT_TAGGED : NAME_FIT);
 }
+// A missing ownership reads "Own —" (standard A4); `opts.ownDash === false` leaves it blank where the row prints its own reason there (Showdown's builder slots, lineup-slots.js notesHtml).
 export function cardPlayerRowHtml(p, slotName, decor, opts = null) {
   const big = opts?.big === true;
   const row = decor?.rowFor ? decor.rowFor(p) : p;
   const line1 = playerIdentityHtml(row, { logo: false, logoShown: Boolean(teamLogoHtml(p.team, "opt-p-logo", 38)), nameCls: "opt-p-name", nameHtml: cardNameHtml(p), chipPlain: true, tagCls: "opt-p-tags", tag: "out", pos: opts?.pos === true, posHtml: opts?.posHtml }); // pos, posHtml: Showdown's slots only (D81: every slot is FLEX, so the row names the position, as the pool does); classic's rows stay off
-  const shorten = big && bigNameNeedsShort(p.name, line1.includes('class="opt-p-tags"'));
+  const nameTags = decor?.nameTagsFor ? decor.nameTagsFor(p) : ""; // the builder slot's STACK / PAIR tags sit on the name line, so line 2 keeps its room for the matchup pill and Own
+  const shorten = big && bigNameNeedsShort(p.name, line1.includes('class="opt-p-tags"') || nameTags !== "");
   return `
       <div class="opt-p${big ? " opt-p-big" : ""}${shorten ? " opt-p-short" : ""}" style="${teamColourStyle(decor ? decor.coloursFor(p.team) : teamColours(null, p.team))}"${p.id != null ? ` data-card-id="${escapeHtml(String(p.id))}"` : ""}>
         <span class="opt-p-slot">${escapeHtml(slotName)}</span>
         ${teamLogoHtml(p.team, "opt-p-logo", big ? 48 : 38) || badgeHtml(p.name, p.pos, p.team)}
         <span class="opt-p-body">
-          <span class="opt-p-line1">${line1}</span>
-          <span class="opt-p-line2">${matchupPillHtml(row)}<span class="opt-p-own">${escapeHtml(ownParen(p.own).trim())}</span>${decor ? decor.rolesFor(p) : ""}</span>
+          <span class="opt-p-line1">${line1}${nameTags}</span>
+          <span class="opt-p-line2">${matchupPillHtml(row)}<span class="opt-p-own">${escapeHtml(ownLabel(p.own) || (opts?.ownDash === false ? "" : "Own —"))}</span>${decor ? decor.rolesFor(p) : ""}</span>
         </span>
         <span class="opt-p-nums"><span class="opt-p-sal">${money(p.salary)}</span><span class="opt-p-proj">${p.proj == null ? "—" : dec1(p.proj)}</span></span>
       </div>`;

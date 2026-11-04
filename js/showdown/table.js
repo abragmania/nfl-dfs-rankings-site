@@ -1,10 +1,10 @@
 // Showdown Rankings table (D39/D40), since 2026-10-26 the Optimizer's player pool (pool.js; the Rankings tab is retired). Visual target: the hosted sheet built by
 // data/showdown/2026-w03-ATLGB/build-sheet.mjs — same dark palette and type as the rest of the app, same
-// eleven columns (Lev and CPT Lev added 2026-09-30): Player (team chip, position, status pill), FLEX $, CPT $ (gold), Proj, CPT proj (gold),
+// eleven columns (Lev and CPT Lev added 2026-09-30): Player (team chip, position, status pill), Sal, CPT Sal (gold), Proj, CPT Proj (gold),
 // Val (one column — Captain value is identical to FLEX value since Captain price and points are both
-// 1.5x), Own FLEX, Own CPT (gold), Notes. No inline editing here (unlike the classic table): the brief's
+// 1.5x), Own, CPT Own (gold), Notes (words per optimizer standard D1, 2026-11-03). No inline editing here (unlike the classic table): the brief's
 // column list for Showdown Rankings has no star or edit affordance, only display plus sort and filter.
-import { escapeHtml, money, dec1, dec2 } from "../format.js";
+import { escapeHtml, money, dec1, dec2, pct1 } from "../format.js";
 import { rowIsOut } from "../table.js";
 import { playerLineHtml, showPos } from "../player-row.js";
 import { store } from "../state.js";
@@ -15,13 +15,13 @@ export function shownRows(rows) {
 
 export const SD_COLUMNS = [
   { key: "player", label: "Player" },
-  { key: "salary", label: "FLEX $" },
-  { key: "cptSalary", label: "CPT $", gold: true },
+  { key: "salary", label: "Sal" }, // optimizer standard D1: the FLEX figures are the plain words, the Captain seat's wear CPT
+  { key: "cptSalary", label: "CPT Sal", gold: true },
   { key: "proj", label: "Proj" },
-  { key: "cptProj", label: "CPT proj", gold: true },
+  { key: "cptProj", label: "CPT Proj", gold: true },
   { key: "value", label: "Val" },
-  { key: "ownFlex", label: "Own FLEX" },
-  { key: "ownCpt", label: "Own CPT", gold: true },
+  { key: "ownFlex", label: "Own" },
+  { key: "ownCpt", label: "CPT Own", gold: true },
   { key: "levFlex", label: "Lev", title: "Lev: no measure yet (FLEX slot)" },
   { key: "levCpt", label: "CPT Lev", gold: true, title: "Lev: no measure yet (Captain slot)" },
   { key: "note", label: "Notes" },
@@ -85,7 +85,7 @@ export function projTitleText(value, row, extraTitlePrefix = "") {
 }
 
 function ownCellHtml(value, how) {
-  return `<span title="${escapeHtml(ownTitleText(value, how))}">${value == null ? "—" : `${dec1(value)}%`}</span>`;
+  return `<span title="${escapeHtml(ownTitleText(value, how))}">${pct1(value) ?? "—"}</span>`;
 }
 
 function projCellHtml(value, row, extraTitlePrefix = "") {
@@ -130,7 +130,7 @@ function hookedProjHtml(row, isCpt, h) {
 function hookedOwnHtml(row, isCpt, h) {
   const f = h.figures(row, isCpt);
   const title = f.notOnBoard ? "Not on TwoGun's board, 0%" : f.own == null && f.missingReason ? f.missingReason : ownTitleText(f.own, row.ownHow, isCpt ? "Captain" : "FLEX");
-  return `<span title="${escapeHtml(title)}">${f.own == null ? "—" : `${dec1(f.own)}%`}</span>`;
+  return `<span title="${escapeHtml(title)}">${pct1(f.own) ?? "—"}</span>`;
 }
 
 function cellHtml(row, key, h) {

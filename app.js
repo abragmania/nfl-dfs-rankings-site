@@ -30,6 +30,7 @@ import { adjustScrollPanels } from "./js/scroll-panels.js";
 import { normalizeBoard } from "./js/normalize.js";
 import { applyGrades, rowsGradedForView } from "./js/grade.js";
 import { favoriteRows } from "./js/favorites.js";
+import { toggleStarredQbOnly, starredQbViewNow } from "./js/lineup.js";
 import { renderGameStrip, getGamestripCollapsed, setGamestripCollapsed } from "./js/gamestrip.js";
 import { renderFilterBar, updateFilterSummary } from "./js/filterbar.js";
 import { renderTableHead, renderTableBody, updateRow } from "./js/table.js";
@@ -122,7 +123,7 @@ function handleBoardFailure(raw) {
   const code = raw?.error?.code ?? "UNKNOWN";
   const message = raw?.error?.message ?? "Something went wrong.";
   store.set({ board: null, boardError: { code, message }, loading: false });
-  renderPills(el.pillsRow, { staleIds: raw?.stale ?? [], sources: null, warnings: [] });
+  renderPills(el.pillsRow, { warnings: [] }); // no board, so no warning chips (the source chips are off the classic header, C30)
   // The board failed, but the slate itself may still be readable (e.g. a source blew up building the
   // board) — show its line if GET /api/slate answers.
   getSlate()
@@ -189,6 +190,8 @@ const filterCallbacks = {
   onSalaryChange: ({ min, max }) => typedFilters.schedule("salary", { salaryMin: min, salaryMax: max }),
   onSearchChange: (text) => typedFilters.schedule("search", { search: text }),
   onStarredToggle: (bool) => store.setFilters({ starredOnly: bool }),
+  onStarredQbToggle: toggleStarredQbOnly, // the Optimizer's Starred QBs only rule, drawn as a chip in this bar (standard C12)
+  starredQbView: starredQbViewNow,
   onShowAllToggle: (bool) => store.setFilters({ showAllPlayers: bool }),
   onClearFilters: () => {
     typedFilters.cancelAll(); // a search or salary typed just before Clear filters never comes back after it
@@ -292,12 +295,9 @@ function onToggleGamestripCollapse() {
 
 function renderStatic(board) {
   renderSlateLine(el.slateLine, board.slate);
-  renderPills(el.pillsRow, {
-    staleIds: board.stale,
-    sources: board.sources,
-    warnings: board.warnings,
-    injuryReport: board.injuryReport,
-  });
+  // Optimizer standard C30 (2026-11-03): the per-source chips (cached, failed, findings, Stokastic) are off the classic header; the salary file's warning chips stay.
+  // Each source's state is on the Sources page. The branch header-rows-wip holds their replacement and stays unmerged. The Showdown header (showdown/view.js) is unchanged.
+  renderPills(el.pillsRow, { warnings: board.warnings });
   // TwoGun mode switch and board-stamp pill (merge plan 2026-10-15): a flip answers the recomputed board.
   renderModeBox(el.classicHeader, board.mode, { onSwitch: (mode) => runWrite(() => postMode(mode), { label: "the mode" }) });
   renderFilterBarNow(board);
@@ -337,9 +337,9 @@ function renderSlateChrome() {
 function ownBannerText(rows) {
   const published = (rows ?? []).filter((r) => r.ownKind === "quoted").length;
   if (published === 0) {
-    return "No published DraftKings ownership numbers yet for this week. Own% is blank until real numbers are added.";
+    return "No published DraftKings ownership numbers yet for this week. Own is blank until real numbers are added.";
   }
-  return `Own% shows published DraftKings numbers only (${published} player${published === 1 ? "" : "s"}). Everyone else is blank.`;
+  return `Own shows published DraftKings numbers only (${published} player${published === 1 ? "" : "s"}). Everyone else is blank.`;
 }
 
 function renderEmptyState({ loading, boardError }) {
@@ -511,8 +511,9 @@ wireRefresh({ refreshBtn: el.refreshBtn, statusEl: el.status }, {
     if (!refreshed || !refreshed.ok) {
       throw new Error(refreshed?.error?.message ?? "unknown error");
     }
-    const board = await getBoard();
-    handleBoardLoaded(board);
+    // The board read after the refresh is awaited (handleBoardLoaded's last step clears #status, so "Refreshed." must come after it, standard C14),
+    // and a board that cannot be read throws, so the line reads "Could not refresh: ..." and the last good board stays on screen.
+    await repaintAfterSourceSave();
   },
 });
 

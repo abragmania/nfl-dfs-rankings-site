@@ -2,7 +2,7 @@
 // Must = the lock, Want = his cash pool, Fine = the default). No DOM access; lineup.js (job 3b) wires it.
 // lineup.js savePersisted writes slots, locks, excludes, playerMax, playerMin, qbStacks, spreadDst, mode, cash and stash;
 // loadedId and saveName live in memory (swapModeStash keeps them). Cash 3b fix round, 2026-10-17: mode, cash and stash named.
-import { escapeHtml, money, dec1 } from "./format.js";
+import { escapeHtml, money, dec1, ownLabel } from "./format.js";
 import { shownTotal } from "./totals.js";
 import { rowIsOut } from "./out.js";
 
@@ -81,15 +81,15 @@ export function convictionChipsHtml(row, { locked = false, wanted = false, exclu
   const active = locked ? "must" : wanted ? "want" : "fine";
   const part = (key, label) =>
     `<button type="button" class="cash-pick-btn${active === key ? " active" : ""}" data-cash-pick="${key}" data-id="${id}" aria-pressed="${active === key}"${excluded ? " disabled" : ""}>${label}</button>`;
-  return `<span class="cash-pick${excluded ? " is-disabled" : ""}" role="group" aria-label="Conviction for ${escapeHtml(row?.name ?? "")}">${part("must", "Must")}${part("want", "Want")}${part("fine", "Fine")}</span>`;
+  return `<span class="cash-pick${excluded ? " is-disabled" : ""}" role="group" aria-label="Conviction for ${escapeHtml(row?.name ?? "")}">${part("must", "Lock")}${part("want", "Want")}${part("fine", "Fine")}</span>`;
 }
 
 export function cashHeadLine(mustRows, wantRows) {
   const names = (rs) => rs.map((r) => escapeHtml(r?.name ?? "")).join(", ");
   const parts = [];
-  if (mustRows?.length) parts.push(`${mustRows.length} Must: ${names(mustRows)}`);
+  if (mustRows?.length) parts.push(`${mustRows.length} Lock: ${names(mustRows)}`);
   if (wantRows?.length) parts.push(`${wantRows.length} Want: ${names(wantRows)}`);
-  return parts.length ? parts.join(" · ") : "No Must or Want players";
+  return parts.length ? parts.join(" · ") : "No Lock or Want players";
 }
 
 function parseWhole(text, min, max, fallback) {
@@ -269,7 +269,7 @@ export function wantSwaps(lineup, wantIds, rows, { basis = "proj", cap = SALARY_
     const tags = { least: 8, goal: set & -set, done: false };
     bestFor(w, { ignoreTeam: true, ignoreAvoid: true, ignoreLocks: true, tags });
     if (tags.least === 8) return SWAP_LIMIT_TEXT;
-    const parts = [tags.least & 4 && "moving a Must player", tags.least & 1 && `going over ${teamCap} players from one team`, tags.least & 2 && "bringing in a player from an avoided game"].filter(Boolean);
+    const parts = [tags.least & 4 && "moving a locked player", tags.least & 1 && `going over ${teamCap} players from one team`, tags.least & 2 && "bringing in a player from an avoided game"].filter(Boolean);
     return `${SWAP_LIMIT_TEXT} without ${parts.length > 1 ? `${parts.slice(0, -1).join(", ")} and ${parts[parts.length - 1]}` : parts[0]}`;
   };
 
@@ -312,7 +312,7 @@ export function swapDecisionHtml(decision, index = 0, { button = true, disabled 
     return `<div class="cash-swap cash-swap-none">${escapeHtml(w.name ?? "")} cannot be fitted: ${escapeHtml(decision.reason ?? SWAP_LIMIT_TEXT)}.</div>`;
   }
   const middle = `${signedMoney(decision.salaryDelta)} · ${signedScore(decision.scoreDelta)} ${scoreWord(decision.basis)}`;
-  return `<div class="cash-swap cash-swap-${decision.kind}">${side("Out", decision.out, (p) => finite(p.score))}<div class="cash-swap-mid">${escapeHtml(middle)}</div>${side("In", decision.in, (r) => scoreOfRow(r, decision.basis))}${button ? `<button type="button" class="lineup-row-btn cash-swap-btn" data-cash-swap="${Number(index)}"${disabled ? " disabled" : ""}>Make them Must and rebuild</button>` : ""}</div>`;
+  return `<div class="cash-swap cash-swap-${decision.kind}">${side("Out", decision.out, (p) => finite(p.score))}<div class="cash-swap-mid">${escapeHtml(middle)}</div>${side("In", decision.in, (r) => scoreOfRow(r, decision.basis))}${button ? `<button type="button" class="lineup-row-btn cash-swap-btn" data-cash-swap="${Number(index)}"${disabled ? " disabled" : ""}>Lock them and rebuild</button>` : ""}</div>`;
 }
 
 export function excludedListHtml(report) {
@@ -320,7 +320,7 @@ export function excludedListHtml(report) {
   return `<div class="cash-excluded">Not in this lineup: ${report.excluded.map((r) => escapeHtml(r.name ?? "")).join(", ")}</div>`;
 }
 
-/** "$49,600 · 118.4 median · 121.2 proj · 34% own"; the median part only on a median build; a dash and the reason when any player lacks a figure. */
+/** "$49,600 · 118.4 median · 121.2 proj · Own 34.2%"; the median part only on a median build; a dash and the reason when any player lacks a figure. */
 export function cashTotalsText(lineup, basis) {
   const players = lineup?.players ?? [];
   const parts = [money(lineup?.salary)];
@@ -336,7 +336,7 @@ export function cashTotalsText(lineup, basis) {
   parts.push(proj === null ? (projs.length === 0 ? "— proj" : "— proj (a player has no projection)") : `${dec1(proj)} proj`);
   const allOwn = players.length > 0 && players.every((p) => finite(p.own) !== null);
   const own = allOwn ? players.reduce((s, p) => s + p.own, 0) : finite(lineup?.own);
-  parts.push(own === null ? "— own" : `${Math.round(own)}% own`);
+  parts.push(own === null ? "Own —" : ownLabel(own));
   return parts.join(" · ");
 }
 

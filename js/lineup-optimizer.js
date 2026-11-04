@@ -10,7 +10,9 @@ import { toggleMustHave, bulkUids } from "./lineup-filter.js";
 import { OPT_POSITIONS, optExposureHtml, exposureLimit, minLimit } from "./lineup-exposure.js";
 import { wireQbStacks } from "./lineup-qb-stacks.js";
 import { postLineupGenerate, postLineup, stopLineupGenerate, canStopLineupGenerate } from "./api.js";
-import { afterBuildingDelay, goSitsBelow } from "./lineup-stop.js";
+import { afterBuildingDelay, goSitsBelow, stopFailure } from "./lineup-stop.js";
+import { ruleOn } from "./lineup-settings.js";
+import { answerTone } from "./row-message.js";
 import {
   boardHasMedians, buildCashSettings, poolReport, wantSwaps, swapDecisionHtml, excludedListHtml, lineupModeOf, CASH_NO_MEDIAN_TEXT, CASH_UNKNOWN_BASIS_TEXT,
 } from "./lineup-cash.js";
@@ -63,13 +65,13 @@ export function wantRowsFor(slateKey, rowById) {
   return wantIdsFor(slateKey).filter((id) => !state.locks.has(id)).map((id) => rowById.get(id)).filter(Boolean);
 }
 
-/** The footer sentence in cash: "2 cash lineups by TwoGun's median · 1 Must · 2 Want · max 3 per team" (no minimum-unique clause: Adam 2026-10-17). */
+/** The footer sentence in cash: "2 cash lineups by TwoGun's median · 1 Lock · 2 Want · max 3 per team" (no minimum-unique clause: Adam 2026-10-17). */
 export function cashSummaryText(board) {
   const s = buildCashSettings(opt.cash);
   const info = cashBasisInfo(board);
   const rowById = currentRowById();
   const by = info.blocked ? `no basis (${info.why})` : info.basis === "median" ? "TwoGun's median" : "projection";
-  const parts = [`${s.count} cash lineup${s.count === 1 ? "" : "s"} by ${by}`, `${lockedNames(rowById).length} Must`, `${wantRowsFor(slateKeyOf(board), rowById).length} Want`];
+  const parts = [`${s.count} cash lineup${s.count === 1 ? "" : "s"} by ${by}`, `${lockedNames(rowById).length} Lock`, `${wantRowsFor(slateKeyOf(board), rowById).length} Want`];
   if (s.maxPerTeam !== null) parts.push(`max ${s.maxPerTeam} per team`);
   return parts.join(" · ");
 }
@@ -494,7 +496,7 @@ export function buildGenerateSettings(form) {
     if (pct !== null && !Number.isNaN(pct)) maxExposure[pos] = { pct };
   }
   const rules = {};
-  for (const r of OPT_RULES) rules[r.key] = form.rules?.[r.key] !== false;
+  for (const r of OPT_RULES) rules[r.key] = ruleOn(form.rules, r.key);
   const settings = {
     count: requestCount(form.count),
     minUnique: parseWhole(form.minUnique, 1, OPT_MAX_UNIQUE, OPT_DEFAULT_UNIQUE),
@@ -635,7 +637,7 @@ async function doGenerate() {
     const pool = {
       excludes: new Set(form.excludes.map(String)),
       avoid: new Set(avoid.map((g) => String(g).toUpperCase())),
-      starredQbOnly: sent.settings.rules.starredQbOnly !== false,
+      starredQbOnly: sent.settings.rules.starredQbOnly === true, // buildGenerateSettings always sends every rule explicitly
     };
     opt.formError = playerMinPositionProblem(playerMin, {
       posOf: (id) => String(rowAt(id)?.pos ?? "").toUpperCase(),
@@ -653,6 +655,8 @@ async function doGenerate() {
   }
   let built = false;
   opt.generating = true;
+  opt.stopping = false;
+  opt.stopError = "";
   opt.canStop = canStopLineupGenerate();
   opt.error = null;
   opt.saveError = null;
@@ -672,7 +676,9 @@ async function doGenerate() {
       return false;
     }
     if (!data || data.ok === false) {
-      opt.error = data?.error?.code === "GENERATE_BUSY" ? data.error.message || OPT_BUSY_TEXT : data?.error?.message ?? "Could not make lineups.";
+      const busy = data?.error?.code === "GENERATE_BUSY";
+      opt.error = busy ? data.error.message || OPT_BUSY_TEXT : data?.error?.message ?? "Could not make lineups.";
+      opt.errorTone = answerTone(data?.error?.code); // a refusal (bad settings, a build already running) is amber; a build that failed outright is red
     } else {
       const lineups = (Array.isArray(data.lineups) ? data.lineups : []).map((l) => ({ ...l, uid: `n${++optSeq}` }));
       const notes = [...slateNotes, ...(Array.isArray(data.notes) ? data.notes : [])];
@@ -699,11 +705,14 @@ async function doGenerate() {
     }
   } catch (e) {
     opt.error = `Could not reach the server: ${e.message}`;
+    opt.errorTone = "error";
   } finally {
     cancelShow();
     opt.buildingShown = false;
   }
   opt.generating = false;
+  opt.stopping = false;
+  opt.stopError = "";
   commit();
   try {
     lastContainer?.querySelector("#opt-results")?.scrollIntoView({ block: "start", behavior: "smooth" });
@@ -756,8 +765,10 @@ async function saveGenerated(uids) {
       break;
     }
   }
+  opt.saveTone = "error";
   if (skipped.length) {
     const status = duplicateSaveStatus(uids.length, savedCount, skipped);
+    if (!opt.saveError) opt.saveTone = "warn"; // only "already saved": a notice, amber; a real failure alongside keeps it red
     opt.saveError = opt.saveError ? `${status}. ${opt.saveError}` : status;
   }
   opt.saving = false;
@@ -888,15 +899,26 @@ export function wireOptimizer(container) {
   wirePickButtons(container);
   container.querySelector("#opt-go-btn")?.addEventListener("click", () => doGenerate());
   container.querySelector("#opt-stop-btn")?.addEventListener("click", async () => {
+    if (opt.stopping) return;
+    opt.stopping = true; // the button reads "Stopping..." until the build's own answer ends it (D15)
+    opt.stopError = "";
+    commit();
+    let failure = "";
     try {
-      await stopLineupGenerate();
+      failure = stopFailure({ data: await stopLineupGenerate() });
     } catch (e) {
       console.error("lineup generate: the Stop was not heard", e); // the build runs on to its answer
+      failure = stopFailure({ thrown: true });
+    }
+    if (failure && opt.generating) {
+      opt.stopping = false; // Stop is pressable again; the line under it says why (D18)
+      opt.stopError = failure;
+      commit();
     }
   });
   container.querySelectorAll("[data-action='opt-rule']").forEach((btn) => {
     btn.addEventListener("click", () => {
-      opt.rules[btn.dataset.key] = !(opt.rules[btn.dataset.key] !== false);
+      opt.rules[btn.dataset.key] = !ruleOn(opt.rules, btn.dataset.key);
       commit();
     });
   });

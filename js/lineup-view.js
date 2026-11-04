@@ -3,7 +3,7 @@
 // read `state` and `opt` (owned by lineup.js) and draw HTML; they hold no state of their own beyond the two module variables
 // below (poolCallbacks, lastExposure), which only this file assigns. Wiring and actions stay in lineup.js and lineup-optimizer.js.
 import { buildingHtml, goLabelHtml, buildingRowClass } from "./lineup-stop.js";
-import { escapeHtml, money, dec1 } from "./format.js";
+import { escapeHtml, money, dec1, pct1, ownLabel } from "./format.js";
 import { store, matchesPosition, filterRows, sortRows, passesProjFloor, activeSlateRows, activeSlateGames, isTwoGunMode } from "./state.js";
 import { sortableHeadHtml } from "./tabs.js";
 import { matchupText, gradedCellHtml, rowIsOut } from "./table.js"; // D43: the one copy of "vs DAL" / "@ DET"
@@ -17,8 +17,9 @@ import { filterLineups, bulkLabel, filterBarHtml } from "./lineup-filter.js";
 import { OPT_POSITIONS, optExposureHtml, zeroMinRows } from "./lineup-exposure.js";
 import { cardPlayerRowHtml, cardDecor, teamColours, teamColourStyle } from "./lineup-card.js";
 import { lineupRoles, roleTagsHtml } from "./lineup-marks.js";
+import { statusLineHtml, statusToneClass, rowMessageHtml, messageIsFor, TONE_WARN, TONE_NOTICE } from "./row-message.js";
 import { paletteForRows } from "./team-palette.js";
-import { settingRowHtml, settingGroupHtml, settingChipsRowHtml, settingSubtitleHtml, activeRulesSummary, switchButtonHtml, switchCheckboxHtml, numberBoxHtml } from "./lineup-settings.js";
+import { settingRowHtml, settingGroupHtml, settingChipsRowHtml, settingSubtitleHtml, activeRulesSummary, switchButtonHtml, switchCheckboxHtml, numberBoxHtml, ruleOn } from "./lineup-settings.js";
 import { listedQbs, qbStacksPayload, qbListHtml, qbPanelsHtml, defaultsApply, SPREAD_HINT } from "./lineup-qb-stacks.js";
 import { slateLineups } from "./entries.js";
 import { TAG_OPTIONS, numberLineups, lineupPrefix } from "./lineup-tags.js";
@@ -57,11 +58,12 @@ export function panelHtml() {
       ? `${money(totals.salaryUsed)} used · ${money(-totals.salaryLeft)} over`
       : `${money(totals.salaryUsed)} used · ${money(totals.salaryLeft)} left${perSpot ? ` · ${perSpot}` : ""}`;
   // 🔵 finding 3: any placed player with a null own% makes the total unknown, not smaller.
-  const ownText = totals.totalOwn == null ? "— (not every player has a published number)" : `${Math.round(totals.totalOwn)}% own`;
+  const ownText = totals.totalOwn == null ? "— (not every player has a published number)" : pct1(totals.totalOwn);
 
   // The Optimizer band is the first thing in this part of the tab (DECISIONS.md D70, Adam 2026-10-10: "move the optimizer stuff up"); the
   // lineup it builds from sits right under it, its results and the saved lineups below. The injury note and the unreadable-overrides
   // note are not drawn here: the ownership banner just above this part (#own-banner, app.js) carries both (Optimizer-first step 4).
+  const poolHtml = rightColumnHtml(activeSlateRows(board), rowById); // drawn first: it says whether the click's message sits in a pool row (A14)
   return `
     ${optimizerControlsHtml(rowById)}
     <div class="lineup-layout">
@@ -72,12 +74,12 @@ export function panelHtml() {
           <div class="salary-bar-track"><div class="salary-bar-fill${overCap ? " over" : ""}" style="width:${fillPct}%"></div></div>
           <span class="salary-bar-label${overCap ? " over" : ""}">${escapeHtml(salaryText)}</span>
         </div>
-        <div class="lineup-totals">Total projection ${dec1(totals.totalProj)} &middot; Total ownership ${ownText}</div>
-        ${buildStatusHtml()}
+        <div class="lineup-totals">Total projection ${dec1(totals.totalProj)} &middot; Own ${escapeHtml(ownText)}</div>
+        ${buildStatusHtml(poolMessageDrawn)}
       </div>
       <div class="lineup-right">
         <h3 class="lineup-right-title">Player pool</h3>
-        ${rightColumnHtml(activeSlateRows(board), rowById)}
+        ${poolHtml}
       </div>
     </div>
     ${optimizerResultsHtml(rowById)}
@@ -137,20 +139,17 @@ function slotsHtml(rowById, roles) {
 // Optimizer-first step 5 (Adam 2026-10-18): the shared card row at the big size (lineup-card.js cardPlayerRowHtml, 48px team logo, the initials badge only for a team with no logo),
 // wearing the slate palette's colours like the cards; `slotName` is its label, `palette` the slate's (paletteForRows).
 export function slotPlayerHtml(row, tags = [], slotName = "", palette = null) {
-  const decor = { rowFor: (p) => p, rolesFor: () => roleTagsHtml(tags), coloursFor: (team) => teamColours(palette, team) };
+  const decor = { rowFor: (p) => p, rolesFor: () => "", nameTagsFor: () => roleTagsHtml(tags), coloursFor: (team) => teamColours(palette, team) }; // the role tags go on the name line (lineup-card.js nameTags)
   return cardPlayerRowHtml(row, slotName, decor, { big: true });
 }
 
-function buildStatusHtml() {
+// Standard A14: what a click on a pool row says (addError) is drawn beside that row; it comes back to this place under the slots only
+// when no row of the pool on screen carries it (`addInRow`). Save's messages have no clicked row, so they stay here; red only for a failure.
+function buildStatusHtml(addInRow = false) {
   const parts = [];
-  if (state.addError) {
-    parts.push(`<div class="lineup-status lineup-status-warning">${escapeHtml(state.addError)}</div>`);
-  }
-  if (state.saveError) {
-    parts.push(`<div class="lineup-status lineup-status-error">${escapeHtml(state.saveError)}</div>`);
-  } else if (state.saveConfirm) {
-    parts.push(`<div class="lineup-status">${escapeHtml(state.saveConfirm)}</div>`);
-  }
+  if (state.addError && !addInRow) parts.push(statusLineHtml(state.addError, TONE_WARN));
+  if (state.saveError) parts.push(statusLineHtml(state.saveError, state.saveTone));
+  else if (state.saveConfirm) parts.push(statusLineHtml(state.saveConfirm, TONE_NOTICE));
   return parts.join("");
 }
 
@@ -265,8 +264,8 @@ export function savedLineupCardHtml(lineup, rowById, numbers = null) {
   // published the count is left out so the summary stays on one line (👁 visual-qa 2026-10-11).
   const ownText =
     totals.ownPublished === totals.filled
-      ? `${Math.round(totals.totalOwn)}% own`
-      : `— (${totals.ownPublished} of ${totals.filled} published)`;
+      ? ownLabel(totals.totalOwn)
+      : `Own — (${totals.ownPublished} of ${totals.filled} published)`;
 
   const deleteHtml = isConfirmingDelete
     ? `<span class="saved-lineup-confirm">Delete this lineup?
@@ -446,7 +445,10 @@ export function poolStarClick(id) {
   else console.error("Pool star clicked but no star callback is wired (renderLineupPanel got none).");
 }
 
+let poolMessageDrawn = false; // set by the last rightColumnHtml: a pool row carries the click's message (A14), so the line under the slots stays empty
+
 export function rightColumnHtml(rows, rowById) {
+  poolMessageDrawn = false;
   const { filters, sort } = store.get();
   // The classic projection floor (D52) applies to this pool like every other classic list, with one exception:
   // a player already locked or excluded stays listed so his lock or exclude can still be undone here.
@@ -464,17 +466,17 @@ export function rightColumnHtml(rows, rowById) {
   // Max % is a plain header, not sortable (Adam 2026-10-11); Adam 2026-10-17: it follows Value, a star column leads,
   // and Pos and Status are no longer columns (the position chip and the status tag sit in the Player cell).
   const headBefore = [
-    { key: "star", label: "★", cls: "lineup-star-col" },
+    { key: "star", label: "★", cls: "lineup-star-col", headTitle: "Star" },
     { key: "player", label: "Player" },
     { key: "salary", label: "Sal" },
     { key: "proj", label: "Proj" },
-    { key: "own", label: "Own%" },
-    { key: "value", label: "Proj/$", title: "Proj/$: projection per $1,000 of salary" },
+    { key: "own", label: "Own" },
+    { key: "value", label: "Val", headTitle: "Val: projection per $1,000 of salary" },
   ];
   const inner = (cols) => sortableHeadHtml(cols, sort).replace(/^<tr>|<\/tr>$/g, "");
   const maxHead = `<th class="lineup-max-head" title="Most of the new lineups this player may be in; blank = no cap">Max %</th>`;
   const minHead = `<th class="lineup-min-head" title="Fewest of the new lineups this player must be in; blank = none">Min %</th>`;
-  const cashHead = `<th class="lineup-cash-head" title="Must puts a player in every lineup; Want puts him on your list, and each lineup shows whether he made it; Fine leaves him to the numbers">Cash</th>`;
+  const cashHead = `<th class="lineup-cash-head" title="Lock puts a player in every lineup; Want puts him on your list, and each lineup shows whether he made it; Fine leaves him to the numbers">Cash</th>`;
   const headHtml = `<tr>${inner(headBefore)}${cash ? cashHead : minHead + maxHead}<th></th></tr>`;
   const slateKey = slateKeyOf(store.get().board);
   const maxMap = playerMaxFor(slateKey);
@@ -512,6 +514,13 @@ function poolPickAttrs(action) {
   return action ? ` data-pick="${action}" tabindex="0" title="${POOL_PICK_TITLES[action]}" aria-label="${POOL_PICK_TITLES[action]}"` : "";
 }
 
+/** The click's message beside row `id` (A14), "" for every other row; marks the pool as carrying it. */
+function poolRowMessageHtml(id) {
+  if (!messageIsFor({ id: state.addErrorId, text: state.addError }, id)) return "";
+  poolMessageDrawn = true;
+  return rowMessageHtml(state.addError, TONE_WARN);
+}
+
 function rightRowHtml(row, placedSet, posShown, maxMap = {}, minMap = {}, cashWant = null) { // cashWant: a Set of Want ids in cash mode, else null
   const id = String(row.id);
   const maxText = maxMap[id] ?? "";
@@ -527,22 +536,22 @@ function rightRowHtml(row, placedSet, posShown, maxMap = {}, minMap = {}, cashWa
   const rowClass = `${excluded ? " lineup-row-excluded" : locked ? " lineup-row-locked" : ""}${dimmed ? " row-dimmed" : ""}${pick ? " lineup-pool-pick" : ""}`;
   return `
     <tr class="lineup-row${rowClass}" data-id="${escapeHtml(id)}"${poolPickAttrs(pick)}>
-      <td class="lineup-star-col"><button type="button" class="star-btn${row.starred ? " active" : ""}" data-action="toggle-star" data-id="${escapeHtml(id)}"${poolCallbacks?.onToggleStar ? "" : " disabled"}>${row.starred ? "★" : "☆"}</button></td>
+      <td class="lineup-star-col"><button type="button" class="star-btn${row.starred ? " active" : ""}" title="${row.starred ? "Starred" : "Star"}" data-action="toggle-star" data-id="${escapeHtml(id)}"${poolCallbacks?.onToggleStar ? "" : " disabled"}>${row.starred ? "★" : "☆"}</button></td>
       <td>
-        <span class="player-cell">${playerLineHtml(row, { pos: posShown })}</span>
+        <span class="player-cell">${playerLineHtml(row, { pos: posShown })}</span>${poolRowMessageHtml(id)}
       </td>
       <td>${money(row.salary)}</td>
       <td>${bumpProjHtml(row, row.proj, { enabled: Boolean(poolCallbacks?.onBump) })}</td>
-      <td>${row.own == null ? "—" : `${dec1(row.own)}%`}</td>
+      <td>${pct1(row.own) ?? "—"}</td>
       <td>${gradedCellHtml(row.value, row.valueGrade)}</td>
       ${cashWant
         ? `<td class="lineup-cash-cell">${convictionChipsHtml(row, { locked, wanted: cashWant.has(id), excluded })}</td>`
         : `<td class="lineup-min-cell"><input type="text" inputmode="decimal" maxlength="5" class="opt-input lineup-min-input${minBad ? " invalid" : ""}" data-player-min="${escapeHtml(id)}" value="${escapeHtml(minText)}" aria-label="Min % for ${escapeHtml(row.name ?? "")}" /></td>
       <td class="lineup-max-cell"><input type="text" inputmode="decimal" maxlength="5" class="opt-input lineup-max-input${maxBad ? " invalid" : ""}" data-player-max="${escapeHtml(id)}" value="${escapeHtml(maxText)}" aria-label="Max % for ${escapeHtml(row.name ?? "")}" /></td>`}
-      <td class="lineup-row-actions">
+      <td class="lineup-row-actions"><span class="lineup-row-btns">
         ${cashWant ? "" : `<button type="button" class="lineup-row-btn${locked ? " active" : ""}" data-action="row-lock" data-id="${escapeHtml(id)}"${excluded ? " disabled" : ""}>${locked ? "Locked" : "Lock"}</button>`}
         <button type="button" class="lineup-row-btn${excluded ? " active danger" : ""}" data-action="row-exclude" data-id="${escapeHtml(id)}">${excluded ? "Excluded" : "Exclude"}</button>
-      </td>
+      </span></td>
     </tr>`;
 }
 
@@ -559,7 +568,7 @@ export function lineupTotalsOf(lineup) {
 /** `notes` (optional): {ruleKey: {text, warn}}, a line under that rule's row (ChatGPT wish k: the starred-QB count). */
 export function ruleRowsHtml(rules, keys = OPT_RULES.map((r) => r.key), notes = {}) {
   return OPT_RULES.filter((r) => keys.includes(r.key))
-    .map((r) => settingRowHtml(r.label, switchButtonHtml(rules?.[r.key] !== false, r.label, `data-action="opt-rule" data-key="${escapeHtml(r.key)}"`), notes?.[r.key]?.text ?? "", notes?.[r.key]?.warn ? "opt-warn" : ""))
+    .map((r) => settingRowHtml(r.label, switchButtonHtml(ruleOn(rules, r.key), r.label, `data-action="opt-rule" data-key="${escapeHtml(r.key)}"`), notes?.[r.key]?.text ?? "", notes?.[r.key]?.warn ? "opt-warn" : ""))
     .join("");
 }
 
@@ -614,7 +623,7 @@ export function optLineupCardHtml(lineup, index, busy, { saved = false, rowById 
     decor.rolesFor = (p) => (cash.strip.wantIn.has(String(p.id)) ? `<span class="role-tag role-want" title="On your Want list">WANT</span>` : "");
   }
   const rows = (lineup.players ?? []).map((p, i) => cardPlayerRowHtml(p, LINEUP_SLOTS[i] ?? p.pos ?? "", decor)).join("");
-  const ownBody = totals.own == null ? "— own" : `${Math.round(totals.own)}% own`;
+  const ownBody = totals.own == null ? "Own —" : ownLabel(totals.own);
   const geoBody = geoText(geoOwn((lineup.players ?? []).map((p) => p.own))); // Adam 2026-10-17: geo own on the GPP card only
   // Adam 2026-10-18: the median total beside proj, off the sort's own figure; only on a TwoGun board with medians or a batch carrying them.
   const plist = lineup.players ?? [];
@@ -690,7 +699,7 @@ export const stackDefaultsApply = (board) => {
   const rows = activeSlateRows(board);
   const listed = listedQbIds(rows);
   const sent = Object.fromEntries(Object.entries(opt.qb.entries).filter(([id]) => listed.has(id)));
-  return defaultsApply(usableQbIds(rows, starredQbPool(), opt.rules.starredQbOnly !== false, lockedIds(state.slots, state.locks)), sent);
+  return defaultsApply(usableQbIds(rows, starredQbPool(), ruleOn(opt.rules, "starredQbOnly"), lockedIds(state.slots, state.locks)), sent);
 };
 
 /** ChatGPT wish i, Adam 2026-10-17: the footer's one-line summary of the settings in effect, from the same `opt` the
@@ -699,7 +708,7 @@ export function optSummaryText(board) {
   if (opt.mode === "cash") return cashSummaryText(board); // Cash mode job 3b
   const rows = activeSlateRows(board);
   const lockedQb = lockedNames(currentRowById()).some((r) => upperOf(r.pos) === "QB");
-  const qualifiers = opt.rules.starredQbOnly !== false ? starredQbQualifiers(rows, starredQbPool()) : null;
+  const qualifiers = ruleOn(opt.rules, "starredQbOnly") ? starredQbQualifiers(rows, starredQbPool()) : null;
   const qbOwnCount = Object.keys(qbStacksPayload(opt.qb.entries, boardRowMap(board), listedQbIds(rows), null, lockedIds(state.slots, state.locks))).length;
   // 🔵 2026-10-17: the percents parsed by parsePct as buildGenerateSettings does (a blank or invalid box is null), and the
   // players with a Max % or Min % box counted from the request's own maps, for the players still in this slate's pool.
@@ -711,6 +720,14 @@ export function optSummaryText(board) {
   const playerCapCount = new Set([...Object.keys(caps.playerMaxExposure ?? {}), ...Object.keys(caps.playerMinExposure ?? {})]).size;
   const shown = { ...opt, maxExp, count: requestCount(opt.count), minUnique: parseWhole(opt.minUnique, 1, OPT_MAX_UNIQUE, OPT_DEFAULT_UNIQUE), objective: effectiveObjective(opt.objective) };
   return activeRulesSummary(shown, { games: activeSlateGames(board), starredQbCount: qualifiers === 0 && lockedQb ? null : qualifiers, qbOwnCount, playerCapCount });
+}
+
+/** What the filter bar's Starred QBs only chip shows (ChatGPT wish k, Adam 2026-10-17: with the rule on, a line counts the QBs that qualify):
+ *  {hidden (cash builds have no such rule), on, note: {text, warn}}; the note is null while the rule is off. */
+export function starredQbChipView(board) {
+  const on = ruleOn(opt.rules, "starredQbOnly");
+  const lockedQb = lockedNames(currentRowById()).some((r) => upperOf(r.pos) === "QB");
+  return { hidden: opt.mode === "cash", on, note: on ? starredQbNote(starredQbQualifiers(activeSlateRows(board), starredQbPool()), lockedQb) : null };
 }
 
 function optimizerControlsHtml(rowById) {
@@ -728,16 +745,16 @@ function optimizerControlsHtml(rowById) {
   const lockedList = lockedIds(state.slots, state.locks);
   const qbRows = listedQbs(activeSlateRows(board), lockedList);
   const avoidRow = games.length ? settingChipsRowHtml("Avoid game", avoidChipsHtml(games, opt.avoid)) : "";
-  const formError = opt.formError ? `<div class="lineup-status lineup-status-error opt-form-error">${escapeHtml(opt.formError)}</div>` : "";
+  const formError = opt.formError ? statusLineHtml(opt.formError, TONE_WARN, "opt-form-error") : ""; // a refusal (a bad box, a blocked basis): amber, never red (standard A14)
   const options = (values, current, label = (v) => String(v)) =>
     values.map((v) => `<option value="${escapeHtml(String(v))}"${String(current) === String(v) ? " selected" : ""}>${escapeHtml(label(v))}</option>`).join("");
   const upTo = (max) => Array.from({ length: max + 1 }, (_, i) => i);
   const select = (id, label, values, current, text) => `<select id="${id}" class="opt-input opt-select-n" aria-label="${label}">${options(values, current, text)}</select>`;
   // ChatGPT wish i, Adam 2026-10-17: three groups, Pool (who may be used), Stacks, Build; the exposure caps are a sub-block of Build.
   const build = [
-    settingRowHtml("Lineups to make", numberBoxHtml(`type="number" min="1" max="${OPT_MAX_COUNT}" class="opt-input opt-input-num" id="opt-count" value="${escapeHtml(opt.count)}" aria-label="How many lineups"`), "From the slots you have locked"),
-    settingRowHtml("Min unique players", numberBoxHtml(`type="number" min="1" max="${OPT_MAX_UNIQUE}" class="opt-input opt-input-num" id="opt-min-unique" value="${escapeHtml(opt.minUnique)}" aria-label="Minimum unique players between lineups"`), "Between any two lineups"),
-    settingSubtitleHtml("Max share of lineups"),
+    settingRowHtml("Lineups to make", numberBoxHtml(`type="number" min="1" max="${OPT_MAX_COUNT}" class="opt-input opt-input-num" id="opt-count" value="${escapeHtml(opt.count)}" aria-label="How many lineups"`, `Maximum ${OPT_MAX_COUNT}`, "opt-unit-note"), "From the slots you have locked"),
+    settingRowHtml("Min unique players", numberBoxHtml(`type="number" min="1" max="${OPT_MAX_UNIQUE}" class="opt-input opt-input-num" id="opt-min-unique" value="${escapeHtml(opt.minUnique)}" aria-label="Minimum unique players between lineups"`, `Maximum ${OPT_MAX_UNIQUE}`, "opt-unit-note"), "Between any two lineups"),
+    settingSubtitleHtml("Max %"),
     expRows,
     ruleRowsHtml(opt.rules, RULE_GROUPS.build),
   ].join("");
@@ -754,13 +771,8 @@ function optimizerControlsHtml(rowById) {
   ].join("");
   // 👁 2026-10-17: the open QBs' panels are full-width cards after the three groups (inside Stacks they grew to 822px).
   const qbPanels = qbPanelsHtml(qbRows, opt.qb, qbGlobals(), activeSlateRows(board), OPT_STACK_OWN_MAX, OPT_STACK_OPP_MAX, lockedList);
-  // ChatGPT wish k, Adam 2026-10-17: with "starred QBs only" on, the line under it counts the QBs that qualify.
-  const qbNotes = {};
-  if (opt.rules.starredQbOnly !== false) {
-    qbNotes.starredQbOnly = starredQbNote(starredQbQualifiers(activeSlateRows(board), starredQbPool()), locked.some((r) => upperOf(r.pos) === "QB"));
-  }
+  // Starred QBs only is a chip in the filter bar since standard C12 (starredQbChipView below); the Pool group keeps Max per team and Avoid game.
   const pool = [
-    ruleRowsHtml(opt.rules, RULE_GROUPS.pool, qbNotes),
     settingRowHtml("Max per team", `<select id="opt-max-team" class="opt-input opt-select" aria-label="Max per team">${options(MAX_TEAM_OPTIONS, opt.maxPerTeam, (v) => (v === "" ? "No limit" : v))}</select>`, "Not applied to the QB's team or his opponent"),
     avoidRow,
   ].join("");
@@ -783,7 +795,7 @@ function optHeadHtml(infoHtml) {
   return `<div class="opt-settings-head">
         <h3 class="opt-title">Optimizer${opt.mode === "cash" ? ` ${cashChipHtml()}` : ""}${modeSwitchHtml(opt.mode)}</h3>
         ${infoHtml}
-        ${opt.error ? `<span class="lineup-status-error opt-go-error">${escapeHtml(opt.error)}</span>` : ""}
+        ${opt.error ? `<span class="${statusToneClass(opt.errorTone).trim()} opt-go-error">${escapeHtml(opt.error)}</span>` : ""}
       </div>`;
 }
 
@@ -794,14 +806,14 @@ function cashControlsHtml(rowById) {
   const basis = cashBasisInfo(board);
   const games = activeSlateGames(board);
   const info = `<span class="opt-lockinfo">${cashHeadLine(lockedNames(rowById), wantRowsFor(slateKeyOf(board), rowById))}</span>`;
-  const formError = opt.formError ? `<div class="lineup-status lineup-status-error opt-form-error">${escapeHtml(opt.formError)}</div>` : "";
+  const formError = opt.formError ? statusLineHtml(opt.formError, TONE_WARN, "opt-form-error") : "";
   const teamOptions = MAX_TEAM_OPTIONS.map((v) => `<option value="${v}"${String(opt.cash.maxPerTeam) === v ? " selected" : ""}>${v === "" ? "No limit" : v}</option>`).join("");
   const pool = [
     settingRowHtml("Max per team", `<select id="opt-cash-max-team" class="opt-input opt-select" aria-label="Max per team">${teamOptions}</select>`, "Every team, the quarterback's included"),
     games.length ? settingChipsRowHtml("Avoid game", avoidChipsHtml(games, new Set(opt.cash.avoid))) : "",
   ].join("");
   const build = [
-    settingRowHtml("Lineups to make", numberBoxHtml(`type="number" min="1" max="${OPT_MAX_COUNT}" class="opt-input opt-input-num" id="opt-cash-count" value="${escapeHtml(opt.cash.count)}" aria-label="How many lineups"`), "The best first, then the next best"),
+    settingRowHtml("Lineups to make", numberBoxHtml(`type="number" min="1" max="${OPT_MAX_COUNT}" class="opt-input opt-input-num" id="opt-cash-count" value="${escapeHtml(opt.cash.count)}" aria-label="How many lineups"`, `Maximum ${OPT_MAX_COUNT}`, "opt-unit-note"), "The best first, then the next best"),
     basis.blocked ? settingRowHtml("Build by", "", basis.text, "opt-warn") : settingRowHtml("Build by", `<span class="cash-basis">${escapeHtml(basis.text)}</span>`),
   ].join("");
   return `
@@ -823,13 +835,13 @@ function optimizerFooterHtml(board) {
   const showing = opt.generating && opt.buildingShown; // a build under a second shows nothing (lineup-stop.js); doGenerate itself refuses a second click
   const busy = showing || opt.saving || (opt.mode === "cash" && cashBasisInfo(board).blocked); // cash: Build is disabled whenever cashBasisInfo blocks (no Cash basis, or no medians on a TwoGun basis)
   // 🔵 d842f0b: a refusal from Build must show where Build was pressed, which can be far below the settings head.
-  const footerError = opt.formError ? `<div class="lineup-status lineup-status-error opt-form-error-footer">${escapeHtml(opt.formError)}</div>` : "";
+  const footerError = opt.formError ? statusLineHtml(opt.formError, TONE_WARN, "opt-form-error-footer") : "";
   return `
     <div class="opt-footer${buildingRowClass({ showing, below: opt.buildingBelow })}">
       ${footerError}
       <span class="opt-summary">${escapeHtml(optSummaryText(board))}</span>
-      ${buildingHtml({ showing, canStop: opt.canStop, stopId: "opt-stop-btn" })}
-      <button type="button" id="opt-go-btn" class="lineup-build-btn opt-go opt-go-big"${busy ? " disabled" : ""}>${goLabelHtml({ showing, idle: "Build", busy: "Making…" })}</button>
+      ${buildingHtml({ showing, canStop: opt.canStop, stopId: "opt-stop-btn", stopping: opt.stopping, stopError: opt.stopError })}
+      <button type="button" id="opt-go-btn" class="lineup-build-btn opt-go opt-go-big"${busy ? " disabled" : ""}>${goLabelHtml({ showing, idle: "Build" })}</button>
     </div>`;
 }
 
@@ -881,9 +893,10 @@ function newLineupsTabHtml(rowById, savedHere) {
   const pick = pickOptions(rowById);
   const shown = filterLineups(r?.lineups ?? [], opt.mustHave, (l) => (l.players ?? []).map((p) => ({ ...p, identity: identityOf(p.id, rowById) })));
   parts.push(mustHaveBarHtml(shown.length, r?.lineups.length ?? 0));
-  if (opt.error) parts.push(`<div class="lineup-status lineup-status-error">${escapeHtml(opt.error)}</div>`);
+  if (opt.error) parts.push(statusLineHtml(opt.error, opt.errorTone));
   if (!r) {
-    parts.push(`<div class="saved-lineups-empty">${opt.generating && opt.buildingShown ? "Making lineups…" : "No new lineups. Press Build to make some."}</div>`);
+    // While the build's message shows beside Stop (BUILDING_MESSAGE, standard D15) the placeholder is empty: the words show once.
+    if (!(opt.generating && opt.buildingShown)) parts.push(`<div class="saved-lineups-empty">No new lineups. Press Build to make some.</div>`);
     lastExposure = { exposure: {}, subtitle: "" };
     return parts.join("");
   }
@@ -911,8 +924,8 @@ function newLineupsTabHtml(rowById, savedHere) {
          </div>`
       : `<div class="opt-sub">None left from the last Build.</div>`
   );
-  if (opt.saveError) parts.push(`<div class="lineup-status lineup-status-error">${escapeHtml(opt.saveError)}</div>`);
-  if (isCash && opt.cashUndo) parts.push(`<div class="cash-undo">Made ${escapeHtml(opt.cashUndo.names.join(" and "))} Must and built again. <button type="button" class="lineup-row-btn" data-cash-undo${busy ? " disabled" : ""}>Undo</button></div>`);
+  if (opt.saveError) parts.push(statusLineHtml(opt.saveError, opt.saveTone));
+  if (isCash && opt.cashUndo) parts.push(`<div class="cash-undo">Locked ${escapeHtml(opt.cashUndo.names.join(" and "))} and built again. <button type="button" class="lineup-row-btn" data-cash-undo${busy ? " disabled" : ""}>Undo</button></div>`);
   parts.push(optNotesHtml(r.notes));
   if (n && !shown.length) {
     parts.push(`<div class="saved-lineups-empty">${NO_MATCH_TEXT}</div>`);

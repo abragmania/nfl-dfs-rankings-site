@@ -14,6 +14,8 @@ import { wirePick, wirePickRows, SLOT_PICK_SKIP } from "../pick-rows.js"; // cli
 // The Showdown Optimizer (Adam 2026-10-19, sketch A): its band over the builder, its Make row under it, its batch full width below, its controls on the pool rows.
 import { syncOptimizer, optimizerLive, optimizerBandHeadHtml, optimizerBandBoxesHtml, optimizerGoRowHtml, optimizerResultsBlockHtml, optimizerExcludes, optimizerSavedFilter, poolControls, wirePoolControls, wireOptimizer } from "./optimizer.js";
 import { handBuild } from "../lineup-builds.js";
+import { afterBuildingDelay } from "../lineup-stop.js";
+import { statusBlockHtml, addMessageOf, messageRowShown as messageRowShownIn, BUILD_STATUS_ID } from "./lineup-status.js"; // A14: the status block and the click's message beside its pool row
 import { requestFailureText } from "./read-json.js";
 import { controlsHtml as controlsMarkup } from "./lineup-look.js"; // the two-row controls (Adam 2026-10-18 9:09 PM)
 import { slotsHtml as slotsMarkup, repaintSlots } from "./lineup-slots.js"; // the six slots' markup and figure repaint (Adam 2026-10-21 Q3 option A split)
@@ -38,13 +40,16 @@ const state = {
   objective: "proj",
   lastResult: null,
   building: false,
+  buildingShown: false, // the one-lineup Build has run a second: its button reads Building... (lineup-look.js)
   addError: null,
+  addErrorId: null, // the pool row whose click made addError (row-message.js)
   savedLineups: [],
   savedLoaded: false,
   savedError: null,
   saveName: "",
   saving: false,
   saveError: null,
+  saveTone: "error", // "warn" for the nothing-to-save refusal, "error" for a failure (row-message.js)
   saveConfirm: null,
   renamingId: null,
   deleteConfirmId: null,
@@ -128,22 +133,9 @@ function totalsLineHtml(totals) {
   return `Total projection ${totals.totalProj === null ? "unknown (a player has no projection)" : dec1(totals.totalProj)} &middot; ${totals.filled} of 6 slots filled`;
 }
 
-// D39: both teams required. Reports which of the game's two teams are (not yet) represented among the
-// six placed players; blank/neutral until at least one player is placed.
-function bothTeamsText(board) {
-  const away = board?.game?.away;
-  const home = board?.game?.home;
-  if (!away || !home) return "";
-  const ids = [state.cpt?.id, ...state.flex.map((s) => s?.id)].filter(Boolean);
-  const teams = new Set(ids.map((id) => findRow(board, id)?.team).filter(Boolean));
-  if (teams.size === 0) return `Both teams required: ${away} and ${home}.`;
-  const missing = [away, home].filter((t) => !teams.has(t));
-  if (missing.length === 0) return `Both teams required: satisfied (${away} and ${home} both in the lineup).`;
-  return `Both teams required: ${missing.join(", ")} not in the lineup yet.`;
-}
-
 function addCaptain(row) {
   if (!row) return;
+  state.addErrorId = String(row.id); // a refusal is drawn beside his row (row-message.js, standard A14)
   if (row.cptSalary == null) {
     state.addError = `${row.name} has no showdown Captain salary.`;
     return;
@@ -160,6 +152,7 @@ function addCaptain(row) {
 
 function addFlex(row) {
   if (!row) return;
+  state.addErrorId = String(row.id);
   if (row.salary == null) {
     state.addError = `${row.name} has no showdown FLEX salary.`;
     return;
@@ -205,9 +198,9 @@ export function pickPoolRow(row, action) {
   }
 }
 
-/** Test hook: who is placed now, {cpt, flex, addError} (copies). */
+/** Test hook: who is placed now, {cpt, flex, addError, addErrorId} (copies). */
 export function lineupPicks() {
-  return { cpt: state.cpt ? { ...state.cpt } : null, flex: state.flex.map((s) => (s ? { ...s } : null)), addError: state.addError };
+  return { cpt: state.cpt ? { ...state.cpt } : null, flex: state.flex.map((s) => (s ? { ...s } : null)), addError: state.addError, addErrorId: state.addErrorId };
 }
 
 function clearCaptain() {
@@ -232,12 +225,18 @@ function clearAll() {
 async function doBuild(key) {
   if (state.building) return;
   state.building = true;
+  state.buildingShown = false; // the button reads "Building..." only after a second, like Make and Build (lineup-stop.js, standard D15)
   state.addError = null;
   commit();
+  const cancelShow = afterBuildingDelay(() => {
+    if (!state.building) return;
+    state.buildingShown = true;
+    commit();
+  });
   try {
     const data = await postShowdownLineupOptimize(key, { objective: state.objective, locks: [], excludes: [] }); // no mode: the server builds on the served board, the figures on screen
     if (!data || data.ok === false) {
-      state.lastResult = { feasible: false, message: data?.error?.message ?? "Could not build a lineup." };
+      state.lastResult = { feasible: false, tone: "error", message: data?.error?.message ?? "Could not build a lineup." };
     } else if (data.feasible) {
       const lineup = Array.isArray(data.lineup) ? data.lineup : [];
       const cptEntry = lineup.find((e) => String(e.slot ?? "").toUpperCase() === "CPT" || String(e.slot ?? "").toUpperCase() === "CAPTAIN");
@@ -254,12 +253,14 @@ async function doBuild(key) {
       state.lastResult = { feasible: true, message, builtOn: builtOnText(lastBoard), salaryUsed: data.salaryUsed, totalProj: data.totalProj };
     } else {
       const message = [data.objectiveNote, data.message ?? "No legal lineup fits the salary cap and both-teams rule."].filter(Boolean).join(" ");
-      state.lastResult = { feasible: false, message };
+      state.lastResult = { feasible: false, tone: "warn", message }; // no lineup fits: an answer, not a failure (amber)
     }
   } catch (e) {
-    state.lastResult = { feasible: false, message: requestFailureText(e) };
+    state.lastResult = { feasible: false, tone: "error", message: requestFailureText(e) };
   }
+  cancelShow();
   state.building = false;
+  state.buildingShown = false;
   commit();
 }
 
@@ -282,12 +283,14 @@ async function doSaveLineup(key, name) {
   const slotsPayload = body.slots;
   if (slotsPayload.length === 0) {
     state.saveError = "Add at least one player to the lineup before saving.";
+    state.saveTone = "warn";
     state.saveConfirm = null;
     commit();
     return;
   }
   state.saving = true;
   state.saveError = null;
+  state.saveTone = "error";
   state.saveConfirm = null;
   state.saveName = name;
   commit();
@@ -361,26 +364,23 @@ const slotsHtml = (board) => slotsMarkup(board, state); // the placed slots go i
 
 function controlsHtml() {
   const hasAnySlot = Boolean(state.cpt) || state.flex.some(Boolean);
-  return controlsMarkup({ building: state.building, saving: state.saving, saveName: state.saveName, hasAnySlot });
+  return controlsMarkup({ building: state.building, buildingShown: state.buildingShown, saving: state.saving, saveName: state.saveName, hasAnySlot });
 }
 
-function buildStatusHtml(board) {
-  const parts = [`<div class="lineup-status">${escapeHtml(bothTeamsText(board))}</div>`];
-  if (state.addError) parts.push(`<div class="lineup-status lineup-status-warning">${escapeHtml(state.addError)}</div>`);
-  if (state.saveError) parts.push(`<div class="lineup-status lineup-status-error">${escapeHtml(state.saveError)}</div>`);
-  else if (state.saveConfirm) parts.push(`<div class="lineup-status">${escapeHtml(state.saveConfirm)}</div>`);
-  const r = state.lastResult;
-  if (r) {
-    if (!r.feasible) parts.push(`<div class="lineup-status lineup-status-error">${escapeHtml(r.message || "No legal lineup could be built.")}</div>`);
-    else parts.push(...[r.builtOn, r.message].filter(Boolean).map((t) => `<div class="lineup-status">${escapeHtml(t)}</div>`));
-  }
-  return parts.join("");
+// The status block under the slots and the click's message beside its pool row (standard A14): lineup-status.js.
+const buildStatusHtml = (board, addInRow = false) => statusBlockHtml(board, state, addInRow);
+const messageRowShown = (rows) => messageRowShownIn(state, rows);
+
+/** Redraws only the status block, after the pool repainted with `rows` (a filter change can hide the row the message sits beside). */
+function repaintBuildStatus(board, rows) {
+  const el = lastContainer?.querySelector?.(`#${BUILD_STATUS_ID}`);
+  if (el) el.innerHTML = buildStatusHtml(board, messageRowShown(rows));
 }
 
 // What the pool needs from the lineup: who is placed (a placed man's row is tinted on the tab where he sits); a click on a row runs
 // pickPoolRow (poolCtx's pick), where the add and clear rules stay.
 function listPlacement() {
-  return { cptId: state.cpt ? String(state.cpt.id) : null, flexIds: new Set(state.flex.filter(Boolean).map((s) => String(s.id))) };
+  return { cptId: state.cpt ? String(state.cpt.id) : null, flexIds: new Set(state.flex.filter(Boolean).map((s) => String(s.id))), message: addMessageOf(state) };
 }
 
 function poolCtx(board) {
@@ -388,7 +388,10 @@ function poolCtx(board) {
     board,
     placement: listPlacement,
     repaint: () => paintPool(lastContainer, poolCtx(board)), // a header click: only the pool's head and body
-    onRepaint: (poolEl) => wireRowButtons(poolEl, board), // a repainted pool's buttons are new
+    onRepaint: (poolEl, rows) => { // a repainted pool's buttons are new; and the click's message follows the rows now shown (a filter can hide its row)
+      wireRowButtons(poolEl, board);
+      repaintBuildStatus(board, rows);
+    },
     onCount: (shown, total) => poolCount?.(shown, total),
   };
 }
@@ -442,7 +445,7 @@ function panelHtml(board, poolRows) {
           <span class="salary-bar-label${overCap ? " over" : ""}">${escapeHtml(salaryText)}</span>
         </div>
         <div class="lineup-totals">${totalsLineHtml(totals)}</div>
-        ${buildStatusHtml(board)}
+        <div id="${BUILD_STATUS_ID}">${buildStatusHtml(board, messageRowShown(poolRows))}</div>
         ${optimizerBandBoxesHtml(board)}
         ${optimizerGoRowHtml(board)}
       </div>
@@ -551,6 +554,8 @@ export function renderShowdownLineupPanel(container, board, key, { onOpenSources
     state.cpt = null;
     state.flex = new Array(FLEX_COUNT).fill(null);
     state.lastResult = null;
+    state.addError = null; // a refusal beside a row of the other game's pool is not this game's
+    state.addErrorId = null;
     state.renamingId = null;
     state.deleteConfirmId = null;
     if (key) loadSavedLineups(key);

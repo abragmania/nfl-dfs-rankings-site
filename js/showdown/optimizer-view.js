@@ -3,8 +3,9 @@
 // tables, and each pool row's Min % / Max % boxes and lock / In / exclude buttons. Markup only, from
 // the classic Optimizer's own helpers and classes (public/js/lineup.js optimizerControlsHtml, cashControlsHtml,
 // optimizerFooterHtml, newLineupsTabHtml, optLineupCardHtml, rightRowHtml); optimizer.js owns the state and the requests.
-import { escapeHtml, money, dec1 } from "../format.js";
-import { buildingHtml, goLabelHtml, buildingRowClass } from "../lineup-stop.js";
+import { escapeHtml, money, dec1, ownLabel } from "../format.js";
+import { buildingHtml, goLabelHtml, buildingRowClass, BUILDING_LABEL } from "../lineup-stop.js";
+import { statusLineHtml, statusToneClass } from "../row-message.js"; // A14: red only for an error
 import { settingRowHtml, settingGroupHtml, settingSubtitleHtml, numberBoxHtml } from "../lineup-settings.js";
 import { modeSwitchHtml, cashChipHtml, cashTotalsText, unusedCapText, builtInTextCash } from "../lineup-cash.js";
 import { cardPlayerRowHtml, teamColours } from "../lineup-card.js";
@@ -63,9 +64,9 @@ export function bandHeadHtml(v) {
     <div class="sd-opt-head" id="sd-opt-head">
       <div class="opt-settings-head">
         <h3 class="opt-title">Optimizer${cash ? ` ${cashChipHtml()}` : ""}${modeSwitchHtml(v.mode)}</h3>
-        ${v.error ? `<span class="lineup-status-error opt-go-error">${escapeHtml(v.error)}</span>` : ""}
+        ${v.error ? `<span class="${statusToneClass(v.errorTone ?? "error").trim()} opt-go-error">${escapeHtml(v.error)}</span>` : ""}
       </div>
-      ${v.formError ? `<div class="lineup-status lineup-status-error opt-form-error">${escapeHtml(v.formError)}</div>` : ""}
+      ${v.formError ? statusLineHtml(v.formError, "warn", "opt-form-error") : ""}
     </div>`;
 }
 
@@ -103,18 +104,18 @@ export function bandBoxesHtml(v) {
     </div>`;
 }
 
-/** "Make 20 lineups" ("Making…" while out). */
+/** "Make 20 lineups" ("Building..." while out, optimizer standard D15). */
 export function goLabel(count, generating) {
-  return generating ? "Making…" : `Make ${count} lineup${count === 1 ? "" : "s"}`;
+  return generating ? BUILDING_LABEL : `Make ${count} lineup${count === 1 ? "" : "s"}`;
 }
 
 /** The Make row (classic optimizerFooterHtml and its sticky footer, 👁 V3): the summary and the button, the last piece of the builder's column. */
-export function goRowHtml({ summary, count, generating: showing, busy, formError, canStop = false, below = false }) {
+export function goRowHtml({ summary, count, generating: showing, busy, formError, canStop = false, below = false, stopping = false, stopError = "" }) {
   return `
     <div class="opt-footer sd-opt-go${buildingRowClass({ showing, below })}">
-      ${formError ? `<div class="lineup-status lineup-status-error opt-form-error-footer">${escapeHtml(formError)}</div>` : ""}
+      ${formError ? statusLineHtml(formError, "warn", "opt-form-error-footer") : ""}
       <span class="opt-summary" id="sd-opt-summary">${escapeHtml(summary)}</span>
-      ${buildingHtml({ showing, canStop, stopId: "sd-opt-stop-btn" })}
+      ${buildingHtml({ showing, canStop, stopId: "sd-opt-stop-btn", stopping, stopError })}
       <button type="button" id="sd-opt-go-btn" class="lineup-build-btn opt-go opt-go-big"${busy ? " disabled" : ""}>${goLabelHtml({ showing, idle: goLabel(count, false), busy: goLabel(count, true) })}</button>
     </div>`;
 }
@@ -123,7 +124,7 @@ export function goRowHtml({ summary, count, generating: showing, busy, formError
 
 const finite = (v) => (typeof v === "number" && Number.isFinite(v) ? v : null);
 
-/** A GPP card's totals: "$49,400 · 97.4 proj · 102% own", with the build's own total after proj on a median build
+/** A GPP card's totals: "$49,400 · 97.4 proj · Own 102.3%", with the build's own total after proj on a median build
  *  ("· 91.2 median"). Projection is the sum of the rows as shown (totals.js shownTotal); ownership is each slot's own Captain or
  *  FLEX figure summed (Adam 2026-10-18), a dash when any slot has none; the median total is the server's. */
 export function gppTotalsText(lineup, objective) {
@@ -133,7 +134,7 @@ export function gppTotalsText(lineup, objective) {
   parts.push(projs.length && projs.every((p) => finite(p) !== null) ? `${dec1(shownTotal(projs))} proj` : "— proj (a player has no projection)");
   if (objective === "median") parts.push(finite(lineup?.median) === null ? "— median" : `${dec1(lineup.median)} median`);
   const owns = slots.map((s) => s.own);
-  parts.push(owns.length && owns.every((o) => finite(o) !== null) ? `${Math.round(owns.reduce((a, b) => a + b, 0))}% own` : "— own");
+  parts.push(owns.length && owns.every((o) => finite(o) !== null) ? ownLabel(owns.reduce((a, b) => a + b, 0)) : "Own —");
   return parts.join(" · ");
 }
 
@@ -280,7 +281,7 @@ export function exposureSectionHtml(r, board, sortDir, mustHave) {
  */
 export function resultsHtml(v) {
   const r = v.results;
-  if (!r) return v.generating ? `<div class="opt-results sd-opt-results" id="sd-opt-results"><div class="saved-lineups-empty">Making lineups…</div></div>` : "";
+  if (!r) return ""; // while a build shows its message beside Stop (standard D15) the results area is empty: the words show once
   const n = r.lineups.length;
   const parts = [];
   const mustHave = v.mustHave ?? [];
@@ -304,7 +305,7 @@ export function resultsHtml(v) {
   const prov = provenanceText(r);
   const provTitle = provenanceTitle(r);
   if (prov) parts.push(`<div class="opt-note"${provTitle ? ` title="${escapeHtml(provTitle)}"` : ""}>${escapeHtml(prov)}</div>`);
-  if (v.saveError) parts.push(`<div class="lineup-status lineup-status-error">${escapeHtml(v.saveError)}</div>`);
+  if (v.saveError) parts.push(statusLineHtml(v.saveError, v.saveTone ?? "error"));
   parts.push(optNotesHtml(r.notes));
   if (n && !nShown) {
     parts.push(`<div class="saved-lineups-empty">${NO_MATCH_TEXT}</div>`);

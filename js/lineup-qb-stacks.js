@@ -132,7 +132,7 @@ export function qbStacksPayload(entries, rowById, listedIds, notes, lockedIdList
       const r = rowById.get(pid);
       if (!r) continue;
       if (!rowIsOut(r)) players[pid] = choice;
-      else if (choice === "must") notes?.push(`${rowById.get(qbId)?.name ?? qbId}'s Must on ${r.name} was left out: ruled out.`);
+      else if (choice === "must") notes?.push(`${rowById.get(qbId)?.name ?? qbId}'s Lock on ${r.name} was left out: ruled out.`);
     }
     if (isDefault({ ...e, players })) continue; // PROJECT.md Part 4 Optimizer: blank once pruned, the server drops it (qb-stacks.js isBlankEntry), so it is not sent
     out[qbId] = { teammatesMin: e.min ?? null, teammatesMax: e.max ?? null, opponentsMin: e.oppMin ?? null, opponentsMax: e.oppMax ?? null, players };
@@ -156,8 +156,8 @@ export function summaryText(e) {
   const marks = Object.values(e.players);
   const must = marks.filter((c) => c === "must").length;
   const no = marks.filter((c) => c === "no").length;
-  if (must) parts.push(`${must} must`);
-  if (no) parts.push(`${no} no`);
+  if (must) parts.push(`${must} lock`);
+  if (no) parts.push(`${no} exclude`);
   return parts.join(" · ");
 }
 
@@ -183,7 +183,7 @@ function segHtml(attrs, options, current) {
   return `<span class="qbs-seg" role="group">${btns}</span>`;
 }
 
-const PLAYER_CHOICES = [["must", "Must"], ["avail", "Avail"], ["no", "No"]];
+const PLAYER_CHOICES = [["must", "Lock"], ["avail", "Allow"], ["no", "Exclude"]]; // the stored values stay must / avail / no; only the words are the standard's (C18)
 
 function outControlHtml(choice) {
   const btns = PLAYER_CHOICES.map(([value, label]) => `<button type="button" class="qbs-seg-btn qbs-${value}${choice === value ? " on" : ""}" disabled tabindex="-1">${label}</button>`).join("");

@@ -35,12 +35,12 @@ export function lineupFigures(players) {
 export const SORT_KEYS = [
   { key: "built", label: "As built", dir: "asc", title: "The order the lineups were made or saved" },
   { key: "proj", label: "Proj", dir: "desc", title: "Projected total" },
-  { key: "own", label: "Own%", dir: "asc", title: "Total ownership of the nine players; lowest first is the least-owned lineup" },
+  { key: "own", label: "Own", dir: "asc", title: "Total ownership of the nine players; lowest first is the least-owned lineup" },
   { key: "median", label: "Median", dir: "desc", title: "TwoGun's median total" },
   { key: "geo", label: "Geo own", dir: "asc", title: "Geometric mean of the nine ownerships; lowest first is the most unique lineup" },
 ];
 
-/** The keys offered: cash gets As built, Proj, Own% and (when `hasMedian`) Median; GPP the same plus Geo own. */
+/** The keys offered: cash gets As built, Proj, Own and (when `hasMedian`) Median; GPP the same plus Geo own. */
 export function sortKeysFor(mode, hasMedian) {
   return SORT_KEYS.filter((k) => (k.key === "median" ? Boolean(hasMedian) : k.key === "geo" ? mode !== "cash" : true));
 }

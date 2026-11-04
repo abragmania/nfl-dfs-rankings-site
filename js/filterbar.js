@@ -1,7 +1,7 @@
 // Filter bar: position chips, team multi-select chips (one per team on the slate, in team colours),
-// salary range, search, favorites-only toggle, reset-all-overrides. Rendered once per board load; after
+// salary range, search, the Starred only toggle, reset-all-overrides. Rendered once per board load; after
 // that only class names are toggled (never innerHTML) so the salary/search inputs never lose focus
-// or cursor position while Adam is typing. The "Favorites only" chip carries the starred count of the slate on screen (Adam, 2026-10-21; D53).
+// or cursor position while Adam is typing. The "Starred only" chip carries the starred count of the slate on screen (Adam, 2026-10-21; D53).
 import { escapeHtml } from "./format.js";
 import { textColourFor } from "./format.js";
 import { TEAM_BY_ABBR } from "./teams-data.js";
@@ -11,10 +11,24 @@ import { POSITION_CHIPS, CLASSIC_PROJ_FLOOR, store } from "./state.js";
 // count and the removable active-game chip, without touching the rest of the bar — the position chips,
 // search box and salary inputs are only fully re-rendered on a board load or an explicit "Clear
 // filters", so a keystroke in the search box never loses focus.
-/** The "Favorites only" chip's text: "★ Favorites only (3)", "(0)" included. A missing or non-finite count gives the label with no
- *  parenthesis. Pure; the one place the chip's text is built (renderFilterBar draws it, updateFilterSummary patches it). */
+/** The starred filter chip's text (optimizer standard D5): "Starred only (3)", "(0)" included. A missing or non-finite count gives the label
+ *  with no parenthesis. Pure; the one place the chip's text is built (renderFilterBar draws it, updateFilterSummary patches it). */
 export function favoritesChipLabel(count) {
-  return Number.isFinite(count) ? `★ Favorites only (${count})` : "★ Favorites only";
+  return Number.isFinite(count) ? `Starred only (${count})` : "Starred only";
+}
+
+/** Paints the Starred QBs only chip and its note (optimizer standard C12: the box lives in the filter bar). `view` = {hidden, on, note: {text, warn} | null}
+ *  from lineup-view.js starredQbChipView; the Optimizer's panel calls this after each draw, and renderFilterBar once as the bar is built. */
+export function paintStarredQbChip(container, view) {
+  const chip = container?.querySelector?.("#starred-qb-toggle");
+  if (!chip || !view) return;
+  chip.hidden = Boolean(view.hidden);
+  chip.classList.toggle("active", Boolean(view.on));
+  chip.setAttribute("aria-pressed", String(Boolean(view.on)));
+  const note = container.querySelector("#starred-qb-note");
+  if (!note) return;
+  note.textContent = view.hidden || !view.on || !view.note ? "" : view.note.text;
+  note.classList.toggle("opt-warn", Boolean(view.note?.warn));
 }
 
 export function updateFilterSummary(container, { filteredCount, totalCount, activeGameLabel, onClearGame, starredCount }) {
@@ -88,6 +102,7 @@ export function renderFilterBar(container, teamAbbrs, filters, callbacks, hasOve
         <label><input id="salary-max" type="number" step="100" placeholder="max" value="${filters.salaryMax ?? ""}" /></label>
       </div>
       <button type="button" id="starred-toggle" class="chip toggle-chip${filters.starredOnly ? " active" : ""}">${favoritesChipLabel()}</button>
+      <button type="button" id="starred-qb-toggle" class="chip toggle-chip" aria-pressed="false">Starred QBs only</button>
       ${showAllToggleHtml(filters.showAllPlayers, `id="show-all-toggle"`)}
       <button type="button" id="reset-overrides-btn" class="reset-btn"${hasOverrides ? "" : " disabled"}>Reset all overrides</button>
     </div>
@@ -96,6 +111,7 @@ export function renderFilterBar(container, teamAbbrs, filters, callbacks, hasOve
     </div>
     <div class="filter-row filter-summary-row">
       <span id="filter-count" class="filter-count"></span>
+      <span id="starred-qb-note" class="filter-qb-note"></span>
       <button type="button" id="clear-filters-btn" class="link-btn">Clear filters</button>
       <span id="active-game-chip-slot"></span>
     </div>
@@ -136,6 +152,10 @@ export function renderFilterBar(container, teamAbbrs, filters, callbacks, hasOve
     starredToggle.classList.toggle("active");
     callbacks.onStarredToggle(starredToggle.classList.contains("active"));
   });
+
+  // Starred QBs only is an Optimizer rule (lineup.js owns it): a click flips it there, and the panel's redraw repaints this chip.
+  container.querySelector("#starred-qb-toggle").addEventListener("click", () => callbacks.onStarredQbToggle?.());
+  paintStarredQbChip(container, callbacks.starredQbView?.());
 
   const showAllToggle = container.querySelector("#show-all-toggle");
   showAllToggle.addEventListener("click", () => {

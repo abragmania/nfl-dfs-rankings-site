@@ -3,7 +3,7 @@
 // public/js/panel.js (initials, ratingTier, gradeBoxHtml, heightFromInches, draftLine, bioRowHtml), a read-only copy
 // under D6 as amended 2026-10-18; the markup and class names are this app's own. Every figure here is either from
 // this app's board row or from NFLDepthCharts, and the source line says which and as of when (router, Data rules).
-import { escapeHtml, money, dec1, localStamp, textColourFor, logoFor } from "./format.js";
+import { escapeHtml, money, dec1, pct1, localStamp, textColourFor, logoFor } from "./format.js";
 import { TEAM_BY_ABBR } from "./teams-data.js";
 import { matchupText, statusTagsHtml, lineupOutTagHtml } from "./table.js";
 import { gameLogTableHtml } from "./player-card-log.js";
@@ -87,11 +87,11 @@ export function stripHtml(row, asOf = null) {
   const pre = tg ? "TwoGun " : "";
   const cell = (label, value, title = "") => `<div class="pc-fig"${title ? ` title="${escapeHtml(title)}"` : ""}><span class="pc-fig-label">${label}</span><span class="pc-fig-value">${value}</span></div>`;
   const figs = [
-    cell(showdown ? "FLEX $" : "Salary", money(row.salary), "DraftKings salary file"),
-    showdown ? cell("CPT $", money(row.cptSalary), "DraftKings salary file") : "",
-    cell(tg ? "TwoGun proj" : "Proj", row.proj == null ? "no proj" : dec1(row.proj), tg ? (row.projNote || "TwoGun's projection, as the Lineup screen's switch shows it") : "This app's blended projection (the Projections tab lists its sources)"),
-    cell(`${pre}${showdown ? "FLEX own" : "Own"}`, own == null ? dash : `${dec1(own)}%`, own == null ? `${tg ? "TwoGun has" : "No source has"} published ownership for him` : `Ownership as ${src} shows it`),
-    showdown && row.ownCpt != null ? cell(`${pre}CPT own`, `${dec1(row.ownCpt)}%`, `Captain ownership as ${src} shows it`) : "",
+    cell("Sal", money(row.salary), "DraftKings salary file"), // optimizer standard D1: Sal, Proj, Own; the Captain seat's wear CPT
+    showdown ? cell("CPT Sal", money(row.cptSalary), "DraftKings salary file") : "",
+    cell(tg ? "TwoGun Proj" : "Proj", row.proj == null ? "no proj" : dec1(row.proj), tg ? (row.projNote || "TwoGun's projection, as the Lineup screen's switch shows it") : "This app's blended projection (the Projections tab lists its sources)"),
+    cell(`${pre}Own`, pct1(own) ?? dash, own == null ? `${tg ? "TwoGun has" : "No source has"} published ownership for him` : `Ownership as ${src} shows it`),
+    showdown && row.ownCpt != null ? cell(`${pre}CPT Own`, pct1(row.ownCpt), `Captain ownership as ${src} shows it`) : "",
   ].join("");
   const tag = lineupOutTagHtml(row) || statusTagsHtml(row);
   const status = tag ? `<div class="pc-fig pc-fig-tag" title="Injury tag from this app's own injury report"><span class="pc-fig-label">Status</span><span class="pc-fig-value">${tag}</span></div>` : "";

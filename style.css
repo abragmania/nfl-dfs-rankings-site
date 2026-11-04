@@ -689,6 +689,8 @@ body.table-expanded { overflow: hidden; }
 
 .filter-summary-row { color: var(--text-muted); font-size: var(--fs-sm); }
 .filter-count { font-weight: 600; }
+.filter-qb-note { color: var(--text-muted); } /* the Starred QBs only chip's count line, amber at 0 (.opt-warn) */
+.filterbar .chip[hidden] { display: none; }
 .link-btn {
   cursor: pointer;
   background: none;
@@ -1382,6 +1384,11 @@ tr:last-child .cell-edit-hint { top: auto; bottom: 100%; margin-top: 0; margin-b
 .lineup-status { font-size: var(--fs-sm); color: var(--text-muted); margin-top: var(--sp-2); }
 .lineup-status-error { color: var(--danger); font-weight: 600; }
 .lineup-status-warning { color: var(--amber); }
+/* A message beside the clicked pool row (public/js/row-message.js, optimizer standard A14): under the name, wrapping; red only for an error. */
+.row-msg { display: block; margin-top: 2px; font-size: var(--fs-sm); line-height: 1.25; white-space: normal; }
+.row-msg-warn { color: var(--amber); }
+.row-msg-error { color: var(--danger); font-weight: 600; }
+.row-msg-notice { color: var(--text-muted); }
 .lineup-note { font-size: var(--fs-sm); color: var(--amber); margin-top: 2px; }
 
 .lineup-rows-wrap { width: 100%; max-height: calc(100vh - 260px); }
@@ -1431,7 +1438,7 @@ tr:last-child .cell-edit-hint { top: auto; bottom: 100%; margin-top: 0; margin-b
 .lineup-pool-table th:nth-child(n+3):nth-child(-n+6), .lineup-pool-table td:nth-child(n+3):nth-child(-n+6) { padding-left: 5px; padding-right: 5px; }
 .lineup-pool-table th:nth-child(2), .lineup-pool-table td:nth-child(2) { padding-left: 6px; padding-right: 6px; }
 .lineup-pool-table .player-cell { gap: 6px; }
-.lineup-pool-table .lineup-row-actions { gap: 3px; }
+.lineup-pool-table .lineup-row-btns { gap: 3px; }
 .lineup-pool-table .lineup-row-btn { padding: 2px 5px; }
 .lineup-pool-table .lineup-row-btn[data-action="row-lock"] { min-width: 50px; }
 .lineup-pool-table .lineup-row-btn[data-action="row-exclude"] { min-width: 58px; }
@@ -1472,7 +1479,7 @@ tr:last-child .cell-edit-hint { top: auto; bottom: 100%; margin-top: 0; margin-b
 .bump-fig { display: inline-block; min-width: 4ch; padding: 0 1px; border-radius: 3px; text-align: right; font-variant-numeric: tabular-nums; vertical-align: middle; }
 .bump-fig.bump-up { background: var(--grade-v1-bg); color: var(--success); }
 .bump-fig.bump-down { background: var(--grade-v5-bg); color: var(--danger); }
-.lineup-row-actions { display: flex; gap: 4px; }
+.lineup-row-btns { display: flex; align-items: center; gap: 4px; } /* the buttons' own flex box: the td stays a normal cell, so a taller (refused) row centres them */
 .lineup-row-btn {
   cursor: pointer;
   background: var(--bg-elevated-2);
@@ -1830,6 +1837,8 @@ th.sd-cpt-col.sorted { color: var(--amber); }
 /* Every head after Player may break at its spaces ("CPT / proj", "Own / FLEX", "Min / %"; the sort arrow stays with its word), so each
    column is only as wide as its figures need (a 1px width asks for the narrowest that holds them); the head rows have room for two lines. */
 .sd-pool-table thead tr:not(.sd-own-total-row) th:not([data-col="player"]) { width: 1px; white-space: normal; line-height: 1.2; vertical-align: bottom; }
+/* "CPT Own" and "CPT Lev" stay on one line: the column takes the room the words need (width: 1px sizes it to its content). */
+.sd-pool-table thead tr:not(.sd-own-total-row) th[data-col="ownCpt"], .sd-pool-table thead tr:not(.sd-own-total-row) th[data-col="levCpt"] { white-space: nowrap; }
 /* The ownership totals row under the head (Adam 2026-10-26 3:28 PM): sticky with the head, the sums in bold, the over / under line under each. */
 .sd-pool-table tr.sd-own-total-row th { cursor: default; color: var(--text); font-weight: 600; background: var(--bg-elevated); padding-top: 2px; padding-bottom: 2px; line-height: 1.25; vertical-align: middle; }
 .sd-pool-table tr.sd-own-total-row th.sd-cpt-col { color: var(--amber); }
@@ -1915,6 +1924,9 @@ select.opt-input { text-align: left; padding: 3px 4px; }
 .opt-building { flex: 0 1 auto; min-width: 0; display: flex; align-items: center; gap: var(--sp-2); white-space: nowrap; }
 .opt-building .lineup-status { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .opt-building .lineup-build-btn { flex: none; }
+/* A Stop the server did not hear (D18): its sentence, whole, in the error colour, on a full-width line of its own under the whole build row. */
+.opt-footer .opt-stop-error { order: 9; flex: 1 1 100%; min-width: 0; text-align: left; white-space: normal; margin: 0; } /* its own full-width line under the whole row */
+.opt-footer.is-building:has(.opt-stop-error) { flex-wrap: wrap; }
 .lineup-build-btn:has(.opt-go-now) { position: relative; }
 .opt-go-hold { visibility: hidden; }
 .opt-go-now { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; white-space: nowrap; }
@@ -1944,7 +1956,8 @@ select.opt-input { text-align: left; padding: 3px 4px; }
 .opt-settings .opt-input { font-size: var(--fs-sm); padding: 2px 6px; }
 .opt-settings .opt-input-num, .opt-settings .opt-input-pct { text-align: right; font-variant-numeric: tabular-nums; }
 .opt-numbox { display: inline-flex; align-items: center; gap: 4px; }
-.opt-unit { min-width: 1.2em; font-size: var(--fs-sm); color: var(--text-dim); }
+.opt-unit.opt-unit-note { min-width: 7.5em; } /* "Maximum 150" and "Maximum 8" take one width, so the count and unique boxes line up */
+.opt-unit { min-width: 1.2em; font-size: var(--fs-sm); color: var(--text-dim); white-space: nowrap; } /* "Maximum 150" beside the count boxes (C16) */
 .opt-toggle { display: inline-flex; align-items: center; gap: 6px; padding: 0; margin: 0; border: 0; background: none; cursor: pointer; color: var(--text-muted); font: inherit; font-size: var(--fs-sm); }
 .opt-toggle input { position: absolute; opacity: 0; width: 0; height: 0; }
 .opt-switch { position: relative; flex: 0 0 auto; width: 28px; height: 16px; border-radius: 999px; background: var(--bg-elevated-2); border: 1px solid var(--border); transition: background 0.12s, border-color 0.12s; }
@@ -2052,7 +2065,7 @@ select.opt-input { text-align: left; padding: 3px 4px; }
 .role-mini-0 { --c: var(--pos-qb); }
 .role-mini-1 { --c: var(--info); }
 .role-mini-2 { --c: var(--pos-dst); }
-.opt-p-line2 .role-tag { margin-left: 0; }
+.opt-p-line2 .role-tag, .opt-p-line1 .role-tag { margin-left: 0; }
 :root[data-theme="dark"] .role-tag { background: color-mix(in srgb, var(--c) 16%, var(--bg-elevated)); } /* opaque on dark: a tint over the wash could drop the tag text under 4.5:1; all six read 4.85 or better on it (a test) */
 .opt-card-totals { font-size: var(--fs-sm); color: var(--text-muted); border-top: 1px solid var(--border); padding-top: var(--sp-1); }
 .opt-nowrap { white-space: nowrap; } /* Adam 2026-10-18: a New card's totals line breaks between figures */
@@ -2105,13 +2118,14 @@ select.opt-input { text-align: left; padding: 3px 4px; }
 .lineup-slots .opt-p-big.opt-p-short .nm-full { display: none; } /* the first line is about 176px: a name that cannot fit shows the card's short form (lineup-card.js bigNameNeedsShort); one that fits stays full */
 .lineup-slots .opt-p-big.opt-p-short .nm-short { display: inline; }
 .lineup-slots .lineup-slot-card > .opt-p.opt-p-big { flex: 1 1 auto; min-width: 0; padding-right: var(--sp-3); }
-.lineup-slots .opt-p.opt-p-big { box-sizing: border-box; min-height: 64px; gap: 10px; padding: 3px 0 3px 12px; font-size: 13px; border-radius: 4px; }
+.lineup-slots .opt-p.opt-p-big { box-sizing: border-box; min-height: 64px; gap: 8px; padding: 3px 0 3px 12px; font-size: 13px; border-radius: 4px; }
 .lineup-slots .opt-p-big .opt-p-slot { width: 38px; flex: 0 0 38px; font-size: 14px; }
 .lineup-slots .opt-p-big :is(.opt-p-logo, .player-badge) { flex: 0 0 48px; width: 48px; height: 48px; }
 .lineup-slots .opt-p-big .opt-p-body { gap: 3px; }
 .lineup-slots .opt-p-big .opt-p-name { font-size: 16px; }
 .lineup-slots .opt-p-big .opt-p-line2, .lineup-slots .opt-p-big .meta-pill { font-size: 13px; }
-.lineup-slots .opt-p-big .opt-p-nums { flex-basis: 72px; gap: 3px; font-size: 15px; font-variant-numeric: tabular-nums; }
+.lineup-slots .opt-p-big .opt-p-line2 { gap: 4px; } /* the matchup pill beside "Own 12.3%" needs about 256px of the body: the numbers column (72 to 62px) and the gaps (10 to 8px) give it back */
+.lineup-slots .opt-p-big .opt-p-nums { flex-basis: 62px; gap: 3px; font-size: 15px; font-variant-numeric: tabular-nums; }
 .lineup-slots .opt-p-big :is(.opt-p-sal, .opt-p-proj) { font-size: 15px; }
 @media (max-width: 700px) { .lineup-slots .opt-p.opt-p-big { gap: 6px; padding-left: 8px; } .lineup-slots .opt-p-big .opt-p-slot { width: 32px; flex-basis: 32px; } }
 /* Saved (or the same nine players as a saved lineup): the Save button becomes a disabled "Saved ✓". */

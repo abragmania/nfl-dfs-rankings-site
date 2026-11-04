@@ -4,6 +4,7 @@
 // screen so they always read apart.
 import { escapeHtml } from "../format.js";
 import { slatePalette } from "../team-palette.js";
+import { BUILDING_LABEL } from "../lineup-stop.js"; // standard D15: the button reads Building... after one second, like Make and Build
 
 const palettes = new Map(); // "DAL,GB" to its palette (one entry per game viewed in this page's life, each a small palette of two teams, so it grows slowly and is not pruned)
 
@@ -20,11 +21,11 @@ export function showdownPalette(board) {
 
 /** The controls: Build and Clear all on the first row, Save as and Save lineup on the second (each row the column's full width). No Objective
  *  choice while Projection is the only objective (optimizer standard A13, A21). */
-export function controlsHtml({ building, saving, saveName, hasAnySlot }) {
+export function controlsHtml({ building, buildingShown = false, saving, saveName, hasAnySlot }) {
   return `
     <div class="lineup-controls sd-controls">
       <div class="sd-controls-row">
-        <button type="button" id="sd-lineup-build-btn" class="lineup-build-btn"${building ? " disabled" : ""}>${building ? "Building…" : "Build"}</button>
+        <button type="button" id="sd-lineup-build-btn" class="lineup-build-btn"${building ? " disabled" : ""}>${building && buildingShown ? BUILDING_LABEL : "Build"}</button>
         <button type="button" id="sd-lineup-clear-all-btn" class="lineup-clear-all-btn">Clear all</button>
       </div>
       <div class="sd-controls-row">

@@ -33,7 +33,9 @@ import { getLineups, postLineup, putLineup, deleteLineup } from "./api.js";
 import { renderEntriesSection, wireEntries } from "./entries-wire.js";
 import { phoneMinHeight, panelMinHeight } from "./expand.js";
 import { defaultCashState, cleanCashState, swapModeStash } from "./lineup-cash.js";
-import { setPoolCallbacks, poolStarClick, panelHtml, savedOfActiveSlate, CLASSIC_POOL_PICK_SKIP } from "./lineup-view.js";
+import { ruleOn } from "./lineup-settings.js";
+import { paintStarredQbChip } from "./filterbar.js";
+import { setPoolCallbacks, poolStarClick, panelHtml, savedOfActiveSlate, starredQbChipView, CLASSIC_POOL_PICK_SKIP } from "./lineup-view.js";
 import { wirePick, wirePickRows, SLOT_PICK_SKIP } from "./pick-rows.js"; // click-to-pick, the one wiring the Showdown Optimizer shares (D81)
 import { cleanPlayerMax, boardModeOf, slateKeyOf, uniqueSavedName, lockedIds, cashPick, wireOptimizer } from "./lineup-optimizer.js";
 
@@ -66,6 +68,7 @@ export const state = {
   locks: new Set(), // player ids (strings) the Optimizer must use (D70: a filled slot is always one)
   excludes: new Set(), // player ids (strings) that must never appear
   addError: null, // set when Add is blocked, or as a non-blocking warning after a successful Add
+  addErrorId: null, // the pool row (board id) whose click made addError: the message is drawn beside that row (row-message.js, standard A14)
 
   // Saved lineups (Adam's "draw up a lineup, press Save, see it in a list").
   savedLineups: [], // server records: [{id, name, savedAt, slots:[{slot,playerId,name,team,pos,salary,proj,own}], salaryUsed, totalProj}]
@@ -75,6 +78,7 @@ export const state = {
   loadedId: null, // id of the saved lineup the builder was loaded from (Save writes back to it), else null
   saving: false,
   saveError: null,
+  saveTone: "error", // how saveError is drawn: "warn" for a refusal (nothing to save), "error" for a failure (row-message.js)
   saveConfirm: null, // a short "Saved ..." message shown once after a successful save
   renamingId: null, // id of the saved lineup currently showing its inline rename box, or null
   deleteConfirmId: null, // id of the saved lineup currently showing its inline "Delete this lineup?" prompt, or null
@@ -82,6 +86,12 @@ export const state = {
 };
 
 let savedFetchInFlightKey = null; // the season-week key a GET is currently in flight for, else null
+
+/** Forgets the message a pool-row click made, and the row it sits beside (row-message.js, standard A14). */
+export function clearAddMessage() {
+  state.addError = null;
+  state.addErrorId = null;
+}
 
 /** Forgets the loaded saved lineup and its prefilled name together (PROJECT.md Part 4 Lineups). */
 function clearLoaded() {
@@ -237,6 +247,7 @@ function validateAgainstBoard(board) {
     clearMustHave(); // the players he filtered by belong to that week too
     opt.avoid.clear(); // avoid-game picks are games of that week
     opt.cash.avoid = []; // Cash mode job 3b: the same for cash's avoided games
+    clearAddMessage(); // a refusal beside a row of last week's pool is not this week's
   }
   const rowById = new Map((board.rows ?? []).map((r) => [String(r.id), r]));
   for (const id of [...state.locks]) if (!rowById.has(id)) state.locks.delete(id);
@@ -274,6 +285,22 @@ export function renderLineupPanel(container, callbacks) {
   if (newPool) newPool.scrollTop = savedScrollTop;
   resizeLineupScrollPanels(container);
   watchFooter(container);
+  syncStarredQbChip();
+}
+
+/** The Starred QBs only chip lives in the filter bar (standard C12); its look follows the rule, the mode and the board, so each draw repaints it. */
+export function syncStarredQbChip() {
+  const bar = typeof document !== "undefined" ? document.querySelector?.("#filterbar") : null;
+  if (bar) paintStarredQbChip(bar, starredQbChipView(store.get().board));
+}
+
+/** The chip's view for the board on screen (renderFilterBar paints it as the bar is built). */
+export const starredQbViewNow = () => starredQbChipView(store.get().board);
+
+/** A click on the filter bar's Starred QBs only chip: flips the rule and redraws the panel (which repaints the chip). */
+export function toggleStarredQbOnly() {
+  opt.rules.starredQbOnly = !ruleOn(opt.rules, "starredQbOnly");
+  commit();
 }
 
 // Optimizer-first step 4: the ranked list sits under this part. style.css lays #lineup-panel out as a column with this mount as
@@ -468,6 +495,7 @@ function addPlayer(row, rowById) {
   });
   if (alreadyPlaced) return;
   // 🔵 finding 4: a player with no DraftKings salary can never be weighed against the cap.
+  state.addErrorId = rowId; // whatever this click says is drawn beside his row (row-message.js)
   if (row.salary == null) {
     state.addError = `${row.name} has no DraftKings salary, so he cannot be costed against the cap.`;
     return;
@@ -571,6 +599,7 @@ async function doSaveLineup(name, { asNew = false } = {}) {
   const slotsPayload = savePayload(state.slots);
   if (slotsPayload.length === 0) {
     state.saveError = "Add at least one player to the lineup before saving.";
+    state.saveTone = "warn"; // a refusal, not a failure: amber (row-message.js)
     state.saveConfirm = null;
     commit();
     return;
@@ -603,6 +632,7 @@ async function doSaveLineup(name, { asNew = false } = {}) {
     if ("loadedId" in after) state.loadedId = after.loadedId;
     if ("saveName" in after) state.saveName = after.saveName;
     state.saveError = failure ?? after.saveError ?? null;
+    state.saveTone = "error"; // the server's answer or a lost connection: a failure
     state.saveConfirm = after.saveConfirm ?? null;
   }
   state.saving = false;
@@ -766,7 +796,10 @@ function wire(container) {
         state.excludes.add(id);
         state.locks.delete(id);
         for (let i = 0; i < state.slots.length; i++) {
-          if (state.slots[i] && state.slots[i].id === id) state.slots[i] = null;
+          if (state.slots[i] && state.slots[i].id === id) {
+            state.slots[i] = null;
+            clearAddMessage(); // the slot he held is open again: "no empty slot" is no longer true
+          }
         }
       }
       commit();
@@ -863,7 +896,7 @@ export const OPT_BUSY_TEXT = "Another set of lineups is still being made. Try ag
 /** The four D55 rules, in the server's rule keys (server/lineup/multi.js RULE_KEYS), with Adam's chip words. The QB
  *  stack is the band's "Stack QB with" controls instead (D73). */
 export const OPT_RULES = [
-  { key: "starredQbOnly", label: "starred QBs only" },
+  { key: "starredQbOnly", label: "Starred QBs only" },
   { key: "noSameTeamRbs", label: "no same-team RBs" },
   { key: "noSameGameRbs", label: "no same-game RBs" },
   { key: "noDstVsOwnPlayers", label: "no DST vs own players" },
@@ -880,7 +913,7 @@ export const opt = {
   count: String(OPT_DEFAULT_COUNT),
   minUnique: String(OPT_DEFAULT_UNIQUE),
   maxExp: { QB: "", RB: "", WR: "", TE: "", DST: "" }, // percent text as typed; blank = no cap
-  rules: Object.fromEntries(OPT_RULES.map((r) => [r.key, true])),
+  rules: Object.fromEntries(OPT_RULES.map((r) => [r.key, ruleOn({}, r.key)])), // Starred QBs only starts off (C12); the others on
   objective: "proj", // one of OBJECTIVES' values (effectiveObjective decides what a build uses)
   maxPerTeam: "", // "" (no limit) or "1".."4", the <select> value
   ...OPT_DEFAULT_STACK, // D73: stackOwn / stackOpp numbers and their "or more" ticks
@@ -899,9 +932,13 @@ export const opt = {
   expSortDir: "desc", // the exposure lists' one sort, by exposure: "desc" (highest first) or "asc"
   sort: cleanSortState(null), // the card lists' sort, per tab: {new: {key, dir}, saved: {key, dir}}, persisted (lineup-sort.js)
   generating: false,
+  stopping: false, // Stop was pressed and the build is ending: the button reads "Stopping..." (lineup-stop.js)
+  stopError: "", // the sentence under Stop when the server did not hear it (optimizer standard D18)
   saving: false,
   error: null, // the server's sentence for a refused or failed request
+  errorTone: "error", // "warn" for a refusal that is no failure (a build already running), else "error" (row-message.js)
   saveError: null,
+  saveTone: "error", // "warn" when saveError is only "N saved, M already saved", else "error"
   formError: null, // a sentence naming a maximum-exposure box (position or player) that is not a percent; blocks Go
   results: null, // {slateKey, lineups: [{uid, ids, salary, proj, players, saved?}], notes, builtIn} or null
 };
@@ -957,6 +994,7 @@ function syncOptimizerSlate() {
     if (lastOptSlateKey !== undefined) {
       resetOptimizerResults();
       clearMustHave(); // Adam 2026-10-11: the "only lineups with" players are cleared when the slate changes
+      clearAddMessage();
     }
     lastOptSlateKey = key;
   }
