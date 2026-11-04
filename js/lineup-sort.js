@@ -1,46 +1,34 @@
-// Sort options for the New and Saved lineups lists, and "geo own", the GPP uniqueness figure (Adam 2026-10-17: sort by
-// proj, own% and median; "is there a multiplicative method ... 2% owned Player A + 18% owned player B is more unique than
-// 11% owned player C and 9% owned player D"). Pure; lineup.js imports it and holds the state. Nothing here reads the server.
+// Sort options for the New and Saved lineups lists, and the GPP `Own vs field` sort (Adam 2026-10-17: sort by proj, own% and median; the readings
+// themselves are lineup-contrarian.js). Pure; lineup.js imports it and holds the state. Nothing here reads the server.
 import { shownTotal } from "./totals.js";
 import { escapeHtml, dec1 } from "./format.js";
 
 const finite = (v) => (typeof v === "number" && Number.isFinite(v) ? v : null);
 
-/** Geometric mean of the ownership percentages; null if the list is empty or any is missing. A value below 0.1 counts as
- *  0.1 (the published resolution), so one 0.0% player does not zero the product. */
-export function geoOwn(owns) {
-  if (!Array.isArray(owns) || owns.length === 0) return null;
-  let logs = 0;
-  for (const o of owns) {
-    const v = finite(o);
-    if (v === null) return null;
-    logs += Math.log(Math.max(v, 0.1));
-  }
-  return Math.exp(logs / owns.length);
-}
-
-/** A lineup's sort figures {proj, own, median, geo} from its players; each is null when any player lacks it, never a partial sum. */
-export function lineupFigures(players) {
+/** A lineup's sort figures {proj, own, median, geo} from its players; each is null when any player lacks it, never a partial sum.
+ *  `geo` (the stored key of the `Own vs field` sort) is `read.value`, the main bar's position from the caller's contrarianRead; null with no read. */
+export function lineupFigures(players, read) {
   const list = players ?? [];
   const every = (key) => list.length > 0 && list.every((p) => finite(p?.[key]) !== null);
   return {
     proj: every("proj") ? shownTotal(list.map((p) => p.proj)) : null,
     own: every("own") ? list.reduce((s, p) => s + p.own, 0) : null,
     median: every("median") ? shownTotal(list.map((p) => p.median)) : null,
-    geo: geoOwn(list.map((p) => p?.own)),
+    geo: finite(read?.value),
   };
 }
 
-/** The sort keys in drawn order with their starting direction (own and geo lowest first); "built" keeps the incoming order. */
+/** The sort keys in drawn order with their starting direction (own and `Own vs field` lowest first); "built" keeps the incoming order.
+ *  `Own vs field` is stored as `geo` so a remembered sort still works. */
 export const SORT_KEYS = [
   { key: "built", label: "As built", dir: "asc", title: "The order the lineups were made or saved" },
   { key: "proj", label: "Proj", dir: "desc", title: "Projected total" },
   { key: "own", label: "Own", dir: "asc", title: "Total ownership of the nine players; lowest first is the least-owned lineup" },
   { key: "median", label: "Median", dir: "desc", title: "TwoGun's median total" },
-  { key: "geo", label: "Geo own", dir: "asc", title: "Geometric mean of the nine ownerships; lowest first is the most unique lineup" },
+  { key: "geo", label: "Own vs field", dir: "asc", title: "Where the lineup sits on the Own vs field bar (its Stack and Rest against the field); most unique first" },
 ];
 
-/** The keys offered: cash gets As built, Proj, Own and (when `hasMedian`) Median; GPP the same plus Geo own. */
+/** The keys offered: cash gets As built, Proj, Own and (when `hasMedian`) Median; GPP the same plus Own vs field. */
 export function sortKeysFor(mode, hasMedian) {
   return SORT_KEYS.filter((k) => (k.key === "median" ? Boolean(hasMedian) : k.key === "geo" ? mode !== "cash" : true));
 }
@@ -75,7 +63,7 @@ export function cleanSortState(raw, keys = SORT_KEYS) {
   return { new: cleanOne(raw?.new, keys), saved: cleanOne(raw?.saved, keys) };
 }
 
-/** The sort in force for the keys on offer: the chosen one, or As built when it is not on offer here (Geo own in cash,
+/** The sort in force for the keys on offer: the chosen one, or As built when it is not on offer here (Own vs field in cash,
  *  Median on a board with none). */
 export function effectiveSort(current, keys) {
   return keys.some((k) => k.key === current?.key) ? current : { key: "built", dir: "asc" };
@@ -96,11 +84,4 @@ export function sortRowHtml(tab, keys, current) {
 export function medianText(median, anyMedian, missingTitle = "a player has no TwoGun median") {
   if (finite(median) !== null) return `${dec1(median)} median`;
   return anyMedian ? `<span title="${escapeHtml(missingTitle)}">— median</span>` : "";
-}
-
-/** A GPP card's geo text: "9.9% geo", or "— geo" with `missingTitle` on hover when there is no figure. */
-export function geoText(geo, missingTitle = "a player has no ownership figure") {
-  return finite(geo) === null
-    ? `<span title="${escapeHtml(missingTitle)}">— geo</span>`
-    : `<span title="geometric mean of the nine ownerships (lower is more unique)">${dec1(geo)}% geo</span>`;
 }

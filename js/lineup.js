@@ -31,7 +31,7 @@ import { saveClassicMemory, syncLineupMemory, restoreForMode, migrateLegacyLineu
 import { rowIsOut, twoGunOutReason, STATUS_INFO } from "./table.js"; // D43: the one copy of "vs DAL" / "@ DET"
 import { shownTotal } from "./totals.js";
 import { handBuild } from "./lineup-builds.js";
-import { cleanSortState } from "./lineup-sort.js"; // Adam 2026-10-17: sort options; geo own = geometric mean of ownership, his multiplicative uniqueness
+import { cleanSortState } from "./lineup-sort.js"; // Adam 2026-10-17: sort options; the `Own vs field` key is stored as "geo"
 import { optExposureHtml, exposureLimit, minLimit, exposureMark, zeroMinRows, defaultExpState } from "./lineup-exposure.js";
 import { newQbState, listedQbs, pruneEntries, qbStacksPayload } from "./lineup-qb-stacks.js";
 import { getLineups, postLineup, putLineup, deleteLineup } from "./api.js";

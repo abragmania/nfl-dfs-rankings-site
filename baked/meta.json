@@ -1,15 +1,15 @@
 {
-  "publishedAt": "2026-11-04T19:15:28.079Z",
+  "publishedAt": "2026-11-04T19:20:26.562Z",
   "season": 2026,
   "week": 9,
-  "boardGeneratedAt": "2026-11-04T19:15:13.539Z",
-  "latestBoardAt": "2026-11-04T19:15:21.406Z",
+  "boardGeneratedAt": "2026-11-04T19:20:19.580Z",
+  "latestBoardAt": "2026-11-04T19:20:24.356Z",
   "defaultMode": "twogun",
   "showdowns": [
     "2026-w09-JAXBAL"
   ],
-  "sourceCommit": "b263628a58ab074e3e19302abb577a5c6ac984b7",
-  "appCommit": "0caab0888d031ac86774d3432e30109de8e17098",
+  "sourceCommit": "faaeac3bc4dc7734135d97a3f563e16a4b56b48d",
+  "appCommit": "faaeac3bc4dc7734135d97a3f563e16a4b56b48d",
   "machine": "desktop",
   "matchups": false
 }

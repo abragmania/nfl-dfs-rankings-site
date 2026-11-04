@@ -10,7 +10,8 @@ import { store, activeSlateRows, activeSlateGames, isTwoGunMode } from "./state.
 import { matchupText } from "./table.js"; // D43: the one copy of "vs DAL" / "@ DET"
 import { shownTotal, perSpotText } from "./totals.js";
 import { buildTypeText } from "./lineup-builds.js";
-import { lineupFigures, geoOwn, geoText, medianText, sortKeysFor, sortLineups, effectiveSort, sortRowHtml } from "./lineup-sort.js"; // Adam 2026-10-17: sort options; geo own = geometric mean of ownership, his multiplicative uniqueness
+import { lineupFigures, medianText, sortKeysFor, sortLineups, effectiveSort, sortRowHtml } from "./lineup-sort.js"; // Adam 2026-10-17: sort options
+import { contrarianRead, contrarianHtml, contrarianMan, readBasisFor, ownFor } from "./lineup-contrarian.js"; // Adam 2026-11-04: the GPP Stack / Rest / Own vs field read, on every GPP card
 import { filterLineups, bulkLabel, filterBarHtml } from "./lineup-filter.js";
 import { OPT_POSITIONS, optExposureHtml, zeroMinRows, classicEntries } from "./lineup-exposure.js"; // A10: the one exposure table
 import { cardPlayerRowHtml, cardDecor, teamColours } from "./lineup-card.js";
@@ -55,7 +56,10 @@ export function panelHtml() {
   const perSpot = perSpotText(totals.salaryLeft, LINEUP_SLOTS.length - totals.filled); // Adam 2026-10-18: salary per remaining spot; null when full or over
   // A11: Salary used, Salary left, Proj and Own from the first man; a man with no figure (or off the slate) makes that figure a dash with its reason (lineup-totals.js).
   const men = state.slots.filter(Boolean).map((s) => { const r = rowById.get(String(s.id)); return r ? { salary: r.salary, proj: r.proj, own: r.own } : {}; });
-  const totalsBlock = lineupTotalsHtml(lineupTotals(men, { cap: SALARY_CAP, notLoaded: board ? null : "the board has not loaded" }), { cap: SALARY_CAP, extra: perSpot ? escapeHtml(perSpot) : "" });
+  // Adam 2026-11-04: the GPP working lineup also reads Stack, Rest and Own vs field (a quiet dash with the reason until nine men are in); cash has none.
+  const basis = readBasisFor(board);
+  const readLine = opt.mode === "cash" ? "" : contrarianHtml(contrarianRead(state.slots.filter(Boolean).map((s) => { const r = rowById.get(String(s.id)); return contrarianMan(r, "a man not on this slate", ownFor(r, basis)); }), basis));
+  const totalsBlock = lineupTotalsHtml(lineupTotals(men, { cap: SALARY_CAP, notLoaded: board ? null : "the board has not loaded" }), { cap: SALARY_CAP, extra: perSpot ? escapeHtml(perSpot) : "", line: readLine });
 
   // The Optimizer band is the first thing in this part of the tab (DECISIONS.md D70, Adam 2026-10-10: "move the optimizer stuff up"); the
   // lineup it builds from sits right under it, its results and the saved lineups below. The injury note and the unreadable-overrides
@@ -251,8 +255,8 @@ export function savedLineupCardHtml(lineup, rowById, numbers = null) {
 
   // A11: the same four figures as the builder (lineup-totals.js); the app never estimates ownership (D29), so a man with none makes Own a dash. A man no longer on the slate costs his saved salary only.
   const men = totals.slotEntries.filter(Boolean).map((e) => (e.row ? { salary: e.row.salary, proj: e.row.proj, own: e.row.own } : { salary: e.snap?.salary }));
-  const geoPart = isCash ? "" : `${geoText(savedLineupFigures(lineup, rowById).geo, "a player has no ownership figure or is no longer on the slate")}`;
-  const totalsBlock = lineupTotalsHtml(lineupTotals(men, { cap: SALARY_CAP }), { cap: SALARY_CAP, extra: [medianPart, geoPart].filter(Boolean).join(" &middot; ") });
+  const readLine = isCash ? "" : contrarianHtml(savedRead(lineup, rowById)); // demo 2026-11-04: GPP only
+  const totalsBlock = lineupTotalsHtml(lineupTotals(men, { cap: SALARY_CAP }), { cap: SALARY_CAP, extra: medianPart, line: readLine });
 
   // A12/B13 (round 3): the delete asks `Delete this saved lineup?`; a Load over an unsaved working lineup asks `Replace your working lineup?` (C11).
   const deleteHtml = isConfirmingDelete
@@ -383,18 +387,32 @@ export function savedLineupPlayers(lineup, rowById) {
   });
 }
 
-/** A saved lineup's sort and geo figures, off the live board rows (Adam 2026-10-17): all null when it is not nine players or a
- *  player is no longer on the board, so it sorts last and shows "— geo" rather than a figure from the players that remain. */
+/** A saved lineup's three readings (lineup-contrarian.js) off the live board rows; a man no longer on the board is named in the dash's hover. */
+function savedRead(lineup, rowById, basis = readBasisFor(store.get().board)) {
+  return contrarianRead((lineup.slots ?? []).map((s) => { const r = rowById.get(String(s.playerId)); return contrarianMan(r, s.name ?? "a man", ownFor(r, basis)); }), basis);
+}
+
+/** A saved lineup's sort figures, off the live board rows (Adam 2026-10-17): all null when it is not nine players or a
+ *  player is no longer on the board, so it sorts last and shows an `Own vs field` dash rather than a figure from the players that remain. */
 export function savedLineupFigures(lineup, rowById) {
   const rows = (lineup.slots ?? []).map((s) => rowById.get(String(s.playerId)));
   if (rows.length !== LINEUP_SLOTS.length || rows.some((r) => !r)) return lineupFigures([]);
-  return lineupFigures(rows.map((r) => ({ proj: r.proj, own: r.own, median: scoreOfRow(r, "median") })));
+  return lineupFigures(rows.map((r) => ({ proj: r.proj, own: r.own, median: scoreOfRow(r, "median") })), savedRead(lineup, rowById));
+}
+
+/** A new lineup's three readings: each man's Own from the batch (as his card shows it), his position, team and opponent from the live board row when there is one. */
+function newRead(lineup, rowById, basis = readBasisFor(store.get().board)) {
+  return contrarianRead((lineup.players ?? []).map((p) => {
+    const row = rowById?.get(String(p.id));
+    // A man with no row on the board is named as gone from it (the dash's reason); his position and team are the batch's, his opponent and, on actual, his figure are the row's.
+    return contrarianMan(row ? { name: p.name, pos: p.pos, team: p.team, opp: row.opp } : null, p.name, basis.kind === "actual" ? ownFor(row, basis) : p.own);
+  }), basis);
 }
 
 /** A new lineup's figures: a player's own `median` when the batch carries one (a cash median build), else the board row's. */
 const newPlayerMedian = (p, rowById) => ("median" in p ? p.median : scoreOfRow(rowById?.get(String(p.id)), "median"));
 function newLineupFigures(lineup, rowById) {
-  return lineupFigures((lineup.players ?? []).map((p) => ({ proj: p.proj, own: p.own, median: newPlayerMedian(p, rowById) })));
+  return lineupFigures((lineup.players ?? []).map((p) => ({ proj: p.proj, own: p.own, median: newPlayerMedian(p, rowById) })), newRead(lineup, rowById));
 }
 
 /** Whether the board is in TwoGun mode and carries medians: the only case the Median sort is offered for a GPP list or a saved list. */
@@ -469,17 +487,17 @@ export function optLineupCardHtml(lineup, index, busy, { saved = false, rowById 
     decor.nameTagsFor = (p) => (cash.strip.wantIn.has(String(p.id)) ? `<span class="role-tag role-want" title="On your Want list">WANT</span>` : ""); // on the name line too, so the matchup pill keeps its spread
   }
   const rows = (lineup.players ?? []).map((p, i) => cardPlayerRowHtml(p, LINEUP_SLOTS[i] ?? p.pos ?? "", decor)).join("");
-  const geoBody = geoText(geoOwn((lineup.players ?? []).map((p) => p.own))); // Adam 2026-10-17: geo own on the GPP card only
+  const readLine = cash ? "" : contrarianHtml(newRead(lineup, rowById)); // demo 2026-11-04: the three readings on the GPP card only
   // Adam 2026-10-18: the median total beside proj, off the sort's own figure; only on a TwoGun board with medians or a batch carrying them.
   const plist = lineup.players ?? [];
   const medianPart = !cash && (boardMediansForSort() || plist.some((p) => "median" in p)) ? medianText(newLineupFigures(lineup, rowById).median, plist.some((p) => newPlayerMedian(p, rowById) != null)) : "";
-  // A11, A19: the card's totals under its last slot are the builder's four figures (lineup-totals.js); the median, geo and unused-cap figures follow on a line of their own.
+  // A11, A19: the card's totals under its last slot are the builder's four figures (lineup-totals.js); the median and unused-cap figures follow on a line of their own, then a GPP card's own-vs-field readings.
   // One salary on a card: the block's Salary used (the sum of the shown rows) is also what the unused-cap chip reads, never the lineup's own `salary` field.
   const figures = lineupTotals(plist.map((p) => ({ salary: p.salary, proj: p.proj, own: p.own })), { cap: SALARY_CAP });
   const unusedText = cash ? unusedCapText(figures.used) : "";
   const unused = unusedText ? `<span class="cash-unused-chip" title="Salary left under the $50,000 cap">${escapeHtml(unusedText)}</span>` : "";
-  const extra = cash ? [cashMedianText(lineup, cash.basis), unused].filter(Boolean).join(" &middot; ") : [medianPart, geoBody].filter(Boolean).join(" &middot; ");
-  const totalsBlock = lineupTotalsHtml(figures, { cap: SALARY_CAP, extra });
+  const extra = cash ? [cashMedianText(lineup, cash.basis), unused].filter(Boolean).join(" &middot; ") : medianPart;
+  const totalsBlock = lineupTotalsHtml(figures, { cap: SALARY_CAP, extra, line: readLine });
   const uid = escapeHtml(lineup.uid ?? "");
   const saveBtn = saved
     ? `<button type="button" class="saved-lineup-btn opt-saved-btn" disabled>Saved ✓</button>`

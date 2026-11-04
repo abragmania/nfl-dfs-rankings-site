@@ -5,7 +5,7 @@
 import { store, FLEX_POS, activeSlate, activeSlateRows, activeSlateGames, slateDisplayName, isTwoGunMode } from "./state.js";
 import { rowIsOut } from "./table.js"; // D43: the one copy of "vs DAL" / "@ DET"; the red OUT tag (Adam 2026-10-15)
 import { newBuildId, batchBuild } from "./lineup-builds.js";
-import { nextSort } from "./lineup-sort.js"; // Adam 2026-10-17: sort options; geo own = geometric mean of ownership, his multiplicative uniqueness
+import { nextSort } from "./lineup-sort.js"; // Adam 2026-10-17: sort options; the `Own vs field` key is stored as "geo"
 import { toggleMustHave, bulkUids } from "./lineup-filter.js";
 import { OPT_POSITIONS, optExposureHtml, exposureLimit, minLimit, nextExpSort, classicEntries } from "./lineup-exposure.js"; // A10: the one exposure table
 import { wireQbStacks } from "./lineup-qb-stacks.js";

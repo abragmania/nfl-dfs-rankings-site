@@ -41,8 +41,8 @@ export function lineupTotals(men, { cap = 50000, notLoaded = null } = {}) {
   };
 }
 
-/** The block's markup: the cap bar, then the four figures. `extra` (html, optional) follows on a line of its own (a card's meter figures). */
-export function lineupTotalsHtml(t, { cap = 50000, extra = "", bar = true, attrs = "" } = {}) {
+/** The block's markup: the cap bar, then the four figures. `extra` (html, optional) follows on a line of its own (a card's meter figures), then `line` (a GPP lineup's three own-vs-field readings, lineup-contrarian.js). */
+export function lineupTotalsHtml(t, { cap = 50000, extra = "", line = "", bar = true, attrs = "" } = {}) {
   const fig = (label, value, reason, cls = "") =>
     `<span class="lt-fig${cls}"><i>${label}</i> ${value === null ? `<b class="lt-dash" title="${escapeHtml(reason)}">—</b>` : `<b>${escapeHtml(value)}</b>`}</span>`;
   const left = t.left === null ? null : t.over ? `−${money(-t.left)}` : money(t.left);
@@ -54,5 +54,5 @@ export function lineupTotalsHtml(t, { cap = 50000, extra = "", bar = true, attrs
     + fig("Salary left", left, t.reasons.left, t.over ? " lt-over" : "")
     + fig("Proj", t.proj === null ? null : dec1(t.proj), t.reasons.proj)
     + fig("Own", t.own === null ? null : pct1(t.own), t.reasons.own)
-    + `</div>${extra ? `<div class="lt-extra">${extra}</div>` : ""}</div>`;
+    + `</div>${extra ? `<div class="lt-extra">${extra}</div>` : ""}${line ? `<div class="lt-read">${line}</div>` : ""}</div>`;
 }

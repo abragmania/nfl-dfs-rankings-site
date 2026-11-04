@@ -1498,13 +1498,29 @@ tr:last-child .cell-edit-hint, tr:last-child .cell-edit-error { top: auto; botto
 /* A19 (2026-11-03): a saved card's slots are one column, top to bottom, the same card row as the builder and the new cards (A5), the totals block under the last slot. */
 .saved-lineup-slots { display: flex; flex-direction: column; gap: 2px; }
 /* A11 (lineup-totals.js): the cap bar, then Salary used, Salary left, Proj and Own, a figure with its label before it; a dash has its reason on hover. Under the builder's slots, every new card and every saved card. */
-.lt { display: flex; flex-direction: column; gap: 4px; margin: var(--sp-2) 0; font-size: var(--fs-sm); color: var(--text-muted); }
-.lt-figs { display: flex; flex-wrap: wrap; gap: 2px var(--sp-4); }
+.lt { display: flex; flex-direction: column; gap: 4px; margin: var(--sp-2) 0; font-size: var(--fs-sm); color: var(--text-muted); container-type: inline-size; }
+/* The four figures stay on one line at any card width (the 4-across saved cards wrapped Own): the type shrinks with the block when 13px does not fit. */
+.lt-figs { display: flex; flex-wrap: nowrap; justify-content: space-between; gap: 2px 6px; white-space: nowrap; font-size: min(var(--fs-sm), 3.2cqw); }
 .lt-fig i { font-style: normal; color: var(--text-dim); margin-right: 2px; }
 .lt-fig b { font-weight: 700; color: var(--text); font-variant-numeric: tabular-nums; }
 .lt-fig b.lt-dash { color: var(--text-dim); cursor: help; }
 .lt-over b { color: var(--danger); }
 .lt-extra { font-size: 12px; color: var(--text-dim); }
+/* The own-vs-field read (lineup-contrarian.js, Adam 2026-11-04: "much less loud"): two quiet lines under a GPP card's totals. A thin neutral bar with a faint centre tick and a small
+   neutral marker between faint end labels, then the verdict in plain small text with the Stack and Rest bars beside it. No chip, no border, no saturated colour; no figures (they are on the hovers). */
+.lt-read { margin-top: 3px; }
+.cv { display: flex; flex-direction: column; gap: 3px; min-width: 0; padding: 0 4px; box-sizing: border-box; font-size: 10px; color: var(--text-dim); cursor: help; } /* the padding keeps a marker at either end inside the card */
+.cv-bar, .cv-foot { display: flex; align-items: center; gap: 6px; white-space: nowrap; }
+.cv-end { flex: none; opacity: 0.75; }
+.cv-track { position: relative; display: block; flex: 1 1 auto; min-width: 0; height: 3px; border-radius: 2px; background: linear-gradient(90deg, rgba(122, 146, 176, 0.4), var(--border) 42%, var(--border) 58%, rgba(176, 148, 112, 0.4)); } /* faint cool to faint warm: unique to chalky */
+.cv-small { flex: 1 1 18px; height: 2px; }
+.cv-tick { position: absolute; left: 50%; top: -3px; bottom: -3px; width: 1px; margin-left: -0.5px; background: var(--text-dim); opacity: 0.45; }
+.cv-marker { position: absolute; top: 50%; width: 7px; height: 7px; margin: -3.5px 0 0 -3.5px; border-radius: 50%; background: var(--text-muted); }
+.cv-foot { gap: 10px; }
+.cv-word { flex: none; font-size: 12px; color: var(--text-dim); } /* the same size and weight as the card's other labels (.lt-extra) */
+.cv-mini { display: flex; align-items: center; gap: 5px; flex: 1 1 0; min-width: 0; padding-right: 4px; } /* room for a marker at the chalky end */
+.cv-label { flex: none; }
+.cv-dash { font-size: 12px; color: var(--text-dim); cursor: help; }
 .opt-card > .lt, .saved-lineup-card > .lt { margin: 0; padding-top: var(--sp-1); border-top: 1px solid var(--border); }
 
 .saved-lineup-actions { display: flex; gap: var(--sp-2); align-items: center; }
