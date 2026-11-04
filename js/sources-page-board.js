@@ -11,7 +11,7 @@ import { SHORT_LABEL } from "./source-labels.js";
 export const SAMPLE_NOTE = "This is sample data, so the sources cannot be changed here.";
 export const SHOWDOWN_SITE_NOTE = "Showdown source choices are made in the app. This shows the sources the published board was built from.";
 export const SITE_QUIET = "Changes re-rank the board in your browser from the data published with it. They are kept in this browser only.";
-const TWOGUN_WHY = "In TwoGun mode his figures are used as he publishes them; pick Our sources above to change these.";
+const TWOGUN_WHY = "His weight cannot be changed on the site; picking Our sources above leaves him out.";
 const OFF_WHY = "This source was switched off when the board was published, so nothing was pulled for it.";
 const MODE_OF = { twogun: "twogun", ours: "current" };
 
@@ -76,7 +76,7 @@ export function selectionFromBoard(board, showdown, opts = {}) {
 
 /**
  * The page's api (get/post) for the public site: a change becomes a weight kept in this browser. `fns`: { getBoard, postSources, postMode }
- * (public/js/api.js, which is site-src/api.js on the site). A tick off is a weight of 0 (the site's way of leaving a source out); a tick back
+ * (public/js/api.js, which is site-src/api.js on the site). A tick off is a weight of 0 (unticked, still a backup at its stored weight, as in the app); a tick back
  * on gives the published weight, or 1 when that was 0. A preset puts every weight back and switches the board (Current | TwoGun).
  */
 export function makeSiteApi(fns) {

@@ -13,7 +13,7 @@ import {
 import { boardWithEdits, putEdits, resetPlayerEdits, resetAllEdits } from "./site-overrides.js";
 import { buildCard, precheck, identityOf } from "../server/playercard/build.js";
 import { ndcAbbr, teamFileUrl, gamelogUrl, teamFileProblem, gamelogProblem } from "../server/playercard/ndc-files.js";
-import { boardWithWeights, readWeights, putWeights } from "./site-weights.js";
+import { boardWithWeights, readWeights, putWeights, weightsKey } from "./site-weights.js";
 import { createWorkerRunner, endedSiteResult } from "./site-worker.js";
 
 export const READ_ONLY_MESSAGE = "Read-only on the live site. Do this in the app on your computer.";
@@ -223,11 +223,24 @@ export async function getMode() {
   return { ok: true, mode: await activeMode() };
 }
 
+// The header's Current | TwoGun switch is a preset over every source choice, as in the app, so this browser's weights for the week go with it:
+// after a weight change the board reads "custom" and a click on either side must land on that side's own board.
+async function clearWeights() {
+  try {
+    const pub = await publishedSlate();
+    if (pub) pageStorage()?.removeItem(weightsKey(pub.season, pub.week));
+  } catch (e) {
+    console.warn("site weights: the saved weights could not be cleared by the mode switch", e);
+  }
+}
+
 // POST /api/mode: answers the board in the new mode, as the route does; nothing leaves the browser. A board that cannot
 // be read or merged leaves the mode as it was.
 export async function postMode(mode) {
   if (!Object.hasOwn(BOARD_FILE, mode)) return siteError("VALIDATION_ERROR", "mode must be one of current, twogun");
-  const board = await visitorBoard(await getJson(BOARD_FILE[mode]));
+  const file = await getJson(BOARD_FILE[mode]);
+  if (file && file.ok !== false && Array.isArray(file.rows)) await clearWeights();
+  const board = await visitorBoard(file);
   if (!board || board.ok === false || !Array.isArray(board.rows)) return board?.ok === false ? board : siteError("NO_SLATE", "No slate has been uploaded yet.");
   chosenMode = mode;
   try {

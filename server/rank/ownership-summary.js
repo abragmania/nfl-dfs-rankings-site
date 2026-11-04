@@ -62,6 +62,24 @@ export function blendOwnership(quotesBySource, weightOf) {
   };
 }
 
+/** The quotes of the sources `weights` names. */
+const pickQuotes = (quotes, weights) => Object.fromEntries(Object.entries(quotes).filter(([id]) => weights && id in weights));
+
+/**
+ * Own% from the ticked sources, else the backups (D35); { anchor, used } or a blank anchor, never a zero (D29). `counted`: the man's
+ * quotes; `ticked` and `backup`: { sourceId: weight } or null. One copy for the app (server/rank/select.js) and the public site's
+ * browser re-blend (site-src/site-weights.js), so the two cannot drift.
+ */
+export function ownershipOf(counted, ticked, backup) {
+  for (const w of [ticked, backup]) {
+    if (!w) continue;
+    const quotes = pickQuotes(counted, w);
+    const anchor = blendOwnership(quotes, (id) => w[id]);
+    if (anchor) return { anchor, used: Object.keys(quotes) };
+  }
+  return { anchor: null, used: [] };
+}
+
 /**
  * The board's ownership summary from the FINAL rows: quoted is how many players a named source published a
  * number for, overridden is how many carry a number Adam typed (D28; a player can be both), and blank is how

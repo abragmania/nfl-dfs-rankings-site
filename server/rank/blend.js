@@ -10,6 +10,7 @@
 //                                 mode (Adam 2026-11-02).
 //   A player at least one source projects keeps his blend whatever any status says.
 import { isSidelined } from "./value-core.js"; // pure: the public site runs the board maths in a browser (D71)
+import { TWOGUN_ID } from "../sources/selection-core.js"; // pure and import-free, so the site can take it too
 
 const isNum = (v) => Number.isFinite(v);
 
@@ -155,3 +156,23 @@ export function recipeText(enabled, labels = {}, injuryReport = "ok") {
     noCoverage
   ].join(" ");
 }
+
+const STAT_LINES = ", DraftKings points converted from each source's own stat lines.";
+
+/** The projection recipe for `weights`; TwoGun's number is his own DraftKings projection, never a converted stat line (D25 as amended).
+ *  Moved here from server/rank/select.js (which re-exports it) so the public site's re-blend words a changed board with the app's own text. */
+export function projRecipe(weights, labels, state) {
+  const w = weights ?? {};
+  const text = recipeText(Object.entries(w), labels, state);
+  if (!(TWOGUN_ID in w)) return text;
+  const his = Object.keys(w).length === 1
+    ? ", TwoGun's own DraftKings projection, used as he publishes it."
+    : ", DraftKings points converted from each stat source's own stat lines; TwoGun's number is his own DraftKings projection, used as he publishes it.";
+  return text.includes(STAT_LINES) ? text.replace(STAT_LINES, his) : `${text} TwoGun's number is his own DraftKings projection, used as he publishes it.`;
+}
+
+const sameWeights = (a, b) => Object.keys(a ?? {}).length === Object.keys(b ?? {}).length && Object.entries(a ?? {}).every(([id, w]) => b?.[id] === w);
+
+/** The sentence a recipe gains when players the ticked sources miss are filled from the backups. */
+export const filledText = (ticked, backup, text) =>
+  (backup && !sameWeights(ticked, backup) ? ` Players these sources do not cover are filled from the "Our sources" choices: ${text}` : "");
