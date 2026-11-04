@@ -1,8 +1,8 @@
 // Showdown Rankings table (D39/D40), since 2026-10-26 the Optimizer's player pool (pool.js; the Rankings tab is retired). Visual target: the hosted sheet built by
 // data/showdown/2026-w03-ATLGB/build-sheet.mjs — same dark palette and type as the rest of the app, same
-// eleven columns (Lev and CPT Lev added 2026-09-30): Player (team chip, position, status pill), Sal, CPT Sal (gold), Proj, CPT Proj (gold),
-// Val (one column — Captain value is identical to FLEX value since Captain price and points are both
-// 1.5x), Own, CPT Own (gold), Notes (words per optimizer standard D1, 2026-11-03). No inline editing here (unlike the classic table): the brief's
+// nine columns (no Lev, standard A2): Player (team chip, position, status pill), Sal, CPT Sal (gold), Proj, CPT Proj (gold),
+// Own, CPT Own (gold), Val (one column — Captain value is identical to FLEX value since Captain price and points are both
+// 1.5x), Notes (words per optimizer standard D1, 2026-11-03). No inline editing here (unlike the classic table): the brief's
 // column list for Showdown Rankings has no star or edit affordance, only display plus sort and filter.
 import { escapeHtml, money, dec1, dec2, pct1 } from "../format.js";
 import { rowIsOut } from "../table.js";
@@ -13,17 +13,16 @@ export function shownRows(rows) {
   return store.get().filters.showAllPlayers ? rows : rows.filter((row) => !rowIsOut(row));
 }
 
+// The standard's order (A1: Player, Sal, Proj, Own, Val); the Lev and CPT Lev columns are gone (A2, 2026-11-03).
 export const SD_COLUMNS = [
   { key: "player", label: "Player" },
   { key: "salary", label: "Sal" }, // optimizer standard D1: the FLEX figures are the plain words, the Captain seat's wear CPT
   { key: "cptSalary", label: "CPT Sal", gold: true },
   { key: "proj", label: "Proj" },
   { key: "cptProj", label: "CPT Proj", gold: true },
-  { key: "value", label: "Val" },
   { key: "ownFlex", label: "Own" },
   { key: "ownCpt", label: "CPT Own", gold: true },
-  { key: "levFlex", label: "Lev", title: "Lev: no measure yet (FLEX slot)" },
-  { key: "levCpt", label: "CPT Lev", gold: true, title: "Lev: no measure yet (Captain slot)" },
+  { key: "value", label: "Val" },
   { key: "note", label: "Notes" },
 ];
 
@@ -50,12 +49,6 @@ export function gradedValueHtml(row) {
   if (row.value == null || Number.isNaN(row.value)) return "—";
   const cls = row.valueGrade ? ` grade-${row.valueGrade}` : "";
   return `<span class="grade-cell${cls}">${dec2(row.value)}</span>`;
-}
-
-// Lev (levFlex / levCpt): the columns stay but show no number until a measure exists (Adam 2026-10-15, Lev measure
-// to be redesigned); the board sends null and the cell is empty with a hover note.
-function levCellHtml() {
-  return `<span title="Lev: no measure yet"></span>`;
 }
 
 // Every Own cell carries a title explaining exactly how the number was made (brief); a missing number is a dash
@@ -101,8 +94,8 @@ function noteCellHtml(row) {
 // ---------- the Optimizer's player pool (Adam 2026-10-26 3:22 PM: the Optimizer looks like the retired Rankings tab, D81) ----------
 // The pool (pool.js) draws these same columns and cells through `hooks`, which add what the Optimizer needs: the figures the slots
 // show (`figures(row, isCpt)`: lineup-meter.js playerFigures, the board row's own plus the modes answer's notes), the Player cell
-// (`playerCell(row)`), the ± bump in the Proj cell or, on the Captain tab, the CPT proj cell (`projCell(row, proj, isCpt)`), the Val cell (`valueCell(row)`), a class on the row (`rowClass(row)`) and the cells after Notes
-// (`tail(row)`), and the row's own attributes (`rowAttrs(row)`: the pool's click, keyboard stop and title). Without hooks a row is drawn as the retired Rankings tab drew it.
+// (`playerCell(row)`), the bumped figure in the Proj cell or, on the Captain tab, the CPT proj cell (`projCell(row, proj, isCpt)`), the Val cell (`valueCell(row)`), a class on the row (`rowClass(row)`) and the row controls' cells
+// (`ctlCell(row, key)`), and the row's own attributes (`rowAttrs(row)`: the pool's click, keyboard stop and title). Without hooks a row is drawn as the retired Rankings tab drew it.
 
 /** The head row's cells (sortable, the sorted one marked with its arrow, the Captain columns gold), without the <tr>. `rowspan`: the
  *  rows each cell spans (the pool's head has a second row of sub-heads under its control groups). */
@@ -144,10 +137,8 @@ function cellHtml(row, key, h) {
     case "value": return `<td>${h.valueCell ? h.valueCell(row) : gradedValueHtml(row)}</td>`;
     case "ownFlex": return `<td>${hooked ? hookedOwnHtml(row, false, h) : ownCellHtml(row.ownFlex, row.ownHow)}</td>`;
     case "ownCpt": return `<td class="sd-cpt-col">${hooked ? hookedOwnHtml(row, true, h) : ownCellHtml(row.ownCpt, row.ownHow)}</td>`;
-    case "levFlex": return `<td>${levCellHtml()}</td>`;
-    case "levCpt": return `<td class="sd-cpt-col">${levCellHtml()}</td>`;
     case "note": return `<td class="sd-notes-cell">${noteCellHtml(row)}</td>`;
-    default: return "<td></td>";
+    default: return h.ctlCell ? h.ctlCell(row, key) : "<td></td>"; // the pool's row controls (pool.js controlCellHtml)
   }
 }
 
@@ -157,6 +148,6 @@ export function showdownRowHtml(row, hooks = {}, cols = SD_COLUMNS) {
   const extra = String(hooks.rowClass?.(row) ?? "").trim();
   return `
     <tr class="rank-row${dimmed ? " row-dimmed" : ""}${extra ? ` ${extra}` : ""}" data-id="${escapeHtml(String(row.id))}"${hooks.rowAttrs?.(row) ?? ""}>
-      ${cols.map((c) => cellHtml(row, c.key, hooks)).join("\n      ")}${hooks.tail?.(row) ?? ""}
+      ${cols.map((c) => cellHtml(row, c.key, hooks)).join("\n      ")}${hooks.fillCell ? `<td class="sd-fill"></td>` : ""}
     </tr>`;
 }

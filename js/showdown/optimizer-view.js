@@ -3,15 +3,15 @@
 // tables, and each pool row's Min % / Max % boxes and lock / In / exclude buttons. Markup only, from
 // the classic Optimizer's own helpers and classes (public/js/lineup.js optimizerControlsHtml, cashControlsHtml,
 // optimizerFooterHtml, newLineupsTabHtml, optLineupCardHtml, rightRowHtml); optimizer.js owns the state and the requests.
-import { escapeHtml, money, dec1, ownLabel } from "../format.js";
+import { escapeHtml, dec1 } from "../format.js";
 import { buildingHtml, goLabelHtml, buildingRowClass, BUILDING_LABEL } from "../lineup-stop.js";
 import { statusLineHtml, statusToneClass } from "../row-message.js"; // A14: red only for an error
 import { settingRowHtml, settingGroupHtml, settingSubtitleHtml, numberBoxHtml } from "../lineup-settings.js";
-import { modeSwitchHtml, cashChipHtml, cashTotalsText, unusedCapText, builtInTextCash } from "../lineup-cash.js";
+import { modeSwitchHtml, cashChipHtml, cashMedianText, unusedCapText, builtInTextCash } from "../lineup-cash.js";
+import { lineupTotals, lineupTotalsHtml } from "../lineup-totals.js"; // A11
 import { cardPlayerRowHtml, teamColours } from "../lineup-card.js";
 import { optExposureHtml } from "../lineup-exposure.js";
 import { optNotesHtml, bendsLineHtml } from "../lineup.js";
-import { shownTotal } from "../totals.js";
 import { showdownPalette } from "./lineup-look.js";
 import { posPillHtml } from "./table.js"; // 👁 2026-10-22: the exposure rows wear the lists' coloured position pill, not the grey classic chip
 import { copiesText, gapText, scaleColour, noUniquenessText, sourceLineText } from "./lineup-meter.js";
@@ -93,7 +93,7 @@ export function bandBoxesHtml(v) {
         // No Build by control while Projection is the only objective (optimizer standard A13, A21): it shows only on a board whose rows carry TwoGun's medians, where Median is the second.
         ...(boardHasTg(v.board, "median") ? [settingRowHtml("Build by", `<span class="opt-chips">${objectiveChipsHtml(v.ms.objective, v.board)}</span>`)] : []),
         settingSubtitleHtml("Max share of lineups"),
-        `<div class="opt-set-hint">Each man's Min % and Max % are on the pool rows: the plain pair sets his FLEX share, the gold pair his Captain share.</div>`,
+        `<div class="opt-set-hint">Each man's Min % and Max % are on the pool rows: on the FLEX list they set his FLEX share, on the Captain list his Captain share.</div>`,
       ].join("");
   return `
     <div class="opt-panel opt-settings sd-opt-panel" id="sd-opt-panel">
@@ -124,20 +124,6 @@ export function goRowHtml({ summary, count, generating: showing, busy, formError
 
 const finite = (v) => (typeof v === "number" && Number.isFinite(v) ? v : null);
 
-/** A GPP card's totals: "$49,400 · 97.4 proj · Own 102.3%", with the build's own total after proj on a median build
- *  ("· 91.2 median"). Projection is the sum of the rows as shown (totals.js shownTotal); ownership is each slot's own Captain or
- *  FLEX figure summed (Adam 2026-10-18), a dash when any slot has none; the median total is the server's. */
-export function gppTotalsText(lineup, objective) {
-  const slots = lineup?.slots ?? [];
-  const parts = [money(lineup?.salary)];
-  const projs = slots.map((s) => s.proj);
-  parts.push(projs.length && projs.every((p) => finite(p) !== null) ? `${dec1(shownTotal(projs))} proj` : "— proj (a player has no projection)");
-  if (objective === "median") parts.push(finite(lineup?.median) === null ? "— median" : `${dec1(lineup.median)} median`);
-  const owns = slots.map((s) => s.own);
-  parts.push(owns.length && owns.every((o) => finite(o) !== null) ? ownLabel(owns.reduce((a, b) => a + b, 0)) : "Own —");
-  return parts.join(" · ");
-}
-
 /** A GPP card's meter strip, from the lineup's own meter as the server measured it (nothing computed here): expected copies in
  *  the field (in the meter's colour), how many other entries most likely hold it ("likely 0 to 2"), and the gap to the best possible projection. */
 export function cardMeterHtml(meter) {
@@ -167,7 +153,7 @@ export function offBoardText(meter) {
   return names.length ? `not on TwoGun's board: ${names.join(", ")}` : null;
 }
 
-/** The board row behind a slot, with the game's key so the row says vs or @ (as the player card's showdownRowById does). */
+/** The board row behind a slot, with the game's key so the row can name the man's opponent (the card shows the bare code, D80 as amended). */
 function rowForSlot(board, personId) {
   const row = (board?.rows ?? []).find((r) => String(r.id) === String(personId));
   const g = board?.game;
@@ -188,15 +174,18 @@ export function cardHtml(lineup, index, o) {
     coloursFor: (team) => teamColours(palette, team),
   };
   const slots = lineup.slots ?? [];
-  const rows = slots.map((s) => cardPlayerRowHtml({ id: String(s.personId ?? s.playerId), name: s.name, pos: s.pos, team: s.team, salary: s.salary, proj: s.proj, own: s.own }, s.slot, decor)).join("");
+  // A5: the one card row, with the man's real position (the slot's own `pos` can be the seat); A11: the one totals block under the last slot, the batch's own extras after it.
+  const rows = slots.map((s) => cardPlayerRowHtml({ id: String(s.personId ?? s.playerId), name: s.name, pos: s.realPos ?? rowForSlot(o.board, s.personId ?? s.playerId)?.pos ?? s.pos, team: s.team, salary: s.salary, proj: s.proj, own: s.own }, s.slot, decor, { posHtml: posPillHtml, bareOpp: true, cls: s.slot === "CPT" ? "sd-cpt-slot" : "" })).join(""); // the slots' and saved cards' one form: the bare opponent code, the amber CPT chip
   const uid = escapeHtml(lineup.uid ?? "");
   const saveBtn = o.saved
     ? `<button type="button" class="saved-lineup-btn opt-saved-btn" disabled>Saved ✓</button>`
     : `<button type="button" class="saved-lineup-btn" data-sd-opt-save="${uid}"${o.busy ? " disabled" : ""}>Save</button>`;
-  const overCap = finite(lineup.salary) !== null && lineup.salary > 50000;
-  const totals = o.cash
-    ? `<span class="${overCap ? "saved-lineup-totals-over" : ""}">${escapeHtml(cashTotalsText({ ...lineup, players: slots }, o.basis))}</span>${unusedCapText(lineup.salary) ? ` <span class="cash-unused-chip" title="Salary left under the $50,000 cap">${escapeHtml(unusedCapText(lineup.salary))}</span>` : ""}`
-    : `<span class="${overCap ? "saved-lineup-totals-over" : ""}">${escapeHtml(gppTotalsText(lineup, o.objective))}</span>`;
+  // One salary on a card: the block's Salary used (the sum of the six rows) is also what the unused-cap chip reads, never the lineup's own `salary` field.
+  const figures = lineupTotals(slots.map((s) => ({ salary: s.salary, proj: s.proj, own: s.own })), { cap: 50000 });
+  const unusedText = o.cash ? unusedCapText(figures.used) : "";
+  const unused = unusedText ? `<span class="cash-unused-chip" title="Salary left under the $50,000 cap">${escapeHtml(unusedText)}</span>` : "";
+  const median = o.cash ? cashMedianText({ ...lineup, players: slots }, o.basis) : o.objective === "median" ? (finite(lineup?.median) === null ? "— median" : `${dec1(lineup.median)} median`) : "";
+  const totals = lineupTotalsHtml(figures, { cap: 50000, extra: [escapeHtml(median), unused].filter(Boolean).join(" &middot; ") });
   return `
     <div class="opt-card${o.saved ? " opt-card-saved" : ""}" data-uid="${uid}">
       <div class="opt-card-head">
@@ -207,7 +196,7 @@ export function cardHtml(lineup, index, o) {
         </span>
       </div>
       <div class="opt-card-players">${rows}</div>
-      <div class="opt-card-totals">${totals}</div>
+      ${totals}
       ${o.cash ? "" : cardMeterHtml(lineup.meter)}
     </div>`;
 }
@@ -246,7 +235,7 @@ export function provenanceTitle(r) {
  *  "saved" for the saved lineups (lineup-saved.js), the word before "lineup" in that subtitle. */
 export function exposureHtml(lineups, board, sortDir, marks, pick = null, of = null, noun = "new") {
   const t = exposureTables(lineups);
-  const rowsOf = (role, list) => list.map((e) => ({ ...(rowForSlot(board, e.person) ?? {}), id: `${role}:${e.person}`, name: e.name, count: e.count, pct: e.pct, own: e.own }));
+  const rowsOf = (role, list) => list.map((e) => ({ ...(rowForSlot(board, e.person) ?? {}), id: `${role}:${e.person}`, cardId: String(e.person), name: e.name, count: e.count, pct: e.pct, own: e.own }));
   const n = lineups.length;
   const lead = of === null ? `${n} ${noun} lineup${n === 1 ? "" : "s"}` : `${n} of ${of} ${noun} lineup${of === 1 ? "" : "s"}, filtered`;
   const subtitle = `${lead}; Captain and FLEX counted apart, never summed`;
@@ -330,25 +319,24 @@ export function poolRows(all, shown, ms, pos) {
   return (all ?? []).filter((r) => (keep.has(String(r.id)) || marked.has(String(r.id)) || (r.cptId != null && marked.has(String(r.cptId)))) && (pos === "All" || String(r.pos ?? "").trim().toUpperCase() === pos));
 }
 
-/** The extra head cells of one list in GPP: Min % and Max % for that role (Cash has none). Both lists head them "Min %" and
- *  "Max %" (👁 V1: "CPT Min %" pushed the Captain table past its box); the toggle and the list's caption name the role, the hover too. */
-export function poolHeadCells(kind, mode, { gold = false } = {}) {
-  if (mode !== "gpp") return "";
-  const role = kind === "cpt" ? "Captain" : "FLEX";
-  const g = gold ? " sd-cpt-col" : ""; // the one pool (2026-10-26): the Captain pair heads in the Captain columns' gold
-  return `<th class="lineup-min-head${g}" title="Fewest of the new lineups he must be in at ${role}; blank = none">Min %</th><th class="lineup-max-head${g}" title="Most of the new lineups he may be in at ${role}; blank = no cap">Max %</th>`;
-}
-
-/** One row's Min % and Max % boxes in GPP (classic rightRowHtml's cells), for the list's role. */
-export function poolCapCells(row, kind, ms, mode, parsePct) {
+/** One row's Min % or Max % box in GPP (`which` "min" or "max"; classic rightRowHtml's cell), for the list's role; "" in Cash. */
+export function poolCapCell(row, kind, which, ms, mode, parsePct) {
   if (mode !== "gpp") return "";
   const id = String(row.id);
-  const cell = (field, cls, word) => {
-    const text = ms[field]?.[id] ?? "";
-    const bad = Number.isNaN(parsePct(text));
-    return `<td class="${cls}-cell"><input type="text" inputmode="decimal" maxlength="5" class="opt-input ${cls}-input${bad ? " invalid" : ""}" data-sd-cap="${field}" data-id="${escapeHtml(id)}" value="${escapeHtml(text)}" aria-label="${kind === "cpt" ? "Captain" : "FLEX"} ${word} for ${escapeHtml(row.name ?? "")}" /></td>`;
-  };
-  return kind === "cpt" ? cell("cptMin", "lineup-min", "Min %") + cell("cptMax", "lineup-max", "Max %") : cell("flexMin", "lineup-min", "Min %") + cell("flexMax", "lineup-max", "Max %");
+  const cls = which === "min" ? "lineup-min" : "lineup-max";
+  const field = `${kind === "cpt" ? "cpt" : "flex"}${which === "min" ? "Min" : "Max"}`;
+  const text = ms[field]?.[id] ?? "";
+  const bad = Number.isNaN(parsePct(text));
+  return `<td class="${cls}-cell"><input type="text" inputmode="decimal" maxlength="5" class="opt-input ${cls}-input${bad ? " invalid" : ""}" data-sd-cap="${field}" data-id="${escapeHtml(id)}" value="${escapeHtml(text)}" aria-label="${kind === "cpt" ? "Captain" : "FLEX"} ${which === "min" ? "Min %" : "Max %"} for ${escapeHtml(row.name ?? "")}" /></td>`;
+}
+
+/** The padlock beside a locked man's name (C20: a locked row keeps the tint a seated row has and gets this icon): it names its seat, in the hover (`Locked at Captain`,
+ *  `Locked at FLEX`, or both) and, when he is locked as Captain, with a small `CPT` beside the padlock (C21); "" when he is not locked. */
+export function poolLockIconHtml(row, ms) {
+  const cpt = isLocked(ms, row, "cpt");
+  const at = [cpt ? "Captain" : "", isLocked(ms, row, "flex") ? "FLEX" : ""].filter(Boolean);
+  if (!at.length) return "";
+  return `<span class="sd-lock-ico" title="Locked at ${at.join(" and ")} in every lineup" aria-label="Locked at ${at.join(" and ")}">${LOCK_SVG}${cpt ? `<span class="sd-lock-seat">CPT</span>` : ""}</span>`;
 }
 
 /** One row's lock, In or exclude button for a role (`action` "lock", "include" or "exclude"), alone: the one pool (2026-10-26) draws In
@@ -372,8 +360,7 @@ export function poolButtonHtml(row, kind, action, ms) {
   return btn(ex.on, ex.on ? " danger" : "", exTitle, "&times;", (kind === "cpt" && ex.whole) || noCpt);
 }
 
-/** The row's look: excluded (dimmed) over locked (tinted). */
+/** The row's look: excluded (dimmed). A lock is not a tint (C20): it is the padlock icon beside the name (poolLockIconHtml). */
 export function poolRowClass(row, kind, ms) {
-  if (excludeState(ms, row, kind).on) return " lineup-row-excluded";
-  return isLocked(ms, row, kind) ? " lineup-row-locked" : "";
+  return excludeState(ms, row, kind).on ? " lineup-row-excluded" : "";
 }

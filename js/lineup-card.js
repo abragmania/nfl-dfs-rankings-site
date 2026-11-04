@@ -1,8 +1,8 @@
 // Pieces of the Optimizer's lineup slots and new-lineup cards (lineup.js).
-import { escapeHtml, money, dec1, textColourFor, ownLabel } from "./format.js";
-import { fillForDark, fillForLight, solidRow, barColour, ROW_FILL } from "./team-palette.js";
+import { escapeHtml, money, dec1, pct1, textColourFor } from "./format.js";
+import { fillForDark, fillForLight, solidRow, barColour, liftForDark } from "./team-palette.js";
 import { TEAM_BY_ABBR } from "./teams-data.js";
-import { playerIdentityHtml, matchupPillHtml, teamLogoHtml } from "./player-row.js";
+import { playerIdentityHtml, matchupPillHtml, bareOppHtml, teamLogoHtml } from "./player-row.js";
 import { lineupRoles, roleTagsHtml, stackLabel } from "./lineup-marks.js";
 
 const NAME_SUFFIX = /^(jr\.?|sr\.?|ii|iii|iv|v)$/i;
@@ -37,7 +37,7 @@ export function cardNameHtml(p) {
 }
 
 // Team rows round 2, Adam 2026-10-17: a row's { colour, alt, fillLight, fillDark, rowLight, rowDark, barLight, barDark } from the slate palette (or the team's own colours),
-// and the style that sets --tc / --tc2 (the fallbacks), the two fills --tclp / --tcfp (style.css .opt-p; the dark one is L 28 to 42, Adam 2026-10-18 round-5 render) and the bars --tcbl / --tcbd.
+// (only `colour` and `alt` reach the page, through teamColourStyle; the fill and bar fields are the palette's, pinned by tests/team-palette.test.mjs).
 export function teamColours(palette, team) {
   const t = TEAM_BY_ABBR[team];
   const e = palette?.get(team);
@@ -50,19 +50,10 @@ export function teamColours(palette, team) {
   return { colour, alt, fillDark, fillLight, rowLight, rowDark,
     barLight: e?.barLight ?? barColour(fillLight, alt, "light", rowLight.alpha), barDark: e?.barDark ?? barColour(fillDark, alt, "dark", rowDark.alpha) };
 }
-// Solid rows (Adam 2026-10-18): per theme (l / d) the row text and the role-tag chip; --tca / --tcb only where the fill opacity was pulled down.
-// 👁 2026-10-18 round 6: --tclp the light fill, --tcbl / --tcbd the left bar per theme. 🔵 2026-10-18 series review: the unread variables are no longer emitted.
-export function teamColourStyle({ colour, alt, fillDark, fillLight, rowLight, rowDark, barLight, barDark }) {
-  const tcfp = fillDark ?? fillForDark(colour);
-  const tclp = fillLight ?? fillForLight(colour);
-  const L = rowLight ?? solidRow(tclp, "light");
-  const D = rowDark ?? solidRow(tcfp, "dark");
-  const pulled = (row, theme, p) => (row.alpha === ROW_FILL[theme] ? "" : `;--tc${p}:${row.alpha}%`);
-  const theme = (row, s) => `;--tct${s}:${row.text};--tcchip${s}:${row.chip}`;
-  const tcbl = barLight ?? barColour(tclp, alt, "light", L.alpha);
-  const tcbd = barDark ?? barColour(tcfp, alt, "dark", D.alpha);
-  return `--tc:${escapeHtml(colour)};--tc2:${escapeHtml(alt)};--tcfp:${escapeHtml(tcfp)};--tclp:${escapeHtml(tclp)};--tcbd:${escapeHtml(tcbd)};--tcbl:${escapeHtml(tcbl)}`
-    + theme(L, "l") + pulled(L, "light", "a") + theme(D, "d") + pulled(D, "dark", "b");
+// The style that every row wearing a team's tint carries (A20): --tc the team's colour, --tc2 its alt, --tcd the colour the dark theme draws the stripe and tint in
+// (team-palette.js liftForDark: lifted only where the colour would not read on the dark card). The solid-row variables of the retired flat fill are no longer emitted.
+export function teamColourStyle({ colour, alt }) {
+  return `--tc:${escapeHtml(colour)};--tc2:${escapeHtml(alt)};--tcd:${escapeHtml(liftForDark(colour))}`;
 }
 export { teamLogoHtml };
 
@@ -74,7 +65,8 @@ export function cardDecor(lineup, rowById, palette = null) {
   return {
     stack: stack ? `<span class="opt-card-stack" title="${escapeHtml(stack.title)}">${escapeHtml(stack.text)}</span>` : "",
     rowFor: (p) => (rowOf(p) ? { ...p, ...rowOf(p) } : p),
-    rolesFor: (p) => roleTagsHtml(roles.get(String(p.id))),
+    rolesFor: () => "",
+    nameTagsFor: (p) => roleTagsHtml(roles.get(String(p.id))), // STACK / PAIR on the name line, so line 2 keeps its room for the whole matchup pill (spread included)
     coloursFor: (team) => teamColours(palette, team), // Team rows, Adam 2026-10-17
   };
 }
@@ -94,21 +86,24 @@ export const NAME_FIT_TAGGED = 11;
 export function bigNameNeedsShort(name, tagged) {
   return String(name ?? "").trim().length > (tagged ? NAME_FIT_TAGGED : NAME_FIT);
 }
-// A missing ownership reads "Own —" (standard A4); `opts.ownDash === false` leaves it blank where the row prints its own reason there (Showdown's builder slots, lineup-slots.js notesHtml).
+// The ONE lineup row (optimizer standard A5, 2026-11-03): the builder's slots, the new cards and the saved cards all draw it: slot, team logo, name
+// with his position and injury letter (the red OUT tag for a man ruled out), the matchup in small type under it, then `Sal`, `Proj` and `Own`, each
+// labelled. A missing figure is a dash, never zero (the Showdown slots print the reason beside the matchup, decor.rolesFor).
 export function cardPlayerRowHtml(p, slotName, decor, opts = null) {
   const big = opts?.big === true;
   const row = decor?.rowFor ? decor.rowFor(p) : p;
-  const line1 = playerIdentityHtml(row, { logo: false, logoShown: Boolean(teamLogoHtml(p.team, "opt-p-logo", 38)), nameCls: "opt-p-name", nameHtml: cardNameHtml(p), chipPlain: true, tagCls: "opt-p-tags", tag: "out", pos: opts?.pos === true, posHtml: opts?.posHtml }); // pos, posHtml: Showdown's slots only (D81: every slot is FLEX, so the row names the position, as the pool does); classic's rows stay off
-  const nameTags = decor?.nameTagsFor ? decor.nameTagsFor(p) : ""; // the builder slot's STACK / PAIR tags sit on the name line, so line 2 keeps its room for the matchup pill and Own
+  const line1 = playerIdentityHtml(row, { logo: false, logoShown: Boolean(teamLogoHtml(p.team, "opt-p-logo", 38)), nameCls: "opt-p-name", nameHtml: cardNameHtml(p), chipPlain: true, tagCls: "opt-p-tags", pos: opts?.pos !== false, posHtml: opts?.posHtml }); // tag left to the shared default: OUT for a man ruled out, else his injury letter
+  const nameTags = decor?.nameTagsFor ? decor.nameTagsFor(p) : ""; // the builder slot's STACK / PAIR tags sit on the name line, so line 2 keeps its room for the matchup pill
   const shorten = big && bigNameNeedsShort(p.name, line1.includes('class="opt-p-tags"') || nameTags !== "");
+  const fig = (cls, label, value) => `<span class="opt-p-fig ${cls}"><i>${label}</i><b>${value}</b></span>`;
   return `
-      <div class="opt-p${big ? " opt-p-big" : ""}${shorten ? " opt-p-short" : ""}" style="${teamColourStyle(decor ? decor.coloursFor(p.team) : teamColours(null, p.team))}"${p.id != null ? ` data-card-id="${escapeHtml(String(p.id))}"` : ""}>
+      <div class="opt-p${big ? " opt-p-big" : ""}${shorten ? " opt-p-short" : ""}${opts?.cls ? ` ${opts.cls}` : ""}" style="${teamColourStyle(decor ? decor.coloursFor(p.team) : teamColours(null, p.team))}"${p.id != null ? ` data-card-id="${escapeHtml(String(p.id))}"` : ""}>
         <span class="opt-p-slot">${escapeHtml(slotName)}</span>
         ${teamLogoHtml(p.team, "opt-p-logo", big ? 48 : 38) || badgeHtml(p.name, p.pos, p.team)}
         <span class="opt-p-body">
           <span class="opt-p-line1">${line1}${nameTags}</span>
-          <span class="opt-p-line2">${matchupPillHtml(row)}<span class="opt-p-own">${escapeHtml(ownLabel(p.own) || (opts?.ownDash === false ? "" : "Own —"))}</span>${decor ? decor.rolesFor(p) : ""}</span>
+          <span class="opt-p-line2">${opts?.bareOpp ? bareOppHtml(row) : matchupPillHtml(row)}${decor ? decor.rolesFor(p) : ""}</span>
         </span>
-        <span class="opt-p-nums"><span class="opt-p-sal">${money(p.salary)}</span><span class="opt-p-proj">${p.proj == null ? "—" : dec1(p.proj)}</span></span>
+        <span class="opt-p-figs">${fig("opt-p-sal", "Sal", money(p.salary))}${fig("opt-p-proj", "Proj", p.proj == null ? "—" : dec1(p.proj))}${fig("opt-p-own", "Own", pct1(p.own) ?? "—")}</span>
       </div>`;
 }

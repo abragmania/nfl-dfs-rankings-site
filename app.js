@@ -24,7 +24,7 @@ import {
 } from "./js/api.js";
 import { renderPills, renderSlateLine, wireUpload, wireRefresh, wireThemeToggle, secondSlateSavedText, renderModeBox, uploadStatusSetter, entriesUploadedHandler, paintSourcesLink, wireSourcesLink, wireTrackedLink } from "./js/header.js";
 import { uploadEntriesText, setUploadRouter } from "./js/entries-wire.js"; // Adam 2026-10-18: one upload for every DraftKings export
-import { showdownKeyFromHash, showdownRowById, showdownBoardAsOf } from "./js/showdown/view.js";
+import { showdownKeyFromHash, showdownRowById, showdownBoardAsOf, showdownBoardNow } from "./js/showdown/view.js";
 import { configureShowdown, setRouteDkFile, uploadShowdownText, uploadShowdownEntriesText, renderModeRowNow, renderShowdownTabNow, loadShowdownList, applyMode } from "./js/app-showdown.js";
 import { adjustScrollPanels } from "./js/scroll-panels.js";
 import { normalizeBoard } from "./js/normalize.js";
@@ -152,7 +152,7 @@ async function handleBoardLoaded(raw) {
     data.warnings = [];
   }
   setStatusMessage("", false);
-  // A sort on a TwoGun column falls back to Value high to low once the board is not in TwoGun mode (state.js).
+  // A sort on a TwoGun column falls back to Proj high to low once the board is not in TwoGun mode (state.js).
   store.set({ board: data, boardError: null, loading: false, sort: sortForBoard(store.get().sort, data) });
   renderStatic(data);
 }
@@ -363,7 +363,7 @@ window.addEventListener("resize", adjustScrollPanels);
 // Expand / Minimize on the player tables (public/js/expand.js); minimizing re-sizes the table for its place.
 initExpand({ onLayout: adjustScrollPanels });
 // The player card: a click on any player's name opens his page (public/js/player-card.js); a showdown name reads the showdown board's row.
-initPlayerCard({ findRow: (id, sd) => (sd ? showdownRowById(id) : findRow(id)), sdKey: showdownKeyFromHash, boardAsOf: (sd) => (sd ? showdownBoardAsOf() : store.get().board?.generatedAt) });
+initPlayerCard({ findRow: (id, sd) => (sd ? showdownRowById(id) : findRow(id)), sdKey: showdownKeyFromHash, boardAsOf: (sd) => (sd ? showdownBoardAsOf() : store.get().board?.generatedAt), boardOf: (sd) => (sd ? showdownBoardNow() : store.get().board) });
 
 // The Optimizer screen's static parts (Optimizer-first step 4: what the Rankings tab drew, now inside #lineup-panel): the game strip,
 // the ownership banner, the ranked list and the filter bar's count. The filter bar itself is drawn only by renderFilterBarNow (a board

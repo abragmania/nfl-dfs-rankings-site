@@ -7,6 +7,7 @@ import { escapeHtml, money, dec1, pct1, localStamp, textColourFor, logoFor } fro
 import { TEAM_BY_ABBR } from "./teams-data.js";
 import { matchupText, statusTagsHtml, lineupOutTagHtml } from "./table.js";
 import { gameLogTableHtml } from "./player-card-log.js";
+import { bumpStepsOf, bumpPctText } from "./bump-control.js";
 
 const dash = "—";
 
@@ -77,32 +78,147 @@ export function ratingBoxHtml(rating) {
   </div>`;
 }
 
-/** This week's figures from the clicked row (this app's board, as of `asOf`): salary, projection, ownership, with the injury tag. */
-export function stripHtml(row, asOf = null) {
-  if (!row) return "";
-  const showdown = row.cptSalary !== undefined && row.ownFlex !== undefined;
-  const own = showdown ? row.ownFlex : row.own;
-  const tg = row.figuresFrom === "TwoGun";
-  const src = tg ? "TwoGun" : "this app";
-  const pre = tg ? "TwoGun " : "";
-  const cell = (label, value, title = "") => `<div class="pc-fig"${title ? ` title="${escapeHtml(title)}"` : ""}><span class="pc-fig-label">${label}</span><span class="pc-fig-value">${value}</span></div>`;
-  const figs = [
-    cell("Sal", money(row.salary), "DraftKings salary file"), // optimizer standard D1: Sal, Proj, Own; the Captain seat's wear CPT
-    showdown ? cell("CPT Sal", money(row.cptSalary), "DraftKings salary file") : "",
-    cell(tg ? "TwoGun Proj" : "Proj", row.proj == null ? "no proj" : dec1(row.proj), tg ? (row.projNote || "TwoGun's projection, as the Lineup screen's switch shows it") : "This app's blended projection (the Projections tab lists its sources)"),
-    cell(`${pre}Own`, pct1(own) ?? dash, own == null ? `${tg ? "TwoGun has" : "No source has"} published ownership for him` : `Ownership as ${src} shows it`),
-    showdown && row.ownCpt != null ? cell(`${pre}CPT Own`, pct1(row.ownCpt), `Captain ownership as ${src} shows it`) : "",
-  ].join("");
-  const tag = lineupOutTagHtml(row) || statusTagsHtml(row);
-  const status = tag ? `<div class="pc-fig pc-fig-tag" title="Injury tag from this app's own injury report"><span class="pc-fig-label">Status</span><span class="pc-fig-value">${tag}</span></div>` : "";
-  return `<div class="pc-strip">${figs}${status}</div>
-    <div class="pc-strip-source">${tg ? "Salary: this app's board" : "Salary, projection and ownership: this app's board"}, as of ${escapeHtml(stampText(asOf))}.${tg ? " Projection and ownership: TwoGun's, as the Lineup screen shows them." : ""}</div>`;
-}
-
 function stampText(iso) {
   const s = localStamp(iso);
   return s ? `${s.monthDay} ${s.clock} ET` : "an unknown time";
 }
+
+const labelOf = (board, id, kind) => (board?.sources ?? []).find((s) => s && s.id === id && s.kind === kind)?.label ?? id;
+const fetchedOf = (board, id, kind) => (board?.sources ?? []).find((s) => s && s.id === id && s.kind === kind)?.fetchedAt ?? null;
+const sayList = (names) => (names.length > 1 ? `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}` : names[0] ?? "");
+
+/**
+ * One time style on the card, Eastern, "Nov 1 11:52 ET" (format.js localStamp for an ISO stamp; TwoGun's own text "Sun, Nov 1, 11:52 AM ET" is
+ * re-read into the same form). null when the stamp is missing or unreadable: the card then says `as-of missing`, never a time the source did not have.
+ */
+export function whenShort(raw) {
+  if (typeof raw !== "string" || raw.trim() === "") return null;
+  if (/^\d{4}-\d{2}-\d{2}T/.test(raw)) {
+    const s = localStamp(raw);
+    return s ? `${s.monthDay} ${s.clock} ET` : null;
+  }
+  // The text must say Eastern: "8:03 PM CT" is not an ET time, and reading it as one would print a time the source never had.
+  const m = /(?:^|,\s*)([A-Z][a-z]{2}) (\d{1,2}),? (\d{1,2}):(\d{2})\s*(AM|PM)\s*ET\b/.exec(raw);
+  if (!m) return null;
+  const hour = (Number(m[3]) % 12) + (m[5] === "PM" ? 12 : 0);
+  return `${m[1]} ${Number(m[2])} ${String(hour).padStart(2, "0")}:${m[4]} ET`;
+}
+
+/** The oldest of the stamps as one time, or null when any of them is unknown (a figure is only as dated as its least dated source). ISO stamps sort; TwoGun's text is read the same way. */
+function oldestShort(shorts) {
+  if (!shorts.length || shorts.some((s) => s === null)) return null;
+  // Compared on the printed month, day and clock, in season order (September first): the stamps of one week never span a year.
+  const MONTHS = ["Sep", "Oct", "Nov", "Dec", "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug"];
+  const key = (s) => { const [m, d, hm] = s.split(" "); return MONTHS.indexOf(m) * 1e6 + Number(d) * 1e4 + Number(hm.replace(":", "")); };
+  return [...shorts].sort((a, b) => key(a) - key(b))[0];
+}
+const asOf = (when, word = "as of") => (when ? `${word} ${when}` : "as-of missing");
+
+/** A source's stamp ({ asOf, asOfFrom } or null) as the one time style: null (as-of missing) for no stamp, an unreadable one, or the board's own build time, which no source ever had. */
+const stampWhen = (s) => (s && s.asOfFrom !== "board built" ? whenShort(s.asOf) : null);
+
+/**
+ * The words after a figure's name for ONE figure: `ids` are the sources that made it (row.srcUsed: select.js classicRow, select-showdown.js), null for a board that did not record them.
+ * `nameOf(id)` and `stampOf(id)` ({ asOf, asOfFrom } or null) say who and when for each; `own` words TwoGun's stamp "updated" (ownership) rather than "board updated".
+ * Any source with no stamp makes the whole figure `as-of missing`.
+ */
+function figureLineOf(what, ids, { nameOf, stampOf, own = false }) {
+  if (ids === null) return `${what}: sources not recorded on this board`;
+  if (ids.length === 0) return `${what}: no source`;
+  const stamps = ids.map(stampOf);
+  const whens = stamps.map(stampWhen);
+  const fileTime = (s) => s?.asOfFrom === "file time";
+  if (ids.length === 1 && ids[0] === "twogun") return `${what}: TwoGun, ${asOf(whens[0], fileTime(stamps[0]) ? "file saved" : own ? "updated" : "board updated")}`;
+  if (ids.length === 1) return `${what}: ${nameOf(ids[0])}, ${asOf(whens[0], fileTime(stamps[0]) ? "file saved" : "as of")}`;
+  return `${what}: a blend of ${sayList(ids.map(nameOf))}, ${asOf(oldestShort(whens))}`;
+}
+
+/** A classic row's line: names from board.sources, stamps from each card's pull and TwoGun's own posted times (board.mode.twogun). */
+function classicFigureLine(what, ids, board, kind) {
+  const twogun = board?.mode?.twogun;
+  return figureLineOf(what, ids, {
+    own: kind === "ownership",
+    nameOf: (id) => (id === "twogun" ? "TwoGun" : labelOf(board, id, kind)),
+    stampOf: (id) => ({ asOf: id === "twogun" ? (kind === "ownership" ? twogun?.ownershipUpdated : twogun?.boardUpdated) : fetchedOf(board, id, kind), asOfFrom: null }),
+  });
+}
+
+/** A Showdown man's line: projection names from the cards (a kicker's from his kicker card), ownership names from the week's ownership files, each source's stamp from board.figures.stamps (board-view.js boardFigures). */
+function showdownFigureLine(what, ids, board, half) {
+  const own = half === "ownership";
+  const projCard = (id) => (board?.sources ?? []).find((s) => s && s.kind === "projection" && s.id === id) ?? (board?.sources ?? []).find((s) => s && s.kind === "kicker" && s.sourceId === id);
+  const file = (id) => (board?.ownershipSources ?? []).find((s) => s && s.id === id);
+  return figureLineOf(what, ids, {
+    own,
+    nameOf: (id) => (id === "twogun" ? "TwoGun" : String((own ? file(id)?.label : projCard(id)?.label) ?? id).replace(/\s*\(our estimate\)\s*$/, "")),
+    stampOf: (id) => board?.figures?.stamps?.[half]?.[id] ?? null,
+  });
+}
+
+/** `Projection: set to 0: listed out by <the injury source>` for a man the board zeroed (listed out) whose figure was not 0 before: no source gave him 0 (sidelined.js zeroOutRows). A published 0 (before === 0) is not this. null otherwise. */
+function zeroedLine(row) {
+  const before = row?.override?.proj ?? row?.projBase;
+  if (!(row?.proj === 0 && before !== 0)) return null;
+  const by = row.injury?.source ?? (row.src?.status === "twogun" ? "TwoGun" : null);
+  return `Projection: set to 0: listed out${by ? ` by ${by}` : ""}`;
+}
+
+/**
+ * Where the clicked row's Proj and Own really come from (optimizer standard A8): a classic row names only the sources that made THIS figure
+ * (row.srcUsed, set by select.js classicRow and the site's re-blend; projBySource and ownBySource hold every source's number, ticked or not, and are never read); a
+ * figure that is missing reads `no source`; a bump and a typed number are named; a man the board zeroed reads `set to 0: listed out by <the injury source>`. A Showdown row does
+ * the same from row.srcUsed { proj, ownFlex, ownCpt } (select-showdown.js), each source dated by board.figures.stamps. Any unknown stamp, a time that is not Eastern, or the
+ * board's own build time reads `as-of missing`. Returns { sal, proj, own } as plain text, one short line each (a Showdown row also ownCpt).
+ */
+export function figureSources(row, board) {
+  const showdown = row?.cptSalary !== undefined && row?.ownFlex !== undefined;
+  const sal = `Salary: the DraftKings salary file, ${asOf(whenShort(board?.slate?.uploadedAt), "uploaded")}.`;
+  const bump = bumpStepsOf(row);
+  // What follows a figure's line: a typed number replaces the sources' (named), and a bump scales whichever figure is shown, but only a figure that exists (a bump on a man with no Proj moves nothing).
+  const typed = (v) => (v != null ? " Your typed number replaces it." : "");
+  const bumped = typeof row?.proj === "number" && bump ? ` Bumped ${bumpPctText(bump)}.` : "";
+  const used = row?.srcUsed ?? null;
+  const zeroed = zeroedLine(row);
+  // A man the board zeroed (listed out) is not credited to the sources that gave him a number: nothing said 0 but the injury report, and a bump or a typed number moved nothing.
+  const projWith = (line) => (zeroed ? `${zeroed}.` : `${row?.proj == null && row?.override?.proj == null ? "Projection: no source" : line()}.${typed(row?.override?.proj)}${bumped}`);
+  if (showdown) {
+    const ownWith = (value, typedValue, ids) => `${value == null && typedValue == null ? "Ownership: no source" : showdownFigureLine("Ownership", ids, board, "ownership")}.${typed(typedValue)}`;
+    return {
+      sal,
+      proj: projWith(() => showdownFigureLine("Projection", used ? used.proj ?? null : null, board, "projection")),
+      own: ownWith(row.ownFlex, row.override?.own, used ? used.ownFlex ?? null : null),
+      ownCpt: ownWith(row.ownCpt, row.override?.ownCpt, used ? used.ownCpt ?? null : null),
+    };
+  }
+  const own = row?.own == null && row?.override?.own == null ? "Ownership: no source" : classicFigureLine("Ownership", used ? used.own ?? null : null, board, "ownership");
+  return { sal, proj: projWith(() => classicFigureLine("Projection", used ? used.proj ?? null : null, board, "projection")), own: `${own}.${typed(row?.override?.own)}` };
+}
+
+/** This week's figures from the clicked row: Sal, Proj and Own (a Showdown row also CPT Sal, CPT Proj and CPT Own) with the injury tag, and under them each figure's real source and as-of (figureSources). */
+export function stripHtml(row, asOf = null, board = null) {
+  if (!row) return "";
+  const showdown = row.cptSalary !== undefined && row.ownFlex !== undefined;
+  const own = showdown ? row.ownFlex : row.own;
+  const src = figureSources(row, board); // asOf (the board's build time) is no longer a stand-in for a source's own time
+  const cell = (label, value, title = "") => `<div class="pc-fig"${title ? ` title="${escapeHtml(title)}"` : ""}><span class="pc-fig-label">${label}</span><span class="pc-fig-value">${value}</span></div>`;
+  const figs = [
+    cell("Sal", money(row.salary), src.sal), // optimizer standard D1: Sal, Proj, Own; the Captain seat's wear CPT
+    showdown ? cell("CPT Sal", money(row.cptSalary), src.sal) : "",
+    cell("Proj", row.proj == null ? "no proj" : dec1(row.proj), row.projNote || src.proj),
+    showdown ? cell("CPT Proj", row.cptProj == null ? "no proj" : dec1(row.cptProj), `Captain: 1.5x his projection. ${src.proj}`) : "",
+    cell("Own", pct1(own) ?? dash, own == null ? "No source has published ownership for him" : src.own),
+    showdown && row.ownCpt != null ? cell("CPT Own", pct1(row.ownCpt), `Captain ownership. ${src.ownCpt}`) : "",
+  ].join("");
+  // A Showdown man whose Captain ownership is shown and says something else than his FLEX ownership gets both, named; otherwise one Ownership line.
+  const cptShown = showdown && row.ownCpt != null && src.ownCpt !== src.own;
+  const lines = cptShown ? [src.sal, src.proj, src.own.replace(/^Ownership/, "FLEX ownership"), src.ownCpt.replace(/^Ownership/, "Captain ownership")] : [src.sal, src.proj, src.own];
+  const tag = lineOutTagOrStatus(row);
+  const status = tag ? `<div class="pc-fig pc-fig-tag" title="${escapeHtml(`Injury status from ${row.injury?.source ?? (row.src?.status === "twogun" ? "TwoGun" : "a source the board does not name")}`)}"><span class="pc-fig-label">Status</span><span class="pc-fig-value">${tag}</span></div>` : "";
+  return `<div class="pc-strip">${figs}${status}</div>
+    <div class="pc-strip-source">${lines.filter(Boolean).map(escapeHtml).join("<br>")}</div>`;
+}
+
+const lineOutTagOrStatus = (row) => lineupOutTagHtml(row) || statusTagsHtml(row);
 
 /** "Source: NFLDepthCharts team file as of ..., game log as of ..." with the stale marker and the link to his page there. */
 export function sourceLineHtml(data, stale = []) {
@@ -140,7 +256,7 @@ function headHtml(who, row, data) {
 export function cardHtml(ctx) {
   const { who, row, state, data } = ctx;
   const head = headHtml(who, row, state === "ready" ? data : null);
-  const strip = stripHtml(row, ctx.asOf ?? null);
+  const strip = stripHtml(row, ctx.asOf ?? null, ctx.board ?? null);
   if (state === "loading") return `${head}${strip}<div class="pc-note" role="status">Loading his page from NFLDepthCharts…</div>`;
   if (state === "error") return `${head}${strip}<div class="pc-note pc-note-error" role="alert">${escapeHtml(ctx.message ?? "The player card could not be loaded.")}</div>`;
   if (!data.found) return `${head}${strip}<div class="pc-note">${escapeHtml(data.message ?? "No player card.")}</div>${data.source ? sourceLineHtml(data) : ""}`;

@@ -69,6 +69,7 @@ export function showdownRowById(id) {
   return row.gameId || !g?.away || !g?.home ? row : { ...row, gameId: `${g.away}@${g.home}` }; // the board row's figures on every tab, as the Lineup tab's slots show them
 }
 export const showdownBoardAsOf = () => state.board?.generatedAt ?? null;
+export const showdownBoardNow = () => state.board ?? null; // the player card names the board's own source lines (A8)
 
 const els = {
   status: document.getElementById("sd-status"),

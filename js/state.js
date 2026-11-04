@@ -6,10 +6,10 @@ const POSITION_CHIPS = ["All", "QB", "RB", "WR", "TE", "DST", "FLEX"];
 const FLEX_POS = new Set(["RB", "WR", "TE"]);
 
 // Star and every numeric column default to descending on the first click of a new column; text columns
-// (player, pos, tags) default ascending (no Opp or Status column, Adam 2026-10-18 Q1). Value is the table's own default sort, set once
-// at load rather than from a click. The Lev column has no number at all (Adam 2026-10-15, Lev measure to be
-// redesigned), so it is not sortable (table.js); a leftover sort on "lev" reads null for every row and keeps the
-// board's order.
+// (player, pos, tags) default ascending (no Opp or Status column, Adam 2026-10-18 Q1). Proj, high to low, is the classic tables' own default
+// sort (optimizer standard D2, 2026-11-03), set once at load rather than from a click. The Lev column is gone (A2); a leftover sort on "lev"
+// reads null for every row and keeps the board's order.
+export const DEFAULT_SORT = Object.freeze({ col: "proj", dir: "desc" });
 const DESC_FIRST_COLUMNS = new Set(["star", "salary", "proj", "own", "value", "tgMed", "tgNuke", "tgP3x", "tgP4x"]);
 export function defaultDirFor(col) {
   return DESC_FIRST_COLUMNS.has(col) ? "desc" : "asc";
@@ -67,10 +67,10 @@ const TG_SORT_COLUMNS = new Set(["tgMed", "tgNuke", "tgP3x", "tgP4x"]);
 const REMOVED_SORT_COLUMNS = new Set(["tgCeil", "tgCeilPer1k"]);
 
 /** The sort to keep once `board` loads: a sort on a TwoGun column (table.js TG_COLUMNS) on a board not in TwoGun
- *  mode, or on a column that was removed, falls back to the table's default, Value high to low; any other sort is kept as it is. */
+ *  mode, or on a column that was removed, falls back to the table's default, Proj high to low (D2); any other sort is kept as it is. */
 export function sortForBoard(sort, board) {
   const gone = TG_SORT_COLUMNS.has(sort?.col) && !isTwoGunMode(board);
-  return gone || REMOVED_SORT_COLUMNS.has(sort?.col) ? { col: "value", dir: "desc" } : sort;
+  return gone || REMOVED_SORT_COLUMNS.has(sort?.col) ? { ...DEFAULT_SORT } : sort;
 }
 
 class Store {
@@ -81,7 +81,7 @@ class Store {
       activeTab: "lineup", // the Optimizer, the main screen since Optimizer-first step 4 (public/js/tabs.js TABS)
       activeSlateKey: null, // key of the second slate on screen (D57), null = the main slate
       filters: defaultFilters(),
-      sort: { col: "value", dir: "desc" },
+      sort: { ...DEFAULT_SORT },
       staleFromUpload: null, // {stale:[...], uploadedAt, fileName} shown before the board (re)loads
     };
     this.listeners = [];

@@ -36,7 +36,7 @@ export function bumpPatch(id, steps) {
   return { bump: { [String(id)]: steps || null } };
 }
 
-/** The Captain's projection is 1.5x the man's (DraftKings Showdown), so the Captain list's hover reads his Captain figures (bumpProjHtml). */
+/** The Captain's projection is 1.5x the man's (DraftKings Showdown), so the Captain list's hover reads his Captain figures (bumpFigureOnlyHtml). */
 export const CPT_MULT = 1.5;
 
 /**
@@ -80,18 +80,17 @@ export function bumpControlHtml(row, { enabled = true, kind = null, title = null
 }
 
 /**
- * A pool row's whole projection cell: the pair, then the figure (`figure`, the number the cell shows: classic row.proj, a Showdown
- * list's own figure) in a span of fixed width, so every figure ends at the cell's right edge under the Proj header and the column
- * keeps its width (👁 2026-10-22). A bumped figure wears the up or down tint (.bump-up / .bump-down) and its hover gives the base,
- * the bumped figure and the percent ("Base 20.0 → 22.0 (+10%)"); `kind` "cpt" reads the Captain figures, cptProj against 1.5x
- * projBase, as the Captain cell shows (🔵 2026-10-22). A row with no figure shows `none` alone: no pair, nothing to move.
+ * The projection figure alone (`figure`, the number the cell shows: classic row.proj, a Showdown list's own figure), with the bump's tint
+ * and hover; the thumbs are a column of their own since optimizer standard A1. A bumped figure wears the up or down tint (.bump-up /
+ * .bump-down) and its hover gives the base, the bumped figure and the percent ("Base 20.0 → 22.0 (+10%)"); `kind` "cpt" reads the Captain
+ * figures, cptProj against 1.5x projBase, as the Captain cell shows (🔵 2026-10-22). `none` when there is no figure.
  */
-export function bumpProjHtml(row, figure, { enabled = true, kind = null, none = "no proj", title = null } = {}) {
+export function bumpFigureOnlyHtml(row, figure, { kind = null, none = "no proj" } = {}) {
   if (figure == null || Number.isNaN(Number(figure))) return escapeHtml(none);
   const isCpt = kind === "cpt";
   const base = row?.projBase == null ? null : isCpt ? Number(row.projBase) * CPT_MULT : row.projBase;
   const shown = isCpt ? row?.cptProj : row?.proj;
-  return `${bumpControlHtml(row, { enabled, kind, title })}${bumpFigureHtml(row, dec1(figure), base, shown)}`;
+  return bumpFigureHtml(row, dec1(figure), base, shown);
 }
 
 /** The one copy of the bump tint: a figure's span, plain at 0 steps, else .bump-up / .bump-down with the hover "Base 20.0 → 22.0 (+10%)"

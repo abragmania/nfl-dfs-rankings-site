@@ -112,6 +112,10 @@ export function boardWithWeights(board, slate, weights) {
 
   const rows = board.rows.map((row) => {
     const out = { ...row };
+    // The ids that made Proj and Own (select.js classicRow). A figure this browser did not re-blend keeps what the board recorded; a board baked before the field
+    // existed has none, and stays "not recorded" (null), never "recorded as empty".
+    let used = null;
+    const usedNow = () => (used ??= { proj: row.srcUsed?.proj ?? null, own: row.srcUsed?.own ?? null });
     if (projChanged && row.src?.proj !== "twogun") {
       const ticked = blend.byPlayerId.get(row.id);
       const fromBackup = Boolean(backup) && ticked.blend === null && !(hisTicked && row.tg?.call === "OUT");
@@ -120,13 +124,17 @@ export function boardWithWeights(board, slate, weights) {
       out.projBase = b.proj;
       out.coverage = b.coverage;
       out.flags = [...b.flags, ...(row.flags ?? []).filter((f) => !BLEND_FLAGS.has(f) && !f.startsWith("sourceFailed:")), ...failed];
+      usedNow().proj = [...b.sources]; // the ids that made the re-blended Proj: the player card names these only
     }
     if (row.src?.own !== "twogun") {
-      const anchor = blendOwnership(quotesOf(row, ownWeight, published, labels), (id) => ownWeight.get(id));
+      const quotes = quotesOf(row, ownWeight, published, labels);
+      const anchor = blendOwnership(quotes, (id) => ownWeight.get(id));
       out.ownBase = anchor ? anchor.own : null;
       out.ownKind = anchor ? "quoted" : null;
       out.ownAnchor = anchor;
+      usedNow().own = anchor ? Object.keys(quotes).filter((id) => Number(ownWeight.get(id)) !== 0) : [];
     }
+    if (used) out.srcUsed = used;
     return out;
   });
 

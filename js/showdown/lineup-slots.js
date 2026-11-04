@@ -5,7 +5,7 @@
 import { escapeHtml } from "../format.js";
 import { cardPlayerRowHtml, teamColours } from "../lineup-card.js";
 import { showdownPalette } from "./lineup-look.js";
-import { posPillHtml, SD_PILL } from "./table.js";
+import { posPillHtml } from "./table.js";
 import { findRow } from "./lineup-saved.js";
 import { playerFigures, reasonHtml, NOT_ON_BOARD_WORDS } from "./lineup-meter.js";
 
@@ -23,11 +23,10 @@ export function slotPlayerHtml(row, isCpt, palette = null) {
   const figs = playerFigures(row, isCpt);
   const p = { ...row, salary: isCpt ? row.cptSalary : row.salary, proj: figs.proj, own: figs.notOnBoard ? null : figs.own };
   const decor = {
-    rowFor: (r) => (SD_PILL ? r : { ...r, gameId: null, opp: null, impliedTotal: null, total: null, spread: null }), // D80: no pill while SD_PILL is off
     rolesFor: () => notesHtml(figs),
     coloursFor: (team) => teamColours(palette, team),
   };
-  return cardPlayerRowHtml(p, isCpt ? "CPT" : "FLEX", decor, { big: true, pos: true, posHtml: posPillHtml, ownDash: false }).trim(); // every slot is FLEX, so the row names his position, as the pool does
+  return cardPlayerRowHtml(p, isCpt ? "CPT" : "FLEX", decor, { big: true, pos: true, posHtml: posPillHtml, bareOpp: true }).trim(); // D80 as amended: the bare opponent code on the small second line, no pill (the slot's .sd-cpt-slot gives the Captain's row its amber chip) // every slot is FLEX, so the row names his position, as the pool does
 }
 
 // Repaints only the placed slots' big rows (the panel is not redrawn, so a typed lineup name survives);

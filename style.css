@@ -50,7 +50,7 @@
   --row-hover: #eef0f3;
   --row-dim-text: #9aa2ad;
 
-  /* D33 grading (Lev never graded, Adam 2026-10-15): v1 = 1.5+ SD above the position's mean, v5 = 1.5+ below (grade.js); v2/v4 rely on the tint. */
+  /* D33 grading (Adam 2026-10-15): v1 = 1.5+ SD above the position's mean, v5 = 1.5+ below (grade.js); v2/v4 rely on the tint. */
   --grade-v1: #1f8a3b;
   --grade-v2: #6fb98a;
   --grade-v5: #c8323b;
@@ -584,7 +584,7 @@ body.table-expanded { overflow: hidden; }
   font-size: var(--fs-sm);
   color: var(--text-muted);
 }
-.game-total { font-weight: 700; color: var(--text); }
+.game-total { font-weight: 700; color: var(--text); white-space: nowrap; } /* "O/U 54.5" stays on one line (Round 2 fix 22) */
 .game-total.line-unknown { color: var(--amber); font-weight: 600; }
 
 .game-weather { font-size: var(--fs-sm); color: var(--text-muted); }
@@ -715,7 +715,9 @@ body.table-expanded { overflow: hidden; }
   padding: 4px 8px;
   font-size: var(--fs-base);
 }
+.filter-search input { width: 150px; } /* A1: the search box is 150px wide */
 .filter-salary { display: flex; align-items: center; gap: var(--sp-1); color: var(--text-muted); font-size: var(--fs-sm); }
+.opt-p .pos-mini { font-size: 11px; font-weight: 600; line-height: 15px; padding: 0 4px; border: 1px solid var(--border); border-radius: 4px; color: var(--text-muted); }
 .filter-salary input { width: 90px; }
 
 .reset-btn {
@@ -774,19 +776,18 @@ body.table-expanded { overflow: hidden; }
 .rankings-table th:nth-child(1), .rankings-table td:nth-child(1) { width: 36px; }
 /* D80: a one-position list hides Pos (nth-child still counts it, so the widths below hold); the Team column is gone. */
 .rankings-table.pos-off th.pos-col, .rankings-table.pos-off td.pos-col { display: none; }
-/* Adam 2026-10-18 Q1: no Opp or Status column, so the columns after Pos are Salary 4, Proj 5, Own% 6, Value 7, Lev 8, Tags, Note. */
+/* Adam 2026-10-18 Q1: no Opp or Status column, so the columns after Pos are Salary 4, Proj 5, Own% 6, Value 7, then Tags, Note (the Lev column was removed, optimizer standard A2). */
 .rankings-table th:nth-child(3), .rankings-table td:nth-child(3) { width: 54px; }
 .rankings-table th:nth-child(4), .rankings-table td:nth-child(4) { width: 82px; }
 .rankings-table th:nth-child(5), .rankings-table td:nth-child(5) { width: 72px; }
 .rankings-table th:nth-child(6), .rankings-table td:nth-child(6) { width: 82px; }
-/* Salary/Proj/Own%/Value/Lev right-align with tabular figures (👁 visual-qa third pass) so the numbers
+/* Salary/Proj/Own%/Value right-align with tabular figures (👁 visual-qa third pass) so the numbers
    themselves line up column-on-column instead of ragging left; font-variant-numeric inherits into the
    editable-cell's span/input and the grade-cell span underneath. */
 .rankings-table th:nth-child(4), .rankings-table td:nth-child(4),
 .rankings-table th:nth-child(5), .rankings-table td:nth-child(5),
 .rankings-table th:nth-child(6), .rankings-table td:nth-child(6),
-.rankings-table th:nth-child(7), .rankings-table td:nth-child(7),
-.rankings-table th:nth-child(8), .rankings-table td:nth-child(8) {
+.rankings-table th:nth-child(7), .rankings-table td:nth-child(7) {
   text-align: right;
   font-variant-numeric: tabular-nums;
 }
@@ -794,10 +795,9 @@ body.table-expanded { overflow: hidden; }
 .rankings-table td:nth-child(6) .editable-cell {
   justify-content: flex-end;
 }
-/* Value/Lev widened from 62px (👁 visual-qa third pass: chip padding clipped a leading "-" on negative
+/* Value widened from 62px (👁 visual-qa third pass: chip padding clipped a leading "-" on negative
    leverage like "-1.42"); widened again (🎨 polish) to keep pace with the larger table type scale. */
 .rankings-table th:nth-child(7), .rankings-table td:nth-child(7) { width: 88px; }
-.rankings-table th:nth-child(8), .rankings-table td:nth-child(8) { width: 88px; }
 /* .sd-pool-table: the Showdown Optimizer's pool (showdown/pool.js) wears the Rankings table's head, cells, hover and dimming (2026-10-26). */
 .rankings-table thead, .sd-pool-table thead {
   position: sticky;
@@ -815,7 +815,6 @@ body.table-expanded { overflow: hidden; }
   border-bottom: 1px solid var(--border);
   user-select: none;
 }
-/* The Lev header does not sort (Adam 2026-10-15, Lev measure to be redesigned; public/js/table.js). */
 .rankings-table th.not-sortable { cursor: default; }
 .rankings-table th.sorted, .sd-pool-table th.sorted { color: var(--text); }
 .rankings-table td, .sd-pool-table td {
@@ -848,7 +847,7 @@ body.table-expanded { overflow: hidden; }
   vertical-align: middle;
 }
 .rankings-table td.tags-cell { line-height: 1.6; }
-.rankings-table th[data-col="note"], .rankings-table td:nth-child(10) { width: 100px; }
+.rankings-table th[data-col="note"], .rankings-table td:nth-child(9) { width: 100px; }
 .rankings-table tbody tr:hover, .sd-pool-table tbody tr:hover { background: var(--row-hover); }
 .rankings-table tbody tr.row-dimmed, .sd-pool-table tbody tr.row-dimmed { color: var(--row-dim-text); }
 .rankings-table tbody tr.row-dimmed .team-chip-mini, .sd-pool-table tbody tr.row-dimmed .team-chip-mini { opacity: 0.6; }
@@ -963,6 +962,9 @@ tr:last-child .cell-edit-hint { top: auto; bottom: 100%; margin-top: 0; margin-b
 .grade-v3 { color: var(--text); }
 .grade-v4 { background: var(--grade-v4-bg); color: var(--text); }
 .grade-v5 { background: var(--grade-v5-bg); color: var(--grade-v5); font-weight: 700; }
+/* Dark theme: the green and red figure on its own 42% / 40% tint read 2.4:1 and 2.1:1 (the grade text colours are the tint's own hue); a pale tone of the same hue reads 6.1:1 or better on the card, the page and a hovered row (Round 2 fix 22). */
+:root[data-theme="dark"] :is(.grade-v1, .bump-fig.bump-up) { color: #8fe3b5; }
+:root[data-theme="dark"] :is(.grade-v5, .bump-fig.bump-down) { color: #ffb3b3; }
 
 .status-badge {
   display: inline-block;
@@ -995,9 +997,9 @@ tr:last-child .cell-edit-hint { top: auto; bottom: 100%; margin-top: 0; margin-b
   cursor: default;
 }
 
-/* TwoGun mode's four Rankings columns (Med, Nuke, 3x%, 4x%; table.js TG_COLUMNS) sit after Lev; the <table>
+/* TwoGun mode's four Rankings columns (Med, Nuke, 3x%, 4x%; table.js TG_COLUMNS) sit after Value; the <table>
    carries "tg-on". Widths were shared so the table stays inside D54's 1250px box: Tags (52px, with or without the Note column: one 46px
-   pill whole) gives up some, Pos, Salary, Own% and Lev a little, and Player takes the room (there is no Team, Opp or Status column), Nuke takes 56px (the other three 50px each).
+   pill whole) gives up some, Pos, Salary and Own% a little, and Player takes the room (there is no Team, Opp or Status column), Nuke takes 56px (the other three 50px each).
    The Ceil and Ceil/$ columns are gone (optimizer standard A21, 2026-11-03); the Player column's width and the box widths below are unchanged (the columns now total 110px less in this mode and 102px less with the Note column; fixed layout spreads the slack). The generic nth-child widths above still apply in current mode, untouched. */
 .rankings-table th.tg-col, .rankings-table td.tg-col {
   text-align: right;
@@ -1016,25 +1018,23 @@ tr:last-child .cell-edit-hint { top: auto; bottom: 100%; margin-top: 0; margin-b
 .rankings-table.tg-on th.pos-col { padding-right: 6px; }
 .rankings-table.tg-on th[data-col="tgNuke"] { width: 56px; } /* "Nuke ▼" whole when sorted */
 .rankings-table.tg-on th[data-col="value"] { padding-left: 6px; padding-right: 6px; } /* "Proj/$ ▼" whole in its 64-66px when sorted, the default sort (🔵 2026-10-17) */
-/* Adam 2026-10-18 Q1: the Opp (68px) and Status (62px) columns are gone, so Player takes their width (306 + 130 = 436px), then 12px from Tags (64px to 52px) and 22px from Pos, Salary, Own% and Lev (470px). */
+/* Adam 2026-10-18 Q1: the Opp (68px) and Status (62px) columns are gone, so Player takes their width (306 + 130 = 436px), then 12px from Tags (64px to 52px) and 22px from Pos, Salary and Own% (470px). */
 .rankings-table.tg-on th:nth-child(2) { width: 470px; } /* the longest name ("Marquez Valdes-Scantling" with a tag) needs 464px, so no long name is cut (Adam 2026-10-18 Q1) */
 .rankings-table.tg-on th:nth-child(3) { width: 44px; }
 .rankings-table.tg-on th:nth-child(4), .rankings-table.tg-on th:nth-child(6) { width: 66px; }
 .rankings-table.tg-on th:nth-child(7) { width: 72px; }
-.rankings-table.tg-on th:nth-child(8) { width: 36px; }
 /* Tags: 52px holds the header "Tags" (37px) and one 46px pill whole (3px cell padding); a second pill is clipped at the cell edge, never stacked into a taller row, and the cell's title carries every reason. */
 .rankings-table.tg-on th[data-col="tags"] { width: 52px; white-space: normal; padding-left: 3px; padding-right: 3px; }
 .rankings-table.tg-on td.tags-cell { padding-left: 3px; padding-right: 3px; white-space: nowrap; overflow: hidden; text-overflow: clip; }
 /* With the Note column on as well (Adam 2026-10-18, rounds 4 and 5: no cut name, no clipped sorted header): Player takes 464px (the longest name with its tag pill needs 464px), the room
    coming from Note (74px to 44px: the header "Note" with no padding, a preview ellipsis and the full note as its hover), the TwoGun columns
-   (4px cell padding instead of 6px, so each is 4px narrower with the same room for its number and sorted header), Lev (36px to 32px) and Salary (66px to 64px);
-   the columns total 1120px now (1230px with the two Ceil columns, before round 6/7); with Note 102px and Tags 60px (below) they total 1194px (1296px with the Ceil columns), in a 1316px box. */
+   (4px cell padding instead of 6px, so each is 4px narrower with the same room for its number and sorted header) and Salary (66px to 64px);
+   the columns total 1088px now (the Lev column and the two Ceil columns are gone, A2 and A21); with Note 102px and Tags 60px (below) they total 1162px, in a 1316px box. */
 .rankings-table.tg-on:has(th[data-col="note"]) th:nth-child(2) { width: 464px; } /* D80 round 7 (Adam 2026-10-18 Q1: no long name is cut): back to the 464px the longest name needs; the 66px for Note and Tags comes from the wider box below, not from Player */
 .rankings-table.tg-on:has(th[data-col="note"]) th:nth-child(3) { width: 44px; }
 .rankings-table.tg-on:has(th[data-col="note"]) th:nth-child(4) { width: 64px; }
 .rankings-table.tg-on:has(th[data-col="note"]) th:nth-child(6) { width: 66px; }
 .rankings-table.tg-on:has(th[data-col="note"]) th:nth-child(7) { width: 64px; }
-.rankings-table.tg-on:has(th[data-col="note"]) th:nth-child(8) { width: 32px; }
 .rankings-table.tg-on:has(th[data-col="note"]) th.tg-col, .rankings-table.tg-on:has(th[data-col="note"]) td.tg-col { padding-left: 4px; padding-right: 4px; }
 .rankings-table.tg-on:has(th[data-col="note"]) th.tg-col { width: 46px; padding-left: 0; }
 .rankings-table.tg-on:has(th[data-col="note"]) th[data-col="tgNuke"] { width: 52px; }
@@ -1377,10 +1377,7 @@ tr:last-child .cell-edit-hint { top: auto; bottom: 100%; margin-top: 0; margin-b
 }
 .salary-bar-fill { height: 100%; background: var(--success); }
 .salary-bar-fill.over { background: var(--danger); }
-.salary-bar-label { font-size: var(--fs-sm); color: var(--text-muted); }
-.salary-bar-label.over { color: var(--danger); font-weight: 700; }
 
-.lineup-totals { font-size: var(--fs-sm); color: var(--text-muted); margin: var(--sp-2) 0; }
 .lineup-status { font-size: var(--fs-sm); color: var(--text-muted); margin-top: var(--sp-2); }
 .lineup-status-error { color: var(--danger); font-weight: 600; }
 .lineup-status-warning { color: var(--amber); }
@@ -1399,7 +1396,7 @@ tr:last-child .cell-edit-hint { top: auto; bottom: 100%; margin-top: 0; margin-b
   text-align: left;
   white-space: nowrap;
 }
-.lineup-rows-table thead { position: sticky; top: 0; background: var(--bg-elevated-2); }
+.lineup-rows-table thead { position: sticky; top: 0; z-index: 2; background: var(--bg-elevated-2); }
 /* Salary/Proj/Own%/Value right-align with tabular figures, same treatment as the Rankings table (👁 visual-qa
    third pass). The Showdown pool's columns: 1 Player, 2 FLEX $, 3 CPT $, 4 Proj, 5 Own FLEX. The Optimizer pool
    (.lineup-pool-table, Adam 2026-10-17): 1 star, 2 Player (logo, name, status tag, team chip, position chip, matchup pill),
@@ -1407,10 +1404,7 @@ tr:last-child .cell-edit-hint { top: auto; bottom: 100%; margin-top: 0; margin-b
 .lineup-rows-table:where(:not(.lineup-pool-table)) th:nth-child(3), .lineup-rows-table:where(:not(.lineup-pool-table)) td:nth-child(3),
 .lineup-rows-table:where(:not(.lineup-pool-table)) th:nth-child(4), .lineup-rows-table:where(:not(.lineup-pool-table)) td:nth-child(4),
 .lineup-rows-table:where(:not(.lineup-pool-table)) th:nth-child(5), .lineup-rows-table:where(:not(.lineup-pool-table)) td:nth-child(5),
-.lineup-pool-table th:nth-child(3), .lineup-pool-table td:nth-child(3),
-.lineup-pool-table th:nth-child(4), .lineup-pool-table td:nth-child(4),
-.lineup-pool-table th:nth-child(5), .lineup-pool-table td:nth-child(5),
-.lineup-pool-table th:nth-child(6), .lineup-pool-table td:nth-child(6) {
+.lineup-pool-table th.lp-num, .lineup-pool-table td.lp-num {
   text-align: right;
   font-variant-numeric: tabular-nums;
 }
@@ -1421,27 +1415,56 @@ tr:last-child .cell-edit-hint { top: auto; bottom: 100%; margin-top: 0; margin-b
 /* Min % and Max %: narrow boxes (three digits), centred under their headers; the headers are plain text, not a sort. */
 .lineup-rows-table th.lineup-min-head, .lineup-rows-table td.lineup-min-cell,
 .lineup-rows-table th.lineup-max-head, .lineup-rows-table td.lineup-max-cell { text-align: center; padding-left: 2px; padding-right: 2px; }
-.lineup-rows-table th.lineup-min-head, .lineup-rows-table th.lineup-max-head { color: var(--text-muted); font-weight: 600; }
+.lineup-rows-table th.lineup-min-head, .lineup-rows-table th.lineup-max-head,
+.lineup-rows-table th.lineup-thumbs-head, .lineup-rows-table th.lineup-lock-head, .lineup-rows-table th.lineup-exclude-head { color: var(--text-muted); font-weight: 600; }
+.lineup-rows-table th.lineup-thumbs-head, .lineup-rows-table th.lineup-lock-head, .lineup-rows-table th.lineup-exclude-head { text-align: center; white-space: nowrap; cursor: default; }
 .lineup-rows-table td.lineup-min-cell, .lineup-rows-table td.lineup-max-cell { padding-top: 1px; padding-bottom: 1px; }
 .opt-input.lineup-min-input, .opt-input.lineup-max-input { width: 3.6em; padding: 1px 4px; text-align: right; font-size: var(--fs-sm); }
 .opt-input.lineup-min-input.invalid, .opt-input.lineup-max-input.invalid { border-color: var(--danger); background: rgba(var(--danger-rgb), 0.12); }
 /* The pool keeps its 30px rows; Sal, Proj and Own% read bold. */
 .lineup-rows-table:where(:not(.lineup-pool-table)) td:nth-child(3), .lineup-rows-table:where(:not(.lineup-pool-table)) td:nth-child(4), .lineup-rows-table:where(:not(.lineup-pool-table)) td:nth-child(5),
-.lineup-pool-table td:nth-child(3), .lineup-pool-table td:nth-child(4), .lineup-pool-table td:nth-child(5) { font-size: 13px; font-weight: 700; }
+.lineup-pool-table td.lp-num { font-size: 13px; font-weight: 700; }
+.lineup-pool-table td.lp-num.lp-val { font-weight: 400; }
 .lineup-rows-table:where(:not(.lineup-pool-table)) td:nth-child(2) { font-weight: 400; color: var(--text-muted); }
-/* Adam 2026-10-17: the pool packs its columns next to the names (Player takes what its longest row needs); the last column
-   takes the slack so the table still spans the panel and the Lock / Exclude / Add buttons land right after Max %. */
-.lineup-pool-table th:last-child, .lineup-pool-table td.lineup-row-actions { width: 100%; }
-.lineup-pool-table .player-cell { display: inline-flex; gap: var(--sp-2); min-width: 0; }
-/* Adam 2026-10-18 round 3: the position chip in the Player cell widened it by 40px and "no proj" widened Proj, so the number columns
-   (3 to 6) and the Lock / Exclude / Add buttons pack tighter, and the table fits its panel at 1920 and 2560 with the buttons whole. */
-.lineup-pool-table th:nth-child(n+3):nth-child(-n+6), .lineup-pool-table td:nth-child(n+3):nth-child(-n+6) { padding-left: 5px; padding-right: 5px; }
-.lineup-pool-table th:nth-child(2), .lineup-pool-table td:nth-child(2) { padding-left: 6px; padding-right: 6px; }
-.lineup-pool-table .player-cell { gap: 6px; }
-.lineup-pool-table .lineup-row-btns { gap: 3px; }
+/* A1 (2026-11-03): the name column is as wide as its longest name needs (no fixed width) and every column packs left beside it, in Adam's order (columns.js); the empty last column takes the slack so the
+   table still spans the panel. The name cell is two lines: logo, name, position and injury letter, then the matchup in small type. */
+.lineup-pool-table th.lp-fill, .lineup-pool-table td.lp-fill { width: 100%; padding: 0; }
+.lineup-pool-table td.lp-name { padding-top: 4px; padding-bottom: 4px; } /* the logo and the position box clear the row's line (Round 2 fix 22) */
+.lineup-pool-table .player-cell { display: inline-flex; gap: 6px; min-width: 0; }
+.lineup-pool-table .lp-l2, .sd-pool-table .lp-l2 { display: block; margin-top: 1px; text-align: left; }
+.lineup-pool-table .lp-l2 .meta-pill, .sd-pool-table .lp-l2 .meta-pill { padding: 0; border: 0; background: none; font-size: 11px; line-height: 13px; }
+.lineup-pool-table .lp-name .row-msg { max-width: 300px; }
+.lineup-pool-table th:not(.lp-fill), .lineup-pool-table td:not(.lp-fill) { padding-left: 5px; padding-right: 5px; }
+.lineup-pool-table .lineup-thumbs-cell { padding-left: 2px; padding-right: 2px; }
 .lineup-pool-table .lineup-row-btn { padding: 2px 5px; }
 .lineup-pool-table .lineup-row-btn[data-action="row-lock"] { min-width: 50px; }
 .lineup-pool-table .lineup-row-btn[data-action="row-exclude"] { min-width: 58px; }
+/* A20: the list's rows carry the team's colour as a much lighter flare than the lineup's rows (.opt-p): the lineup's 8% gradient and 3px stripe become 3% over the first 120px and a 2px stripe at 45%; B8: a row lights up
+   under the pointer in the team's colour (7%, 10% on the light theme). */
+/* --tcv: the team colour every tint and stripe below is drawn in: the team's own (--tc) on the light theme, the colour lifted until it reads on the dark card (--tcd, team-palette.js liftForDark) on the dark one. */
+:is(.opt-p, .lineup-pool-table tbody tr.lineup-row, .sd-pool-table tbody tr) { --tcv: var(--tc); }
+:root[data-theme="dark"] :is(.opt-p, .lineup-pool-table tbody tr.lineup-row, .sd-pool-table tbody tr) { --tcv: var(--tcd, var(--tc)); }
+.lineup-pool-table tbody tr.lineup-row { background-image: linear-gradient(90deg, color-mix(in srgb, var(--tcv) 3%, transparent) 0, transparent 120px); }
+.lineup-pool-table tbody tr.lineup-row > td:first-child { box-shadow: inset 2px 0 color-mix(in srgb, var(--tcv) 45%, transparent); }
+/* The hover is the Showdown pool's neutral lift (--row-hover) with the team's tint over it, so a dark team still lights up (round 2 fix 17). */
+.lineup-pool-table tbody tr.lineup-row:hover { background-color: var(--row-hover); background-image: linear-gradient(color-mix(in srgb, var(--tcv) 7%, transparent), color-mix(in srgb, var(--tcv) 7%, transparent)), linear-gradient(90deg, color-mix(in srgb, var(--tcv) 3%, transparent) 0, transparent 120px); }
+:root[data-theme="light"] .lineup-pool-table tbody tr.lineup-row:hover { background-image: linear-gradient(color-mix(in srgb, var(--tcv) 10%, transparent), color-mix(in srgb, var(--tcv) 10%, transparent)), linear-gradient(90deg, color-mix(in srgb, var(--tcv) 3%, transparent) 0, transparent 120px); }
+.lineup-right-head { display: flex; align-items: center; gap: var(--sp-3); margin-bottom: var(--sp-2); }
+.lineup-right-head .lineup-right-title { margin: 0; }
+/* A17: the Columns button and its list (columns.js): a small panel under the button with a handle and a tick box for every column. */
+.colsw { position: relative; display: inline-block; }
+.columns-btn { cursor: pointer; }
+.colpop { position: absolute; top: calc(100% + 4px); left: 0; z-index: 30; min-width: 190px; padding: var(--sp-2); background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 8px; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35); }
+.colpop[hidden] { display: none; }
+.collist { list-style: none; margin: 0 0 var(--sp-2); padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.colrow { display: flex; align-items: center; gap: var(--sp-2); padding: 2px 4px; border-radius: 4px; border-top: 2px solid transparent; border-bottom: 2px solid transparent; }
+.colrow label { display: flex; align-items: center; gap: 6px; cursor: pointer; font-size: var(--fs-sm); color: var(--text); }
+.colrow .hnd { cursor: grab; color: var(--text-dim); padding: 0 4px; border: 1px solid transparent; border-radius: 4px; user-select: none; }
+.colrow .hnd:hover, .colrow .hnd:focus-visible { color: var(--text); border-color: var(--accent); outline: none; }
+.colrow.over { background: rgba(var(--accent-rgb), 0.12); border-top-color: var(--accent); }
+.colrow.over.down { border-top-color: transparent; border-bottom-color: var(--accent); }
+.colreset { cursor: pointer; width: 100%; background: var(--bg-elevated-2); border: 1px solid var(--border); color: var(--text); border-radius: 4px; padding: 3px 8px; font-size: var(--fs-sm); }
+.colreset:hover { border-color: var(--accent); }
 /* The status tag is a square the height of the team chip (chip = 13px text + 2px padding = 18px). */
 .player-cell .status-badge, .player-cell .out-tag {
   display: inline-flex; align-items: center; justify-content: center;
@@ -1460,13 +1483,13 @@ tr:last-child .cell-edit-hint { top: auto; bottom: 100%; margin-top: 0; margin-b
    the pool reuses the Rankings rows read-only (🔵 finding 8). */
 .lineup-rows-table tbody tr.row-dimmed { color: var(--row-dim-text); }
 .lineup-rows-table tbody tr.row-dimmed .team-chip-mini { opacity: 0.6; }
-/* Adam 2026-10-22: the thumbs bump in both Optimizer pools' projection cell (bump-control.js bumpProjHtml): a thumbs-down and a
+/* Adam 2026-10-22: the thumbs bump in both Optimizer pools' projection cell (bump-control.js bumpControlHtml): a thumbs-down and a
    thumbs-up button (16px tall, 11px thumbs, one filled thumb per step, green up and red down, one grey outline thumb when the side is
    off, several fanned over each other so the thumbs span at most 23px and a button, with its 1px padding and border, 27px; the pair sits right-aligned in a fixed 43px slot, the widest pair, so a press never shifts a column), then the figure in a fixed 4-digit slot, so every figure
    ends at the cell's right edge under the Proj header and the column keeps its width (👁); a bumped figure wears the tag tints
    (.tag-value up, .tag-chalk down), its percent in the hover. */
-.bump-ctl { display: inline-flex; justify-content: flex-end; width: 43px; align-items: center; gap: 1px; margin-right: 2px; vertical-align: middle; }
-.bump-btn { display: inline-flex; align-items: center; justify-content: center; height: 16px; padding: 0 1px; border: 1px solid var(--border); border-radius: 3px; background: var(--bg-elevated-2); color: var(--text-muted); line-height: 1; cursor: pointer; }
+.bump-ctl { display: inline-flex; justify-content: flex-end; width: 52px; align-items: center; gap: 1px; margin-right: 2px; vertical-align: middle; } /* 52px: the widest pair, 27 + 1 gap + 24 (a button is at least 24px square to press, Round 2 fix 22) */
+.bump-btn { display: inline-flex; align-items: center; justify-content: center; height: 24px; min-width: 24px; padding: 0 1px; border: 1px solid var(--border); border-radius: 3px; background: var(--bg-elevated-2); color: var(--text-muted); line-height: 1; cursor: pointer; }
 .bump-btn:hover:not(:disabled) { color: var(--text); border-color: var(--accent); }
 .bump-btn:disabled { opacity: 0.4; cursor: default; }
 .bump-btn.is-on:disabled { opacity: 1; }
@@ -1476,10 +1499,9 @@ tr:last-child .cell-edit-hint { top: auto; bottom: 100%; margin-top: 0; margin-b
 .bump-btn.is-on .thumb { stroke: var(--bg-elevated-2); stroke-width: 6.5; paint-order: stroke; } /* 6.5 viewBox units at 11px/24 is about 3px, half of it visible: a 1.5px ring */
 .bump-btn.is-on[data-action="bump-up"] .thumb { fill: var(--success); }
 .bump-btn.is-on[data-action="bump-down"] .thumb { fill: var(--danger); }
-.bump-fig { display: inline-block; min-width: 4ch; padding: 0 1px; border-radius: 3px; text-align: right; font-variant-numeric: tabular-nums; vertical-align: middle; }
+.bump-fig { display: inline-block; min-width: 4ch; padding: 0 1px; border-radius: 3px; text-align: right; font-variant-numeric: tabular-nums; vertical-align: baseline; }
 .bump-fig.bump-up { background: var(--grade-v1-bg); color: var(--success); }
 .bump-fig.bump-down { background: var(--grade-v5-bg); color: var(--danger); }
-.lineup-row-btns { display: flex; align-items: center; gap: 4px; } /* the buttons' own flex box: the td stays a normal cell, so a taller (refused) row centres them */
 .lineup-row-btn {
   cursor: pointer;
   background: var(--bg-elevated-2);
@@ -1523,13 +1545,15 @@ tr:last-child .cell-edit-hint { top: auto; bottom: 100%; margin-top: 0; margin-b
 .saved-lineups-empty, .saved-lineups-loading { color: var(--text-dim); font-size: var(--fs-base); font-style: italic; }
 .saved-lineups-list {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr)); /* Adam 2026-10-18: a consistent 4 across, one flat grid */
+  grid-template-columns: repeat(4, minmax(0, 1fr)); /* Adam 2026-10-18: a consistent 4 across, one flat grid (kept at A5: the card row wraps its figures to a second line where the card is narrow) */
   gap: var(--sp-3);
 }
 @media (max-width: 1279px) { .saved-lineups-list { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
 @media (max-width: 959px) { .saved-lineups-list { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 599px) { .saved-lineups-list { grid-template-columns: minmax(0, 1fr); } }
 .saved-lineup-card {
+  container-type: inline-size; /* the card row's narrow layout and short-name rules read the card's own width (.opt-p, below) */
+  min-width: 0;
   background: var(--bg-elevated);
   border: 1px solid var(--border);
   border-radius: 8px;
@@ -1582,20 +1606,17 @@ tr:last-child .cell-edit-hint { top: auto; bottom: 100%; margin-top: 0; margin-b
 }
 .saved-lineup-mini-btn.danger { border-color: var(--danger); color: var(--danger); }
 
+/* A19 (2026-11-03): a saved card's slots are one column, top to bottom, the same card row as the builder and the new cards (A5), the totals block under the last slot. */
 .saved-lineup-slots { display: flex; flex-direction: column; gap: 2px; }
-.saved-lineup-slot { display: flex; align-items: baseline; gap: var(--sp-2); font-size: var(--fs-sm); }
-.saved-lineup-slot-pos { width: 34px; flex: 0 0 34px; font-weight: 700; color: var(--text-muted); }
-.saved-lineup-slot-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.saved-lineup-slot > .out-tag { flex: 0 0 auto; margin-left: 0; } /* a sibling of the name, so the name's ellipsis never clips it */
-.saved-lineup-slot-salary { color: var(--text-muted); margin-left: auto; font-variant-numeric: tabular-nums; }
-.saved-lineup-slot-empty-text { color: var(--text-dim); font-style: italic; }
-.saved-lineup-slot.saved-lineup-slot-missing { color: var(--row-dim-text); opacity: 0.65; }
-.saved-lineup-slot-note { color: var(--danger); font-size: var(--fs-sm); font-style: italic; }
-
-.saved-lineup-totals { font-size: var(--fs-sm); color: var(--text-muted); display: flex; flex-wrap: wrap; gap: 4px; }
-.saved-lineup-totals-over { color: var(--danger); font-weight: 700; }
-.saved-lineup-totals > span:not(:last-child)::after { content: " \00b7"; } /* 👁 2026-10-18: the separator ends the group before it, so a wrapped line never starts with a dot */
-.saved-lineup-totals > .saved-lineup-totals-over::after { color: var(--text-muted); font-weight: 400; }
+/* A11 (lineup-totals.js): the cap bar, then Salary used, Salary left, Proj and Own, a figure with its label before it; a dash has its reason on hover. Under the builder's slots, every new card and every saved card. */
+.lt { display: flex; flex-direction: column; gap: 4px; margin: var(--sp-2) 0; font-size: var(--fs-sm); color: var(--text-muted); }
+.lt-figs { display: flex; flex-wrap: wrap; gap: 2px var(--sp-4); }
+.lt-fig i { font-style: normal; color: var(--text-dim); margin-right: 2px; }
+.lt-fig b { font-weight: 700; color: var(--text); font-variant-numeric: tabular-nums; }
+.lt-fig b.lt-dash { color: var(--text-dim); cursor: help; }
+.lt-over b { color: var(--danger); }
+.lt-extra { font-size: 12px; color: var(--text-dim); }
+.opt-card > .lt, .saved-lineup-card > .lt { margin: 0; padding-top: var(--sp-1); border-top: 1px solid var(--border); }
 
 .saved-lineup-actions { display: flex; gap: var(--sp-2); align-items: center; }
 .saved-lineup-btn {
@@ -1806,7 +1827,7 @@ th.sd-cpt-col.sorted { color: var(--amber); }
 /* The player pool under the builder (pool.js): its heading and the Expand bar on one line, the table in its own scroll panel (60% of
    the window, 420px at least, whole rows: scroll-panels.js), the legend under it. The pool is as wide as its table, so the figures sit
    next to the names (Adam: "see how the columns are near the names") and the Expand button ends where the table ends. */
-#sd-pool { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; column-gap: var(--sp-3); width: fit-content; max-width: 100%; margin-top: var(--sp-5); }
+#sd-pool { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; column-gap: var(--sp-3); width: 100%; max-width: 100%; margin-top: var(--sp-5); } /* the panel is the pool column's whole width on both lists (Round 2 fix 20); the table's empty last column (.sd-fill) takes what its packed columns leave */
 #sd-pool > .sd-pool-head { grid-column: 1; grid-row: 1; display: flex; align-items: baseline; gap: var(--sp-3); margin-bottom: var(--sp-1); min-width: 0; }
 #sd-pool > .sd-pool-head .lineup-right-title { margin: 0; }
 #sd-pool > .expand-bar:not(.is-expanded) { grid-column: 2; grid-row: 1; width: auto; }
@@ -1826,9 +1847,10 @@ th.sd-cpt-col.sorted { color: var(--amber); }
 .sd-pool-table { border-collapse: separate; border-spacing: 0; font-size: 14px; }
 .sd-pool-table :is(th, td) { text-align: right; font-variant-numeric: tabular-nums; }
 .sd-pool-table :is(th, td):first-child, .sd-pool-table th[data-col="note"], .sd-pool-table td.sd-notes-cell { text-align: left; }
-.sd-pool-table .player-cell { max-width: 250px; }
+.sd-pool-table .player-cell { max-width: none; } /* the name column grows with the tags beside the name (seat tag, padlock): no name is cut inside the panel (Round 2 fix 16) */
+.sd-pool-table :is(th, td).sd-fill { width: 100%; min-width: 0; padding: 0; }
 .sd-pool-table .note-preview { display: inline-block; max-width: 4em; overflow: hidden; text-overflow: ellipsis; vertical-align: middle; } /* the start of the note; its hover has it whole (Q1: the pool fits beside the builder) */
-.sd-pool-table tbody tr.lineup-row-locked { background: rgba(var(--accent-rgb), 0.1); }
+.sd-pool-table tbody tr.sd-row-seated { background: rgba(var(--accent-rgb), 0.1); } /* C20, C21: a man in the lineup, on either list, keeps this tint; a lock is the padlock beside his name (.sd-lock-ico), not a tint */
 .sd-pool-table tbody tr.lineup-row-excluded { color: var(--row-dim-text); opacity: 0.6; }
 .sd-pool-table td.sd-pool-empty { text-align: center; color: var(--text-muted); }
 /* The cells pack 5px a side, half the Rankings table's 10px (Q1: the pool beside the 600px builder fits 1920's column, and a 1366px
@@ -1836,9 +1858,12 @@ th.sd-cpt-col.sorted { color: var(--amber); }
 .sd-pool-table :is(th, td) { padding-left: 4px; padding-right: 4px; } /* 4px (set when the pool had Ceil columns), so 1920's column still holds the table */
 /* Every head after Player may break at its spaces ("CPT / proj", "Own / FLEX", "Min / %"; the sort arrow stays with its word), so each
    column is only as wide as its figures need (a 1px width asks for the narrowest that holds them); the head rows have room for two lines. */
-.sd-pool-table thead tr:not(.sd-own-total-row) th:not([data-col="player"]) { width: 1px; white-space: normal; line-height: 1.2; vertical-align: bottom; }
-/* "CPT Own" and "CPT Lev" stay on one line: the column takes the room the words need (width: 1px sizes it to its content). */
-.sd-pool-table thead tr:not(.sd-own-total-row) th[data-col="ownCpt"], .sd-pool-table thead tr:not(.sd-own-total-row) th[data-col="levCpt"] { white-space: nowrap; }
+.sd-pool-table thead tr:not(.sd-own-total-row) th:not([data-col="player"]) { width: 1px; white-space: nowrap; line-height: 1.2; vertical-align: bottom; }
+/* Heads never wrap (Round 2 fix 16, 19): "Min %", "Max %", "CPT Proj", "CPT Own", "Exclude" each hold one line, the column taking the room the word needs (width: 1px sizes it to its content); Player sits on the same line as the rest. */
+.sd-pool-table thead tr:not(.sd-own-total-row) th { vertical-align: bottom; white-space: nowrap; }
+.sd-pool-table thead tr:not(.sd-own-total-row) th.sd-fill { width: 100%; }
+.sd-pool-table th.sd-pool-ctl { color: var(--text-muted); font-weight: 600; } /* the control heads read as the Min % and Max % heads do */
+.sd-pool-table thead th.lineup-min-head, .sd-pool-table thead th.lineup-max-head { min-width: 57px; } /* classic's Min % / Max % column (3.6em box, 2px a side) */
 /* The ownership totals row under the head (Adam 2026-10-26 3:28 PM): sticky with the head, the sums in bold, the over / under line under each. */
 .sd-pool-table tr.sd-own-total-row th { cursor: default; color: var(--text); font-weight: 600; background: var(--bg-elevated); padding-top: 2px; padding-bottom: 2px; line-height: 1.25; vertical-align: middle; }
 .sd-pool-table tr.sd-own-total-row th.sd-cpt-col { color: var(--amber); }
@@ -1977,12 +2002,13 @@ select.opt-input { text-align: left; padding: 3px 4px; }
 .opt-toggle { white-space: nowrap; }
 /* Per-QB stack settings (lineup-qb-stacks.js): a list in the Stacking card, a full-width panel under the cards for each open QB. */
 .qbs-item { padding: 2px 0; }
-.qbs-toggle { display: flex; align-items: center; gap: 6px; width: 100%; min-height: 24px; padding: 0; border: 0; background: none; color: var(--text); font: inherit; font-size: var(--fs-sm); cursor: pointer; text-align: left; }
+.qbs-toggle { display: flex; align-items: center; gap: 6px; width: 100%; min-height: 24px; padding: 0; color: var(--text); font-size: var(--fs-sm); text-align: left; } /* A7: a row; the name opens his card, only the Set up button inside it opens the panel */
 .qbs-name { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
 .qbs-vs, .qbs-set { flex: 0 0 auto; font-size: var(--fs-sm); color: var(--text-dim); white-space: nowrap; }
 .qbs-set { margin-left: auto; }
 .qbs-set { color: var(--accent); }
-.qbs-toggle:focus-visible, .qbs-seg-btn:focus-visible, .qbs-link:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+button.qbs-set { border: 0; background: none; padding: 2px 4px; font: inherit; font-size: var(--fs-sm); cursor: pointer; }
+.qbs-set:focus-visible, .qbs-seg-btn:focus-visible, .qbs-link:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .qbs-sum { display: inline-block; margin: 0 0 2px; padding: 0 7px; border-radius: 999px; background: rgba(var(--accent-rgb), 0.16); border: 1px solid var(--accent); font-size: 12px; line-height: 16px; color: var(--text); white-space: nowrap; }
 .qbs-sum[hidden], .qbs-reset[hidden] { display: none; }
 .qbs-head { display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; margin-bottom: var(--sp-1); max-width: calc(2 * 440px + var(--sp-5)); }
@@ -2006,7 +2032,6 @@ select.opt-input { text-align: left; padding: 3px 4px; }
 .qbs-sal { min-width: 44px; }
 .qbs-proj { min-width: 30px; }
 .qbs-out { opacity: 0.55; }
-.qbs-toggle.qbs-dead { cursor: default; }
 .qbs-toggle .meta-pill { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .qbs-out .qbs-pname { flex: 0 1 auto; }
 .qbs-out .qbs-sal { margin-left: auto; }
@@ -2023,7 +2048,7 @@ select.opt-input { text-align: left; padding: 3px 4px; }
 .opt-results-head { display: flex; align-items: center; gap: var(--sp-3); flex-wrap: wrap; }
 .opt-note { font-size: var(--fs-sm); color: var(--text-dim); }
 .opt-bends { font-size: var(--fs-sm); color: var(--text-muted); }
-/* A card is at least 400px (row arithmetic under .opt-p): three across from a 1303px content width up. */
+/* A card is at least 440px (A5, 2026-11-03: the row ends in three labelled figures, Sal, Proj and Own): three across from a 1400px content width up. Showdown's cards too. */
 .opt-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(400px, 100%), 1fr)); gap: var(--sp-3); }
 .opt-card {
   container-type: inline-size; /* the short-name rule below reads the card's own width */
@@ -2047,15 +2072,33 @@ select.opt-input { text-align: left; padding: 3px 4px; }
 .opt-p-line1 { display: flex; align-items: center; gap: 4px; min-width: 0; }
 .opt-p-name { flex: 0 1 auto; min-width: 0; font-size: 14px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; }
 .opt-p-line2 { display: flex; align-items: center; gap: 6px; min-width: 0; color: var(--text-muted); }
-.opt-p-nums { flex: 0 0 58px; display: flex; flex-direction: column; align-items: flex-end; gap: 2px; font-variant-numeric: tabular-nums; }
-.opt-p-sal { font-size: 14px; font-weight: 700; }
-.opt-p-proj { color: var(--text-muted); }
+/* A5 (2026-11-03): the one lineup row ends in three labelled figures, Sal, Proj and Own (lineup-card.js cardPlayerRowHtml), right-aligned, a missing one a dash. */
+/* Fixed-width columns (a grid), so Sal, Proj and Own line up vertically from row to row (Round 2 fix 14); a blank Own is a dash that takes its column. */
+.opt-p-figs { flex: 0 0 auto; display: grid; grid-template-columns: 54px 38px 48px; align-items: start; column-gap: 8px; font-variant-numeric: tabular-nums; }
+.opt-p-fig { display: flex; flex-direction: column; align-items: flex-end; gap: 1px; line-height: 1.15; }
+.opt-p-fig i { font-style: normal; font-size: 10px; letter-spacing: 0.04em; color: var(--text-dim); }
+.opt-p-fig b { font-size: 13px; font-weight: 700; }
+.opt-p-proj b, .opt-p-own b { font-weight: 600; color: var(--text-muted); }
+/* A card narrower than 420px of content (four across on a 1920 page; the saved and the Showdown result cards): the row gives its name the whole width and the three figures go on a line of their
+   own under the matchup, label beside value, still in fixed columns, so nothing is cut and the rows stay one vertical column. */
+@container (max-width: 419px) {
+  .opt-card .opt-p, .saved-lineup-card .opt-p { display: grid; grid-template-columns: 30px 38px minmax(0, 1fr); grid-template-areas: "slot logo body" "slot logo figs"; align-items: center; column-gap: 8px; row-gap: 2px; padding-top: 4px; padding-bottom: 4px; }
+  .opt-card .opt-p-slot, .saved-lineup-card .opt-p-slot { grid-area: slot; }
+  .opt-card .opt-p > :is(.opt-p-logo, .player-badge), .saved-lineup-card .opt-p > :is(.opt-p-logo, .player-badge) { grid-area: logo; align-self: center; }
+  .opt-card .opt-p-body, .saved-lineup-card .opt-p-body { grid-area: body; }
+  .opt-card .opt-p-figs, .saved-lineup-card .opt-p-figs { grid-area: figs; grid-template-columns: 78px 66px 80px; column-gap: 4px; justify-self: start; }
+  .opt-card .opt-p-fig, .saved-lineup-card .opt-p-fig { flex-direction: row; align-items: baseline; gap: 4px; }
+}
+.opt-p-empty { padding: 2px 8px; color: var(--text-dim); }
+.opt-p-empty-text { font-style: italic; }
+.opt-p-missing { opacity: 0.65; }
+.opt-p-note { color: var(--danger); font-style: italic; font-size: 11px; }
 .player-badge { flex: 0 0 38px; width: 38px; height: 38px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 800; letter-spacing: 0.02em; text-shadow: 0 1px 1px rgba(0, 0, 0, 0.45); border: 1px solid rgba(255, 255, 255, 0.4); } /* the ring keeps a navy or black badge a disc on the dark card */
 .player-badge.player-badge-3 { font-size: 12px; letter-spacing: 0; }
-/* The short name ("M. Stafford") replaces the full one on a tagged row under 400px and on every row under 340px. */
+/* The short name ("M. Stafford") replaces the full one on a tagged row under 300px and on every row under 280px of card: a card under 420px gives the name its whole line (the figures sit on a line of their own), so the full name fits above that. */
 .nm-short { display: none; }
-@container (max-width: 399px) { .opt-p:has(.opt-p-tags) .nm-full { display: none; } .opt-p:has(.opt-p-tags) .nm-short { display: inline; } }
-@container (max-width: 339px) { .opt-p .nm-full { display: none; } .opt-p .nm-short { display: inline; } }
+@container (max-width: 299px) { .opt-p:has(.opt-p-tags) .nm-full { display: none; } .opt-p:has(.opt-p-tags) .nm-short { display: inline; } }
+@container (max-width: 279px) { .opt-p .nm-full { display: none; } .opt-p .nm-short { display: inline; } }
 .opt-p-tags { flex: 0 0 auto; display: inline-flex; align-items: center; gap: 3px; }
 .opt-p-tags .out-tag { margin-left: 0; }
 .opt-card-stack { margin: 0 auto 0 var(--sp-2); padding: 0 6px; border-radius: 4px; border: 1px solid var(--border); background: var(--bg-elevated-2); color: var(--text-muted); font-size: var(--fs-sm); font-weight: 700; line-height: 16px; cursor: default; }
@@ -2067,48 +2110,27 @@ select.opt-input { text-align: left; padding: 3px 4px; }
 .role-mini-2 { --c: var(--pos-dst); }
 .opt-p-line2 .role-tag, .opt-p-line1 .role-tag { margin-left: 0; }
 :root[data-theme="dark"] .role-tag { background: color-mix(in srgb, var(--c) 16%, var(--bg-elevated)); } /* opaque on dark: a tint over the wash could drop the tag text under 4.5:1; all six read 4.85 or better on it (a test) */
-.opt-card-totals { font-size: var(--fs-sm); color: var(--text-muted); border-top: 1px solid var(--border); padding-top: var(--sp-1); }
-.opt-nowrap { white-space: nowrap; } /* Adam 2026-10-18: a New card's totals line breaks between figures */
-.opt-nowrap:not(:last-child)::after { content: " \00b7"; } /* the separator ends the group before it, so a wrapped line never starts with a dot (as .saved-lineup-totals) */
-.opt-card-totals > .saved-lineup-totals-over::after { color: var(--text-muted); font-weight: 400; }
-/* Team rows round 2, Adam 2026-10-17: each row wears its team's colours (--tc, --tc2 alt, from team-palette.js) over the card. Also the Saved slot rows.
-   Round 6, Adam 2026-10-18 ("looks like 2012"): flat, one colour at --row-fill-a (:root; a team whose text could not hold 4.5:1 has its own --tca / --tcb),
-   the left bar 4px (--tcbl / --tcbd, barColour: the secondary when it shows, else a fallback); the row's text is --tct, picked per row and theme from --tctl / --tctd (solidRow). */
-.opt-p, .saved-lineup-slot-tc:not(.saved-lineup-slot-empty) { --tct: var(--tctl); --tcchip: var(--tcchipl); color: var(--tct); border: 1px solid rgba(0, 0, 0, 0.06); border-radius: 4px; box-shadow: inset 4px 0 0 var(--tcbl, var(--tc2)); background: color-mix(in srgb, var(--tclp, var(--tc)) var(--tca, var(--row-fill-a)), transparent); }
-.saved-lineup-slot-tc:not(.saved-lineup-slot-empty) { border-radius: 3px; }
-/* Dark theme: the fill --tcfp (L 28 to 42, so every row takes white text) at --tcb, the bar --tcbd (👁 2026-10-18 round 6). */
-:root[data-theme="dark"] .opt-p, :root[data-theme="dark"] .saved-lineup-slot-tc:not(.saved-lineup-slot-empty) { --tct: var(--tctd); --tcchip: var(--tcchipd); border-color: rgba(255, 255, 255, 0.08); box-shadow: inset 4px 0 0 var(--tcbd, var(--tc2)); background: color-mix(in srgb, var(--tcfp, var(--tc)) var(--tcb, var(--row-fill-a)), transparent); }
-/* Every child of a row reads in the row's full text colour (the second line is set apart by size and weight 400 only, 👁 2026-10-18 round 6); the role tags are neutral translucent chips; no logo halo (flat). */
-.opt-p-slot, .opt-p-line2, .opt-p-nums, .opt-p-proj, .saved-lineup-slot-tc:not(.saved-lineup-slot-empty) :is(.saved-lineup-slot-pos, .saved-lineup-slot-salary) { color: var(--tct); }
-.opt-p-line2, .opt-p-proj { font-weight: 400; }
-.opt-p-slot, .opt-p-sal, .saved-lineup-slot-tc .saved-lineup-slot-pos { font-weight: 600; }
-.opt-p .role-tag, .saved-lineup-slot-tc .role-tag { border: 0; border-radius: 3px; background: var(--tcchip); color: var(--tct); padding: 2px 7px; font-size: 12px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; line-height: 14px; } /* --tcchip: the row's solidRow choice per theme (🔵 2026-10-18 series review) */
-.opt-p .out-tag, .saved-lineup-slot-tc .out-tag { font-weight: 600; border-radius: 3px; }
-.opt-p .opt-pick:hover, .opt-p .opt-pick.opt-pick-on { color: var(--tct); text-decoration: underline; }
-.opt-p .opt-pick.opt-pick-on { font-weight: 600; text-decoration-thickness: 2px; }
-.opt-p .opt-pick:focus-visible { outline-color: var(--tct); }
-.opt-p > img, .saved-lineup-slot-tc > img { filter: none; }
-.opt-p { padding: 2px 0 2px 8px; }
-.saved-lineup-slot-tc { padding: 0 4px 0 8px; border: 1px solid transparent; } /* the bar's 4px and air; the empty rows keep the air and the 1px so the labels line up */
+/* Team rows round 2, Adam 2026-10-17: each row wears its team's colours (--tc, --tc2 alt, from team-palette.js) over the card. Also the Saved rows. Round 6's flat solid fill is replaced by A20 below. */
+/* A20 (Adam, 2:07 PM EST 2026-11-03): the lineup rows (the builder's slots, the new cards, the saved cards) carry the full team treatment at the strength of NBA's .crow.tm:
+   a gradient from the team's colour (--tc, the slate palette's, team-palette.js) at 8% through 3.5% to its alt colour (--tc2) at 2.5%, and a 3px stripe of the colour. The list's rows wear a
+   much lighter version of the same (.lineup-row, .sd-pool-table), so the team shows there only as a small flare. Text stays the theme's own. */
+.opt-p { padding: 2px 8px 2px 11px; border-radius: 4px; background-image: linear-gradient(90deg, color-mix(in srgb, var(--tcv) 8%, transparent) 0, color-mix(in srgb, var(--tcv) 3.5%, transparent) 32%, color-mix(in srgb, var(--tc2) 2.5%, transparent) 100%); box-shadow: inset 3px 0 var(--tcv); }
+:root[data-theme="light"] .opt-p { background-image: linear-gradient(90deg, color-mix(in srgb, var(--tc) 14%, transparent) 0, color-mix(in srgb, var(--tc) 6%, transparent) 32%, color-mix(in srgb, var(--tc2) 4%, transparent) 100%); }
+.opt-p-slot, .opt-p-line2 { color: var(--text-muted); }
+.opt-p-line2 { font-weight: 400; }
+.opt-p-slot { font-weight: 600; }
+.opt-p .out-tag { font-weight: 600; border-radius: 3px; }
+.opt-p > img { filter: none; }
 /* Team rows round 3, Adam 2026-10-17: the team logo fills the badge's 38px box (same size, so the fixed-parts figure above holds); a Saved row's is 16px, the row's text height. */
 .opt-p-logo { flex: 0 0 38px; width: 38px; height: 38px; box-sizing: border-box; padding: 2px; object-fit: contain; display: block; }
-.saved-lineup-slot .player-logo { flex: 0 0 16px; width: 16px; height: 16px; object-fit: contain; align-self: center; }
-.opt-p .team-chip-plain, .saved-lineup-slot-tc .team-chip-plain { background: var(--tcchip); color: var(--tct); text-shadow: none; }
-.opt-p .team-chip-mini, .saved-lineup-slot .team-chip-mini { flex: 0 0 auto; }
-/* A Saved row is one line of 360px or so, too narrow for the matchup pill beside the name: the pill takes a second line under the name, as plain text. */
-.saved-lineup-slot { flex-wrap: wrap; }
-.saved-lineup-slot .meta-pill { order: 9; flex: 0 0 calc(100% - 42px); margin-left: 42px; padding: 0; border: 0; background: none; font-size: 11px; line-height: 13px; color: inherit; opacity: 0.8; overflow: hidden; text-overflow: ellipsis; }
-.opt-p .meta-pill { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; background: none; color: var(--tct); border-color: var(--tcchip); }
-/* Dark theme: the Saved row's 16px logo carries no filter; the pale plate set below (both themes) is what lifts a dark mark. */
-:root[data-theme="dark"] .saved-lineup-slot .player-logo { filter: none; }
-/* 👁 2026-10-18 round 6, Adam 2026-10-18 9:41 PM: in both themes every team-row logo sits on a pale round plate, so a mark the colour of its row (Dallas's navy star on the navy row) still reads; the Saved row's 16px logo keeps its size, the plate hangs 2px around it.
-   Covers .opt-p-logo (the card rows and the classic and Showdown slots) and .saved-lineup-slot .player-logo (the classic and Showdown saved rows). */
-:is(.opt-p-logo, .saved-lineup-slot .player-logo) { background: rgba(255, 255, 255, 0.9); border-radius: 50%; padding: 2px; }
-.saved-lineup-slot .player-logo { box-sizing: content-box; margin: -2px; }
+.opt-p .team-chip-mini { flex: 0 0 auto; }
+.opt-p .meta-pill { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+/* 👁 2026-10-18 round 6, Adam 2026-10-18 9:41 PM: in both themes every team-row logo sits on a pale round plate, so a mark the colour of its row still reads. */
+.opt-p-logo { background: rgba(255, 255, 255, 0.9); border-radius: 50%; padding: 2px; }
 /* 👁 2026-10-25 (team chip removed from rows with a logo, so the logo alone names the team): player-row.js logoToneClass flags a team whose dark-theme art is extreme (teams-data.js logoTone).
    A light mark (the Jets' white one) takes the team's own colour for its plate instead of the pale one; a dark mark (the Panthers') on a pool or list row gets a faint light edge. */
-:is(.opt-p-logo, .saved-lineup-slot .player-logo).logo-tone-light { background: var(--tc, #333333); }
-.player-logo.logo-tone-dark:not(.saved-lineup-slot .player-logo) { filter: drop-shadow(0 0 1px rgba(255, 255, 255, 0.9)) drop-shadow(0 0 1px rgba(255, 255, 255, 0.6)); }
+.opt-p-logo.logo-tone-light { background: var(--tc, #333333); }
+.player-logo.logo-tone-dark { filter: drop-shadow(0 0 1px rgba(255, 255, 255, 0.9)) drop-shadow(0 0 1px rgba(255, 255, 255, 0.6)); }
 /* Optimizer-first step 5 (Adam 2026-10-18: "formatted the same way as the smaller ones ... just bigger"; D54, D70): the builder's nine slots draw the card row at 64px
    (the cards' 50px): logo 48px, name 16px, line 2 13px, figures 15px. A filled slot (.lineup-slot-card) is just that row (no Clear button since 2026-10-29: a click on it takes
    the man out); an Empty or "Not on this slate" slot keeps its label and the same 64px, so the column does not jump. Scoped to .lineup-slot-big: classic's nine slots and, since D81, Showdown's six.
@@ -2125,8 +2147,8 @@ select.opt-input { text-align: left; padding: 3px 4px; }
 .lineup-slots .opt-p-big .opt-p-name { font-size: 16px; }
 .lineup-slots .opt-p-big .opt-p-line2, .lineup-slots .opt-p-big .meta-pill { font-size: 13px; }
 .lineup-slots .opt-p-big .opt-p-line2 { gap: 4px; } /* the matchup pill beside "Own 12.3%" needs about 256px of the body: the numbers column (72 to 62px) and the gaps (10 to 8px) give it back */
-.lineup-slots .opt-p-big .opt-p-nums { flex-basis: 62px; gap: 3px; font-size: 15px; font-variant-numeric: tabular-nums; }
-.lineup-slots .opt-p-big :is(.opt-p-sal, .opt-p-proj) { font-size: 15px; }
+.lineup-slots .opt-p-big .opt-p-figs { gap: 10px; }
+.lineup-slots .opt-p-big .opt-p-fig b { font-size: 14px; }
 @media (max-width: 700px) { .lineup-slots .opt-p.opt-p-big { gap: 6px; padding-left: 8px; } .lineup-slots .opt-p-big .opt-p-slot { width: 32px; flex-basis: 32px; } }
 /* Saved (or the same nine players as a saved lineup): the Save button becomes a disabled "Saved ✓". */
 .opt-card.opt-card-saved { border-color: rgba(var(--success-rgb), 0.6); }
@@ -2207,17 +2229,20 @@ td.opt-exp-opp { color: var(--text-muted); } /* the cells only: the Matchup head
 .opt-pick:hover { color: var(--accent); text-decoration: underline; }
 .opt-pick:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; border-radius: 2px; }
 .opt-pick.opt-pick-on { color: var(--accent-text); }
+/* A7 (2026-11-03): in an exposure row the name opens his player card and the only-lineups-with filter is this small separate button beside it. */
+.opt-exp-name .opt-pick.opt-filter-btn { display: inline-block; flex: 0 0 auto; margin-left: 6px; padding: 0 6px; font-size: 11px; font-weight: 600; line-height: 16px; border: 1px solid var(--border); border-radius: 4px; background: var(--bg-elevated-2); color: var(--text-muted); text-decoration: none; }
+.opt-exp-name .opt-pick.opt-filter-btn:hover { border-color: var(--accent); color: var(--text); text-decoration: none; }
+.opt-exp-name .opt-pick.opt-filter-btn.opt-pick-on { background: var(--accent); border-color: var(--accent); color: #ffffff; }
 .opt-must-bar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); padding: var(--sp-2) var(--sp-3); background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 8px; }
 .opt-must-label { font-size: var(--fs-sm); font-weight: 600; color: var(--text-muted); }
 .opt-must-count { margin-left: auto; }
 
 /* ---------- Showdown Optimizer rows (Adam 2026-10-18 9:09 PM: "does not use the team colors that we decided on") ----------
    The six slots are classic's big card row (D81, lineup-slots.js; its rules are at "Optimizer-first step 5" above),
-   in the palette of the game's two teams, and none of the rules below restyle them. The saved rows are classic's .saved-lineup-slot-tc as is, in the same palette.
+   in the palette of the game's two teams, and none of the rules below restyle them. The saved rows are the same card row, in the same palette.
    The Captain keeps its gold: the CPT tag is gold on the team colour (and the empty slot a gold edge, .sd-cpt-slot above). */
-.sd-cpt-slot .opt-p-slot, .saved-lineup-slot.saved-lineup-slot-tc.sd-saved-cpt .saved-lineup-slot-pos { background: var(--amber); color: var(--bg-elevated); border-radius: 3px; text-align: center; font-weight: 700; letter-spacing: 0.04em; }
+.sd-cpt-slot .opt-p-slot { background: var(--amber); color: var(--bg-elevated); border-radius: 3px; text-align: center; font-weight: 700; letter-spacing: 0.04em; }
 .sd-cpt-slot .opt-p-slot { padding: 1px 0; }
-.saved-lineup-slot-tc .sd-pos, .lineup-slots .opt-p .sd-pos { background: var(--tcchip); color: var(--tct); text-shadow: none; } /* the slots' position chip wears the team chip's colours (D81) */
 
 /* The Showdown controls in two rows of the column's width: Build and Clear all, then Save as and Save lineup; every control 32px tall, the buttons 96px so their right edges line up. */
 .lineup-controls.sd-controls { flex-direction: column; align-items: stretch; gap: var(--sp-2); }
@@ -2430,14 +2455,11 @@ td.opt-exp-opp { color: var(--text-muted); } /* the cells only: the Matchup head
 .lineup-row-btn.sd-row-ico { min-width: 23px; width: 23px; padding: 3px 0; margin-right: 2px; display: inline-flex; align-items: center; justify-content: center; font-size: 15px; line-height: 1; vertical-align: middle; }
 .lineup-row-btn.sd-row-in { font-size: 12px; font-weight: 700; }
 .lineup-row-btn.sd-row-in.active { background: var(--amber); border-color: var(--amber); color: #1b1b1b; }
-/* The pool's row controls after Notes (pool.js): In, then a FLEX group and a Captain group, each under one spanning head ("FLEX";
-   "Captain" in gold) over its sub-heads Min %, Max %, Lock, Excl and Add, each control in its own cell. */
-.sd-pool-table th.sd-pool-in-head, .sd-pool-table td.sd-pool-in { text-align: center; padding-left: 4px; padding-right: 2px; }
-.sd-pool-table th.sd-pool-group { text-align: center; cursor: default; color: var(--text); padding-top: 4px; padding-bottom: 2px; }
-.sd-pool-table th.sd-pool-group.sd-cpt-col { color: var(--amber); }
-.sd-pool-table th.sd-pool-sub { text-align: center; cursor: default; padding: 2px 2px 4px; }
+/* The pool's row controls (pool.js, A1: after Own and Val in Adam's column order, columns.js): thumbs, In, Lock, Excl, Min %, Max % (the list's seat) and, on the FLEX list, the Captain's own lock and exclude, each in its own cell. */
+.sd-pool-table th.sd-pool-ctl, .sd-pool-table td.sd-pool-in { text-align: center; cursor: default; padding-left: 2px; padding-right: 2px; }
 .sd-pool-table :is(th.lineup-min-head, th.lineup-max-head, td.lineup-min-cell, td.lineup-max-cell) { text-align: center; padding-left: 2px; padding-right: 2px; cursor: default; }
-.sd-pool-table td.sd-pool-btn { text-align: center; padding-left: 1px; padding-right: 1px; }
+.sd-pool-table td.sd-pool-btn { text-align: center; padding-left: 6px; padding-right: 6px; }
+.sd-pool-table th.sd-pool-ctl-lock, .sd-pool-table th.sd-pool-ctl-exclude { padding-left: 8px; padding-right: 8px; } /* "Lock" and "Exclude" get room beside each other (Round 2 fix 16) */
 /* A click on a pool row picks or drops the man (pool.js poolPickAction; Adam 4:45 PM 2026-10-29): the row is a pointer and a keyboard stop. */
 .sd-pool-table tbody tr.sd-pool-pick { cursor: pointer; }
 .sd-pool-table tbody tr.sd-pool-pick:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
@@ -2447,7 +2469,7 @@ td.opt-exp-opp { color: var(--text-muted); } /* the cells only: the Matchup head
 .lineup-slots .sd-slot-removable { cursor: pointer; }
 .lineup-slots .sd-slot-removable:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .lineup-slots .sd-slot-removable.lineup-slot-card > .opt-p.opt-p-big { padding-right: var(--sp-3); }
-.sd-pool-table .opt-input.lineup-min-input, .sd-pool-table .opt-input.lineup-max-input { width: 2.2em; padding-left: 2px; padding-right: 2px; } /* three digits; narrower so the pool fits beside the builder at 1920 (Q1) */
+.sd-pool-table .opt-input.lineup-min-input, .sd-pool-table .opt-input.lineup-max-input { width: 3.6em; padding-left: 4px; padding-right: 4px; } /* classic's box: "33.5" fits unclipped (Round 2 fix 16) */
 .sd-pool-table .lineup-row-btn.sd-row-ico { margin-right: 0; }
 /* Adam 2026-10-26 3:59 PM ("i like the list to the side of the optimizer not beneath"): the player pool is the right column beside the
    builder, starting level with it (the band's head sits above both, lineup.js) and taking the rest of the width; a table wider than
@@ -2647,17 +2669,27 @@ td.opt-exp-opp { color: var(--text-muted); } /* the cells only: the Matchup head
    and the public site is baked from this screen). Placed last so these win over the rules they adjust at equal specificity. ---------- */
 /* The pool beside the builder is narrower than its table, so it scrolls sideways inside its panel; the Player column stays at the left
    (opaque, so the figures pass under it; a hovered, placed or locked row keeps its tint there). */
-.sd-pool-table tr:not(.sd-pool-subhead) > :is(th, td):first-child:not([colspan]) { position: sticky; left: 0; z-index: 1; background: var(--bg); }
-.sd-pool-table thead th:first-child { background: var(--bg-elevated-2); z-index: 3; }
-.sd-pool-table thead tr.sd-own-total-row th:first-child { background: var(--bg-elevated); }
-.sd-pool-table tbody tr.lineup-row-locked:not(.sd-pool-subhead) > td:first-child:not([colspan]) { background: color-mix(in srgb, var(--accent) 10%, var(--bg)); }
-/* 👁 V6: on the dark theme a placed or locked row's tint is 18%, so a placed man shows without reading his greyed button. */
-[data-theme="dark"] .sd-pool-table tbody tr.lineup-row-locked { background: rgba(var(--accent-rgb), 0.18); }
-[data-theme="dark"] .sd-pool-table tbody tr.lineup-row-locked:not(.sd-pool-subhead) > td:first-child:not([colspan]) { background: color-mix(in srgb, var(--accent) 18%, var(--bg)); }
+.sd-pool-table tr > :is(th, td):first-child:not([colspan]) { position: sticky; left: 0; z-index: 1; background: var(--bg); }
+.sd-pool-table thead tr > th:first-child:not([colspan]) { background: var(--bg-elevated-2); z-index: 3; } /* the head's first cell is the head band's own colour, not the page's black (Round 2 fix 20; the rule above names the body's first column) */
+.sd-pool-table thead tr.sd-own-total-row > th:first-child:not([colspan]) { background: var(--bg-elevated); }
+.sd-pool-table tbody tr.sd-row-seated > td:first-child:not([colspan]) { background: color-mix(in srgb, var(--accent) 10%, var(--bg)); }
+/* 👁 V6: on the dark theme a seated row's tint is 18%, so a placed man shows without reading his greyed button. */
+[data-theme="dark"] .sd-pool-table tbody tr.sd-row-seated { background: rgba(var(--accent-rgb), 0.18); }
+[data-theme="dark"] .sd-pool-table tbody tr.sd-row-seated > td:first-child:not([colspan]) { background: color-mix(in srgb, var(--accent) 18%, var(--bg)); }
+/* A20: the Showdown list's rows carry the same much lighter team flare as classic's: a 2px stripe and a 3% wash over the name cell's first 120px (the first cell is sticky and opaque, so the flare sits on it). */
+.sd-pool-table tbody tr.sd-pool-pick > td:first-child:not([colspan]) { background-image: linear-gradient(90deg, color-mix(in srgb, var(--tcv) 3%, transparent) 0, transparent 120px); box-shadow: inset 2px 0 color-mix(in srgb, var(--tcv) 45%, transparent); }
+/* C20 and C21: the seat tag (CPT in gold, FLEX) beside the name of a man in the lineup, and the padlock of a locked man. */
+.sd-seat { display: inline-flex; align-items: center; height: 18px; padding: 0 5px; border: 1px solid var(--border); border-radius: 4px; font-size: 11px; font-weight: 700; letter-spacing: 0.03em; color: var(--text-muted); }
+.sd-seat.sd-seat-cpt { color: var(--amber); border-color: var(--amber); }
+.sd-lock-ico { display: inline-flex; align-items: center; gap: 2px; color: var(--accent-text); }
+.sd-lock-seat { font-size: 9px; font-weight: 700; letter-spacing: 0.03em; color: var(--amber); } /* C21: the padlock of a Captain lock says CPT beside it */
+.sd-pool-table .sd-lock-ico svg { width: 13px; height: 13px; }
+.sd-pool-table td.lineup-thumbs-cell { text-align: center; padding-left: 2px; padding-right: 2px; }
+.sd-pool-table td.sd-pool-capt { white-space: nowrap; }
 /* 👁 V3: in the 600px builder column the Pool and Build boxes stack, and "Build by" stays on one line with its chips. */
 @media (min-width: 1101px) { .sd-pool-layout .opt-panel.sd-opt-panel .opt-groups.opt-groups-cash { grid-template-columns: minmax(0, 1fr); } }
 .sd-opt-panel .opt-set-label { white-space: nowrap; }
-.sd-pool-table tbody tr:hover:not(.sd-pool-subhead) > td:first-child:not([colspan]) { background: var(--row-hover); }
+.sd-pool-table tbody tr:hover > td:first-child:not([colspan]) { background: var(--row-hover); }
 @media (max-width: 700px) {
   /* The gold band wraps instead of pushing the page wider than the phone (it measured 805px at 375). */
   .sd-band-text { white-space: normal; font-size: var(--fs-md); }
@@ -2672,8 +2704,8 @@ td.opt-exp-opp { color: var(--text-muted); } /* the cells only: the Matchup head
   /* The builder's slots (classic and Showdown share them): a smaller logo and figures, so the name and position keep their letters. */
   .lineup-slots .opt-p-big :is(.opt-p-logo, .player-badge) { flex-basis: 32px; width: 32px; height: 32px; }
   .lineup-slots .opt-p-big .opt-p-name { font-size: 14px; }
-  .lineup-slots .opt-p-big .opt-p-nums { flex-basis: 58px; }
-  .lineup-slots .opt-p-big :is(.opt-p-sal, .opt-p-proj) { font-size: 13px; }
+  .lineup-slots .opt-p-big .opt-p-figs { gap: 6px; }
+  .lineup-slots .opt-p-big .opt-p-fig b { font-size: 12px; }
 }
 /* Both slates' filter bars under 600px (Phase B item 6): each chip group is one line that scrolls sideways inside the bar, and the
    Showdown bar's salary and points boxes another; the rest wraps under them. */
@@ -2682,5 +2714,5 @@ td.opt-exp-opp { color: var(--text-muted); } /* the cells only: the Matchup head
   .sd-filter-chips > .chip-group { flex: 0 0 auto; flex-wrap: nowrap; }
   :is(#pos-chips, #team-chips, .sd-filter-chips .chip-group, .sd-filter-inputs) > * { flex: 0 0 auto; }
   .filter-salary input { width: 64px; }
-  .filter-search input { width: 130px; }
+  .filter-search input { width: 150px; }
 }

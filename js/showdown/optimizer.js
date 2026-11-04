@@ -6,7 +6,7 @@
 // in its panel and calls wireOptimizer after; the player pool (pool.js) asks poolControls for each row's boxes and buttons.
 // Live app only (as the meter): the published site and sample mode have no generate route, so nothing here is drawn there.
 import { isSampleMode, sampleRefusal } from "../api.js";
-import { bumpProjHtml, wireBumpButtons, bumpPatch } from "../bump-control.js"; // Adam 2026-10-22: ± bump on the pool rows' projection
+import { bumpControlHtml, bumpFigureOnlyHtml, wireBumpButtons, bumpPatch } from "../bump-control.js"; // Adam 2026-10-22: ± bump on the pool rows' projection (its own column since A1)
 import { onSitePage } from "../tabs.js"; // the one is-site check
 import { parsePct, uniqueSavedName, duplicateSaveStatus } from "../lineup.js";
 import { newBuildId, batchBuild } from "../lineup-builds.js";
@@ -366,14 +366,19 @@ export function optimizerSavedFilter(board) {
 
 const SITE_BUMP_TITLE = "The ± bump runs in the app";
 
-/** The ± pair in a pool projection cell (`isCpt`: the Captain tab's CPT proj cell): live in the app; on the public site, where the PUT has no
+/** The ± pair in the pool's thumbs column (`isCpt`: the Captain list's): live in the app; on the public site, where the PUT has no
  *  stand-in (supports("overrides") is false), the pair keeps its place disabled with a plain sentence (D71, as classic's lineup-view.js
- *  draws it with no bump writer); null off the live screen (sample mode), where the pool draws its own figure. */
-export function poolBumpHtml(row, proj, isCpt, canSave = supports("overrides")) {
-  if (!optimizerLive()) return null;
+ *  draws it with no bump writer); "" off the live screen (sample mode). */
+export function poolThumbsHtml(row, isCpt, canSave = supports("overrides")) {
+  if (!optimizerLive()) return "";
   const kind = isCpt ? "cpt" : null;
-  if (canSave) return bumpProjHtml(row, proj, { kind });
-  return bumpProjHtml(row, proj, { enabled: false, kind, title: SITE_BUMP_TITLE });
+  return canSave ? bumpControlHtml(row, { kind }) : bumpControlHtml(row, { enabled: false, kind, title: SITE_BUMP_TITLE });
+}
+
+/** The projection figure of a pool row with the bump's tint and hover (the thumbs have their own column, A1); null off the live screen, where the pool draws its own figure. */
+export function poolBumpHtml(row, proj, isCpt) {
+  if (!optimizerLive()) return null;
+  return bumpFigureOnlyHtml(row, proj, { kind: isCpt ? "cpt" : null });
 }
 
 /**
@@ -383,13 +388,17 @@ export function poolBumpHtml(row, proj, isCpt, canSave = supports("overrides")) 
  */
 export const poolControls = {
   live: () => optimizerLive(),
+  mode: () => opt.ks.mode, // GPP or Cash: the Columns list is remembered per mode (A17)
+  // The Columns keys the pool can draw beyond its figures (columns.js SHOWDOWN_COLUMNS): none off the live app; Min % and Max % in GPP; the Captain's own lock and exclude on the FLEX list (C21).
+  available: (tab) => (optimizerLive() ? ["thumbs", "in", "lock", "exclude", ...(opt.ks.mode === "gpp" ? ["min_pct", "max_pct", ...(tab === "flex" ? ["cpt_min_pct", "cpt_max_pct"] : [])] : []), ...(tab === "flex" ? ["captain"] : [])] : []),
   rows: (all, shown) => (optimizerLive() ? V.poolRows(all, shown, modeState(), "All") : shown), // locked, included and excluded men stay listed so they can be undone; the filter bar's position chip applies after (pool.js)
-  capHeads: (kind) => (optimizerLive() ? V.poolHeadCells(kind, opt.ks.mode, { gold: kind === "cpt" }) : ""),
-  capCells: (row, kind) => (optimizerLive() ? V.poolCapCells(row, kind, modeState(), opt.ks.mode, parsePct) : ""),
+  capCell: (row, kind, which) => (optimizerLive() ? V.poolCapCell(row, kind, which, modeState(), opt.ks.mode, parsePct) : ""),
   button: (row, kind, action) => (optimizerLive() ? V.poolButtonHtml(row, kind, action, modeState()) : ""), // "lock", "include" (In: the same for both roles) or "exclude"
-  // Excluded from every lineup dims the row; a lock at either role tints it (a Captain-only exclude leaves the row as it is: he can still be FLEX).
-  rowClass: (row) => (optimizerLive() ? V.poolRowClass(row, "flex", modeState()) || (S.isLocked(modeState(), row, "cpt") ? " lineup-row-locked" : "") : ""),
-  projCell: (row, proj, isCpt = false) => poolBumpHtml(row, proj, isCpt), // the ± bump (Adam 2026-10-22) before the Proj figure (FLEX tab) or the CPT proj figure (Captain tab); one pair per man moves both his figures
+  // Excluded from every lineup dims the row (a Captain-only exclude leaves the row as it is: he can still be FLEX); a lock is the icon beside the name, not a tint (C20).
+  rowClass: (row, tab) => (optimizerLive() ? V.poolRowClass(row, tab === "cpt" ? "cpt" : "flex", modeState()) : ""), // C21: a man excluded as Captain dims on the Captain list as a FLEX-excluded man does on FLEX
+  lockIcon: (row) => (optimizerLive() ? V.poolLockIconHtml(row, modeState()) : ""),
+  thumbs: (row, isCpt = false) => poolThumbsHtml(row, isCpt), // the ± pair (Adam 2026-10-22), in its own column; one pair per man moves both his figures
+  projCell: (row, proj, isCpt = false) => poolBumpHtml(row, proj, isCpt), // the Proj figure (FLEX tab) or the CPT proj figure (Captain tab) with the bump's tint
   readTab: () => S.readPoolTab(storage), // the pool's Captain | FLEX tab, kept in the browser on the site too (D71)
   writeTab: (tab) => S.writePoolTab(storage, tab),
 };

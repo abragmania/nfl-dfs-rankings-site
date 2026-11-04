@@ -9,7 +9,10 @@
 // count both read, so the two always agree. lineup.js owns the lineup and draws this pool in its panel; this file draws, sorts and wires.
 import { escapeHtml, pct1 } from "../format.js";
 import { rowMessageHtml, messageIsFor } from "../row-message.js";
-import { shortName, cardNameHtml } from "../lineup-card.js"; // the cards' one name shortener (👁 V-N1: a tagged row's name; 👁 V1: every name on a phone)
+import { shortName, cardNameHtml, teamColours, teamColourStyle } from "../lineup-card.js"; // the cards' one name shortener (👁 V-N1: a tagged row's name; 👁 V1: every name on a phone)
+import { showdownPalette } from "./lineup-look.js";
+import { bareOppHtml } from "../player-row.js"; // D80 as amended: the second line of a pool row is the bare opponent code
+import { SHOWDOWN_COLUMNS, loadColumns, shownKeys, columnsButtonHtml, wireColumns } from "../columns.js"; // A17
 import { SD_COLUMNS, showdownHeadCellsHtml, showdownRowHtml, shownRows, sdLine, gradedValueHtml } from "./table.js";
 import { filterRows, sortRows, sortValue, defaultDirFor, joinWords } from "./board-shape.js";
 import { playerFigures } from "./lineup-meter.js";
@@ -36,8 +39,8 @@ export function resetPoolState() {
   resetPoolFilters();
 }
 
-// The Optimizer's additions (optimizer.js poolControls): {live(), rows(all, shown), capHeads(kind), capCells(row, kind),
-// button(row, kind, action) ("lock", "include" or "exclude"), rowClass(row), projCell(row, proj, isCpt), readTab(), writeTab(tab)},
+// The Optimizer's additions (optimizer.js poolControls): {live(), mode(), available(tab), rows(all, shown), capCell(row, kind, which) (Min % or Max %),
+// button(row, kind, action) ("lock", "include" or "exclude"), lockIcon(row), thumbs(row, isCpt), rowClass(row, tab), projCell(row, proj, isCpt), readTab(), writeTab(tab)},
 // each optional; none set (or not live) leaves the pool its own rows with no controls.
 let controls = null;
 export function setPoolControls(next) {
@@ -49,14 +52,14 @@ export function setPoolControls(next) {
 /** The two lists of the pool, Captain and FLEX (Adam: "a CPTN list and a FLEX list ... separated with a tab thingy"). */
 export const POOL_TABS = Object.freeze([Object.freeze({ key: "cpt", label: "Captain" }), Object.freeze({ key: "flex", label: "FLEX" })]);
 
-// The columns each tab draws, by SD_COLUMNS key: FLEX the FLEX-seat figures, Captain the Captain-seat ones (one Val for both: the
-// Captain's price and points are both 1.5x, so his value is the FLEX value, table.js).
-const TAB_COLUMNS = Object.freeze({
-  flex: new Set(["player", "salary", "proj", "value", "ownFlex", "levFlex", "note"]),
-  cpt: new Set(["player", "cptSalary", "cptProj", "value", "ownCpt", "levCpt", "note"]),
+// The figure each tab draws for the Columns list's Sal, Proj and Own, by SD_COLUMNS key: FLEX the FLEX-seat figures, Captain the Captain-seat ones
+// (one Val for both: the Captain's price and points are both 1.5x, so his value is the FLEX value, table.js).
+const TAB_FIGURES = Object.freeze({
+  flex: Object.freeze({ salary: "salary", proj: "proj", own: "ownFlex" }),
+  cpt: Object.freeze({ salary: "cptSalary", proj: "cptProj", own: "ownCpt" }),
 });
 // A sort on one tab's column moves to the other tab's twin of it when the tab changes, so "highest projection first" survives the switch.
-const TWIN_COLUMNS = Object.freeze({ salary: "cptSalary", proj: "cptProj", ownFlex: "ownCpt", levFlex: "levCpt" });
+const TWIN_COLUMNS = Object.freeze({ salary: "cptSalary", proj: "cptProj", ownFlex: "ownCpt" });
 const twinOf = (col) => TWIN_COLUMNS[col] ?? Object.keys(TWIN_COLUMNS).find((k) => TWIN_COLUMNS[k] === col) ?? col;
 
 /** The tab on screen: "flex" unless the browser remembered "cpt" (controls.readTab; the choice never goes to the server). */
@@ -99,7 +102,7 @@ const PICK_TITLES = Object.freeze({
 
 /** A click inside one of these is that control's own (the ± bump, a Min / Max box, lock, In, exclude, the name's card popup) or the padding
  *  around it, not a pick (lineup.js passes it to the shared pick-rows.js wirePickRows). */
-export const POOL_PICK_SKIP = "button, a, input, select, textarea, label, .player-name, .bump-ctl, .sd-pool-btn, .sd-pool-in, .lineup-min-cell, .lineup-max-cell";
+export const POOL_PICK_SKIP = "button, a, input, select, textarea, label, .player-name, .bump-ctl, .lineup-thumbs-cell, .sd-pool-btn, .sd-pool-in, .lineup-min-cell, .lineup-max-cell";
 
 const num = (v) => (typeof v === "number" && Number.isFinite(v) ? v : null);
 
@@ -220,69 +223,93 @@ function ownTotalCellHtml(s, role, seats, gold) {
 }
 
 /** The totals row under the head: the label in the Player column, the two sums under Own FLEX and Own CPT, the rest blank. */
-export function ownTotalsRowHtml(t, cols, tailCount = 0) {
+export function ownTotalsRowHtml(t, cols) {
   const cells = cols.map((c) => {
     if (c.key === "player") return `<th class="sd-own-total-label">${escapeHtml(ownTotalsLabel(t))}</th>`;
     if (c.key === "ownFlex") return ownTotalCellHtml(t.flex, "FLEX", "five FLEX seats", false);
     if (c.key === "ownCpt") return ownTotalCellHtml(t.cpt, "Captain", "one Captain seat", true);
     return "<th></th>";
   }).join("");
-  return `<tr class="sd-own-total-row">${cells}${tailCount ? `<th colspan="${tailCount}"></th>` : ""}</tr>`;
+  return `<tr class="sd-own-total-row">${cells}${FILL_HEAD}</tr>`;
 }
+
+/** The pool's last column (style.css .sd-fill): empty, it takes the width the other columns leave, so the columns pack beside the names, the head band reaches the panel's edge and the panel is one width on both lists. */
+const FILL_HEAD = `<th class="sd-fill"></th>`;
 
 // ---------- the markup ----------
 
 const live = () => controls?.live?.() === true;
 
-/** The pool's columns on `tab`: the Rankings tab's columns of that seat (TAB_COLUMNS). */
+// ---------- the columns: Adam's own ticks and order (A17, columns.js), the standard's order until he changes it (A1) ----------
+
+/** The row controls, as head cells: thumbs, In (where a seat choice exists, D4), Lock, Exclude, Min %, Max %, and on the FLEX list the Captain's own lock and exclude (C21). */
+const CONTROL_COLUMNS = Object.freeze({
+  thumbs: { key: "thumbs", ctl: true, label: "Thumbs", title: "Thumbs: raise or lower his projection 5% a press" },
+  in: { key: "in", ctl: true, label: "In", title: "In: in every lineup at Captain or FLEX, the optimizer picks the role" },
+  lock: { key: "lock", ctl: true, label: "Lock", title: "Lock him in the seat of this list in every lineup" },
+  exclude: { key: "exclude", ctl: true, label: "Exclude", title: "Exclude him from every lineup (on the Captain list, as Captain only)" },
+  min_pct: { key: "min_pct", ctl: true, label: "Min %", title: "Fewest of the new lineups he must be in, in this list's seat; blank = none" },
+  max_pct: { key: "max_pct", ctl: true, label: "Max %", title: "Most of the new lineups he may be in, in this list's seat; blank = no cap" },
+  cpt_min_pct: { key: "cpt_min_pct", ctl: true, label: "CPT Min %", gold: true, title: "Fewest of the new lineups he must be in as Captain; blank = none (the Captain list's Min % box, the same limit)" },
+  cpt_max_pct: { key: "cpt_max_pct", ctl: true, label: "CPT Max %", gold: true, title: "Most of the new lineups he may be in as Captain; blank = no cap (the Captain list's Max % box, the same limit)" },
+  captain: { key: "captain", ctl: true, label: "CPT", gold: true, title: "Captain: lock him at Captain, or exclude him as Captain, from the FLEX list" },
+});
+const SD_BY_KEY = new Map(SD_COLUMNS.map((c) => [c.key, c]));
+const FIGURE_KEYS = new Set(["salary", "proj", "own"]);
+
+/** The Columns list's keys the pool can draw now: the figures always, the row controls on the live app, Min % and Max % in GPP, the Captain pair on the FLEX list. */
+export function poolAvailableKeys(tab = poolTab()) {
+  return new Set(["player", "salary", "proj", "own", "value", "note", ...(controls?.available?.(tab) ?? [])]);
+}
+
+/** The column set and the browser's place for Adam's choice: per mode (GPP, Cash) of this showdown screen. */
+export function poolColumnSetup() {
+  return { defs: SHOWDOWN_COLUMNS, scope: `showdown.${controls?.mode?.() === "cash" ? "cash" : "gpp"}` };
+}
+
+/** The pool's columns on `tab`, in Adam's order: the Rankings columns of that seat (the Captain list's the CPT ones) and the row controls. */
 export function poolColumns(board, tab = poolTab()) {
-  return SD_COLUMNS.filter((c) => TAB_COLUMNS[tab].has(c.key));
+  const { defs, scope } = poolColumnSetup();
+  return shownKeys(loadColumns(defs, scope), poolAvailableKeys(tab)).map((k) => (FIGURE_KEYS.has(k) ? SD_BY_KEY.get(TAB_FIGURES[tab][k]) : SD_BY_KEY.get(k) ?? CONTROL_COLUMNS[k]));
 }
 
-const thCount = (html) => (html.match(/<th\b/g) ?? []).length;
-
-/** One role's control group in the head (2026-10-26, Phase B item 2): a spanning head ("FLEX", or "Captain" in gold) over its sub-heads,
- *  Min % and Max % (GPP, live app) and Lock and Excl (live app), in the order of the row's cells (tailCellsHtml); none off the live app. */
-function groupHeads(kind) {
-  const cpt = kind === "cpt";
-  const role = cpt ? "Captain" : "FLEX";
-  const g = cpt ? " sd-cpt-col" : "";
-  const buttons = live()
-    ? `<th class="sd-pool-sub${g}" title="Lock him at ${role} in every lineup">Lock</th><th class="sd-pool-sub${g}" title="${cpt ? "Exclude him as Captain; he can still be FLEX" : "Exclude him from every lineup"}">Excl</th>`
-    : "";
-  const subs = `${controls?.capHeads?.(kind) ?? ""}${buttons}`;
-  return { top: subs ? `<th class="sd-pool-group${g}" colspan="${thCount(subs)}">${role}</th>` : "", subs };
-}
-
-/** The tail of the head after Notes: In (live app, spanning both head rows), then the tab's own control group. */
-function tailHeads(tab) {
-  const inHead = live() ? `<th class="sd-pool-in-head" rowspan="2" title="In: in every lineup at Captain or FLEX, the optimizer picks the role">In</th>` : "";
-  const group = groupHeads(tab);
-  return { top: `${inHead}${group.top}`, subs: group.subs, count: (inHead ? 1 : 0) + thCount(group.subs) };
-}
-
-/** The head: the sortable Rankings heads (spanning both rows) and the tab's control group over its sub-heads (one row when there are
- *  none), then the ownership totals row (over the whole board). */
+/** The head: the sortable Rankings heads, plain heads for the controls, then the ownership totals row (over the whole board). */
 export function poolHeadHtml(board, sort = poolSort(board), tab = poolTab()) {
   const cols = poolColumns(board, tab);
-  const tail = tailHeads(tab);
-  const two = tail.count > 0;
-  const subRow = two ? `<tr class="sd-pool-subhead">${tail.subs}</tr>` : "";
-  return `<tr>${showdownHeadCellsHtml(sort, cols, { rowspan: two ? 2 : 1 })}${tail.top}</tr>${subRow}${ownTotalsRowHtml(ownTotals(board?.rows ?? []), cols, tail.count)}`;
+  const cells = cols.map((c) => (c.ctl
+    ? `<th class="sd-pool-ctl sd-pool-ctl-${c.key}${c.gold ? " sd-cpt-col" : ""}${c.key === "min_pct" || c.key === "cpt_min_pct" ? " lineup-min-head" : c.key === "max_pct" || c.key === "cpt_max_pct" ? " lineup-max-head" : ""}" title="${escapeHtml(c.title)}">${escapeHtml(c.label)}</th>`
+    : showdownHeadCellsHtml(sort, [c]))).join("");
+  return `<tr>${cells}${FILL_HEAD}</tr>${ownTotalsRowHtml(ownTotals(board?.rows ?? []), cols)}`;
 }
 
-/** Whether he sits in the seat `tab` lists (the Captain on the Captain tab, a FLEX man on the FLEX tab); lineup.js keeps the placement
- *  as { cptId, flexIds } (strings). */
-function placedOnTab(placement, id, tab) {
-  return tab === "cpt" ? String(placement?.cptId ?? "") === id : (placement?.flexIds ?? new Set()).has(id);
+/** Where he sits in the lineup, whichever list is on screen: "cpt", "flex" or null (lineup.js keeps the placement as { cptId, flexIds }, strings). C21: both lists mark the whole lineup. */
+export function placedSeat(placement, id) {
+  const key = String(id);
+  if (String(placement?.cptId ?? "") === key) return "cpt";
+  return (placement?.flexIds ?? new Set()).has(key) ? "flex" : null;
 }
 
-/** The cells after Notes for one row, under the head's group: In, then the tab's role: the Min % / Max % boxes, the lock and the exclude,
- *  each in its own cell. */
-function tailCellsHtml(row, tab) {
-  const btn = (action) => `<td class="sd-pool-btn">${controls?.button?.(row, tab, action) ?? ""}</td>`;
-  const group = `${controls?.capCells?.(row, tab) ?? ""}${live() ? btn("lock") + btn("exclude") : ""}`;
-  return `${live() ? `<td class="sd-pool-in">${controls?.button?.(row, "flex", "include") ?? ""}</td>` : ""}${group}`;
+/** The seat tag in the name cell: `CPT` (gold) or `FLEX` for a man in the lineup, "" for one who is not. */
+export function seatTagHtml(seat) {
+  if (!seat) return "";
+  return `<span class="sd-seat${seat === "cpt" ? " sd-seat-cpt" : ""}" title="${seat === "cpt" ? "In your lineup as Captain" : "In your lineup at FLEX"}">${seat === "cpt" ? "CPT" : "FLEX"}</span>`;
+}
+
+/** One control cell of a row, by Columns key, for the list on screen (`tab`). */
+function controlCellHtml(row, key, tab) {
+  const btn = (kind, action) => controls?.button?.(row, kind, action) ?? "";
+  switch (key) {
+    case "thumbs": return `<td class="lineup-thumbs-cell">${controls?.thumbs?.(row, tab === "cpt") ?? ""}</td>`;
+    case "in": return `<td class="sd-pool-in">${btn("flex", "include")}</td>`;
+    case "lock":
+    case "exclude": return `<td class="sd-pool-btn">${btn(tab, key)}</td>`;
+    case "min_pct":
+    case "max_pct": return controls?.capCell?.(row, tab, key === "min_pct" ? "min" : "max") ?? "<td></td>";
+    case "cpt_min_pct": // C21: the Captain list's own boxes (the same limits), on the FLEX list
+    case "cpt_max_pct": return controls?.capCell?.(row, "cpt", key === "cpt_min_pct" ? "min" : "max") ?? "<td></td>";
+    case "captain": return `<td class="sd-pool-btn sd-pool-capt sd-cpt-col">${btn("cpt", "lock")}${btn("cpt", "exclude")}</td>`;
+    default: return "<td></td>";
+  }
 }
 
 /** A row's click attributes (D39): the pick its click makes, a keyboard stop and its words as the hover and the label (no button role:
@@ -292,25 +319,29 @@ function pickAttrsHtml(placement, row, tab) {
   return ` data-pick="${action}" tabindex="0" title="${PICK_TITLES[action]}" aria-label="${PICK_TITLES[action]}"`;
 }
 
-/** The body rows (`rows`: poolVisibleRows), each the Rankings row with the slots' figures, the ± bump and the tab's tail;
- *  a click on a row picks or drops him (poolPickAction). */
-export function poolBodyHtml(board, rows, placement, figures = playerFigures, tab = poolTab()) {
+/** The body rows (`rows`: poolVisibleRows), each the Rankings row with the slots' figures and the row controls, in Adam's column order;
+ *  a click on a row picks or drops him (poolPickAction). `palette`: the game's team colours (the light tint and stripe of A20). */
+export function poolBodyHtml(board, rows, placement, figures = playerFigures, tab = poolTab(), palette = showdownPalette(board)) {
   const cols = poolColumns(board, tab);
   if (!rows.length) {
-    const span = cols.length + tailHeads(tab).count;
-    return `<tr class="sd-pool-empty-row"><td class="sd-pool-empty" colspan="${span}">No player matches these filters.</td></tr>`;
+    return `<tr class="sd-pool-empty-row"><td class="sd-pool-empty" colspan="${cols.length + 1}">No player matches these filters.</td></tr>`;
   }
   const hooks = {
     figures,
     projCell: controls?.projCell ? (row, proj, isCpt) => controls.projCell(row, proj, isCpt) : null,
-    // The Player cell names him in full and, for a phone, the cards' short name too (style.css shows one; 👁 V1: no name cut mid-word).
-    // A click's refusal (placement.message, lineup.js) is drawn under the name of the row that was clicked (row-message.js, standard A14).
-    playerCell: (row) => `<div class="player-cell">${sdLine(row, { nameHtml: cardNameHtml(row) })}</div>${messageIsFor(placement?.message, row.id) ? rowMessageHtml(placement.message.text, placement.message.tone) : ""}`,
+    // The Player cell names him in full and, for a phone, the cards' short name too (style.css shows one; 👁 V1: no name cut mid-word); then the seat tag of a man in
+    // the lineup on either list (C21) and a lock icon for a man locked in either seat (C20). A click's refusal (placement.message, lineup.js) is drawn under the name of the
+    // row that was clicked (row-message.js, standard A14).
+    playerCell: (row) => `<div class="player-cell">${sdLine(row, { nameHtml: cardNameHtml(row) })}${seatTagHtml(placedSeat(placement, row.id))}${controls?.lockIcon?.(row) ?? ""}</div><span class="lp-l2">${bareOppHtml(row)}</span>${messageIsFor(placement?.message, row.id) ? rowMessageHtml(placement.message.text, placement.message.tone) : ""}`,
     valueCell: (row) => poolValueHtml(row, figures),
-    // A man placed in this tab's seat has his row tinted (the builder's), beside the Optimizer's own look (excluded, locked), each class once.
-    rowClass: (row) => [...new Set([placedOnTab(placement, String(row.id), tab) ? "lineup-row-locked" : "", "sd-pool-pick", ...String(controls?.rowClass?.(row) ?? "").trim().split(/\s+/)].filter(Boolean))].join(" "),
-    rowAttrs: (row) => pickAttrsHtml(placement, row, tab),
-    tail: (row) => tailCellsHtml(row, tab),
+    // A man seated in the lineup, on either list, has his row tinted (the builder's), kept apart from a lock (the icon, C20), beside the Optimizer's own look (excluded), each class once.
+    rowClass: (row) => [...new Set([placedSeat(placement, row.id) ? "sd-row-seated" : "", "sd-pool-pick", ...String(controls?.rowClass?.(row, tab) ?? "").trim().split(/\s+/)].filter(Boolean))].join(" "),
+    rowAttrs: (row) => {
+      const c = teamColours(palette, row.team);
+      return `${pickAttrsHtml(placement, row, tab)} style="${teamColourStyle(c)}"`;
+    },
+    ctlCell: (row, key) => controlCellHtml(row, key, tab),
+    fillCell: true, // the empty last column (FILL_HEAD)
   };
   return rows.map((r) => showdownRowHtml(r, hooks, cols)).join("");
 }
@@ -386,6 +417,7 @@ export function poolHtml(board, placement, rows) {
       <div class="sd-pool-head">
         <h3 class="lineup-right-title">Player pool</h3>
         ${poolTabsHtml()}
+        ${columnsButtonHtml()}
         <span class="sd-pool-note">${escapeHtml(poolNoteText(board))}</span>
       </div>
       <div class="table-wrap scroll-panel">
@@ -425,6 +457,7 @@ export function wirePool(poolEl, ctx) {
 /** Wires the Captain | FLEX switch once per full draw (it lives outside the head and body a repaint replaces): a click picks the tab,
  *  marks the buttons and repaints the pool (ctx.repaint). */
 export function wirePoolTabs(poolEl, ctx) {
+  wireColumns(poolEl, { ...poolColumnSetup(), onChange: () => ctx.repaint() }); // A17: the Columns button beside the tabs; a tick or a move repaints the head and body
   const buttons = [...poolEl.querySelectorAll("[data-pool-tab]")];
   buttons.forEach((btn) => {
     btn.addEventListener("click", () => {

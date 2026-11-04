@@ -169,8 +169,9 @@ export function qbListHtml(qbRows, qbs, lockedIdList) {
     .map((qb) => {
       const id = escapeHtml(String(qb.id));
       const open = qbs.open.has(String(qb.id));
-      if (qbIsOut(qb, lockedIdList)) return `<div class="qbs-item qbs-out"><div class="qbs-toggle qbs-dead">${playerLineHtml(qb, { nameCls: "qbs-name", titled: true, tag: "out" })}</div></div>`;
-      return `<div class="qbs-item"><button type="button" class="qbs-toggle" data-qbs="toggle" data-qb="${id}" aria-expanded="${open ? "true" : "false"}">${playerLineHtml(qb, { nameCls: "qbs-name", titled: true, tag: "out" })}<span class="qbs-set">Set up ${open ? "▾" : "▸"}</span></button>${sumHtml(String(qb.id), qbs.entries[String(qb.id)])}</div>`;
+      // A7: the name opens his card (data-card-id on the item); only the `Set up` button opens or closes the panel.
+      if (qbIsOut(qb, lockedIdList)) return `<div class="qbs-item qbs-out" data-card-id="${id}"><div class="qbs-toggle qbs-dead">${playerLineHtml(qb, { nameCls: "qbs-name", titled: true, tag: "out" })}</div></div>`;
+      return `<div class="qbs-item" data-card-id="${id}"><div class="qbs-toggle">${playerLineHtml(qb, { nameCls: "qbs-name", titled: true, tag: "out" })}<button type="button" class="qbs-set" data-qbs="toggle" data-qb="${id}" aria-expanded="${open ? "true" : "false"}">Set up ${open ? "▾" : "▸"}</button></div>${sumHtml(String(qb.id), qbs.entries[String(qb.id)])}</div>`;
     })
     .join("");
   return `<div class="opt-set qbs-block">${rows}</div>`;

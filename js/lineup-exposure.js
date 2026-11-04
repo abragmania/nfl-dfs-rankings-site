@@ -67,7 +67,7 @@ export function zeroMinRows(exposure, marks, playerOf, inBatch) {
 
 // D55: exposure by position, columns Exposure, Player (the D80 shared cell, so no Team column), Matchup (the pill), Own (one decimal, optimizer standard A4); D74: over the new batch or the saved lineups.
 // `custom` (Showdown, optional): {title, groups: [{title, rows, keyOf}], rowOpts} replaces the position boxes and the heading; each group is its own table, never summed with another.
-// `custom.rowOpts` (optional) holds presentation options only (pos, posHtml), spread under the fixed ones (pick button, no pill, the OUT rule) so it can never override them (Showdown: {pos: true}, Adam 2026-10-22); classic passes none. Neither draws a team chip while the logo is there (Adam 2026-10-25).
+// `custom.rowOpts` (optional) holds presentation options only (pos, posHtml), spread under the fixed ones (the man's own name, no pill, the OUT rule) so it can never override them (Showdown: {pos: true}, Adam 2026-10-22); classic passes none. Neither draws a team chip while the logo is there (Adam 2026-10-25).
 export function optExposureHtml(exposure, subtitle = "", sortDir = "desc", pick = null, marks = null, custom = null) {
   const dir = sortDir === "asc" ? "asc" : "desc";
   const arrow = dir === "asc" ? " ▲" : " ▼";
@@ -80,11 +80,13 @@ export function optExposureHtml(exposure, subtitle = "", sortDir = "desc", pick 
           .map((e) => {
             const mark = exposureMark(e, marks, keyOf);
             const live = liveRowFor(e);
-            const nameHtml = pick && e.id != null ? pickButtonHtml({ id: e.id, name: e.name ?? "", chosen: pick.isChosen(e.id) }) : undefined;
+            // A7: the name opens the player card (the cell's data-card-id, the real man's id: Showdown's rows are keyed "cpt:<person>"); the only-lineups-with filter is the small Filter button beside it.
+            const cardId = e.cardId ?? e.id;
+            const filterBtn = pick && e.id != null ? pickButtonHtml({ id: e.id, name: e.name ?? "", chosen: pick.isChosen(e.id), cls: "opt-filter-btn", innerHtml: "Filter" }) : "";
             return `
           <tr class="opt-exp-row${mark ? " exp-off" : ""}"${mark ? ` title="${escapeHtml(mark.title)}"` : ""}>
             <td class="opt-exp-pct">${escapeHtml(String(Math.round(e.pct ?? 0)))}% <span class="opt-exp-count">(${escapeHtml(String(e.count ?? 0))})</span></td>
-            <td class="opt-exp-name"><span class="player-cell">${playerLineHtml(live, { ...(custom?.rowOpts ?? {}), nameHtml, pill: false, tag: "out" })}</span></td>
+            <td class="opt-exp-name"${cardId != null ? ` data-card-id="${escapeHtml(String(cardId))}"` : ""}><span class="player-cell">${playerLineHtml(live, { ...(custom?.rowOpts ?? {}), nameHtml: undefined, pill: false, tag: "out" })}${filterBtn}</span></td>
             <td class="opt-exp-opp">${matchupPillHtml(live)}</td>
             <td class="opt-exp-own">${escapeHtml(pct1(e.own) ?? "—")}</td>
           </tr>`;

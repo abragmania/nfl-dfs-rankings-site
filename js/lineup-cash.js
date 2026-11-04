@@ -2,7 +2,7 @@
 // Must = the lock, Want = his cash pool, Fine = the default). No DOM access; lineup.js (job 3b) wires it.
 // lineup.js savePersisted writes slots, locks, excludes, playerMax, playerMin, qbStacks, spreadDst, mode, cash and stash;
 // loadedId and saveName live in memory (swapModeStash keeps them). Cash 3b fix round, 2026-10-17: mode, cash and stash named.
-import { escapeHtml, money, dec1, ownLabel } from "./format.js";
+import { escapeHtml, money, dec1 } from "./format.js";
 import { shownTotal } from "./totals.js";
 import { rowIsOut } from "./out.js";
 
@@ -317,27 +317,16 @@ export function swapDecisionHtml(decision, index = 0, { button = true, disabled 
 
 export function excludedListHtml(report) {
   if (!report?.excluded?.length) return report?.inLineup?.length ? `<div class="cash-excluded">Every Want is in this lineup</div>` : "";
-  return `<div class="cash-excluded">Not in this lineup: ${report.excluded.map((r) => escapeHtml(r.name ?? "")).join(", ")}</div>`;
+  return `<div class="cash-excluded">Not in this lineup: ${report.excluded.map((r) => `<span class="cash-swap-name"${r.id != null ? ` data-card-id="${escapeHtml(String(r.id))}"` : ""}>${escapeHtml(r.name ?? "")}</span>`).join(", ")}</div>`; // A7: each name opens his card
 }
 
-/** "$49,600 · 118.4 median · 121.2 proj · Own 34.2%"; the median part only on a median build; a dash and the reason when any player lacks a figure. */
-export function cashTotalsText(lineup, basis) {
-  const players = lineup?.players ?? [];
-  const parts = [money(lineup?.salary)];
-  if (basis === "median") {
-    const meds = players.map((p) => p.median);
-    const allMed = meds.length > 0 && meds.every((m) => finite(m) !== null);
-    const sum = lineup?.median === null ? null : allMed ? shownTotal(meds) : finite(lineup?.median);
-    parts.push(sum === null ? "— median (a player has no TwoGun median)" : `${dec1(sum)} median`);
-  }
-  const projs = players.map((p) => p.proj);
-  const allProj = projs.length > 0 && projs.every((v) => finite(v) !== null);
-  const proj = projs.length === 0 ? finite(lineup?.proj) : allProj ? shownTotal(projs) : null;
-  parts.push(proj === null ? (projs.length === 0 ? "— proj" : "— proj (a player has no projection)") : `${dec1(proj)} proj`);
-  const allOwn = players.length > 0 && players.every((p) => finite(p.own) !== null);
-  const own = allOwn ? players.reduce((s, p) => s + p.own, 0) : finite(lineup?.own);
-  parts.push(own === null ? "Own —" : ownLabel(own));
-  return parts.join(" · ");
+/** The median total of a cash lineup built by median: "98.0 median", or "— median (a player has no TwoGun median)"; "" on any other basis (the card's totals block carries it after the four figures). */
+export function cashMedianText(lineup, basis) {
+  if (basis !== "median") return "";
+  const meds = (lineup?.players ?? []).map((p) => p.median);
+  const allMed = meds.length > 0 && meds.every((m) => finite(m) !== null);
+  const sum = lineup?.median === null ? null : allMed ? shownTotal(meds) : finite(lineup?.median);
+  return sum === null ? "— median (a player has no TwoGun median)" : `${dec1(sum)} median`;
 }
 
 export function unusedCapText(salary, cap = SALARY_CAP) {

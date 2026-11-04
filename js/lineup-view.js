@@ -3,12 +3,13 @@
 // read `state` and `opt` (owned by lineup.js) and draw HTML; they hold no state of their own beyond the two module variables
 // below (poolCallbacks, lastExposure), which only this file assigns. Wiring and actions stay in lineup.js and lineup-optimizer.js.
 import { buildingHtml, goLabelHtml, buildingRowClass } from "./lineup-stop.js";
-import { escapeHtml, money, dec1, pct1, ownLabel } from "./format.js";
+import { escapeHtml, money, pct1 } from "./format.js";
+import { lineupTotals, lineupTotalsHtml } from "./lineup-totals.js"; // A11: the one totals block
+import { CLASSIC_GPP_COLUMNS, CLASSIC_CASH_COLUMNS, columnsButtonHtml, loadColumns, shownKeys } from "./columns.js"; // A17
 import { store, matchesPosition, filterRows, sortRows, passesProjFloor, activeSlateRows, activeSlateGames, isTwoGunMode } from "./state.js";
 import { sortableHeadHtml } from "./tabs.js";
 import { matchupText, gradedCellHtml, rowIsOut } from "./table.js"; // D43: the one copy of "vs DAL" / "@ DET"
-import { playerLineHtml, showPos } from "./player-row.js";
-import { bumpProjHtml } from "./bump-control.js"; // Adam 2026-10-22: ± bump on the pool's Proj cell, disabled like the star when no write is wired
+import { playerLineHtml, matchupPillHtml, showPos } from "./player-row.js";
 import { shownTotal, perSpotText } from "./totals.js";
 import { buildTypeText, groupByBuild } from "./lineup-builds.js";
 import { lineupFigures, geoOwn, geoText, medianText, sortKeysFor, sortLineups, effectiveSort, sortRowHtml } from "./lineup-sort.js"; // Adam 2026-10-17: sort options; geo own = geometric mean of ownership, his multiplicative uniqueness
@@ -16,6 +17,7 @@ import { rowsGradedForView } from "./grade.js";
 import { filterLineups, bulkLabel, filterBarHtml } from "./lineup-filter.js";
 import { OPT_POSITIONS, optExposureHtml, zeroMinRows } from "./lineup-exposure.js";
 import { cardPlayerRowHtml, cardDecor, teamColours, teamColourStyle } from "./lineup-card.js";
+import { bumpControlHtml, bumpFigureOnlyHtml } from "./bump-control.js"; // Adam 2026-10-22: ± bump; since A1 the thumbs are their own column, disabled like the star when no write is wired
 import { lineupRoles, roleTagsHtml } from "./lineup-marks.js";
 import { statusLineHtml, statusToneClass, rowMessageHtml, messageIsFor, TONE_WARN, TONE_NOTICE } from "./row-message.js";
 import { paletteForRows } from "./team-palette.js";
@@ -25,7 +27,7 @@ import { slateLineups } from "./entries.js";
 import { TAG_OPTIONS, numberLineups, lineupPrefix } from "./lineup-tags.js";
 import {
   cashChipHtml, convictionChipsHtml, cashHeadLine, modeSwitchHtml, boardHasMedians,
-  cashTotalsText, unusedCapText, cashBadgeHtml, builtInTextCash, scoreOfRow,
+  cashMedianText, unusedCapText, cashBadgeHtml, builtInTextCash, scoreOfRow,
 } from "./lineup-cash.js";
 import {
   state, opt, LINEUP_SLOTS, SALARY_CAP, MAX_TEAM_OPTIONS, OPT_MAX_COUNT, OPT_MAX_UNIQUE, OPT_DEFAULT_UNIQUE, OPT_STACK_OWN_MAX, OPT_STACK_OPP_MAX,
@@ -50,15 +52,10 @@ export function panelHtml() {
   paletteForRows(rowById, activeSlateRows(board)); // Team rows fix, 2026-10-17: the cards' palette is the active slate's teams, fixed here once per render
   const totals = computeTotals(rowById);
   const roles = lineupRoles(state.slots.map((s) => rowById.get(String(s?.id))));
-  const overCap = totals.salaryUsed > SALARY_CAP;
-  const fillPct = Math.max(0, Math.min(100, (totals.salaryUsed / SALARY_CAP) * 100));
   const perSpot = perSpotText(totals.salaryLeft, LINEUP_SLOTS.length - totals.filled); // Adam 2026-10-18: salary per remaining spot; null when full or over
-  const salaryText =
-    totals.salaryLeft < 0
-      ? `${money(totals.salaryUsed)} used · ${money(-totals.salaryLeft)} over`
-      : `${money(totals.salaryUsed)} used · ${money(totals.salaryLeft)} left${perSpot ? ` · ${perSpot}` : ""}`;
-  // 🔵 finding 3: any placed player with a null own% makes the total unknown, not smaller.
-  const ownText = totals.totalOwn == null ? "— (not every player has a published number)" : pct1(totals.totalOwn);
+  // A11: Salary used, Salary left, Proj and Own from the first man; a man with no figure (or off the slate) makes that figure a dash with its reason (lineup-totals.js).
+  const men = state.slots.filter(Boolean).map((s) => { const r = rowById.get(String(s.id)); return r ? { salary: r.salary, proj: r.proj, own: r.own } : {}; });
+  const totalsBlock = lineupTotalsHtml(lineupTotals(men, { cap: SALARY_CAP, notLoaded: board ? null : "the board has not loaded" }), { cap: SALARY_CAP, extra: perSpot ? escapeHtml(perSpot) : "" });
 
   // The Optimizer band is the first thing in this part of the tab (DECISIONS.md D70, Adam 2026-10-10: "move the optimizer stuff up"); the
   // lineup it builds from sits right under it, its results and the saved lineups below. The injury note and the unreadable-overrides
@@ -70,15 +67,11 @@ export function panelHtml() {
       <div class="lineup-left">
         ${controlsHtml()}
         <div class="lineup-slots">${slotsHtml(rowById, roles)}</div>
-        <div class="salary-bar">
-          <div class="salary-bar-track"><div class="salary-bar-fill${overCap ? " over" : ""}" style="width:${fillPct}%"></div></div>
-          <span class="salary-bar-label${overCap ? " over" : ""}">${escapeHtml(salaryText)}</span>
-        </div>
-        <div class="lineup-totals">Total projection ${dec1(totals.totalProj)} &middot; Own ${escapeHtml(ownText)}</div>
+        ${totalsBlock}
         ${buildStatusHtml(poolMessageDrawn)}
       </div>
       <div class="lineup-right">
-        <h3 class="lineup-right-title">Player pool</h3>
+        <div class="lineup-right-head"><h3 class="lineup-right-title">Player pool</h3>${columnsButtonHtml()}</div>
         ${poolHtml}
       </div>
     </div>
@@ -201,21 +194,18 @@ function computeLiveTotals(lineup, rowById) {
  *  new-lineup card's. The name opens the player card (Adam 2026-10-18). */
 export function savedLineupSlotHtml(slotName, entry, palette = null) {
   if (!entry) {
-    return `<div class="saved-lineup-slot saved-lineup-slot-tc saved-lineup-slot-empty"><span class="saved-lineup-slot-pos">${escapeHtml(slotName)}</span><span class="saved-lineup-slot-empty-text">Empty</span></div>`;
+    return `<div class="opt-p opt-p-empty"><span class="opt-p-slot">${escapeHtml(slotName)}</span><span class="opt-p-empty-text">Empty</span></div>`;
   }
   const src = entry.row ?? entry.snap;
   if (!src) return "";
-  const missingCls = entry.row ? "" : " saved-lineup-slot-missing";
-  const noteHtml = entry.row ? "" : `<span class="saved-lineup-slot-note">not on slate</span>`;
-  const pickId = entry.row?.id ?? entry.snap?.playerId;
-  const nameHtml = escapeHtml(src.name ?? "");
-  return `
-    <div class="saved-lineup-slot saved-lineup-slot-tc${missingCls}" style="${teamColourStyle(teamColours(palette, src.team))}"${pickId != null ? ` data-card-id="${escapeHtml(String(pickId))}"` : ""}>
-      <span class="saved-lineup-slot-pos">${escapeHtml(slotName)}</span>
-      ${playerLineHtml(src, { nameCls: "saved-lineup-slot-name", nameHtml, chipPlain: true, tag: entry.row ? "out" : false })}
-      <span class="saved-lineup-slot-salary">${money(src.salary)}</span>
-      ${noteHtml}
-    </div>`;
+  // A5: the saved row is the same card row as a slot and a new card (lineup-card.js); a man no longer on the slate keeps his saved figures and says so.
+  const p = { id: entry.row?.id ?? entry.snap?.playerId, name: src.name ?? "", pos: src.pos, team: src.team, salary: src.salary, proj: src.proj ?? null, own: src.own ?? null };
+  const decor = {
+    rowFor: (x) => (entry.row ? { ...x, ...entry.row } : x),
+    rolesFor: () => (entry.row ? "" : `<span class="opt-p-note">not on slate</span>`),
+    coloursFor: (team) => teamColours(palette, team),
+  };
+  return cardPlayerRowHtml(p, slotName, decor, { cls: entry.row ? "" : "opt-p-missing" }).trim();
 }
 
 export function savedLineupCardHtml(lineup, rowById, numbers = null) {
@@ -255,17 +245,10 @@ export function savedLineupCardHtml(lineup, rowById, numbers = null) {
   const palette = paletteForRows(rowById); // Team rows round 2, Adam 2026-10-17: the Saved rows wear the new-lineup rows' colours
   const rowsHtml = totals.slotEntries.map((entry, i) => savedLineupSlotHtml(LINEUP_SLOTS[i], entry, palette)).join("");
 
-  const salaryLeft = SALARY_CAP - totals.salaryUsed;
-  const salaryText = overCap
-    ? `${money(totals.salaryUsed)} used &middot; ${money(-salaryLeft)} over`
-    : `${money(totals.salaryUsed)} used &middot; ${money(salaryLeft)} left`;
-  // Same rule as the builder panel above (🔵 finding 3 / D29): the app never estimates ownership, so a
-  // total is only printed when every filled slot has a published number; otherwise it's an em dash. When all are
-  // published the count is left out so the summary stays on one line (👁 visual-qa 2026-10-11).
-  const ownText =
-    totals.ownPublished === totals.filled
-      ? ownLabel(totals.totalOwn)
-      : `Own — (${totals.ownPublished} of ${totals.filled} published)`;
+  // A11: the same four figures as the builder (lineup-totals.js); the app never estimates ownership (D29), so a man with none makes Own a dash. A man no longer on the slate costs his saved salary only.
+  const men = totals.slotEntries.filter(Boolean).map((e) => (e.row ? { salary: e.row.salary, proj: e.row.proj, own: e.row.own } : { salary: e.snap?.salary }));
+  const geoPart = isCash ? "" : `${geoText(savedLineupFigures(lineup, rowById).geo, "a player has no ownership figure or is no longer on the slate")}`;
+  const totalsBlock = lineupTotalsHtml(lineupTotals(men, { cap: SALARY_CAP }), { cap: SALARY_CAP, extra: [medianPart, geoPart].filter(Boolean).join(" &middot; ") });
 
   const deleteHtml = isConfirmingDelete
     ? `<span class="saved-lineup-confirm">Delete this lineup?
@@ -283,11 +266,7 @@ export function savedLineupCardHtml(lineup, rowById, numbers = null) {
         ${buildBadge}${badges}
       </div>
       <div class="saved-lineup-slots">${rowsHtml}</div>
-      <div class="saved-lineup-totals">
-        <span class="${overCap ? "saved-lineup-totals-over" : ""}">${salaryText}</span>
-        <span>${dec1(totals.totalProj)} proj</span>${medianPart ? `<span>${medianPart}</span>` : ""}
-        <span>${escapeHtml(ownText)}${isCash ? "" : ` &middot; ${geoText(savedLineupFigures(lineup, rowById).geo, "a player has no ownership figure or is no longer on the slate")}`}</span>
-      </div>
+      ${totalsBlock}
       <div class="saved-lineup-actions">
         <button type="button" class="saved-lineup-btn" data-action="lineup-load" data-id="${escapeHtml(lineup.id)}">Load</button>
         ${deleteHtml}
@@ -461,28 +440,33 @@ export function rightColumnHtml(rows, rowById) {
   );
   const sorted = sortRows(filtered, sort.col, sort.dir);
   const placed = placedIdentities(rowById);
-  // Headers sort through the same store sort the Rankings table uses (sort.col / sort.dir; keys player,
-  // salary, proj, own, value, star are the ones state.js sortRows reads); the shared sortableHeadHtml draws them.
-  // Max % is a plain header, not sortable (Adam 2026-10-11); Adam 2026-10-17: it follows Value, a star column leads,
-  // and Pos and Status are no longer columns (the position chip and the status tag sit in the Player cell).
-  const headBefore = [
-    { key: "star", label: "★", cls: "lineup-star-col", headTitle: "Star" },
-    { key: "player", label: "Player" },
-    { key: "salary", label: "Sal" },
-    { key: "proj", label: "Proj" },
-    { key: "own", label: "Own" },
-    { key: "value", label: "Val", headTitle: "Val: projection per $1,000 of salary" },
-  ];
-  const inner = (cols) => sortableHeadHtml(cols, sort).replace(/^<tr>|<\/tr>$/g, "");
-  const maxHead = `<th class="lineup-max-head" title="Most of the new lineups this player may be in; blank = no cap">Max %</th>`;
-  const minHead = `<th class="lineup-min-head" title="Fewest of the new lineups this player must be in; blank = none">Min %</th>`;
-  const cashHead = `<th class="lineup-cash-head" title="Lock puts a player in every lineup; Want puts him on your list, and each lineup shows whether he made it; Fine leaves him to the numbers">Cash</th>`;
-  const headHtml = `<tr>${inner(headBefore)}${cash ? cashHead : minHead + maxHead}<th></th></tr>`;
+  // The columns are Adam's own ticks and order (A17, columns.js), the standard's order until he changes it (A1): star, Player, Sal, Proj, Own, Val,
+  // then the row controls, thumbs, Lock, Exclude, Min % and Max % (Cash: its chips in place of Lock, Min % and Max %). Headers sort through the
+  // same store sort the Rankings table uses (sort.col / sort.dir; keys player, salary, proj, own, value, star are the ones state.js sortRows reads).
+  const keys = poolColumnKeys();
+  const sortable = {
+    star: { key: "star", label: "★", cls: "lineup-star-col", headTitle: "Star" },
+    player: { key: "player", label: "Player" },
+    salary: { key: "salary", label: "Sal", cls: "lp-num" },
+    proj: { key: "proj", label: "Proj", cls: "lp-num" },
+    own: { key: "own", label: "Own", cls: "lp-num" },
+    value: { key: "value", label: "Val", cls: "lp-num", headTitle: "Val: projection per $1,000 of salary" },
+  };
+  const plainHeads = {
+    thumbs: `<th class="lineup-thumbs-head" title="Thumbs: raise or lower his projection 5% a press">Thumbs</th>`, // the Columns list's words (A1, A17)
+    lock: `<th class="lineup-lock-head" title="Lock puts a player in the lineup">Lock</th>`,
+    exclude: `<th class="lineup-exclude-head" title="Exclude keeps a player out of every lineup">Exclude</th>`,
+    min_pct: `<th class="lineup-min-head" title="Fewest of the new lineups this player must be in; blank = none">Min %</th>`,
+    max_pct: `<th class="lineup-max-head" title="Most of the new lineups this player may be in; blank = no cap">Max %</th>`,
+    cash: `<th class="lineup-cash-head" title="Lock puts a player in every lineup; Want puts him on your list, and each lineup shows whether he made it; Fine leaves him to the numbers">Cash</th>`,
+  };
+  const headHtml = `<tr>${keys.map((k) => (sortable[k] ? sortableHeadHtml([sortable[k]], sort).replace(/^<tr>|<\/tr>$/g, "") : plainHeads[k])).join("")}<th class="lp-fill"></th></tr>`;
   const slateKey = slateKeyOf(store.get().board);
   const maxMap = playerMaxFor(slateKey);
   const minMap = playerMinFor(slateKey);
-  const bodyRows = sorted.map((row) => rightRowHtml(row, placed, showPos(filters.pos), maxMap, minMap, cash ? wantSet : null)).join("");
-  const emptyRow = sorted.length === 0 && filters.starredOnly ? poolEmptyRowHtml(graded, filters.pos, headBefore.length + (cash ? 2 : 3)) : "";
+  const palette = paletteForRows(rowById);
+  const bodyRows = sorted.map((row) => rightRowHtml(row, placed, showPos(filters.pos), maxMap, minMap, cash ? wantSet : null, keys, palette)).join("");
+  const emptyRow = sorted.length === 0 && filters.starredOnly ? poolEmptyRowHtml(graded, filters.pos, keys.length + 1) : "";
   return `
     <div class="lineup-rows-wrap scroll-panel">
       <table class="lineup-rows-table lineup-pool-table">
@@ -499,7 +483,7 @@ const POOL_PICK_TITLES = Object.freeze({ add: "Click to add to the lineup", remo
 
 /** A click inside one of these is that control's own (the star, his name's card, the ± bump, a Min % / Max % box, the Cash chips, Lock and
  *  Exclude) or the padding around it, never a pick (pick-rows.js wirePickRows; the Showdown pool's twin is pool.js POOL_PICK_SKIP). */
-export const CLASSIC_POOL_PICK_SKIP = "button, a, input, select, textarea, label, .player-name, .bump-ctl, .lineup-star-col, .lineup-min-cell, .lineup-max-cell, .lineup-cash-cell, .lineup-row-actions";
+export const CLASSIC_POOL_PICK_SKIP = "button, a, input, select, textarea, label, .player-name, .bump-ctl, .lineup-thumbs-cell, .lineup-star-col, .lineup-min-cell, .lineup-max-cell, .lineup-cash-cell, .lineup-row-actions";
 
 /** What a click on his pool row does: "remove" when he is placed (by DraftKings identity, 🔵 finding 6), null when he is excluded (an
  *  excluded man cannot be picked; Exclude undoes it), else "add" (lineup.js pickPoolRow puts him in the first slot his position fills). Pure. */
@@ -521,7 +505,18 @@ function poolRowMessageHtml(id) {
   return rowMessageHtml(state.addError, TONE_WARN);
 }
 
-function rightRowHtml(row, placedSet, posShown, maxMap = {}, minMap = {}, cashWant = null) { // cashWant: a Set of Want ids in cash mode, else null
+/** The columns the pool is set up with: the classic GPP list or the Cash list, and the browser's place for Adam's own ticks and order (A17). */
+export function poolColumnSetup(mode = opt.mode) {
+  return mode === "cash" ? { defs: CLASSIC_CASH_COLUMNS, scope: "classic.cash" } : { defs: CLASSIC_GPP_COLUMNS, scope: "classic.gpp" };
+}
+
+/** The keys the pool draws now, in order: Adam's ticked columns (the name column always). */
+export function poolColumnKeys(mode = opt.mode) {
+  const { defs, scope } = poolColumnSetup(mode);
+  return shownKeys(loadColumns(defs, scope));
+}
+
+function rightRowHtml(row, placedSet, posShown, maxMap = {}, minMap = {}, cashWant = null, keys = poolColumnKeys(), palette = null) { // cashWant: a Set of Want ids in cash mode, else null
   const id = String(row.id);
   const maxText = maxMap[id] ?? "";
   const maxBad = Number.isNaN(parsePct(maxText));
@@ -534,24 +529,27 @@ function rightRowHtml(row, placedSet, posShown, maxMap = {}, minMap = {}, cashWa
   // 🔵 finding 8: same dimming rule as the Rankings table.
   const dimmed = rowIsOut(row);
   const rowClass = `${excluded ? " lineup-row-excluded" : locked ? " lineup-row-locked" : ""}${dimmed ? " row-dimmed" : ""}${pick ? " lineup-pool-pick" : ""}`;
+  const name = escapeHtml(row.name ?? "");
+  // A1: the name cell is the logo, name, position and injury letter on one line and the matchup in small type on a second; its width is its content's.
+  const cells = {
+    star: () => `<td class="lineup-star-col"><button type="button" class="star-btn${row.starred ? " active" : ""}" title="${row.starred ? "Starred" : "Star"}" data-action="toggle-star" data-id="${escapeHtml(id)}"${poolCallbacks?.onToggleStar ? "" : " disabled"}>${row.starred ? "★" : "☆"}</button></td>`,
+    player: () => `<td class="lp-name"><span class="player-cell lp-l1">${playerLineHtml(row, { pos: posShown, pill: false })}</span><span class="lp-l2">${matchupPillHtml(row)}</span>${poolRowMessageHtml(id)}</td>`,
+    salary: () => `<td class="lp-num">${money(row.salary)}</td>`,
+    proj: () => `<td class="lp-num">${row.proj == null ? "no proj" : bumpFigureOnlyHtml(row, row.proj)}</td>`,
+    own: () => `<td class="lp-num">${pct1(row.own) ?? "—"}</td>`,
+    value: () => `<td class="lp-num lp-val">${gradedCellHtml(row.value, row.valueGrade)}</td>`,
+    thumbs: () => `<td class="lineup-thumbs-cell">${bumpControlHtml(row, { enabled: Boolean(poolCallbacks?.onBump) })}</td>`,
+    cash: () => `<td class="lineup-cash-cell">${convictionChipsHtml(row, { locked, wanted: Boolean(cashWant?.has(id)), excluded })}</td>`,
+    lock: () => `<td class="lineup-row-actions"><button type="button" class="lineup-row-btn${locked ? " active" : ""}" data-action="row-lock" data-id="${escapeHtml(id)}"${excluded ? " disabled" : ""}>${locked ? "Locked" : "Lock"}</button></td>`,
+    exclude: () => `<td class="lineup-row-actions"><button type="button" class="lineup-row-btn${excluded ? " active danger" : ""}" data-action="row-exclude" data-id="${escapeHtml(id)}">${excluded ? "Excluded" : "Exclude"}</button></td>`,
+    min_pct: () => `<td class="lineup-min-cell"><input type="text" inputmode="decimal" maxlength="5" class="opt-input lineup-min-input${minBad ? " invalid" : ""}" data-player-min="${escapeHtml(id)}" value="${escapeHtml(minText)}" aria-label="Min % for ${name}" /></td>`,
+    max_pct: () => `<td class="lineup-max-cell"><input type="text" inputmode="decimal" maxlength="5" class="opt-input lineup-max-input${maxBad ? " invalid" : ""}" data-player-max="${escapeHtml(id)}" value="${escapeHtml(maxText)}" aria-label="Max % for ${name}" /></td>`,
+  };
+  // A20: the list wears a much lighter version of the lineup's team tint and stripe (style.css .lineup-row), from the same slate palette.
+  const c = teamColours(palette, row.team);
   return `
-    <tr class="lineup-row${rowClass}" data-id="${escapeHtml(id)}"${poolPickAttrs(pick)}>
-      <td class="lineup-star-col"><button type="button" class="star-btn${row.starred ? " active" : ""}" title="${row.starred ? "Starred" : "Star"}" data-action="toggle-star" data-id="${escapeHtml(id)}"${poolCallbacks?.onToggleStar ? "" : " disabled"}>${row.starred ? "★" : "☆"}</button></td>
-      <td>
-        <span class="player-cell">${playerLineHtml(row, { pos: posShown })}</span>${poolRowMessageHtml(id)}
-      </td>
-      <td>${money(row.salary)}</td>
-      <td>${bumpProjHtml(row, row.proj, { enabled: Boolean(poolCallbacks?.onBump) })}</td>
-      <td>${pct1(row.own) ?? "—"}</td>
-      <td>${gradedCellHtml(row.value, row.valueGrade)}</td>
-      ${cashWant
-        ? `<td class="lineup-cash-cell">${convictionChipsHtml(row, { locked, wanted: cashWant.has(id), excluded })}</td>`
-        : `<td class="lineup-min-cell"><input type="text" inputmode="decimal" maxlength="5" class="opt-input lineup-min-input${minBad ? " invalid" : ""}" data-player-min="${escapeHtml(id)}" value="${escapeHtml(minText)}" aria-label="Min % for ${escapeHtml(row.name ?? "")}" /></td>
-      <td class="lineup-max-cell"><input type="text" inputmode="decimal" maxlength="5" class="opt-input lineup-max-input${maxBad ? " invalid" : ""}" data-player-max="${escapeHtml(id)}" value="${escapeHtml(maxText)}" aria-label="Max % for ${escapeHtml(row.name ?? "")}" /></td>`}
-      <td class="lineup-row-actions"><span class="lineup-row-btns">
-        ${cashWant ? "" : `<button type="button" class="lineup-row-btn${locked ? " active" : ""}" data-action="row-lock" data-id="${escapeHtml(id)}"${excluded ? " disabled" : ""}>${locked ? "Locked" : "Lock"}</button>`}
-        <button type="button" class="lineup-row-btn${excluded ? " active danger" : ""}" data-action="row-exclude" data-id="${escapeHtml(id)}">${excluded ? "Excluded" : "Exclude"}</button>
-      </span></td>
+    <tr class="lineup-row${rowClass}" data-id="${escapeHtml(id)}"${poolPickAttrs(pick)} style="${teamColourStyle(c)}">
+      ${keys.map((k) => cells[k]?.() ?? "").join("")}<td class="lp-fill"></td>
     </tr>`;
 }
 
@@ -613,25 +611,25 @@ export function avoidChipsHtml(games, avoid) {
  *  its nine players equal a saved lineup's, so Save shows a disabled "Saved ✓" (Adam 2026-10-11). Each name opens the
  *  player card (Adam 2026-10-18). */
 export function optLineupCardHtml(lineup, index, busy, { saved = false, rowById = null, cash = null } = {}) {
-  const totals = lineupTotalsOf(lineup);
-  const overCap = totals.salary > SALARY_CAP;
   const decor = cardDecor(lineup, rowById, paletteForRows(rowById)); // Team rows, Adam 2026-10-17: one palette per render (cached on rowById)
   // Cash mode job 3b, 2026-10-17: `cash` = {basis, strip: {html, wantIn}} on a card built in cash: "Cash N", the cash totals, the unused-cap chip, a WANT tag on the Wants that made it and the pool strip.
   if (cash) {
     // 👁 fix round, 2026-10-17: stacking is no cash goal (PROJECT.md Part 4, Cash mode), so a cash card draws no QB-stack chip and no STACK / RUNBACK / MINI / PAIR tags; WANT and the OUT tags stay.
     decor.stack = "";
-    decor.rolesFor = (p) => (cash.strip.wantIn.has(String(p.id)) ? `<span class="role-tag role-want" title="On your Want list">WANT</span>` : "");
+    decor.nameTagsFor = (p) => (cash.strip.wantIn.has(String(p.id)) ? `<span class="role-tag role-want" title="On your Want list">WANT</span>` : ""); // on the name line too, so the matchup pill keeps its spread
   }
   const rows = (lineup.players ?? []).map((p, i) => cardPlayerRowHtml(p, LINEUP_SLOTS[i] ?? p.pos ?? "", decor)).join("");
-  const ownBody = totals.own == null ? "Own —" : ownLabel(totals.own);
   const geoBody = geoText(geoOwn((lineup.players ?? []).map((p) => p.own))); // Adam 2026-10-17: geo own on the GPP card only
   // Adam 2026-10-18: the median total beside proj, off the sort's own figure; only on a TwoGun board with medians or a batch carrying them.
   const plist = lineup.players ?? [];
   const medianPart = !cash && (boardMediansForSort() || plist.some((p) => "median" in p)) ? medianText(newLineupFigures(lineup, rowById).median, plist.some((p) => newPlayerMedian(p, rowById) != null)) : "";
-  const nw = (s) => (s ? ` <span class="opt-nowrap">${s}</span>` : ""); // with a median the line is long: breaks fall between figures, not inside one
-  const gppTotals = medianPart // the "·" between no-wrap groups is CSS (.opt-nowrap::after, 👁 2026-10-18), so a wrapped line never starts with it; the salary span is the first group
-    ? `${nw(`${dec1(totals.proj) ?? "—"} proj &middot; ${medianPart}`)}${nw(`${ownBody} &middot; ${geoBody}`)}`
-    : ` &middot; ${dec1(totals.proj) ?? "—"} proj &middot; ${ownBody} &middot; ${geoBody}`;
+  // A11, A19: the card's totals under its last slot are the builder's four figures (lineup-totals.js); the median, geo and unused-cap figures follow on a line of their own.
+  // One salary on a card: the block's Salary used (the sum of the shown rows) is also what the unused-cap chip reads, never the lineup's own `salary` field.
+  const figures = lineupTotals(plist.map((p) => ({ salary: p.salary, proj: p.proj, own: p.own })), { cap: SALARY_CAP });
+  const unusedText = cash ? unusedCapText(figures.used) : "";
+  const unused = unusedText ? `<span class="cash-unused-chip" title="Salary left under the $50,000 cap">${escapeHtml(unusedText)}</span>` : "";
+  const extra = cash ? [cashMedianText(lineup, cash.basis), unused].filter(Boolean).join(" &middot; ") : [medianPart, geoBody].filter(Boolean).join(" &middot; ");
+  const totalsBlock = lineupTotalsHtml(figures, { cap: SALARY_CAP, extra });
   const uid = escapeHtml(lineup.uid ?? "");
   const saveBtn = saved
     ? `<button type="button" class="saved-lineup-btn opt-saved-btn" disabled>Saved ✓</button>`
@@ -646,9 +644,7 @@ export function optLineupCardHtml(lineup, index, busy, { saved = false, rowById 
         </span>
       </div>
       <div class="opt-card-players">${rows}</div>
-      ${cash
-        ? `<div class="opt-card-totals"><span class="${overCap ? "saved-lineup-totals-over" : ""}">${escapeHtml(cashTotalsText(lineup, cash.basis))}</span>${unusedCapText(totals.salary) ? ` <span class="cash-unused-chip" title="Salary left under the $50,000 cap">${escapeHtml(unusedCapText(totals.salary))}</span>` : ""}</div>${cash.strip.html}`
-        : `<div class="opt-card-totals"><span class="${[overCap ? "saved-lineup-totals-over" : "", medianPart ? "opt-nowrap" : ""].filter(Boolean).join(" ")}">${money(totals.salary)}</span>${gppTotals}</div>`}
+      ${totalsBlock}${cash ? cash.strip.html : ""}
     </div>`;
 }
 

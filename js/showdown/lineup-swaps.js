@@ -114,7 +114,8 @@ export function scriptTitle(script) {
 /** A man as the panel shows him: position chip, name, team chip, and his injury status when he has one. This row draws no logo, so it keeps its chip (Adam 2026-10-25: the chip goes only where a logo names the team). */
 function manHtml(m) {
   const state = m.status ? `<span class="sd-swaps-state">${escapeHtml(m.status)}</span>` : "";
-  return `${posPillHtml(m.pos)}<b class="sd-swaps-name">${escapeHtml(m.name)}</b>${teamChipHtml(m.team)}${state}`;
+  const card = m.id != null ? ` data-card-id="${escapeHtml(String(m.id))}"` : ""; // A7: the name opens his player card (m.id is his person id, the board row's)
+  return `${posPillHtml(m.pos)}<b class="sd-swaps-name player-name"${card}>${escapeHtml(m.name)}</b>${teamChipHtml(m.team)}${state}`;
 }
 
 /**

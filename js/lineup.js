@@ -35,7 +35,8 @@ import { phoneMinHeight, panelMinHeight } from "./expand.js";
 import { defaultCashState, cleanCashState, swapModeStash } from "./lineup-cash.js";
 import { ruleOn } from "./lineup-settings.js";
 import { paintStarredQbChip } from "./filterbar.js";
-import { setPoolCallbacks, poolStarClick, panelHtml, savedOfActiveSlate, starredQbChipView, CLASSIC_POOL_PICK_SKIP } from "./lineup-view.js";
+import { setPoolCallbacks, poolStarClick, panelHtml, savedOfActiveSlate, starredQbChipView, poolColumnSetup, CLASSIC_POOL_PICK_SKIP } from "./lineup-view.js";
+import { wireColumns } from "./columns.js";
 import { wirePick, wirePickRows, SLOT_PICK_SKIP } from "./pick-rows.js"; // click-to-pick, the one wiring the Showdown Optimizer shares (D81)
 import { cleanPlayerMax, boardModeOf, slateKeyOf, uniqueSavedName, lockedIds, cashPick, wireOptimizer } from "./lineup-optimizer.js";
 
@@ -869,6 +870,8 @@ function wire(container) {
   container.querySelectorAll("[data-action='lineup-load']").forEach((btn) => {
     btn.addEventListener("click", () => doLoadLineup(btn.dataset.id));
   });
+
+  wireColumns(container, { ...poolColumnSetup(), onChange: () => commit() }); // A17: the Columns button on the pool's heading
 
   wireOptimizer(container);
 }

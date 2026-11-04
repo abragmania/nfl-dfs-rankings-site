@@ -7,7 +7,7 @@
 // fresh optimize with empty locks/excludes and replaces whatever is currently placed with the result (D70: Adam's ruling
 // keeps Build unchanged). The Optimizer's band heads the left column, its Make row ends it, and its batch is drawn full
 // width below both columns, above the swaps and the saved lineups.
-import { escapeHtml, money, dec1 } from "../format.js";
+import { escapeHtml } from "../format.js";
 import { postShowdownLineupOptimize, getShowdownLineups, postShowdownLineup, deleteShowdownLineup, putShowdownLineupName, putShowdownLineupTag } from "./api.js";
 import { poolHtml, poolVisibleRows, paintPool, wirePool, wirePoolTabs, setPoolControls, POOL_PICK_SKIP } from "./pool.js"; // the one player pool, the Rankings table with both roles on each row (Adam 2026-10-26)
 import { wirePick, wirePickRows, SLOT_PICK_SKIP } from "../pick-rows.js"; // click-to-pick, the one wiring classic's Optimizer shares (D81)
@@ -21,7 +21,8 @@ import { controlsHtml as controlsMarkup } from "./lineup-look.js"; // the two-ro
 import { slotsHtml as slotsMarkup, repaintSlots } from "./lineup-slots.js"; // the six slots' markup and figure repaint (Adam 2026-10-21 Q3 option A split)
 export { slotPlayerHtml } from "./lineup-slots.js"; // tests import it from here
 // The saved-lineups view lives in ./lineup-saved.js (state stays here); the two pure helpers keep their old exports from this module.
-import { findRow, SALARY_CAP, FLEX_COUNT, savedProjHtml, savedLineupCardHtml as savedCardHtml, savedLineupsSectionHtml as savedSectionHtml, wireSavedCards, cardPutGuard } from "./lineup-saved.js";
+import { lineupTotals, lineupTotalsHtml } from "../lineup-totals.js"; // A11
+import { findRow, SALARY_CAP, FLEX_COUNT, savedTotalsHtml, savedSlotsHtml, savedLineupCardHtml as savedCardHtml, savedLineupsSectionHtml as savedSectionHtml, wireSavedCards, cardPutGuard } from "./lineup-saved.js";
 import { onSitePage } from "../tabs.js"; // the public site marks the page is-site: its saved cards draw no letter select (it can only be refused there)
 export { savedLineupSlotHtml, savedProjTotal } from "./lineup-saved.js";
 import { syncSwaps, swapsPanelHtml, wireSwaps } from "./lineup-swaps.js"; // the uniqueness swaps, full width below both columns (Adam 2026-10-18)
@@ -128,9 +129,22 @@ export function computeTotals(board, picked = state, figures = playerFigures) {
   return { salaryUsed, salaryLeft: salaryUsed === null ? null : SALARY_CAP - salaryUsed, totalProj, filled: entries.length };
 }
 
-/** The "Total projection ... · N of 6 slots filled" line's contents. */
-function totalsLineHtml(totals) {
-  return `Total projection ${totals.totalProj === null ? "unknown (a player has no projection)" : dec1(totals.totalProj)} &middot; ${totals.filled} of 6 slots filled`;
+/** A11: the working lineup's `Salary used`, `Salary left`, `Proj` and `Own` under the last slot, from the first man (lineup-totals.js): empty reads $0, the full cap and dashes;
+ *  a board that has not loaded reads dashes with the reason; a placed man no longer on the board makes every figure that needs him a dash. Salary per open spot follows (Adam 2026-10-18). */
+export function workingTotalsHtml(board, picked = state, figures = playerFigures) {
+  const entries = [];
+  if (picked.cpt) entries.push({ id: picked.cpt.id, cpt: true });
+  for (const s of picked.flex ?? []) if (s) entries.push({ id: s.id, cpt: false });
+  const men = entries.map(({ id, cpt }) => {
+    const row = findRow(board, id);
+    if (!row) return {};
+    const f = figures(row, cpt);
+    return { salary: cpt ? row.cptSalary : row.salary, proj: f.proj, own: f.notOnBoard ? null : f.own };
+  });
+  const notLoaded = (board?.rows ?? []).length ? null : "the board has not loaded";
+  const t = computeTotals(board, picked, figures);
+  const perSpot = t.salaryLeft === null ? null : showdownPerSpotText(t.salaryLeft, !picked.cpt, FLEX_COUNT - (picked.flex ?? []).filter(Boolean).length);
+  return lineupTotalsHtml(lineupTotals(men, { cap: SALARY_CAP, notLoaded }), { cap: SALARY_CAP, attrs: " data-working-totals", extra: perSpot ? escapeHtml(perSpot) : "" });
 }
 
 function addCaptain(row) {
@@ -350,13 +364,17 @@ function doLoadLineup(id) {
 function repaintSlotFigures() {
   if (!lastContainer || !lastBoard) return;
   repaintSlots(lastContainer, lastBoard, state);
-  const totalsEl = lastContainer.querySelector(".lineup-totals");
-  if (totalsEl) totalsEl.innerHTML = totalsLineHtml(computeTotals(lastBoard));
-  // The pool and the saved cards' projection totals carry the same notes, repainted in place.
+  const totalsEl = lastContainer.querySelector("[data-working-totals]");
+  if (totalsEl) totalsEl.outerHTML = workingTotalsHtml(lastBoard);
+  // The pool and the saved cards' rows and totals carry the same notes, repainted in place together, so a card's rows and totals never disagree.
   paintPool(lastContainer, poolCtx(lastBoard));
-  lastContainer.querySelectorAll(".saved-lineup-proj").forEach((el) => {
+  lastContainer.querySelectorAll(".saved-lineup-slots[data-lineup-id]").forEach((el) => {
     const lineup = state.savedLineups.find((l) => l.id === el.dataset.lineupId);
-    if (lineup) el.innerHTML = savedProjHtml(lineup, lastBoard);
+    if (lineup) el.innerHTML = savedSlotsHtml(lineup, lastBoard);
+  });
+  lastContainer.querySelectorAll("[data-lineup-totals][data-lineup-id]").forEach((el) => {
+    const lineup = state.savedLineups.find((l) => l.id === el.dataset.lineupId);
+    if (lineup) el.outerHTML = savedTotalsHtml(lineup, lastBoard);
   });
 }
 
@@ -413,17 +431,6 @@ function savedLineupsSectionHtml(board) {
 
 // `poolRows`: the pool's rows (pool.js poolVisibleRows), read once per draw so the filter bar's count is the same list.
 function panelHtml(board, poolRows) {
-  const totals = computeTotals(board);
-  const salaryKnown = totals.salaryUsed !== null;
-  const overCap = salaryKnown && totals.salaryUsed > SALARY_CAP;
-  const fillPct = salaryKnown ? Math.max(0, Math.min(100, (totals.salaryUsed / SALARY_CAP) * 100)) : 0;
-  // Adam 2026-10-18: salary per open spot, the Captain's 1.5x weighed in (totals.js); null when full or over.
-  const perSpot = salaryKnown ? showdownPerSpotText(totals.salaryLeft, !state.cpt, FLEX_COUNT - state.flex.filter(Boolean).length) : null;
-  const salaryText = !salaryKnown
-    ? "Salary unknown: a placed player is no longer on the board"
-    : totals.salaryLeft < 0
-      ? `${money(totals.salaryUsed)} used · ${money(-totals.salaryLeft)} over`
-      : `${money(totals.salaryUsed)} used · ${money(totals.salaryLeft)} left${perSpot ? ` · ${perSpot}` : ""}`;
   // The Optimizer (sketch A, Adam 2026-10-19): its band head over the builder (the left column, wider then, .sd-opt-left), whose
   // Make row (sticky, as classic's footer) ends it; the Pool and Build boxes come after the six slots and the meter (Adam 2026-10-20:
   // "I can't see the main lineup that I'm building"). The player pool sits beside it (below; Adam 2026-10-26: the Rankings table as
@@ -438,13 +445,9 @@ function panelHtml(board, poolRows) {
       <div class="lineup-left${optimizerLive() ? " sd-opt-left" : ""}">
         ${controlsHtml()}
         <div class="lineup-slots">${slotsHtml(board)}</div>
+        ${workingTotalsHtml(board)}
         ${meterStripHtml()}
         ${lineupReadHtml(board, state)}
-        <div class="salary-bar">
-          <div class="salary-bar-track"><div class="salary-bar-fill${overCap ? " over" : ""}" style="width:${fillPct}%"></div></div>
-          <span class="salary-bar-label${overCap ? " over" : ""}">${escapeHtml(salaryText)}</span>
-        </div>
-        <div class="lineup-totals">${totalsLineHtml(totals)}</div>
         <div id="${BUILD_STATUS_ID}">${buildStatusHtml(board, messageRowShown(poolRows))}</div>
         ${optimizerBandBoxesHtml(board)}
         ${optimizerGoRowHtml(board)}

@@ -1,10 +1,10 @@
 // Rankings table: sticky header, 36px rows, hover highlight, no zebra. Every header sorts asc then desc
-// with an arrow (default Value desc, set once at load — not from a click; star and every other numeric
+// with an arrow (default Proj desc, set once at load — not from a click; star and every other numeric
 // column default to descending on their own first click, see state.js's defaultDirFor). Proj and Own%
 // are editable in place; an override shows a marker plus the base value on hover and a reset icon. Rows
 // with a null projection show "no proj" and stay visible (D27). A player nobody published an ownership number
-// for shows an em dash in Own% (still click-to-edit, D28); the app never estimates one. The Lev column is
-// empty for everyone (Adam 2026-10-15, Lev measure to be redesigned).
+// for shows an em dash in Own% (still click-to-edit, D28); the app never estimates one. There is no Lev column
+// (optimizer standard A2, 2026-11-03).
 //
 // Event handling is delegated once onto the tbody element itself (wireDelegation), rather than
 // re-attached to every cell on every render: that lets a single row (updateRow) or a single cell
@@ -24,9 +24,6 @@ const BASE_COLUMNS = [
   { key: "own", label: "Own" },
   // Adam 2026-10-17, DQ1 and Q2: this column is projection per $1,000 (value-core.js); the header reads "Val" (optimizer standard D1), the key stays "value".
   { key: "value", label: "Val", title: "Val: projection per $1,000 of salary" },
-  // Adam 2026-10-15, Lev measure to be redesigned: the column stays, every cell empty, the header says why and does
-  // not sort (there is nothing to sort on).
-  { key: "lev", label: "Lev", title: "Lev: no measure yet", sortable: false },
   { key: "tags", label: "Tags" },
 ];
 // Adam 2026-10-18 Q1: no Opp or Status column; the shared row (player-row.js) carries the matchup pill and the status tag in the Player cell.
@@ -34,7 +31,7 @@ const NOTE_COLUMN = { key: "note", label: "Note" };
 export const COLUMNS = BASE_COLUMNS;
 
 // TwoGun mode only (D25 as amended 2026-10-15: his published figures used as he publishes them): four more Rankings
-// columns after Lev, each read from row.tg and sortable (state.js sortValue). Current mode never shows them.
+// columns after Val, each read from row.tg and sortable (state.js sortValue). Current mode never shows them.
 // The Ceil and Ceil/$ columns were removed (optimizer standard A21, 2026-11-03).
 export const TG_COLUMNS = [
   { key: "tgMed", label: "Med", field: "median", title: "TwoGun's median, DraftKings points as he publishes them" },
@@ -43,10 +40,10 @@ export const TG_COLUMNS = [
   { key: "tgP4x", label: "4x%", field: "p4x", title: "TwoGun's chance (percent) of 4x salary value, as he publishes it" },
 ];
 
-// The columns of the Rankings head and body, in order: Lev, then the TwoGun columns when `twogun`, then Tags onward.
+// The columns of the Rankings head and body, in order: Val, then the TwoGun columns when `twogun`, then Tags onward.
 function columnsFor(hasNoteColumn, twogun) {
-  const lev = BASE_COLUMNS.findIndex((c) => c.key === "lev");
-  const cols = twogun ? [...BASE_COLUMNS.slice(0, lev + 1), ...TG_COLUMNS, ...BASE_COLUMNS.slice(lev + 1)] : BASE_COLUMNS;
+  const val = BASE_COLUMNS.findIndex((c) => c.key === "value");
+  const cols = twogun ? [...BASE_COLUMNS.slice(0, val + 1), ...TG_COLUMNS, ...BASE_COLUMNS.slice(val + 1)] : BASE_COLUMNS;
   return hasNoteColumn ? [...cols, NOTE_COLUMN] : cols;
 }
 
@@ -320,7 +317,7 @@ function noteCellHtml(row) {
   return `<span class="note-preview" title="${escapeHtml(row.note)}">${escapeHtml(preview)}</span>`;
 }
 
-// TwoGun mode: the four TwoGun cells after Lev, plain (a stale board is the header pill's to say, visual QA 2026-10-15).
+// TwoGun mode: the four TwoGun cells after Val, plain (a stale board is the header pill's to say, visual QA 2026-10-15).
 function tgCellsHtml(row) {
   return TG_COLUMNS.map((c) => {
     const tip = twoGunMarkerTexts(row, c.field).join(" ");
@@ -339,7 +336,6 @@ function rowHtml(row, hasNoteColumn, twogun = false) {
       <td>${editableCellHtml(row, "proj")}</td>
       <td>${editableCellHtml(row, "own")}</td>
       <td>${gradedCellHtml(row.value, row.valueGrade)}</td>
-      <td></td>
       ${twogun ? tgCellsHtml(row) : ""}
       <td class="tags-cell" title="${escapeHtml(tagsCellTitle(row))}">${tagsCellHtml(row)}</td>
       ${hasNoteColumn ? `<td${row.note ? ` title="${escapeHtml(row.note)}"` : ""}>${noteCellHtml(row)}</td>` : ""}
@@ -364,7 +360,7 @@ export function renderTableHead(theadEl, sort, onSortClick, hasNoteColumn = fals
   const cells = cols
     .map((c) => {
       const title = c.title ? ` title="${escapeHtml(c.title)}"` : "";
-      // A column with nothing to sort on (Lev) has no data-col, so no click handler, and no sortable class.
+      // A column with nothing to sort on has no data-col, so no click handler, and no sortable class.
       if (c.sortable === false) return `<th class="not-sortable"${title}>${escapeHtml(c.label)}</th>`;
       const arrow = sortArrowHtml(sort.col === c.key, sort.dir); // its own span so style.css can set the arrow a little smaller: a sorted header in a narrow column must not clip (round 5)
       const tgCls = c.field ? " tg-col" : c.key === "pos" ? " pos-col" : "";

@@ -78,6 +78,12 @@ export function matchupPillHtml(row) {
   return text ? `<span class="meta-pill">${escapeHtml(text)}</span>` : "";
 }
 
+/** D80 as amended (optimizer standard A1, A5): a Showdown row has no home/away and no totals, only the bare opponent code ("CAR"), in the pill's small type; "" with no opponent known. */
+export function bareOppHtml(row) {
+  const code = matchupText(row).replace(/^(vs|@)\s*/i, "").trim();
+  return code ? `<span class="meta-pill meta-opp">${escapeHtml(code)}</span>` : "";
+}
+
 export function playerLineHtml(row, opts = {}) {
   return `${playerIdentityHtml(row, opts)}${opts.pill === false ? "" : matchupPillHtml(opts.pillRow ?? row)}`;
 }

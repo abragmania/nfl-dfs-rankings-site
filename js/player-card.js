@@ -1,7 +1,7 @@
 // The player card popup (D6 amended 2026-10-18): a click on a player's NAME on any list opens his card, built from
 // NFLDepthCharts' published files by GET /api/player-card/<id>. One delegated click handler on the document, so the
-// lists need no wiring of their own and survive every re-render. The exposure tables keep the name as the "only
-// lineups with" button (Adam, 2026-10-18), so they are not hooked here.
+// lists need no wiring of their own and survive every re-render. Every name opens it, the exposure tables' and the swaps' included
+// (optimizer standard A7, 2026-11-03: the exposure tables' only-lineups-with filter is the small Filter button beside the name).
 //
 // The controller (createPlayerCardController) is DOM-free: it takes a `view` and the data calls as arguments, so
 // tests/player-card-ui.test.mjs drives it with stand-ins. initPlayerCard builds the real dialog and wires the page.
@@ -11,7 +11,8 @@ import { cardHtml, initialsBadgeHtml } from "./player-card-body.js";
 // What counts as a player's name: the Player cell of the Rankings, Favorites, Showdown and Optimizer-pool rows
 // (.player-name, inside a <tr data-id>), the other lists' names (each inside an element carrying data-card-id), and
 // Showdown's Projections and Ownership name cells (.pc-name; classic's use the shared .player-name).
-export const NAME_SELECTOR = ".player-name, .pc-name, .lineup-slot-name, .saved-lineup-slot-name, .opt-p-name, .qbs-pname, .qbs-head-name, .cash-swap-name";
+// The slots', cards' and saved rows' names are all .opt-p-name (the one lineup row, A5); the old per-list slot-name classes are gone.
+export const NAME_SELECTOR = ".player-name, .pc-name, .opt-p-name, .qbs-pname, .qbs-head-name, .qbs-name, .cash-swap-name";
 const INTERACTIVE = "button, a, input, select, textarea";
 
 /** {id, name} of the player whose name `el` is (or sits inside), or null when it is not a name or has no id. */
@@ -50,23 +51,24 @@ export function markNames(root) {
  * row on screen (or null); `sdKey()` is the open showdown's key or null; `boardAsOf(sd)` is when that board was built;
  * `view` = { show(html, who), hide(), isShown() }.
  */
-export function createPlayerCardController({ getCard = getPlayerCard, findRow, sdKey = () => null, boardAsOf = () => null, view }) {
+export function createPlayerCardController({ getCard = getPlayerCard, findRow, sdKey = () => null, boardAsOf = () => null, boardOf = () => null, view }) {
   let seq = 0;
   async function open(target) {
     const mine = ++seq;
     const sd = sdKey() || null;
     const row = findRow(target.id, sd) ?? null;
     const asOf = boardAsOf(sd) ?? null;
+    const board = boardOf(sd) ?? null; // the board the row came from: its sources and their as-of times name where the figures come from (A8)
     const who = { id: target.id, name: row?.name ?? target.name, team: row?.team ?? "", pos: row?.pos ?? "" };
-    view.show(cardHtml({ who, row, asOf, state: "loading" }), who);
+    view.show(cardHtml({ who, row, asOf, board, state: "loading" }), who);
     let html;
     try {
       const data = await getCard(target.id, sd);
       html = data && data.ok !== false
-        ? cardHtml({ who, row, asOf, state: "ready", data })
-        : cardHtml({ who, row, asOf, state: "error", message: data?.error?.message ?? "The player card could not be loaded." });
+        ? cardHtml({ who, row, asOf, board, state: "ready", data })
+        : cardHtml({ who, row, asOf, board, state: "error", message: data?.error?.message ?? "The player card could not be loaded." });
     } catch (e) {
-      html = cardHtml({ who, row, asOf, state: "error", message: `Could not reach the app: ${e.message}` });
+      html = cardHtml({ who, row, asOf, board, state: "error", message: `Could not reach the app: ${e.message}` });
     }
     if (mine === seq && view.isShown()) view.show(html, who); // an answer for a card that was closed or replaced is dropped
   }
@@ -147,11 +149,11 @@ function buildView() {
 let wired = false;
 
 /** Builds the dialog once and wires the page: the delegated name click, the backdrop and × to close, Esc, and Tab kept inside. */
-export function initPlayerCard({ findRow, sdKey, boardAsOf }) {
+export function initPlayerCard({ findRow, sdKey, boardAsOf, boardOf }) {
   if (wired) return;
   wired = true;
   const view = buildView();
-  const controller = createPlayerCardController({ findRow, sdKey, boardAsOf, view });
+  const controller = createPlayerCardController({ findRow, sdKey, boardAsOf, boardOf, view });
   // Names are keyboard stops: marked now, and again on whatever a list draws later (innerHTML redraws add new nodes).
   markNames(document.body);
   new MutationObserver((records) => {

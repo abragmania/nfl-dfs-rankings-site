@@ -60,6 +60,22 @@ export function fromLab([L, a, b]) {
 export const WASH_THEMES = [{ card: "#151a22" }, { card: "#ffffff" }];
 const channel = (hex, i) => parseInt(hex.slice(1 + 2 * i, 3 + 2 * i), 16);
 
+/** WCAG's floor for a graphic that must be seen (3:1): the dark theme's team stripe and tint colour holds it against the card. */
+export const STRIPE_MIN_CONTRAST = 3;
+/** The colour the dark theme draws a team's stripe and tint in (round 2 fix 15: Dallas, New England, Pittsburgh, Baltimore, Las Vegas, Tampa Bay, the Jets and Green Bay
+ *  read as untinted): the colour itself when it holds STRIPE_MIN_CONTRAST on the dark card, else its lightness raised at fixed hue (chroma shrunk by inGamut, never shifted)
+ *  to the first step that does. A bright team is returned unchanged. */
+export function liftForDark(hex) {
+  const card = WASH_THEMES[0].card;
+  if (!HEX.test(hex ?? "") || contrastRatio(hex, card) >= STRIPE_MIN_CONTRAST) return hex;
+  const [L, a, b] = toLab(hex);
+  for (let L2 = Math.ceil(L) + 1; L2 <= 100; L2++) {
+    const c = inGamut(L2, a, b);
+    if (contrastRatio(c, card) >= STRIPE_MIN_CONTRAST) return c;
+  }
+  return hex;
+}
+
 const DARK_L = 30; // below this CIELAB lightness a colour is dark: the nudge only lightens it
 /** The colour at lightness L2 with a and b shrunk together (hue held) until it fits the sRGB gamut. */
 const inGamut = (L2, a, b) => {

@@ -1,14 +1,16 @@
 // The Showdown Lineup Builder's saved-lineups view: the saved card (number, letter, slots, totals), the section around the
 // cards (with the "only lineups with" filter and its exposure tables on the live app, D77), the card buttons' wiring and the
 // one-PUT-per-card guard. The panel's state stays in ./lineup.js, which hands what this reads in as arguments.
-import { escapeHtml, money, dec1 } from "../format.js";
+import { escapeHtml, dec1 } from "../format.js";
 import { TAG_OPTIONS, numberLineups, lineupPrefix } from "../lineup-tags.js"; // the one copy of the number / letter helpers
 import { filterLineups } from "../lineup-filter.js";
 import { requestFailureText } from "./read-json.js";
-import { sdLine } from "./table.js";
+import { posPillHtml } from "./table.js";
 import { lineupModeOf, cashBadgeHtml } from "../lineup-cash.js";
 import { showdownPalette } from "./lineup-look.js";
-import { teamColours, teamColourStyle } from "../lineup-card.js";
+import { teamColours, cardPlayerRowHtml } from "../lineup-card.js";
+import { lineupTotals, lineupTotalsHtml } from "../lineup-totals.js"; // A11
+import { notesHtml } from "./lineup-slots.js"; // the card row's line 2 words (a cycle with lineup-slots.js: both only call each other's functions)
 import { shownTotal } from "../totals.js";
 import { playerFigures } from "./lineup-meter.js";
 
@@ -26,27 +28,28 @@ function formatSavedAt(iso) {
 }
 
 // `palette`: the Showdown's team colours (lineup-look.js showdownPalette), so a saved row wears the slots' colours as classic's saved rows wear the cards'.
-export function savedLineupSlotHtml(entry, palette = null) {
+export function savedLineupSlotHtml(entry, palette = null, figures = playerFigures) {
   if (!entry) return "";
   const { slot, row, snap } = entry;
   const src = row ?? snap;
-  const cptCls = slot === "CPT" ? " sd-saved-cpt" : "";
-  if (!src) return `<div class="saved-lineup-slot saved-lineup-slot-tc saved-lineup-slot-empty${cptCls}"><span class="saved-lineup-slot-pos">${escapeHtml(slot)}</span><span class="saved-lineup-slot-empty-text">Empty</span></div>`;
-  const missingCls = row ? "" : " saved-lineup-slot-missing";
-  const noteHtml = row ? "" : `<span class="saved-lineup-slot-note">not on board</span>`;
-  return `
-    <div class="saved-lineup-slot saved-lineup-slot-tc${missingCls}${cptCls}" style="${teamColourStyle(teamColours(palette, src.team))}" data-card-id="${escapeHtml(String(row?.id ?? snap?.playerId ?? ""))}">
-      <span class="saved-lineup-slot-pos">${escapeHtml(slot)}</span>
-      ${sdLine(src, { nameCls: "saved-lineup-slot-name", tag: row ? "out" : false, chipPlain: true })}
-      <span class="saved-lineup-slot-salary">${money(slot === "CPT" ? row?.cptSalary ?? snap?.salary : row?.salary ?? snap?.salary)}</span>
-      ${noteHtml}
-    </div>`;
+  if (!src) return `<div class="opt-p opt-p-empty${slot === "CPT" ? " sd-cpt-slot" : ""}"><span class="opt-p-slot">${escapeHtml(slot)}</span><span class="opt-p-empty-text">Empty</span></div>`;
+  // A5: the same card row as the builder's slots and the new cards (lineup-card.js), with the man's own seat figures (the Captain's 1.5x); a man no longer on the board keeps his saved ones.
+  const isCpt = slot === "CPT";
+  const figs = row ? figures(row, isCpt) : null;
+  const p = row
+    ? { ...row, salary: isCpt ? row.cptSalary : row.salary, proj: figs.proj, own: figs.notOnBoard ? null : figs.own }
+    : { id: snap?.playerId, name: snap?.name, pos: snap?.pos, team: snap?.team, salary: snap?.salary, proj: snap?.proj ?? null, own: snap?.own ?? null };
+  const decor = {
+    rolesFor: () => (row ? notesHtml(figs) : `<span class="opt-p-note">not on board</span>`),
+    coloursFor: (team) => teamColours(palette, team),
+  };
+  return cardPlayerRowHtml(p, slot, decor, { posHtml: posPillHtml, bareOpp: true, cls: `${isCpt ? "sd-cpt-slot" : ""}${row ? "" : " opt-p-missing"}`.trim() }).trim();
 }
 
 // The saved card's projection total (the board row's figures, `figures` = playerFigures by default): null when
 // a man is off the board or has no figure. The salary total is the board's too. The total is the sum of the six
 // figures each rounded to one decimal as a card row prints them (totals.js shownTotal, ChatGPT wish d, Adam 2026-10-17), as a
-// generated card's total is (optimizer-view.js gppTotalsText): 👁 V4 found this card summing the unrounded figures, so the
+// generated card's total is (lineup-totals.js, through optimizer-view.js cardHtml): 👁 V4 found this card summing the unrounded figures, so the
 // same six men read 105.0 here and 105.1 on their results card.
 export function savedProjTotal(lineup, board, figures = playerFigures) {
   const projs = [];
@@ -59,9 +62,23 @@ export function savedProjTotal(lineup, board, figures = playerFigures) {
   return projs.length ? shownTotal(projs) : 0; // no slots at all: 0, as before
 }
 
-export function savedProjHtml(lineup, board, figures = playerFigures) {
-  const total = savedProjTotal(lineup, board, figures);
-  return total === null ? "proj unknown (a player has no projection)" : `${dec1(total)} proj`; // the "·" before it is CSS (.saved-lineup-totals), as on classic's card
+/** A11: the builder's four figures under a saved card's last slot (lineup-totals.js); a man no longer on the board costs his saved salary and has no live projection or ownership.
+ *  Carries the lineup's id so lineup.js can repaint it when the modes answer's notes land. */
+export function savedTotalsHtml(lineup, board, figures = playerFigures) {
+  const men = (lineup.slots ?? []).map((s) => {
+    const row = findRow(board, s.playerId);
+    if (!row) return { salary: s.salary };
+    const cpt = String(s.slot ?? "").toUpperCase() === "CPT";
+    const f = figures(row, cpt);
+    return { salary: cpt ? row.cptSalary : row.salary, proj: f.proj, own: f.notOnBoard ? null : f.own };
+  });
+  return lineupTotalsHtml(lineupTotals(men, { cap: SALARY_CAP }), { cap: SALARY_CAP, attrs: ` data-lineup-id="${escapeHtml(lineup.id)}"` });
+}
+
+/** A saved card's rows (A5), one per slot; lineup.js repaints them in place with the totals when the modes answer's notes land, so a card's rows and totals never disagree. */
+export function savedSlotsHtml(lineup, board, figures = playerFigures) {
+  const palette = showdownPalette(board);
+  return (lineup.slots ?? []).map((s) => savedLineupSlotHtml({ slot: s.slot, row: findRow(board, s.playerId), snap: s }, palette, figures)).join("");
 }
 
 // `ui`: { renamingId, deleteConfirmId, numbers, busy, error } — the panel's open rename box and delete prompt (lineup.js's state; both
@@ -104,10 +121,8 @@ export function savedLineupCardHtml(lineup, board, figures = playerFigures, ui =
         <button type="button" class="saved-lineup-mini-btn" data-action="sd-rename-cancel">Cancel</button>
       </span>`
     : `<button type="button" class="saved-lineup-name-btn" data-action="sd-rename-start" data-id="${escapeHtml(lineup.id)}" title="Click to rename">${escapeHtml(lineup.name)}</button>`;
-  const palette = showdownPalette(board);
-  const rowsHtml = entries.map((e) => savedLineupSlotHtml(e, palette)).join("");
-  const salaryLeft = SALARY_CAP - salaryUsed;
-  const salaryText = overCap ? `${money(salaryUsed)} used &middot; ${money(-salaryLeft)} over` : `${money(salaryUsed)} used &middot; ${money(salaryLeft)} left`;
+  const rowsHtml = savedSlotsHtml(lineup, board, figures);
+  const totalsBlock = savedTotalsHtml(lineup, board, figures);
   const deleteHtml = isConfirmingDelete
     ? `<span class="saved-lineup-confirm">Delete this lineup?
         <button type="button" class="saved-lineup-mini-btn danger" data-action="sd-delete-yes" data-id="${escapeHtml(lineup.id)}">Yes</button>
@@ -122,11 +137,8 @@ export function savedLineupCardHtml(lineup, board, figures = playerFigures, ui =
         <span class="saved-lineup-time">${escapeHtml(formatSavedAt(lineup.savedAt))}</span>
         ${badges}
       </div>
-      <div class="saved-lineup-slots">${rowsHtml}</div>
-      <div class="saved-lineup-totals">
-        <span class="${overCap ? "saved-lineup-totals-over" : ""}">${salaryText}</span>
-        <span class="saved-lineup-proj" data-lineup-id="${escapeHtml(lineup.id)}">${savedProjHtml(lineup, board, figures)}</span>
-      </div>
+      <div class="saved-lineup-slots" data-lineup-id="${escapeHtml(lineup.id)}">${rowsHtml}</div>
+      ${totalsBlock}
       <div class="saved-lineup-actions">
         <button type="button" class="saved-lineup-btn" data-action="sd-load" data-id="${escapeHtml(lineup.id)}">Load</button>
         ${deleteHtml}
