@@ -5,22 +5,23 @@
 // pure settings and request rules, optimizer-view.js the markup. lineup.js calls syncOptimizer before each draw, puts the pieces
 // in its panel and calls wireOptimizer after; the player pool (pool.js) asks poolControls for each row's boxes and buttons.
 // Live app only (as the meter): the published site and sample mode have no generate route, so nothing here is drawn there.
-import { isSampleMode, sampleRefusal } from "../api.js";
+import { isSampleMode } from "../api.js";
 import { bumpControlHtml, bumpFigureOnlyHtml, wireBumpButtons, bumpPatch } from "../bump-control.js"; // Adam 2026-10-22: ± bump on the pool rows' projection (its own column since A1)
 import { rowResetHtml, rowResetPatch } from "../row-reset.js"; // B12 (round 3): the row's reset
+import { limitsCrossed } from "../limit-cross.js"; // item 18
+import { wireLimitBox, flushOpenLimit, limitRefusals } from "../limit-box.js"; // A3 (round 4): the pool's Min % and Max % boxes save when they close, as classic's do
+import { projEditHtml, ownEditHtml, isTyped, starHtml, noteSlotHtml } from "./pool-edit.js"; // B2, B3, C23: the star, the typed Proj and Own, the note's pencil
 import { onSitePage } from "../tabs.js"; // the one is-site check
 import { parsePct, uniqueSavedName, duplicateSaveStatus } from "../lineup.js";
 import { countBelowMin, syncCountNote, COUNT_MIN_SENTENCE, fullLineupText } from "../lineup-settings.js";
-import { newBuildId, batchBuild } from "../lineup-builds.js";
 import { toggleMustHave, bulkUids, filterBarHtml } from "../lineup-filter.js";
-import { lineupModeOf } from "../lineup-cash.js";
-import { postShowdownLineup, getShowdowns, supports, postShowdownLineupGenerate, stopShowdownLineupGenerate, canStopShowdownLineupGenerate } from "./api.js"; // supports: D71, what the public site implements
+import { postShowdownLineup, getShowdowns, supports, stopShowdownLineupGenerate, canStopShowdownLineupGenerate } from "./api.js"; // supports: D71, what the public site implements
 import { afterBuildingDelay, goSitsBelow, stopFailure } from "../lineup-stop.js";
 import { answerTone } from "../row-message.js";
 import { resyncMeterExcludes } from "./lineup-meter.js";
-import { halfName } from "./figures-label.js";
 import { resyncSwapsExcludes } from "./lineup-swaps.js";
-import { readJson, requestFailureText } from "./read-json.js"; // the one JSON reader (🔵 866b0ce B3, B4)
+import { requestFailureText } from "./read-json.js"; // the one JSON reader (🔵 866b0ce B3, B4)
+import { postShowdownGenerate, putShowdownOverrides, deleteShowdownOverrides, resultsFromAnswer, savedKeysOf, saveBody } from "./optimizer-requests.js"; // the requests and plain shapes, moved out in round 4
 import * as S from "./optimizer-state.js";
 import * as V from "./optimizer-view.js";
 
@@ -175,60 +176,17 @@ export async function pruneGoneShowdowns(currentKey, list = listShowdowns) {
 }
 
 // ---------- the request ----------
-
-/** POST /api/showdown/<key>/lineup/generate, through api.js (D71: the public site's stand-in answers it in the browser and ignores fetchImpl). */
-export async function postShowdownGenerate(key, body, fetchImpl = fetch) {
-  return postShowdownLineupGenerate(key, body, fetchImpl);
-}
-
-/** PUT /api/showdown/<key>/overrides, body as classic's PUT /api/overrides (Adam 2026-10-22: the ± bump sends {bump: {id: steps | null}});
- *  answers this game's recomputed board. Kept here for the same reason as postShowdownGenerate; sample mode refuses as every write does (A7). */
-export async function putShowdownOverrides(key, patch, fetchImpl = fetch) {
-  if (isSampleMode()) return sampleRefusal();
-  if (!supports("overrides")) return Promise.reject(new Error("The projection bump cannot be saved on the public site.")); // D71: the PUT has no stand-in there
-  const res = await fetchImpl(`/api/showdown/${encodeURIComponent(key)}/overrides`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(patch) });
-  return readJson(res);
-}
-
-/** DELETE /api/showdown/<key>/overrides (Reset all overrides, A6): clears this game's typed numbers and bumps; answers the game's recomputed board. Same refusals as the PUT. */
-export async function deleteShowdownOverrides(key, fetchImpl = fetch) {
-  if (isSampleMode()) return sampleRefusal();
-  if (!supports("overrides")) return Promise.reject(new Error("Reset all overrides runs in the app.")); // D71: the public site has no stand-in for it
-  const res = await fetchImpl(`/api/showdown/${encodeURIComponent(key)}/overrides`, { method: "DELETE" });
-  return readJson(res);
-}
-
-/** The batch kept from a generate answer: the lineups in the server's order (each with a page id and its number), and what it was
- *  made with. Pure; `seqStart` numbers the page ids; `board` is the served board it was made on: its build time is the as-of of a
- *  batch whose answer names none, its reading (board.mode.cashMode) the build record's boardMode when the answer names none (as
- *  classic records it), and its short source names label the batch's source line (figures-label.js halfName). */
-export function resultsFromAnswer(data, sent, seqStart = 0, board = null) {
-  const lineups = (Array.isArray(data.lineups) ? data.lineups : []).map((l, i) => ({ ...l, uid: `s${seqStart + i + 1}`, index: i }));
-  const notes = Array.isArray(data.notes) ? [...data.notes] : [];
-  if (!lineups.length && !notes.length) notes.push("No lineups could be made from these locks and settings.");
-  const cash = sent.settings.mode === "cash";
-  return {
-    mode: cash ? "cash" : "gpp",
-    basis: cash ? data.basis ?? null : null,
-    boardMode: data.boardMode === "twogun" || data.boardMode === "current" ? data.boardMode : board?.mode?.cashMode ?? null,
-    objective: cash ? null : sent.settings.objective,
-    projection: data.projection ?? null,
-    ownership: data.ownership ?? null,
-    figuresKey: typeof data.figuresKey === "string" && data.figuresKey !== "" ? data.figuresKey : null, // the served board's key, sent back with each save
-    meter: data.meter ?? null,
-    boardBuiltAt: board?.generatedAt ?? null,
-    names: { projection: halfName(board, "projection"), ownership: halfName(board, "ownership") },
-    lineups,
-    notes,
-    bends: Array.isArray(data.bends) ? data.bends : [],
-    made: lineups.length,
-    marks: S.exposureMarks(sent.settings),
-    buildId: newBuildId(Date.now(), Math.random()), // one id per Make, shared by every lineup saved from it (lineup-builds.js)
-  };
-}
+// The generate and overrides requests, the batch kept from an answer and the saved-lineup helpers are optimizer-requests.js's (moved there in round 4); every name is still exported from here.
+export { postShowdownGenerate, putShowdownOverrides, deleteShowdownOverrides, resultsFromAnswer, savedKeysOf, saveBody };
 
 async function doGenerate(ctx) {
   if (opt.generating || opt.saving) return;
+  flushOpenLimit(); // a Min % or Max % box still open is read as a click away reads it, before the request is made (A3)
+  const refused = limitRefusals().filter((r) => r.selector.startsWith("[data-sd-cap")); // a text a box refused (this press's blur included) is not silently built around: the Build stops and names him
+  if (refused.length) {
+    opt.formError = refused[0].sentence;
+    return ctx.commit();
+  }
   const mode = opt.ks.mode;
   const seated = seatedNow(ctx.board); // the men in the seats are held as classic holds its slots (item 11)
   const held = S.heldCandidates(modeState(), seated);
@@ -286,23 +244,6 @@ async function doGenerate(ctx) {
 }
 
 // ---------- saves ----------
-
-/** The saved lineups of one mode as Captain-aware set keys (a card matching one shows "Saved ✓"). */
-export function savedKeysOf(saved, mode, board) {
-  const { personOf } = S.boardIndex(board);
-  return new Set((saved ?? []).filter((l) => lineupModeOf(l) === mode).map((l) => S.sdSetKey(l.slots, personOf)));
-}
-
-/** The POST .../lineups body for one card: its name, its six men by person id (as the builder saves them, so the saved card
- *  finds every row), its mode and the build record (classic saveGenerated: lineup-builds.js batchBuild, plus the answer's
- *  figures key, so the server refuses a save after this game's sources changed; the server stamps its own projection line,
- *  so the page sends none). Pure. */
-export function saveBody(lineup, results, name) {
-  const slots = (lineup.slots ?? []).map((s) => ({ slot: s.slot, playerId: String(s.personId ?? s.playerId) }));
-  const build = batchBuild({ buildId: results.buildId, boardMode: results.boardMode, objective: results.objective });
-  if (typeof results.figuresKey === "string" && results.figuresKey !== "") build.figuresKey = results.figuresKey;
-  return { name, slots, mode: results.mode, build };
-}
 
 async function saveCards(uids, ctx) {
   if (opt.saving || opt.generating || !opt.results) return;
@@ -434,11 +375,20 @@ export function poolThumbsHtml(row, isCpt, canSave = supports("overrides")) {
   return canSave ? bumpControlHtml(row, { kind }) : bumpControlHtml(row, { enabled: false, kind, title: SITE_BUMP_TITLE });
 }
 
-/** The projection figure of a pool row with the bump's tint and hover (the thumbs have their own column, A1); null off the live screen, where the pool draws its own figure. */
+/** The projection figure of a pool row with the bump's tint and hover (the thumbs have their own column, A1), as the typed-Proj editor (B3: click to type; the Captain list's
+ *  CPT Proj stores the number over 1.5 under his FLEX id, pool-edit.js); null off the live screen, where the pool draws its own figure. */
 export function poolBumpHtml(row, proj, isCpt) {
   if (!optimizerLive()) return null;
-  // B12 (round 3): the row's reset x beside the figure, for a man who has a typed number or a bump; the public site cannot write overrides, so it has none there (D71).
-  return `${bumpFigureOnlyHtml(row, proj, { kind: isCpt ? "cpt" : null })}${supports("overrides") ? rowResetHtml(row) : ""}`;
+  // B12 (round 3): the row's reset x beside the figure, for a man who has a typed number or a bump; the public site cannot write overrides, so it has no editor and no x there (D71).
+  const canWrite = supports("overrides");
+  return `${projEditHtml(row, isCpt, bumpFigureOnlyHtml(row, proj, { kind: isCpt ? "cpt" : null }), canWrite)}${canWrite ? rowResetHtml(row) : ""}`;
+}
+
+/** The Own / CPT Own figure of a pool row as the typed-Own editor (B3), with the row's reset x beside a typed one; null off the live screen. */
+export function poolOwnHtml(row, own, isCpt, text) {
+  if (!optimizerLive()) return null;
+  const canWrite = supports("overrides");
+  return `${ownEditHtml(row, isCpt, text, canWrite)}${canWrite && isTyped(row, "own", isCpt ? "cpt" : "flex") ? rowResetHtml(row) : ""}`;
 }
 
 /**
@@ -450,7 +400,7 @@ export const poolControls = {
   live: () => optimizerLive(),
   mode: () => opt.ks.mode, // GPP or Cash: the Columns list is remembered per mode (A17)
   // The Columns keys the pool can draw beyond its figures (columns.js SHOWDOWN_COLUMNS): none off the live app; Min % and Max % in GPP; the Captain's own lock and exclude on the FLEX list (C21).
-  available: (tab) => (optimizerLive() ? ["thumbs", "in", "lock", "exclude", ...(opt.ks.mode === "gpp" ? ["min_pct", "max_pct", ...(tab === "flex" ? ["cpt_min_pct", "cpt_max_pct"] : [])] : []), ...(tab === "flex" ? ["captain"] : [])] : []),
+  available: (tab) => (optimizerLive() ? ["star", "thumbs", "in", "lock", "exclude", ...(opt.ks.mode === "gpp" ? ["min_pct", "max_pct", ...(tab === "flex" ? ["cpt_min_pct", "cpt_max_pct"] : [])] : []), ...(tab === "flex" ? ["captain"] : [])] : []),
   rows: (all, shown) => (optimizerLive() ? V.poolRows(all, shown, modeState(), "All") : shown), // locked, included and excluded men stay listed so they can be undone; the filter bar's position chip applies after (pool.js)
   capCell: (row, kind, which) => (optimizerLive() ? V.poolCapCell(row, kind, which, modeState(), opt.ks.mode, parsePct) : ""),
   button: (row, kind, action) => (optimizerLive() ? V.poolButtonHtml(row, kind, action, modeState()) : ""), // "lock", "include" (In: the same for both roles) or "exclude"
@@ -460,6 +410,10 @@ export const poolControls = {
   excluded: (row, tab) => optimizerLive() && S.excludeState(modeState(), row, tab === "cpt" ? "cpt" : "flex").on, // A18: an excluded man's row on that list is greyed (seat-picker.js)
   thumbs: (row, isCpt = false) => poolThumbsHtml(row, isCpt), // the ± pair (Adam 2026-10-22), in its own column; one pair per man moves both his figures
   projCell: (row, proj, isCpt = false) => poolBumpHtml(row, proj, isCpt), // the Proj figure (FLEX tab) or the CPT proj figure (Captain tab) with the bump's tint
+  ownCell: (row, own, isCpt = false, text = "") => poolOwnHtml(row, own, isCpt, text), // B3: the Own figure as the typed-Own editor
+  canType: () => optimizerLive() && supports("overrides"), // B3: a projection can be typed here (the app), so the greyed row's reason can offer it (seat-picker.js)
+  starCell: (row) => (optimizerLive() ? starHtml(row, supports("overrides")) : ""), // B2: the star; on the site a published star shows, read only
+  noteSlot: (row) => (optimizerLive() ? noteSlotHtml(row, supports("overrides")) : ""), // C23: the pencil in the name cell
   readTab: () => S.readPoolTab(storage), // the pool's Captain | FLEX tab, kept in the browser on the site too (D71)
   writeTab: (tab) => S.writePoolTab(storage, tab),
 };
@@ -527,17 +481,34 @@ export function wirePoolControls(listEl, ctx) {
       }
     });
   });
+  // The Min % and Max % boxes (A3, round 4; limit-box.js, the box classic's pool uses): typing changes nothing until the box closes. Enter or a click away saves (an emptied box
+  // removes the limit, B10), Esc puts the old text back, the hint sits under the open box, and a text that is not a percent keeps the box open on Enter and says `Not saved` on a
+  // click away. A Build started while one is open reads it (doGenerate), and a redraw carries the open box into the new one (lineup.js).
   listEl.querySelectorAll("[data-sd-cap]").forEach((el) => {
-    el.addEventListener("input", () => {
-      const field = el.dataset.sdCap;
-      const ms = modeState();
-      const map = { ...(ms[field] ?? {}) };
-      if (el.value.trim() === "") delete map[el.dataset.id];
-      else map[el.dataset.id] = el.value;
-      setModeState({ ...ms, [field]: map });
-      el.classList.toggle("invalid", Number.isNaN(parsePct(el.value)));
-      clearFormError(ctx.container);
-      refreshLines(ctx.container, ctx.board);
+    const field = el.dataset.sdCap;
+    const id = el.dataset.id;
+    const seat = field.startsWith("cpt") ? "cpt" : "flex";
+    const crossedNow = () => limitsCrossed(modeState()[`${seat}Min`]?.[id] ?? "", modeState()[`${seat}Max`]?.[id] ?? "", parsePct);
+    let wasCrossed = crossedNow();
+    wireLimitBox(el, {
+      selector: V.capSelector(field, id),
+      // The sentence a refused text leaves (held, drawn beside the box, and stopping a Build): it names the man, the box and the old limit that stays.
+      refusalText: (typed) => `${rowOf(id)?.name ?? "A player"}'s ${field.endsWith("Min") ? "Min %" : "Max %"} (${field.startsWith("cpt") ? "Captain" : "FLEX"}) was not saved: "${String(typed).trim()}" is not a percent from 0 to 100, so his old limit stays. Fix the box or clear it.`,
+      doc: typeof document === "undefined" ? null : document,
+      parse: parsePct,
+      save: (text) => {
+        const ms = modeState();
+        wasCrossed = crossedNow();
+        const map = { ...(ms[field] ?? {}) };
+        if (text === "") delete map[id];
+        else map[id] = text;
+        setModeState({ ...ms, [field]: map });
+      },
+      afterSave: () => {
+        clearFormError(ctx.container);
+        refreshLines(ctx.container, ctx.board);
+        if (crossedNow() !== wasCrossed) ctx.repaintPool?.(); // item 18: the row's `Min is above Max` appears or goes (an open box is carried through the repaint)
+      },
     });
   });
 }

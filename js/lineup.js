@@ -1,6 +1,6 @@
 // Optimizer tab (PROJECT.md D21/D32, D70, Part 4 Lineup Builder screen): the main screen since Optimizer-first step 4 (D21's
 // "secondary section" wording is amended by step 6's documents). Top: the Optimizer band (its max-per-team and D73 QB-stack controls included). Left column: the
-// nine DraftKings classic slots (D1), a salary bar, totals, Clear all and Save lineup. Right column: the same rows the ranked list
+// nine DraftKings classic slots (D1), a salary bar, totals, Clear lineup and Save lineup. Right column: the same rows the ranked list
 // below is showing — same store, same filters (the one filter bar above sets them, Optimizer-first step 4), same sort (its headers
 // set it) — with per-row Lock and Exclude buttons; a click on a row puts the man in or takes him out (D81, 2026-10-29). app.js passes #lineup-mount as the container: only that part of
 // #lineup-panel is redrawn here, never the filter bar, game strip or ranked list around it.
@@ -37,13 +37,14 @@ import { ruleOn } from "./lineup-settings.js";
 import { paintStarredQbChip } from "./filterbar.js";
 import { setPoolCallbacks, poolStarClick, panelHtml, savedOfActiveSlate, starredQbChipView, poolColumnSetup, CLASSIC_POOL_PICK_SKIP, shownSavedLineups, poolPickerNow } from "./lineup-view.js";
 import { wireColumns } from "./columns.js";
+import { clearLineupHasContent, clearedLineup } from "./lineup-clear.js"; // B6: Clear lineup empties the slots and their locks, never the excludes
 import { wireDkDownload } from "./dk-lineup-ui.js"; // A12: Download DK CSV for the saved lineups ticked
 import { takeOpenLimit, restoreOpenLimit, limitRefusals, dropOlderLimitRefusals, noteLimitPress } from "./limit-box.js"; // A3: the Min % and Max % boxes survive a redraw; a refused text is held
 import { onConfirmDismiss } from "./confirm-inline.js"; // B13: Esc and a click outside close an open confirm
 import { notDeletedText } from "./delete-words.js"; // A12: the one sentence a failed delete leaves
 import { wireStaleMessages } from "./stale-messages.js"; // item 17: a one-shot message goes at the next click on any control
 import { wirePick, wirePickRows, SLOT_PICK_SKIP } from "./pick-rows.js"; // click-to-pick, the one wiring the Showdown Optimizer shares (D81)
-import { cleanPlayerMax, boardModeOf, slateKeyOf, uniqueSavedName, lockedIds, cashPick, wireOptimizer, savedSetKeys, lineupSetKey, wantIdsFor } from "./lineup-optimizer.js";
+import { cleanPlayerMax, boardModeOf, slateKeyOf, uniqueSavedName, lockedIds, cashPick, wireOptimizer, savedSetKeys, lineupSetKey } from "./lineup-optimizer.js";
 
 export const LINEUP_SLOTS = ["QB", "RB", "RB", "WR", "WR", "WR", "TE", "FLEX", "DST"];
 export const SALARY_CAP = 50000;
@@ -76,7 +77,7 @@ export const state = {
   addError: null, // set when Add is blocked, or as a non-blocking warning after a successful Add
   addErrorId: null, // the pool row (board id) whose click made addError: the message is drawn beside that row (row-message.js, standard A14)
   addTone: undefined, // how addError is drawn: undefined is amber (a refusal); "error" for a write that failed (setPoolRowError)
-  confirm: null, // the inline confirm that is open (confirm-inline.js): "clear" (Clear all) or "load:<saved lineup id>" (Load over an unsaved working lineup)
+  confirm: null, // the inline confirm that is open (confirm-inline.js): "clear" (Clear lineup) or "load:<saved lineup id>" (Load over an unsaved working lineup)
   dkSelected: new Set(), // saved lineup ids ticked for Download DK CSV (dk-lineup-ui.js); page-only
   dkStatus: "", // the sentence the last Download DK CSV left under its button
 
@@ -708,7 +709,7 @@ async function doSaveLineup(name, { asNew = false } = {}) {
 }
 
 /** What a finished save changes (PROJECT.md Part 4 Lineups): {discard} for a week changed under the request; a Load or
- *  Clear all made during the save keeps its loadedId and name; NOT_FOUND and READ_ONLY unload the edited lineup. */
+ *  Clear lineup made during the save keeps its loadedId and name; NOT_FOUND and READ_ONLY unload the edited lineup. */
 export function afterSave({ data, name, editId, weekChanged, loadedAtStart, loadedNow }) {
   if (weekChanged) return { discard: true };
   const moved = loadedNow !== loadedAtStart;
@@ -834,22 +835,16 @@ function requestLoad(id) {
   doLoadLineup(id);
 }
 
-/** B13: what Clear all would lose (a man, a lock, an exclude, or in Cash the slate's Want list): the question is asked only when there is something to lose. */
+/** B13, B6: what Clear lineup would lose (a man or a lock; never the excludes or, in Cash, the Wants): the question is asked only when there is something to lose. */
 export function clearAllHasContent() {
-  const wants = opt.mode === "cash" && wantIdsFor(slateKeyOf(store.get().board)).length > 0;
-  return state.slots.some(Boolean) || state.locks.size > 0 || state.excludes.size > 0 || wants;
+  return clearLineupHasContent({ slots: state.slots, locks: state.locks });
 }
 
 function doClearAll() {
   state.confirm = null;
-  state.slots = new Array(LINEUP_SLOTS.length).fill(null);
-  state.locks = new Set();
-  state.excludes = new Set();
+  Object.assign(state, clearedLineup(LINEUP_SLOTS.length)); // B6: the slots and the locks go; the excludes and, in Cash, the Wants stay (lineup-clear.js)
+  opt.cashUndo = null; // the Undo goes: it restores a build that is no longer on the slots, so it would be a button that does nothing (removeSlot's rule)
   state.addError = null;
-  if (opt.mode === "cash") {
-    delete opt.cash.want[slateKeyOf(store.get().board)]; // Cash mode job 3b: Clear all in cash clears cash's slots, Must, Want and excludes only (Cash 3b fix round: the Wants of the slate on screen only)
-    opt.cashUndo = null;
-  }
   clearLoaded();
   commit();
 }
@@ -858,7 +853,7 @@ function doClearAll() {
 // Wiring
 // --------------------------------------------------------------------------------------------------------
 
-/** Esc and a click outside close every open confirm alike (Clear all, Load over unsaved work, a saved card's Delete): one registration for the page; the
+/** Esc and a click outside close every open confirm alike (Clear lineup, Load over unsaved work, a saved card's Delete): one registration for the page; the
  *  panel's markup is redrawn on every change, the state is what survives (confirm-inline.js onConfirmDismiss). */
 let dismissWired = false;
 function wireConfirmDismiss() {
@@ -882,7 +877,7 @@ function focusOpenConfirm(container) {
 
 function wire(container) {
   wireConfirmDismiss();
-  // B13 (round 3): Clear all asks first when it would lose something; the question sits beside the button (confirm-inline.js).
+  // B13 (round 3): Clear lineup asks first when it would lose something; the question sits beside the button (confirm-inline.js).
   container.querySelector("#lineup-clear-all-btn")?.addEventListener("click", () => {
     if (!clearAllHasContent()) return doClearAll();
     state.confirm = "clear";
@@ -1083,7 +1078,7 @@ export const opt = {
   ...OPT_DEFAULT_STACK, // D73: stackOwn / stackOpp numbers and their "or more" ticks
   avoid: new Set(), // game ids such as "DET@ARI"
   // Per-player Max % from the pool's boxes, per slate key ("main" or a second slate's key): {id: text as typed}.
-  // Mirrored to localStorage with the locks (savePersisted); Clear all leaves it, as it leaves every Optimizer setting.
+  // Mirrored to localStorage with the locks (savePersisted); Clear lineup leaves it, as it leaves every Optimizer setting.
   playerMax: {},
   playerMin: {}, // the Min % boxes, shaped like playerMax (PROJECT.md Part 4 Optimizer (Min % and soft rules, Adam 2026-10-17))
   qb: newQbState(), // per-QB stack settings (lineup-qb-stacks.js), keyed by player id, persisted with the locks

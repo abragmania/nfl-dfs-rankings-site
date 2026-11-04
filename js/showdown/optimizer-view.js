@@ -6,7 +6,7 @@
 import { escapeHtml, dec1 } from "../format.js";
 import { buildingHtml, goLabelHtml, buildingRowClass, BUILDING_LABEL } from "../lineup-stop.js";
 import { statusLineHtml, statusToneClass } from "../row-message.js"; // A14: red only for an error
-import { settingRowHtml, settingGroupHtml, settingSubtitleHtml, numberBoxHtml, countNote } from "../lineup-settings.js";
+import { settingRowHtml, settingGroupHtml, numberBoxHtml, countNote } from "../lineup-settings.js";
 import { modeSwitchHtml, cashChipHtml, cashMedianText, unusedCapText, builtInTextCash } from "../lineup-cash.js";
 import { lineupTotals, lineupTotalsHtml } from "../lineup-totals.js"; // A11
 import { cardPlayerRowHtml, teamColours } from "../lineup-card.js";
@@ -21,6 +21,8 @@ import { OBJECTIVES, TEAM_OPTIONS, MAX_COUNT, MAX_UNIQUE, effectiveObjective, bo
 import { filterLineups, bulkLabel, filterBarHtml } from "../lineup-filter.js";
 import { LOCK_SVG, rowIconButtonHtml } from "../row-controls.js"; // round 3: Lock, In and Exclude are the same small buttons in classic and Showdown
 import { confirmHtml, anchorHtml, REPLACE_QUESTION } from "../confirm-inline.js"; // A13, C11: Load on a result card asks before replacing unsaved slots
+import { crossedNoteHtml } from "../limit-cross.js"; // item 18
+import { refusalNoteHtml } from "../limit-box.js"; // A3: a refused Min % / Max % text is drawn beside its box until the next press
 
 // Classic's words (lineup-view.js NO_MATCH_TEXT) for a filter no lineup passes.
 export const NO_MATCH_TEXT = "No lineups here have all of the chosen players."; // the saved section's too (optimizer.js optimizerSavedFilter)
@@ -93,7 +95,6 @@ export function bandBoxesHtml(v) {
         settingRowHtml("Min unique players", numberBoxHtml(`type="number" min="1" max="${MAX_UNIQUE}" class="opt-input opt-input-num" id="sd-opt-min-unique" value="${escapeHtml(v.ms.minUnique)}" aria-label="Minimum unique players between lineups"`), "Between any two lineups"),
         // No Build by control while Projection is the only objective (optimizer standard A13, A21): it shows only on a board whose rows carry TwoGun's medians, where Median is the second.
         ...(boardHasTg(v.board, "median") ? [settingRowHtml("Build by", `<span class="opt-chips">${objectiveChipsHtml(v.ms.objective, v.board)}</span>`)] : []),
-        settingSubtitleHtml("Max share of lineups"),
         `<div class="opt-set-hint">Each man's Min % and Max % are on the pool rows: on the FLEX list they set his FLEX share, on the Captain list his Captain share.</div>`,
       ].join("");
   return `
@@ -322,7 +323,10 @@ export function poolRows(all, shown, ms, pos) {
   return (all ?? []).filter((r) => (keep.has(String(r.id)) || marked.has(String(r.id)) || (r.cptId != null && marked.has(String(r.cptId)))) && (pos === "All" || String(r.pos ?? "").trim().toUpperCase() === pos));
 }
 
-/** One row's Min % or Max % box in GPP (`which` "min" or "max"; classic rightRowHtml's cell), for the list's role; "" in Cash. */
+/** The selector that finds one Min % / Max % box again in a redrawn pool (limit-box.js keeps a box's text and its refusal by it). */
+export const capSelector = (field, id) => `[data-sd-cap="${field}"][data-id="${id}"]`;
+
+/** One row's Min % or Max % box in GPP (`which` "min" or "max"; classic rightRowHtml's cell), for the list's role; "" in Cash. A text the box refused (A3, limit-box.js) shows `Not saved` beside it. */
 export function poolCapCell(row, kind, which, ms, mode, parsePct) {
   if (mode !== "gpp") return "";
   const id = String(row.id);
@@ -330,7 +334,9 @@ export function poolCapCell(row, kind, which, ms, mode, parsePct) {
   const field = `${kind === "cpt" ? "cpt" : "flex"}${which === "min" ? "Min" : "Max"}`;
   const text = ms[field]?.[id] ?? "";
   const bad = Number.isNaN(parsePct(text));
-  return `<td class="${cls}-cell"><input type="text" inputmode="decimal" maxlength="5" class="opt-input ${cls}-input${bad ? " invalid" : ""}" data-sd-cap="${field}" data-id="${escapeHtml(id)}" value="${escapeHtml(text)}" aria-label="${kind === "cpt" ? "Captain" : "FLEX"} ${which === "min" ? "Min %" : "Max %"} for ${escapeHtml(row.name ?? "")}" /></td>`;
+  const seat = kind === "cpt" ? "cpt" : "flex";
+  const crossed = which === "max" ? crossedNoteHtml(ms[`${seat}Min`]?.[id] ?? "", text, parsePct) : ""; // item 18: the sentence sits under the Max box
+  return `<td class="${cls}-cell"><input type="text" inputmode="decimal" maxlength="5" class="opt-input ${cls}-input${bad ? " invalid" : ""}" data-sd-cap="${field}" data-id="${escapeHtml(id)}" value="${escapeHtml(text)}" aria-label="${kind === "cpt" ? "Captain" : "FLEX"} ${which === "min" ? "Min %" : "Max %"} for ${escapeHtml(row.name ?? "")}" />${refusalNoteHtml(capSelector(field, id))}${crossed}</td>`;
 }
 
 /** The padlock beside a locked man's name (C20: a locked row keeps the tint a seated row has and gets this icon): it names its seat, in the hover (`Locked at Captain`,

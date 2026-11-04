@@ -14,6 +14,7 @@ import { afterBuildingDelay, goSitsBelow, stopFailure } from "./lineup-stop.js";
 import { ruleOn, countBelowMin, syncCountNote, COUNT_MIN_SENTENCE, fullLineupText } from "./lineup-settings.js";
 import { answerTone } from "./row-message.js";
 import { wireLimitBox, flushOpenLimit, limitRefusals } from "./limit-box.js"; // A3: the Min % and Max % boxes
+import { limitsCrossed } from "./limit-cross.js"; // item 18: the row says `Min is above Max`
 import {
   boardHasMedians, buildCashSettings, poolReport, wantSwaps, swapDecisionHtml, excludedListHtml, lineupModeOf, CASH_NO_MEDIAN_TEXT, CASH_UNKNOWN_BASIS_TEXT,
 } from "./lineup-cash.js";
@@ -1012,6 +1013,8 @@ export function wireOptimizer(container) {
   for (const [field, attr, forSlate] of [["playerMax", "data-player-max", playerMaxFor], ["playerMin", "data-player-min", playerMinFor]]) {
     container.querySelectorAll(`[${attr}]`).forEach((el) => {
       const id = el.getAttribute?.(attr) ?? el.dataset[field];
+      const crossedNow = () => limitsCrossed(playerMinFor(slateKeyOf(store.get().board))[id] ?? "", playerMaxFor(slateKeyOf(store.get().board))[id] ?? "", parsePct);
+      let wasCrossed = crossedNow();
       wireLimitBox(el, {
         selector: `[${attr}="${id}"]`,
         // The sentence a refused text leaves (held, drawn beside his row, and stopping a Build): it names the man and the old limit that stays.
@@ -1020,6 +1023,7 @@ export function wireOptimizer(container) {
         parse: parsePct,
         save: (text) => {
           const key = slateKeyOf(store.get().board);
+          wasCrossed = crossedNow();
           const map = { ...forSlate(key) };
           if (text === "") delete map[id];
           else map[id] = text;
@@ -1027,6 +1031,7 @@ export function wireOptimizer(container) {
           savePersisted();
         },
         afterSave: () => {
+          if (crossedNow() !== wasCrossed) commit(); // item 18: the row's `Min is above Max` appears or goes (an open box is carried through the redraw)
           if (opt.formError) {
             opt.formError = null;
             container.querySelector(".opt-form-error")?.remove();

@@ -11,7 +11,8 @@
 import { escapeHtml, dec1, localStamp } from "../format.js";
 import { shownRows, ownTitleText, sdLine } from "./table.js";
 import { showAllToggleHtml, wireShowAllButtons } from "../filterbar.js";
-import { store, sortRows, defaultDirFor } from "../state.js";
+import { sortRows, defaultDirFor } from "../state.js";
+import { sdShowAll, sdShowAllFlag } from "./show-all.js"; // C24: the Showdown's own Show all players, not classic's
 import { sortableHeadHtml, unusedColumn, onSitePage, isSourcesTab } from "../tabs.js"; // the classic sortable header and its dimmed unused-source column
 import { sourceIsTicked } from "../sources-page-html.js"; // the one tick predicate the Sources page and this table share
 import { snapPanelMaxHeight } from "../lineup.js"; // the classic tables' sizing step
@@ -147,7 +148,7 @@ export function renderShowdownProjectionsPanel(container, board, callbacks) {
       </div>
       <div id="sd-kicker-paste-result" class="paste-result">${sdPasteResultText ? escapeHtml(sdPasteResultText) : ""}</div>
     </details>
-    <p class="tab-note">${showAllToggleHtml(store.get().filters.showAllPlayers, `data-action="show-all"`)} Blended from the projection sources ticked above. Hover a Proj figure for how it was made; every column sorts.</p>
+    <p class="tab-note">${showAllToggleHtml(sdShowAll(), `data-action="show-all"`)} Blended from the projection sources ticked above. Hover a Proj figure for how it was made; every column sorts.</p>
     ${dash ? `<p class="tab-note sd-all-dash">${escapeHtml(dash)}</p>` : ""}
     <div class="tab-table-wrap scroll-panel">
       <table class="source-value-table sd-fit">
@@ -156,7 +157,7 @@ export function renderShowdownProjectionsPanel(container, board, callbacks) {
       </table>
     </div>
   `;
-  wireShowAllButtons(container);
+  wireShowAllButtons(container, sdShowAllFlag);
   fitScrollPanel(container);
   wireSortHeads(container, projState, numberFirstDir(new Set(parts.cols.slice(1).map((c) => c.key))), (sort) => projectionTableParts(rows, sources, sort, selection));
 
@@ -408,7 +409,7 @@ export function renderShowdownOwnershipPanel(container, board, opts = {}) {
     || noTickedOwnershipNote(rows, opts.flex ?? null, opts.cpt ?? null, (board.rows ?? []).length);
   const dirFor = numberFirstDir(new Set(["ownFlex", "ownCpt", ...srcCols.map((c) => c.key)])); // a figure starts high to low (classic's Own% does)
   container.innerHTML = `
-    <p class="tab-note">${showAllToggleHtml(store.get().filters.showAllPlayers, `data-action="show-all"`)} Blended from the ownership sources ticked above. Hover a figure when it says more than the number.</p>
+    <p class="tab-note">${showAllToggleHtml(sdShowAll(), `data-action="show-all"`)} Blended from the ownership sources ticked above. Hover a figure when it says more than the number.</p>
     <p class="tab-note sd-own-basis">${escapeHtml(ownershipBasisText(board, kinds, rows, [opts.flex ?? [], opts.cpt ?? []]))}</p>
     ${dash ? `<p class="tab-note sd-all-dash">${escapeHtml(dash)}</p>` : ""}
     <div class="tab-table-wrap scroll-panel">
@@ -417,7 +418,7 @@ export function renderShowdownOwnershipPanel(container, board, opts = {}) {
         <tbody>${parts.body}</tbody>
       </table>
     </div>`;
-  wireShowAllButtons(container);
+  wireShowAllButtons(container, sdShowAllFlag);
   fitScrollPanel(container);
   wireSortHeads(container, ownState, dirFor, (sort) => ownershipTableParts(rows, sort, withKinds, ctx, srcCols));
 }

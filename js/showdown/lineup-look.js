@@ -4,7 +4,7 @@
 // screen so they always read apart.
 import { escapeHtml } from "../format.js";
 import { slatePalette } from "../team-palette.js";
-import { confirmHtml, anchorHtml, CLEAR_QUESTION } from "../confirm-inline.js"; // B13: Clear all asks `Clear the lineup?` beside itself, as classic's does
+import { confirmHtml, anchorHtml, CLEAR_QUESTION } from "../confirm-inline.js"; // B13: Clear lineup asks `Clear the lineup?` beside itself, as classic's does
 
 const palettes = new Map(); // "DAL,GB" to its palette (one entry per game viewed in this page's life, each a small palette of two teams, so it grows slowly and is not pruned)
 
@@ -19,14 +19,14 @@ export function showdownPalette(board) {
   return palettes.get(key);
 }
 
-/** The working lineup's controls: Clear all on the first row, Save as and `Save working lineup` on the second (each row the column's full width). The
+/** The working lineup's controls: Clear lineup on the first row, Save as and `Save working lineup` on the second (each row the column's full width). The
  *  one Build is in the Optimizer's Build row under the slots (optimizer standard A13, round 3: Showdown's top Build folded into it), and no Objective
  *  choice is drawn while Projection is the only objective (A21). */
 export function controlsHtml({ saving, saveName, hasAnySlot, confirm = null }) {
   return `
     <div class="lineup-controls sd-controls">
       <div class="sd-controls-row">
-        ${anchorHtml(`<button type="button" id="sd-lineup-clear-all-btn" class="lineup-clear-all-btn">Clear all</button>`, confirm === "clear" ? confirmHtml(CLEAR_QUESTION, { data: "clear" }) : "", { align: "left" })}
+        ${anchorHtml(`<button type="button" id="sd-lineup-clear-all-btn" class="lineup-clear-all-btn">Clear lineup</button>`, confirm === "clear" ? confirmHtml(CLEAR_QUESTION, { data: "clear" }) : "", { align: "swap" })}
       </div>
       <div class="sd-controls-row">
         <label class="lineup-control">Save as

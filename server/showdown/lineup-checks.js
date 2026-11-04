@@ -9,6 +9,16 @@
 /** What a showdown with no known week answers when asked to keep a lineup: the app's route and the site say the same. */
 export const WEEK_UNKNOWN_MESSAGE = "This showdown's week is not known yet; re-upload once the week resolves.";
 
+/** The code and sentence of a batch save whose figures changed since the batch was made (the app's 409 and the public site's refusal say the same). */
+export const PROJECTION_CHANGED_CODE = "TWOGUN_PROJECTIONS_CHANGED";
+export const SOURCES_CHANGED_SENTENCE = "This game's sources changed since this batch was made (its ticked sources, TwoGun's files, the week's edits, a typed number or a ± adjustment); make it again.";
+
+/** Pure: the refusal sentence when the batch's figures key (`sent`, build.figuresKey) is not the served board's (`served`,
+ *  board.figures.key), else null: nothing sent (an older page) or a board with no key (no ticked list) is accepted. */
+export function figuresChangedError(sent, served) {
+  return sent && served && sent !== served ? SOURCES_CHANGED_SENTENCE : null;
+}
+
 export const LINEUP_OBJECTIVES = new Set(["proj"]);
 // Objectives the showdown optimiser no longer offers. A request (or an old page) naming one builds by projection and
 // carries this note, never an error: "projection minus ownership" was removed (Adam, 2026-10-15), and Lev has no

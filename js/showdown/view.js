@@ -8,20 +8,25 @@
 // line and the filter bar (sticky at the window's top) are drawn here, outside #sd-lineup-mount, which lineup.js redraws; the filter bar
 // filters the pool (pool.js poolState), so a keystroke in its boxes never destroys a box.
 import { getShowdownBoard, postShowdownRefresh, postShowdownProjectionsPaste, supports, isShowdownSampleMode } from "./api.js";
-import { hasRowOverride } from "../row-reset.js";
+import { resetAllEnabled } from "../row-reset.js";
 import { deleteShowdownOverrides } from "./optimizer.js";
 import { renderPills, kickoffDateAndClock, paintSourcesLink, wireSourcesLink, modePillHtml } from "../header.js";
 import { isSourcesTab, sourcesTabToOpen } from "../tabs.js";
 import { renderSourcesPage, sectionSources } from "../sources-page.js";
 import { escapeHtml, dec1 } from "../format.js";
 import { store } from "../state.js";
+import { sdShowAll, setSdShowAll, onSdShowAllChange } from "./show-all.js"; // C24: the Showdown's own Show all players
+import { boardStamps, stampsLineHtml } from "../stamps.js"; // B11, C26: Board, Injuries, Pulled and Lock, with the Sources link
+import { makeWriteSeq } from "../write-seq.js"; // item 10: the writes' one numbered flow
+import { makeBoardFlow } from "../write-runner.js";
 import { makeFilterDebounce } from "../filter-debounce.js"; // the typed boxes wait out classic's 150 ms pause
 import { syncExpandUi } from "../expand.js";
 import { adjustScrollPanels } from "../scroll-panels.js";
 import { renderShowdownTabs, renderShowdownProjectionsPanel, renderShowdownOwnershipPanel, renderShowdownLineupPanel, renderShowdownEntriesPanel, shownShowdownTab } from "./tabs.js";
 import { repaintShowdownPool } from "./lineup.js";
+import { lineupFigureRow } from "./lineup-meter.js";
 import { poolState, poolCountText } from "./pool.js";
-import { filterBarHtml, wireFilterBar } from "./filter-bar.js"; // the filter bar above the builder (team and position chips, FLEX salary range, Min FLEX pts)
+import { filterBarHtml, wireFilterBar, takeBarFocus, restoreBarFocus } from "./filter-bar.js"; // the filter bar above the builder (team and position chips, search, salary range, Min Proj)
 import { figuresPillHtml } from "./figures-label.js"; // the header pill naming the sources this game's board reads (Adam 2026-10-20)
 import { normalizeBoard, teamFullName } from "./board-shape.js"; // the board's pure shaping (moved for the 600-line cap)
 
@@ -65,9 +70,10 @@ export function showdownKeyFromHash() {
 
 // The player card's two reads of the loaded showdown board: a row (given the game's key when the row has none, so the card can say vs or @) and its time.
 export function showdownRowById(id) {
-  const row = state.board?.rows?.find((r) => String(r.id) === String(id) || (r.cptId != null && String(r.cptId) === String(id)));
+  const found = state.board?.rows?.find((r) => String(r.id) === String(id) || (r.cptId != null && String(r.cptId) === String(id)));
   const g = state.board?.game;
-  if (!row) return null;
+  if (!found) return null;
+  const row = lineupFigureRow(found); // a typed revive set aside under TwoGun only reads 0 here, as Build counts him (round 4, item 5)
   return row.gameId || !g?.away || !g?.home ? row : { ...row, gameId: `${g.away}@${g.home}` }; // the board row's figures on every tab, as the Lineup tab's slots show them
 }
 export const showdownBoardAsOf = () => state.board?.generatedAt ?? null;
@@ -84,6 +90,7 @@ const els = {
   figuresPill: document.getElementById("sd-figures-pill"),
   refreshBtn: document.getElementById("sd-refresh-btn"),
   gameline: document.getElementById("sd-gameline"),
+  stamps: document.getElementById("sd-stamps"),
   filterbar: document.getElementById("sd-filterbar"),
   projectionsPanel: document.getElementById("sd-projections-panel"),
   ownershipPanel: document.getElementById("sd-ownership-panel"),
@@ -97,7 +104,7 @@ const els = {
 // Filter (the state and the one call that applies it live in pool.js; the pure filter and sort in board-shape.js)
 // --------------------------------------------------------------------------------------------------------
 
-// The typed boxes (Min and Max FLEX salary, Min FLEX pts) reach the pool once typing pauses (classic's filter-debounce.js, 150 ms): one
+// The typed boxes (search, Min and Max salary, Min Proj) reach the pool once typing pauses (classic's filter-debounce.js, 150 ms): one
 // waiting change per box, the last value wins; Clear filters cancels them and a filter bar rebuild flushes them first.
 const typedFilters = makeFilterDebounce({ apply: (patch) => { Object.assign(poolState.filters, patch); repaintShowdownPool(); } });
 
@@ -143,6 +150,7 @@ function renderEmpty() {
   els.emptyState.hidden = false;
   for (const p of [els.sourcesPanel, els.projectionsPanel, els.ownershipPanel, els.lineupPanel, els.entriesPanel]) p.hidden = true;
   els.band.innerHTML = "";
+  if (els.stamps) els.stamps.innerHTML = "";
   els.emptyState.textContent = state.loading ? "Loading the showdown board…" : state.error ?? "Could not load this showdown.";
 }
 
@@ -151,22 +159,34 @@ function renderEmpty() {
 // from older text. The markup and the wiring are filter-bar.js's.
 function renderFilterBar() {
   typedFilters.flush();
-  els.filterbar.innerHTML = filterBarHtml(poolState.filters, state.board?.game, store.get().filters.showAllPlayers, resetButton());
+  const focused = takeBarFocus(els.filterbar); // item 9: a board answer redraws the bar while he is typing in a box; the box keeps the keyboard and its caret
+  const starred = (state.board?.rows ?? []).filter((r) => r.starred).length; // every starred man of the game, unfiltered (D53)
+  els.filterbar.innerHTML = filterBarHtml(poolState.filters, state.board?.game, sdShowAll(), resetButton(), starred);
   wireFilterBar(els.filterbar, {
     typed: typedFilters,
     rebuild: renderFilterBar,
     repaint: repaintShowdownPool,
-    clearShowAll: () => {
-      document.querySelector("#show-all-toggle")?.classList.remove("active");
-      store.setFilters({ showAllPlayers: false });
-    },
+    clearShowAll: () => setSdShowAll(false), // the Showdown's own switch (C24), not classic's
     onResetOverrides: () => writeBoard((key) => deleteShowdownOverrides(key), "the reset"),
   });
+  restoreBarFocus(els.filterbar, focused);
 }
+
+// B11, C26: the four as-of stamps under the game line, with the Sources link (the same opener as the header's Sources button).
+function renderStamps() {
+  if (!els.stamps) return;
+  els.stamps.innerHTML = state.board ? stampsLineHtml(boardStamps(state.board), { sourcesLink: true }) : "";
+  els.stamps.querySelectorAll(".sd-figures-link").forEach((btn) => btn.addEventListener("click", () => openSources()));
+}
+
+// The Showdown's Show all players changed (the filter bar's chip, or the one over a Sources table): the screen is drawn again.
+onSdShowAllChange(() => {
+  if (state.board && document.getElementById("showdown-main")?.hidden === false) render();
+});
 
 // A6 (round 3): the Reset all overrides button is drawn where overrides can be written (the app, not the public site or sample mode); enabled while any man has a typed number or a bump.
 function resetButton() {
-  return supports("overrides") && !isShowdownSampleMode() ? { enabled: (state.board?.rows ?? []).some(hasRowOverride) } : null;
+  return supports("overrides") && !isShowdownSampleMode() ? { enabled: resetAllEnabled(state.board) } : null;
 }
 
 // The sticky filter bar covers the top of the window, so a scroll to an element of the Optimizer's part (Make's results, the saved
@@ -190,6 +210,14 @@ function afterLineupDraw() {
 // Applies an already-fetched, already-ok board response as the new current board, gated by the same
 // token/key check as a plain load (🔵 findings: use the board that refresh/paste already return instead
 // of a second GET; discard a response for a key that's no longer current).
+/** A refresh's or a paste's answer (write number `n`, from writeSeq.start() before it was sent): painted unless a newer write's answer is already on screen, in which case the board is read
+ *  once more and that read painted (write-runner.js runWrite's rule), so a late Refresh answer can never put a typed Proj back. */
+function paintAnswer(raw, key, token, n) {
+  if (writeSeq.take(n)) return applyBoardResponse(raw, key, token);
+  writeFlow.loadBoard().catch((e) => { els.status.textContent = `The board could not be reread: ${e?.message ?? e}`; els.status.className = "status error"; });
+  return false;
+}
+
 function applyBoardResponse(raw, key, token) {
   if (!isCurrent(token, key)) return false;
   state.board = normalizeBoard(raw);
@@ -200,36 +228,41 @@ function applyBoardResponse(raw, key, token) {
   return true;
 }
 
-// A write from the Lineup tab that answers this game's board (the ± bump, Adam 2026-10-22): `send(key)` makes the request; the answer
-// is applied as a refresh's, and a refusal or a failure puts the server's sentence in the status line, as a failed refresh does.
-// The load token is read, not taken (🔵 2026-10-22): a Refresh or load already out keeps its answer, and this answer is applied only
-// when no other request started since. Resolves true when the server took the write, false when it did not.
+// A write from the Lineup tab that answers this game's board (a star, a typed number, a note, the ± bump, a reset): `send(key)` makes the request. Since the round 4 fix batch
+// (item 10) every write goes through classic's one numbered flow (write-seq.js, write-runner.js makeBoardFlow): each is numbered as it starts and an answer older than one already
+// painted is not painted (a read of the board follows it instead), so a slow first answer can never put the screen back over a newer one. A refusal or a failure puts the
+// server's sentence in the status line, as a failed refresh does. Resolves true when the server took the write, false when it did not.
+const writeSeq = makeWriteSeq();
+const writeFlow = makeBoardFlow({
+  seq: writeSeq,
+  getBoard: () => getShowdownBoard(state.boardKey),
+  paint: (board) => {
+    if (board?.key && state.boardKey && board.key !== state.boardKey) return; // an answer for a game that is no longer on screen paints nothing
+    state.board = normalizeBoard(board);
+    state.error = null;
+    state.loading = false;
+    render();
+  },
+  fail: (text) => {
+    els.status.textContent = text;
+    els.status.className = "status error";
+  },
+});
 async function writeBoard(send, label) {
   const key = state.boardKey;
-  const token = loadToken;
-  const failed = `Could not save ${label}: `;
-  try {
-    const r = await send(key);
-    if (!r || r.ok === false) throw new Error(r?.error?.message ?? "unknown error");
-    applyBoardResponse(r, key, token);
-    if (els.status.textContent.startsWith(failed)) { // this write's earlier refusal is over; any other line stays
-      els.status.textContent = "";
-      els.status.className = "status";
-    }
-    return true;
-  } catch (e) {
-    if (state.boardKey === key) { // the same game is still on screen
-      els.status.textContent = `${failed}${e.message}`;
-      els.status.className = "status error";
-    }
-    return false;
+  const data = await writeFlow.runWrite(() => send(key), { label });
+  if (data !== null && els.status.textContent.startsWith(`Could not save ${label}: `)) { // this write's earlier refusal is over; any other line stays
+    els.status.textContent = "";
+    els.status.className = "status";
   }
+  return data !== null;
 }
 
 // Never rejects. Returns null when the board was read (or a newer request took over), else the plain reason it could not be, which the
 // Sources page shows under the row it just saved (onChanged in renderSourcesView).
 async function loadBoard(key) {
   const token = beginRequest(key);
+  const n = writeSeq.start(); // numbered as classic's reads are (write-seq.js): a board read that started before a write's answer is not painted over it
   // A good board for a DIFFERENT key is not shown while the new one loads (there is nothing honest to
   // show), but a good board for THIS SAME key (a Refresh, or navigating back to a key already loaded) is
   // never cleared just because a reload started (🔵 finding: never blank a good board).
@@ -256,6 +289,8 @@ async function loadBoard(key) {
       }
       return raw?.error?.message ?? "the server did not return the board";
     }
+    // The same game already on screen: an answer older than one a write painted is dropped (a later Proj, star or note is not put back). A game that is not on screen yet always applies.
+    if (state.boardKey === key && !writeSeq.take(n)) return null;
     applyBoardResponse(raw, key, token);
     return null;
   } catch (e) {
@@ -303,6 +338,7 @@ function render() {
   if (state.activeTab === "lineup") {
     // One screen (Adam 2026-10-26, D81): the game line and the filter bar, then the Optimizer's own part, with the pool, in its mount.
     renderGameLine();
+    renderStamps();
     renderFilterBar();
     renderShowdownLineupPanel(els.lineupMount, state.board, state.boardKey, { onOpenSources: openSources, onBoardWrite: writeBoard, onPoolCount: setPoolCount, onDrawn: afterLineupDraw });
   } else if (isSourcesTab(state.activeTab)) {
@@ -333,8 +369,9 @@ function renderSourcesView() {
       onPaste: async (payload) => {
         const key = state.boardKey;
         const token = beginRequest(key);
+        const n = writeSeq.start();
         const result = await postShowdownProjectionsPaste(key, payload);
-        if (result?.ok && result.board) applyBoardResponse(result.board, key, token);
+        if (result?.ok && result.board) paintAnswer(result.board, key, token, n);
         return result;
       },
     });
@@ -367,13 +404,14 @@ els.refreshBtn?.addEventListener("click", async () => {
   const key = state.boardKey ?? state.requestedKey;
   if (!key) return;
   const token = beginRequest(key);
+  const n = writeSeq.start(); // numbered as it starts, as a write is
   els.status.textContent = "Refreshing sources...";
   els.status.className = "status";
   try {
     const r = await postShowdownRefresh(key);
     if (!isCurrent(token, key)) return;
     if (!r || r.ok === false) throw new Error(r?.error?.message ?? "unknown error");
-    applyBoardResponse(r, key, token);
+    paintAnswer(r, key, token, n);
     els.status.textContent = "Refreshed.";
   } catch (e) {
     if (!isCurrent(token, key)) return;

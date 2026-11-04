@@ -46,7 +46,7 @@ export function clockPart(isoString) {
   return m ? m[1] : "";
 }
 
-const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+export const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
 // When something happened (a source's fetchedAt, "cached 00:43", "Fetched 00:43") in Eastern time, whatever the
 // viewer's machine says (Adam's order 2026-11-02): { clock: "HH:MM", day: "YYYY-MM-DD", monthDay: "Oct 10" }, or null

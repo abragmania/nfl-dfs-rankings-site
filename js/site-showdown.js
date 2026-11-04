@@ -19,14 +19,14 @@
 import { optimizeShowdown } from "../server/lineup/showdown.js";
 import { generateShowdownLineups } from "../server/lineup/showdown-multi.js";
 import { lineupRows } from "../server/showdown/lineup-rows.js";
-import { validateOptimizeBody, validateShowdownSlots, buildShowdownSnapshot, staleModeError, WEEK_UNKNOWN_MESSAGE } from "../server/showdown/lineup-checks.js";
+import { validateOptimizeBody, validateShowdownSlots, buildShowdownSnapshot, staleModeError, WEEK_UNKNOWN_MESSAGE, BUILD_OPTIONS, PROJECTION_CHANGED_CODE, figuresChangedError } from "../server/showdown/lineup-checks.js";
 import { meterAnswer, validateMeterBody, halvesOf, zFor } from "../server/showdown/meter-answer.js";
 import { swapsAnswer } from "../server/showdown/swaps.js";
 import { generateBodyCheck, generateAnswer, WEEK_UNKNOWN_SAVED_NOTE } from "../server/showdown/generate-answer.js";
 import { curvesFromText, curvesMissingSentence, curvesUnreadableSentence } from "../server/showdown/field-curves-core.js";
 import { envelope, errorBody } from "./site-generate.js";
 import { createWorkerRunner, endedSiteResult } from "./site-worker.js";
-import { validateLineupName } from "../server/lineups/validate.js";
+import { validateLineupName, validateLineupBuild } from "../server/lineups/validate.js";
 import {
   pageStorage, readKey, writeKey, sortedNewestFirst, nextLineupName, makeDeviceId, DEVICE_ID_PREFIX, STORAGE_UNAVAILABLE_MESSAGE
 } from "./site-lineups.js";
@@ -34,6 +34,8 @@ import {
 export const SHOWDOWN_STORAGE_PREFIX = "nfldfs-site-showdown-lineups:";
 // Handed on so site-src/showdown-api.js, which is published one folder deeper, needs only one import to rewrite.
 export { pageStorage };
+// The visitor's stars, notes, typed Proj and Own and bumps for one game, kept in this browser and laid over the baked board (round 4, item 7; site-overrides.js).
+export { showdownBoardWithEdits, putShowdownEdits, resetAllShowdownEdits, modesWithEdits } from "./site-overrides.js";
 
 /** The storage key for one showdown (its key looks like 2026-w03-ATLGB). */
 export function showdownStorageKey(key) {
@@ -175,6 +177,11 @@ export function saveShowdownLineup(storage, key, board, payload, bakedLineups = 
   if (slotsResult.error) return errorBody("VALIDATION_ERROR", slotsResult.error);
   const nameResult = validateLineupName(body.name);
   if (nameResult.error) return errorBody("VALIDATION_ERROR", nameResult.error);
+  // A batch made before this device's edits (a typed number, a ± adjustment) is refused as the app's save refuses it (lineups-routes.js finishBuild): the board's figures key moves with them.
+  const pre = validateLineupBuild(body.build, BUILD_OPTIONS);
+  if (pre.error) return errorBody("VALIDATION_ERROR", pre.error);
+  const changed = figuresChangedError(pre.figuresKey, board.figures?.key ?? null);
+  if (changed) return errorBody(PROJECTION_CHANGED_CODE, changed);
   const snapshot = buildShowdownSnapshot(slotsResult.slots, lineupRows(board)); // the app's save rows (lineups-routes.js, D71)
   if (snapshot.error) return errorBody("VALIDATION_ERROR", snapshot.error);
   const device = readShowdownDeviceLineups(storage, key);

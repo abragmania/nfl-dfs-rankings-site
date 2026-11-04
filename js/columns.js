@@ -23,8 +23,9 @@ export const CLASSIC_GPP_COLUMNS = Object.freeze([
 /** Classic Cash: the Cash chips (Lock, Want, Fine) are one column in place of Lock, Min % and Max %. */
 export const CLASSIC_CASH_COLUMNS = Object.freeze(CLASSIC_GPP_COLUMNS.filter((c) => !["lock", "min_pct", "max_pct"].includes(c.key)).flatMap((c) => (c.key === "thumbs" ? [c, { key: "cash", label: "Cash" }] : [c])));
 
-/** Showdown: the same standard order; In sits beside Lock (D4, where a seat choice exists), Captain holds the Captain's lock and exclude on the FLEX list (C21), Notes is the rest. */
+/** Showdown: the same standard order (star first, B2); In sits beside Lock (D4, where a seat choice exists), Captain holds the Captain's lock and exclude on the FLEX list (C21). No Notes column since round 4 (C23: the note is a pencil in the name cell). */
 export const SHOWDOWN_COLUMNS = Object.freeze([
+  { key: "star", label: "Star" },
   { key: "player", label: "Player", required: true },
   { key: "salary", label: "Sal" },
   { key: "proj", label: "Proj" },
@@ -39,7 +40,6 @@ export const SHOWDOWN_COLUMNS = Object.freeze([
   { key: "cpt_min_pct", label: "CPT Min %", off: true }, // C21: the Captain list's Min % and Max % boxes, reachable from the FLEX row (the same limits); off until Adam ticks them
   { key: "cpt_max_pct", label: "CPT Max %", off: true },
   { key: "captain", label: "Captain lock and exclude" },
-  { key: "note", label: "Notes" },
 ]);
 
 const keysOf = (defs) => defs.map((c) => c.key);

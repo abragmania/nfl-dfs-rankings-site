@@ -69,9 +69,14 @@ export function showAllToggleHtml(active, extraAttrs = "") {
   return `<button type="button"${extraAttrs ? ` ${extraAttrs}` : ""} class="chip toggle-chip${active ? " active" : ""}">Show all players</button>`;
 }
 
-export function wireShowAllButtons(container) {
+/** Wires every `Show all players` button under `container`. `flag` {get(), set(on)}: a screen with its own switch (the Showdown's, C24); left out, it is classic's (the store's). */
+export function wireShowAllButtons(container, flag = null) {
   container.querySelectorAll("[data-action='show-all']").forEach((btn) => {
     btn.addEventListener("click", () => {
+      if (flag) {
+        flag.set(!flag.get());
+        return;
+      }
       const on = !store.get().filters.showAllPlayers;
       if (typeof document !== "undefined") document.querySelector("#show-all-toggle")?.classList.toggle("active", on);
       store.setFilters({ showAllPlayers: on });

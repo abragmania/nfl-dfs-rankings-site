@@ -126,7 +126,7 @@ export function lineupPicks() {
 // What the pool needs from the lineup: who is placed (a placed man's row is tinted on the tab where he sits), what each click may do and why a row is greyed (A18,
 // seat-picker.js), and the click's message; a click on a row runs pickPoolRow, where the add and clear rules stay.
 export function listPlacement() {
-  const pickOf = boardRef ? seatPicker({ board: boardRef, cap: SALARY_CAP, placed: { cpt: state.cpt, flex: state.flex }, excluded: (row, tab) => poolControls.excluded(row, tab), locks: optimizerLocks(boardRef) }) : null;
+  const pickOf = boardRef ? seatPicker({ board: boardRef, cap: SALARY_CAP, placed: { cpt: state.cpt, flex: state.flex }, excluded: (row, tab) => poolControls.excluded(row, tab), locks: optimizerLocks(boardRef), canType: poolControls.canType() }) : null;
   return { cptId: state.cpt ? String(state.cpt.id) : null, flexIds: new Set(state.flex.filter(Boolean).map((s) => String(s.id))), message: addMessageOf(state), ...(pickOf ? { pickOf } : {}) };
 }
 

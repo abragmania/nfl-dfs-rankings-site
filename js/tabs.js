@@ -34,7 +34,6 @@ const TABS = [
   { key: "lineup", label: "Optimizer" }, // DECISIONS.md D70: "Optimizer" (was "Lineup Builder"); the first tab since Rankings folded into it (step 4)
   { key: "showdown", label: "Showdown" }, // ChatGPT wish t, Adam 2026-10-17: a second door to the Showdown boards, in the app and on the site
   { key: "entries", label: "Entries" }, // rules repo 2026-10-17: Entries is its own tab (was a section under the Optimizer); app-only, see visibleTabs
-  { key: "teams", label: "Teams (sample)" }, // Temporary (Adam 2026-10-18): remove when he has seen the colours
 ];
 
 // Tab keys that are no longer drawn, and the tab each one opens instead (Adam 2026-10-18, Optimizer-first step 3: the Favorites
@@ -60,9 +59,9 @@ export function onSitePage() {
   return typeof document !== "undefined" && document.documentElement.classList.contains("is-site");
 }
 
-/** The tabs to draw: all of them in the app, all but Entries and the temporary Teams (sample) on the public site (🔵 2026-10-18 series review). */
+/** The tabs to draw: all of them in the app, all but Entries on the public site. */
 export function visibleTabs(onSite = onSitePage()) {
-  return TABS.filter((t) => !(onSite && (t.key === "entries" || t.key === "teams")));
+  return TABS.filter((t) => !(onSite && t.key === "entries"));
 }
 
 /** The tab to show: the stored one when it is drawn, a retired key's replacement (RETIRED_TABS) when that is drawn, else the

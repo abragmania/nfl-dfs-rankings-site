@@ -88,7 +88,9 @@ export function bumpControlHtml(row, { enabled = true, kind = null, title = null
 export function bumpFigureOnlyHtml(row, figure, { kind = null, none = "no proj" } = {}) {
   if (figure == null || Number.isNaN(Number(figure))) return escapeHtml(none);
   const isCpt = kind === "cpt";
-  const base = row?.projBase == null ? null : isCpt ? Number(row.projBase) * CPT_MULT : row.projBase;
+  // The bump scales the typed projection when there is one (merge.js), so that is the base the hover names, not the blend's (round 4, item 21).
+  const before = row?.override?.proj ?? row?.projBase;
+  const base = before == null ? null : isCpt ? Number(before) * CPT_MULT : before;
   const shown = isCpt ? row?.cptProj : row?.proj;
   return bumpFigureHtml(row, dec1(figure), base, shown);
 }

@@ -107,10 +107,14 @@ export function whenShort(raw) {
 /** The oldest of the stamps as one time, or null when any of them is unknown (a figure is only as dated as its least dated source). ISO stamps sort; TwoGun's text is read the same way. */
 function oldestShort(shorts) {
   if (!shorts.length || shorts.some((s) => s === null)) return null;
-  // Compared on the printed month, day and clock, in season order (September first): the stamps of one week never span a year.
+  return [...shorts].sort((a, b) => shortSortKey(a) - shortSortKey(b))[0];
+}
+
+/** A time in whenShort's form ("Nov 3 13:00 ET") as a number that orders times of one week: month, day and clock as printed, in season order (September first), since the stamps of one week never span a year. */
+export function shortSortKey(s) {
   const MONTHS = ["Sep", "Oct", "Nov", "Dec", "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug"];
-  const key = (s) => { const [m, d, hm] = s.split(" "); return MONTHS.indexOf(m) * 1e6 + Number(d) * 1e4 + Number(hm.replace(":", "")); };
-  return [...shorts].sort((a, b) => key(a) - key(b))[0];
+  const [m, d, hm] = s.split(" ");
+  return MONTHS.indexOf(m) * 1e6 + Number(d) * 1e4 + Number(hm.replace(":", ""));
 }
 const asOf = (when, word = "as of") => (when ? `${word} ${when}` : "as-of missing");
 

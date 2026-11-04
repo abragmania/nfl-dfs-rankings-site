@@ -155,6 +155,27 @@ export function assertIdsOnSlate(changes, slateIds, extraIds = []) {
 }
 
 /**
+ * The checks a Showdown overrides write makes on the ids it names, the one copy for the app's route (server/showdown/routes.js) and the public site's own write (site-src/site-overrides.js):
+ * every id is on the game's slate, a man's FLEX id or his Captain id (assertIdsOnSlate), and a bump, a typed projection, a star and a note name a FLEX id, never a Captain id (the merge reads them
+ * under the FLEX id, so one under a Captain id would be stored and move nothing). Only typed ownership has a Captain id of its own. `players`: the slate's players, {id, cptId}. Throws as
+ * assertIdsOnSlate does (OVERRIDES_NOT_ON_SLATE, OVERRIDES_INVALID).
+ */
+export function assertShowdownWriteIds(changes, players) {
+  const list = Array.isArray(players) ? players : [];
+  assertIdsOnSlate(changes, list.flatMap((p) => [p.id, p.cptId]).filter((id) => id !== null && id !== undefined));
+  const flexIds = new Set(list.map((p) => String(p.id)));
+  const captainIds = new Set(list.map((p) => p.cptId).filter((id) => id !== null && id !== undefined).map(String));
+  for (const [section, what] of [["bump", "A ± adjustment"], ["proj", "A typed projection"], ["stars", "A star"], ["notes", "A note"]]) {
+    const onCaptain = Object.keys(changes?.[section] ?? {}).filter((id) => captainIds.has(id) && !flexIds.has(id));
+    if (onCaptain.length) {
+      const err = new Error(`${what} is kept under the player's FLEX id, never his Captain id (${onCaptain.join(", ")}), so nothing was saved.`);
+      err.code = "OVERRIDES_INVALID";
+      throw err;
+    }
+  }
+}
+
+/**
  * Pure function: applies `changes` ({ proj?, own?, stars?, notes?, bump? }, each keyed by player id) onto
  * `current`, returning a new overrides object without mutating the input. A null value for proj/own/
  * notes removes that id's override; stars takes true (add) or false (remove); bump takes the new total of steps

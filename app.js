@@ -37,7 +37,6 @@ import { renderFilterBar, updateFilterSummary, showButtonError, hasAnyOverride }
 import { renderTableHead, renderTableBody, updateRow, showRowError } from "./js/table.js";
 import { renderTabs, isSourcesTab, sourcesTabToOpen, shownTab, renderProjectionsPanel, renderOwnershipPanel, renderLineupPanel, renderEntriesPanel } from "./js/tabs.js";
 import { renderSourcesPage, APPLIED_ALL_EVENT } from "./js/sources-page.js"; // the one Sources page (Adam 2026-10-18), shared with the Showdown view
-import { teamsSampleHtml } from "./js/teams-sample.js"; // Temporary (Adam 2026-10-18)
 import { initExpand, syncExpandUi } from "./js/expand.js";
 import { makeFilterDebounce } from "./js/filter-debounce.js";
 import { initPlayerCard } from "./js/player-card.js";
@@ -45,6 +44,7 @@ import { delegateBumpClicks, bumpPatch } from "./js/bump-control.js"; // Adam 20
 import { delegateRowReset } from "./js/row-reset.js"; // B12: the pool's row reset (typed numbers and bump)
 import { makeWriteSeq } from "./js/write-seq.js"; // A3: an older write's answer never paints over a newer one's
 import { makeBoardFlow } from "./js/write-runner.js"; // A3: every board write and read goes through the one numbered flow
+import { boardStamps, stampsLineHtml } from "./js/stamps.js"; // B11: Board, Injuries, Pulled and Lock, `missing` when the board carries no time
 
 const el = {
   modeRow: document.getElementById("mode-row"),
@@ -65,8 +65,8 @@ const el = {
   slateNote: document.getElementById("slate-note"),
   projectionsPanel: document.getElementById("projections-panel"),
   ownBanner: document.getElementById("own-banner"),
+  stampsLine: document.getElementById("stamps-line"),
   ownershipPanel: document.getElementById("ownership-panel"),
-  teamsPanel: document.getElementById("teams-panel"), // Temporary (Adam 2026-10-18): the Teams (sample) tab
   lineupPanel: document.getElementById("lineup-panel"),
   lineupMount: document.getElementById("lineup-mount"), // the Optimizer's redrawn part inside #lineup-panel (step 4); the strip, filter bar and ranked list around it are static
   showdownPanel: document.getElementById("showdown-panel"), // ChatGPT wish t, Adam 2026-10-17
@@ -376,6 +376,7 @@ function renderRankedParts(board, filters, sort, slateRows) {
   });
   const allRows = rowsGradedForView(slateRows, filters.pos, board.rows); // D33: the FLEX view pools RB, WR and TE
   el.ownBanner.textContent = [ownBannerText(allRows), board.injuryNote, ...(board.tabNotes?.favorites ?? [])].filter(Boolean).join(" ");
+  if (el.stampsLine) el.stampsLine.innerHTML = stampsLineHtml(boardStamps(board, { games: activeSlateGames(board) })); // B11: the board's own times, `missing` for one it does not carry
   const filtered = filterRows(allRows, filters);
   const sorted = sortRows(filtered, sort.col, sort.dir);
   const hasNoteColumn = allRows.some((r) => r.note);
@@ -410,7 +411,6 @@ function renderDynamic() {
     el.sourcesPanel.hidden = true;
     el.projectionsPanel.hidden = true;
     el.ownershipPanel.hidden = true;
-    el.teamsPanel.hidden = true;
     el.lineupPanel.hidden = true;
     el.entriesPanel.hidden = true;
     // ChatGPT wish t, Adam 2026-10-17: the Showdown tab needs no main-slate board, so it stands in for the message.
@@ -429,7 +429,6 @@ function renderDynamic() {
   el.sourcesPanel.hidden = !isSourcesTab(activeTab);
   el.projectionsPanel.hidden = activeTab !== "projections";
   el.ownershipPanel.hidden = activeTab !== "ownership";
-  el.teamsPanel.hidden = activeTab !== "teams";
   el.lineupPanel.hidden = activeTab !== "lineup";
   el.showdownPanel.hidden = activeTab !== "showdown";
   el.entriesPanel.hidden = activeTab !== "entries";
@@ -443,8 +442,6 @@ function renderDynamic() {
     renderSourcesPage(el.sourcesPanel, { board, slate: "main", showdown: false, activeKey: activeTab, onPlayersTab: onTabClick, onChanged: repaintAfterSourceSave });
     if (activeTab === "projections") renderProjectionsPanel(el.projectionsPanel, board, sourceCallbacks);
     else renderOwnershipPanel(el.ownershipPanel, board, sourceCallbacks);
-  } else if (activeTab === "teams") {
-    el.teamsPanel.innerHTML = teamsSampleHtml(); // Temporary (Adam 2026-10-18)
   } else if (activeTab === "showdown") {
     renderShowdownTabNow();
   } else if (activeTab === "entries") {
@@ -500,6 +497,7 @@ setRouteDkFile(handleFile);
 setUploadRouter(handleFile);
 
 wireThemeToggle(el.themeToggleBtn, { onChange: () => store.set({}) }); // C15: the team logos come in the theme's variant, so every list is drawn again on a switch
+wireThemeToggle(document.getElementById("sd-theme-toggle-btn"), { onChange: () => store.set({}) }); // B9: the Showdown header's switch is the same one; the Showdown screen draws again through the same store signal (showdown/view.js)
 wireSourcesLink(el.sourcesBtn, { onOpen: onSourcesOpen });
 // The Tracked button sits on both headers (main slate and Showdown); both are in index.html, so both are wired here.
 wireTrackedLink(document.getElementById("tracked-btn"));

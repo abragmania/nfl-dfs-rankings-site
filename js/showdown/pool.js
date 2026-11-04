@@ -20,7 +20,7 @@ import { readingShortText, halfName, stampText } from "./figures-label.js";
 
 // ---------- the filter bar's state and the one call ----------
 
-export const DEFAULT_POOL_FILTERS = Object.freeze({ team: "both", pos: "All", minSalary: null, maxSalary: null, minProj: null });
+export const DEFAULT_POOL_FILTERS = Object.freeze({ team: "both", pos: "All", minSalary: null, maxSalary: null, minProj: null, search: "", starredOnly: false });
 const START_SORT = Object.freeze({ col: "proj", dir: "desc" }); // the Rankings tab's default: projection, highest first
 
 /** The pool's filters (view.js's filter bar writes them), its sort (a header click) and its tab ("flex" or "cpt"; null until first read
@@ -40,8 +40,8 @@ export function resetPoolState() {
 }
 
 // The Optimizer's additions (optimizer.js poolControls): {live(), mode(), available(tab), rows(all, shown), capCell(row, kind, which) (Min % or Max %),
-// button(row, kind, action) ("lock", "include" or "exclude"), lockIcon(row), thumbs(row, isCpt), rowClass(row, tab), projCell(row, proj, isCpt), readTab(), writeTab(tab)},
-// each optional; none set (or not live) leaves the pool its own rows with no controls.
+// button(row, kind, action) ("lock", "include" or "exclude"), lockIcon(row), thumbs(row, isCpt), rowClass(row, tab), projCell(row, proj, isCpt), ownCell(row, own, isCpt, text),
+// starCell(row), noteSlot(row), readTab(), writeTab(tab)}, each optional; none set (or not live) leaves the pool its own rows with no controls.
 let controls = null;
 export function setPoolControls(next) {
   controls = next && typeof next === "object" ? next : null;
@@ -103,7 +103,7 @@ const PICK_TITLES = Object.freeze({
 
 /** A click inside one of these is that control's own (the ± bump, a Min / Max box, lock, In, exclude, the name's card popup) or the padding
  *  around it, not a pick (lineup.js passes it to the shared pick-rows.js wirePickRows). */
-export const POOL_PICK_SKIP = "button, a, input, select, textarea, label, .player-name, .bump-ctl, .lineup-thumbs-cell, .sd-pool-btn, .sd-pool-in, .lineup-min-cell, .lineup-max-cell";
+export const POOL_PICK_SKIP = "button, a, input, select, textarea, label, .player-name, .bump-ctl, .lineup-thumbs-cell, .sd-pool-btn, .sd-pool-in, .lineup-min-cell, .lineup-max-cell, .lineup-star-col, [data-sd-edit], .note-slot";
 
 const num = (v) => (typeof v === "number" && Number.isFinite(v) ? v : null);
 
@@ -156,16 +156,18 @@ export function poolSort(board) {
 }
 
 /**
- * THE rows the pool shows, in order, and so the filter bar's count: the board's rows (Out men hidden unless Show all players), plus on the
- * live app any man locked, included or excluded (so he can be undone, classic's rule), through the filter bar's filters (team, position,
- * FLEX salary range, Min FLEX pts on the FLEX projection the Proj cell shows; board-shape.js filterRows), sorted by the pool's sort on the
- * figures the cells show.
+ * THE rows the pool shows, in order, and so the filter bar's count: the board's rows (Out men hidden unless the Showdown's Show all players is on, or a name is
+ * being searched: typing a name always finds the man), plus on the live app any man locked, included or excluded (so he can be undone, classic's rule), through the
+ * filter bar's filters (team, position, search, Starred only, and the salary range and `Min Proj` on the figures of the list on screen: the Captain list's price and
+ * Captain projection, C24; board-shape.js filterRows), sorted by the pool's sort on the figures the cells show.
  */
-export function poolVisibleRows(board, { filters = poolState.filters, sort = poolSort(board), figures = playerFigures } = {}) {
+export function poolVisibleRows(board, { filters = poolState.filters, sort = poolSort(board), figures = playerFigures, tab = poolTab() } = {}) {
   const all = board?.rows ?? [];
-  const shown = shownRows(all);
+  const searching = String(filters.search ?? "").trim() !== "";
+  const shown = searching ? all : shownRows(all);
   const base = controls?.rows ? controls.rows(all, shown) : shown;
-  return sortRows(filterRows(base, filters, board?.game, (r) => num(figures(r, false).proj)), sort.col, sort.dir, (r, c) => poolSortValue(r, c, figures));
+  const isCpt = tab === "cpt";
+  return sortRows(filterRows(base, filters, board?.game, (r) => num(figures(r, isCpt).proj), (r) => num(isCpt ? r.cptSalary : r.salary)), sort.col, sort.dir, (r, c) => poolSortValue(r, c, figures));
 }
 
 /** The filter bar's count: "49 of 55 players". */
@@ -229,6 +231,7 @@ export function ownTotalsRowHtml(t, cols) {
     if (c.key === "player") return `<th class="sd-own-total-label">${escapeHtml(ownTotalsLabel(t))}</th>`;
     if (c.key === "ownFlex") return ownTotalCellHtml(t.flex, "FLEX", "five FLEX seats", false);
     if (c.key === "ownCpt") return ownTotalCellHtml(t.cpt, "Captain", "one Captain seat", true);
+    if (c.key === "star") return `<th class="lineup-star-col"></th>`; // the star column's blank, sticky like the head's
     return "<th></th>";
   }).join("");
   return `<tr class="sd-own-total-row">${cells}${FILL_HEAD}</tr>`;
@@ -245,6 +248,7 @@ const live = () => controls?.live?.() === true;
 
 /** The row controls, as head cells: thumbs, In (where a seat choice exists, D4), Lock, Exclude, Min %, Max %, and on the FLEX list the Captain's own lock and exclude (C21). */
 const CONTROL_COLUMNS = Object.freeze({
+  star: { key: "star", ctl: true, label: "★", title: "Star: mark a man; Starred only shows the men starred" },
   thumbs: { key: "thumbs", ctl: true, label: "Thumbs", title: "Thumbs: raise or lower his projection 5% a press" },
   in: { key: "in", ctl: true, label: "In", title: "In: in every lineup at Captain or FLEX, the optimizer picks the role" },
   lock: { key: "lock", ctl: true, label: "Lock", title: "Lock him in the seat of this list in every lineup" },
@@ -260,7 +264,7 @@ const FIGURE_KEYS = new Set(["salary", "proj", "own"]);
 
 /** The Columns list's keys the pool can draw now: the figures always, the row controls on the live app, Min % and Max % in GPP, the Captain pair on the FLEX list. */
 export function poolAvailableKeys(tab = poolTab()) {
-  return new Set(["player", "salary", "proj", "own", "value", "note", ...(controls?.available?.(tab) ?? [])]);
+  return new Set(["player", "salary", "proj", "own", "value", ...(controls?.available?.(tab) ?? [])]);
 }
 
 /** The column set and the browser's place for Adam's choice: per mode (GPP, Cash) of this showdown screen. */
@@ -278,7 +282,7 @@ export function poolColumns(board, tab = poolTab()) {
 export function poolHeadHtml(board, sort = poolSort(board), tab = poolTab()) {
   const cols = poolColumns(board, tab);
   const cells = cols.map((c) => (c.ctl
-    ? `<th class="sd-pool-ctl sd-pool-ctl-${c.key}${c.gold ? " sd-cpt-col" : ""}${c.key === "min_pct" || c.key === "cpt_min_pct" ? " lineup-min-head" : c.key === "max_pct" || c.key === "cpt_max_pct" ? " lineup-max-head" : ""}" title="${escapeHtml(c.title)}">${escapeHtml(c.label)}</th>`
+    ? `<th class="sd-pool-ctl sd-pool-ctl-${c.key}${c.key === "star" ? " lineup-star-col" : ""}${c.gold ? " sd-cpt-col" : ""}${c.key === "min_pct" || c.key === "cpt_min_pct" ? " lineup-min-head" : c.key === "max_pct" || c.key === "cpt_max_pct" ? " lineup-max-head" : ""}" title="${escapeHtml(c.title)}">${escapeHtml(c.label)}</th>`
     : showdownHeadCellsHtml(sort, [c]))).join("");
   return `<tr>${cells}${FILL_HEAD}</tr>${ownTotalsRowHtml(ownTotals(board?.rows ?? []), cols)}`;
 }
@@ -328,21 +332,32 @@ function pickAttrsHtml({ action, reason }) {
   return reason ? ` title="${escapeHtml(reason)}" aria-disabled="true"` : "";
 }
 
+/** What an empty pool says: with Starred only on, whether nobody is starred or the starred are hidden by the other filters (classic's words, lineup-view.js poolEmptyRowHtml; item 20), else the plain sentence. Pure. */
+export function emptyPoolText(board, filters = poolState.filters) {
+  if (!filters?.starredOnly) return "No player matches these filters.";
+  const hidden = (board?.rows ?? []).filter((r) => r?.starred).length;
+  return hidden > 0
+    ? `${hidden} starred ${hidden === 1 ? "is" : "are"} hidden by other filters (Show all players is off, team, position, salary, Min Proj or search)`
+    : "No starred players";
+}
+
 /** The body rows (`rows`: poolVisibleRows), each the Rankings row with the slots' figures and the row controls, in Adam's column order;
  *  a click on a row picks or drops him (poolPickAction). `palette`: the game's team colours (the light tint and stripe of A20). */
 export function poolBodyHtml(board, rows, placement, figures = playerFigures, tab = poolTab(), palette = showdownPalette(board)) {
   const cols = poolColumns(board, tab);
   if (!rows.length) {
-    return `<tr class="sd-pool-empty-row"><td class="sd-pool-empty" colspan="${cols.length + 1}">No player matches these filters.</td></tr>`;
+    return `<tr class="sd-pool-empty-row"><td class="sd-pool-empty" colspan="${cols.length + 1}">${escapeHtml(emptyPoolText(board, poolState.filters))}</td></tr>`;
   }
   const picks = new Map(rows.map((r) => [String(r.id), pickOf(placement, r, tab)]));
   const hooks = {
     figures,
     projCell: controls?.projCell ? (row, proj, isCpt) => controls.projCell(row, proj, isCpt) : null,
+    ownCell: controls?.ownCell ? (row, own, isCpt, text) => controls.ownCell(row, own, isCpt, text) : null, // B3: the typed-Own editor
+    starCell: controls?.starCell ? (row) => controls.starCell(row) : null, // B2
     // The Player cell names him in full and, for a phone, the cards' short name too (style.css shows one; 👁 V1: no name cut mid-word); then the seat tag of a man in
-    // the lineup on either list (C21) and a lock icon for a man locked in either seat (C20). A click's refusal (placement.message, lineup.js) is drawn under the name of the
+    // the lineup on either list (C21), a lock icon for a man locked in either seat (C20) and the note's pencil (C23, as classic's). A click's refusal (placement.message, lineup.js) is drawn under the name of the
     // row that was clicked (row-message.js, standard A14).
-    playerCell: (row) => `<div class="player-cell">${sdLine(row, { nameHtml: cardNameHtml(row) })}${seatTagHtml(placedSeat(placement, row.id))}${controls?.lockIcon?.(row) ?? ""}</div><span class="lp-l2">${bareOppHtml(row)}</span>${messageIsFor(placement?.message, row.id) ? rowMessageHtml(placement.message.text, placement.message.tone) : ""}`,
+    playerCell: (row) => `<div class="player-cell">${sdLine(row, { nameHtml: cardNameHtml(row) })}<span class="sd-seat-slot">${seatTagHtml(placedSeat(placement, row.id))}${controls?.lockIcon?.(row) ?? ""}</span>${controls?.noteSlot?.(row) ?? ""}</div><span class="lp-l2">${bareOppHtml(row)}</span>${messageIsFor(placement?.message, row.id) ? rowMessageHtml(placement.message.text, placement.message.tone) : ""}`,
     valueCell: (row) => poolValueHtml(row, figures),
     // A man seated in the lineup, on either list, has his row tinted (the builder's), kept apart from a lock (the icon, C20), beside the Optimizer's own look (excluded), each class once.
     // A row that cannot be clicked is greyed instead of a pick row (A18); the lookup is made once per row and shared by the class and the attributes.
@@ -438,6 +453,7 @@ export function poolHtml(board, placement, rows) {
         </table>
       </div>
       <div id="sd-legend" class="table-legend">${escapeHtml(poolLegendText(board))}</div>
+      ${board?.deviceNote ? `<div class="table-legend sd-device-note" role="note">${escapeHtml(board.deviceNote)}</div>` : ""}
     </section>`;
 }
 
@@ -485,8 +501,9 @@ export function wirePoolTabs(poolEl, ctx) {
 
 /**
  * Redraws the pool's head and body in place (a filter, a sort, a lock or the modes answer's notes), keeping its scroll box and its
- * place. ctx = { board, placement(), repaint(), onRepaint?(poolEl, rows), onCount?(shown, total) }. Returns the rows shown, or null when no
- * pool is drawn.
+ * place. ctx = { board, placement(), repaint(), onRepaint?(poolEl, rows), onCount?(shown, total), takeEdit?(poolEl), restoreEdit?(poolEl, carry) }: a typed-number or
+ * note box that is open is taken out before the body is replaced and put back in the new one with its text and focus (A3), never read as a click away.
+ * Returns the rows shown, or null when no pool is drawn.
  */
 export function paintPool(container, ctx) {
   const pool = container?.querySelector?.("#sd-pool");
@@ -494,12 +511,14 @@ export function paintPool(container, ctx) {
   const body = pool?.querySelector?.("tbody");
   if (!pool || !head || !body) return null;
   const rows = poolVisibleRows(ctx.board);
+  const openEdit = ctx.takeEdit?.(pool) ?? null;
   head.innerHTML = poolHeadHtml(ctx.board);
   body.innerHTML = poolBodyHtml(ctx.board, rows, ctx.placement());
   const note = pool.querySelector(".sd-pool-note");
   if (note) note.textContent = poolNoteText(ctx.board);
   wirePool(pool, ctx);
   ctx.onRepaint?.(pool, rows);
+  ctx.restoreEdit?.(pool, openEdit);
   ctx.onCount?.(rows.length, (ctx.board?.rows ?? []).length);
   return rows;
 }

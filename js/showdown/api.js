@@ -15,14 +15,15 @@
 import {
   pageStorage, showdownLineupsResponse, showdownOptimizeResponse, saveShowdownLineup, deleteShowdownDeviceLineup, renameShowdownDeviceLineup, envelope, errorBody,
   showdownMeterResponse, showdownSwapsResponse, runShowdownGenerate, readShowdownDeviceLineups, bakedCurvesRead, BAKED_CURVES_URL, SHOWDOWN_GENERATE_FAILED,
+  showdownBoardWithEdits, putShowdownEdits, resetAllShowdownEdits, modesWithEdits,
 } from "../site-showdown.js";
 
 export const READ_ONLY_MESSAGE = "Read-only on the live site. Do this in the app on your computer.";
 
 // What the Showdown screen can run on the site (the contract with public/js/showdown/api.js supports, which says true for
-// each): everything but the ± bumps, which change the app's board through its overrides route (the site cannot rebuild a
-// Showdown board, so they stay in the app; RULES.md D71).
-const FEATURES = Object.freeze({ generate: true, optimize: true, swaps: true, modes: true, meter: true, lineups: true, overrides: false });
+// each). Since round 4 (item 7) that includes the overrides: stars, notes, typed Proj and Own, the ± bump, a row's reset and Reset all overrides are kept in this browser
+// and laid over the baked board (site-overrides.js showdownBoardWithEdits), because the site cannot rebuild a Showdown board; they go nowhere else (RULES.md D71).
+const FEATURES = Object.freeze({ generate: true, optimize: true, swaps: true, modes: true, meter: true, lineups: true, overrides: true });
 
 /** True when the site runs `feature` ("generate", "optimize", "swaps", "modes", "meter", "lineups", "overrides"). */
 export function supports(feature) {
@@ -52,8 +53,39 @@ export async function getShowdowns() {
   return getJson("baked/showdown/index.json");
 }
 
-export async function getShowdownBoard(key) {
+// The baked board as published, before this device's edits.
+function getBakedBoard(key) {
   return getJson(`baked/showdown/${encodeURIComponent(key)}/board.json`);
+}
+
+// The board the page shows, the meter, the swaps, Build and Save read: the baked one with this device's stars, notes, typed numbers and bumps for the game laid over it.
+export async function getShowdownBoard(key) {
+  return showdownBoardWithEdits(await getBakedBoard(key), pageStorage(), key);
+}
+
+// PUT and DELETE .../overrides answered in the browser: the change is recorded and checked as the app's route checks it, kept in this browser, and the answer is the board with it laid
+// over (as the route answers the rebuilt board). The board the meter and Build read is read again after one, so they see the new figures.
+function overridesAnswer(result, key) {
+  fieldBoards.delete(key);
+  return result.error ? errorBody(result.error.code, result.error.message) : { ...result.board, ok: true };
+}
+
+export async function putShowdownOverrides(key, patch) {
+  try {
+    return overridesAnswer(putShowdownEdits(pageStorage(), key, await getBakedBoard(key), patch), key);
+  } catch (e) {
+    console.error("showdown overrides: failed", e);
+    return errorBody("OVERRIDES_INVALID", "Could not save that change on this device.");
+  }
+}
+
+export async function deleteShowdownOverrides(key) {
+  try {
+    return overridesAnswer(resetAllShowdownEdits(pageStorage(), key, await getBakedBoard(key)), key);
+  } catch (e) {
+    console.error("showdown overrides: reset failed", e);
+    return errorBody("OVERRIDES_INVALID", "Could not reset on this device.");
+  }
 }
 
 // The published lineups of the app plus the ones saved on this device, newest first, as GET .../lineups answers.
@@ -158,7 +190,9 @@ export async function postShowdownLineupSwaps(key, payload) {
 // route's own SHOWDOWN_MODES_FAILED, so the meter says the notes could not be read.
 export async function getShowdownModes(key) {
   try {
-    return await getJson(`baked/showdown/${encodeURIComponent(key)}/modes.json`);
+    const baked = await getJson(`baked/showdown/${encodeURIComponent(key)}/modes.json`);
+    // The baked answer knows none of this device's typed numbers: a man's edited projection is put in it (site-overrides.js modesWithEdits), so the pool and the lineup show it.
+    return modesWithEdits(baked, await getBakedBoard(key), await getShowdownBoard(key));
   } catch (e) {
     console.error("showdown modes: failed", e);
     return errorBody("SHOWDOWN_MODES_FAILED", "Could not read what each mode has posted.");

@@ -113,8 +113,6 @@ export function sortValue(row, col) {
       return row.levFlex ?? null;
     case "levCpt":
       return row.levCpt ?? null;
-    case "note":
-      return row.note && row.note.trim() ? row.note : null;
     default:
       return null;
   }
@@ -139,19 +137,22 @@ export function sortRows(rows, col, dir, valueOf = sortValue) {
   return withIndex.map((x) => x.row);
 }
 
-// `projOf(row)`: the FLEX projection Min FLEX pts compares, the row's own by default (the Optimizer's pool passes the figure its Proj cell shows).
-export function filterRows(rows, filters, game, projOf = (row) => row.proj) {
+// `projOf(row)` and `salaryOf(row)`: the figures the salary range and `Min Proj` compare, the row's own FLEX ones by default. The Optimizer's pool passes the figures of the
+// list on screen (C24, round 4): on the Captain list the Captain price and the Captain projection, as its cells show them.
+export function filterRows(rows, filters, game, projOf = (row) => row.proj, salaryOf = (row) => row.salary) {
+  const query = String(filters.search ?? "").trim().toLowerCase();
   return rows.filter((row) => {
     if (filters.team === "away" && row.team !== game?.away) return false;
     if (filters.team === "home" && row.team !== game?.home) return false;
     if (filters.pos !== "All" && (row.pos ?? "").trim().toUpperCase() !== filters.pos) return false;
-    // Min FLEX salary (Adam 2026-10-26 3:26 PM: min first, then max, as classic's salary range): a missing salary is below any floor.
-    if (filters.minSalary != null && (row.salary ?? -Infinity) < filters.minSalary) return false;
-    if (filters.maxSalary != null && (row.salary ?? Infinity) > filters.maxSalary) return false;
-    // "Min FLEX pts" always compares against the FLEX projection (row.proj), never cptProj, even though
-    // the row also carries a Captain projection (Adam, confirmed) — a player with no projection at all
-    // is treated as below any floor, same as the salary filter treats a missing salary as above any cap.
+    // Min salary (Adam 2026-10-26 3:26 PM: min first, then max, as classic's salary range): a man with no salary for the list is hidden under a range, never read as $0.
+    if ((filters.minSalary != null || filters.maxSalary != null) && !Number.isFinite(salaryOf(row))) return false;
+    if (filters.minSalary != null && salaryOf(row) < filters.minSalary) return false;
+    if (filters.maxSalary != null && salaryOf(row) > filters.maxSalary) return false;
+    // `Min Proj` compares the projection the list's Proj cell shows (never the other list's) — a player with no projection at all is below any floor.
     if (filters.minProj != null && (projOf(row) ?? -Infinity) < filters.minProj) return false;
+    if (filters.starredOnly && !row.starred) return false; // B2: Starred only
+    if (query && !String(row.name ?? "").toLowerCase().includes(query)) return false; // B1: Search players
     return true;
   });
 }

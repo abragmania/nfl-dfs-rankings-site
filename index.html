@@ -73,6 +73,7 @@
         <button id="sd-tracked-btn" class="sources-btn" type="button" title="The DFS players you track: contest entrants, the RotoGrinders top 100 and your marks">Tracked</button>
         <button id="sd-sources-btn" class="sources-btn" type="button" title="Which sources feed the projections and ownership, their weights, and when each was last pulled">Sources</button>
         <button id="sd-refresh-btn" class="refresh-btn" type="button">Refresh</button>
+        <button id="sd-theme-toggle-btn" class="theme-toggle-btn" type="button" title="Switch theme"></button>
       </div>
     </div>
     <!-- The row under the band: the source pills and, beside them, the pill naming the sources this game's board reads (showdown/view.js, figures-label.js). -->
@@ -97,6 +98,7 @@
       <section id="gamestrip" class="gamestrip"></section>
       <section id="filterbar" class="filterbar"></section>
       <p id="own-banner" class="tab-note own-banner"></p>
+      <div id="stamps-line" class="stamps-host"></div>
       <div id="lineup-mount" class="lineup-mount"></div>
       <div id="ranked-list" class="ranked-list">
         <div class="table-wrap scroll-panel">
@@ -114,7 +116,6 @@
     <div id="sources-panel" class="panel sources-panel" hidden></div>
     <div id="projections-panel" class="panel" hidden></div>
     <div id="ownership-panel" class="panel" hidden></div>
-    <div id="teams-panel" class="panel" hidden></div>
     <div id="showdown-panel" class="panel" hidden></div>
     <div id="entries-panel" class="panel" hidden></div>
     <div id="empty-state" class="empty-state" hidden></div>
@@ -134,6 +135,7 @@
          so a redraw never replaces a filter box Adam is typing in. -->
     <div id="sd-lineup-panel" class="panel sd-lineup-panel">
       <div id="sd-gameline" class="sd-gameline"></div>
+      <div id="sd-stamps" class="stamps-host"></div>
       <div id="sd-filterbar" class="sd-filterbar"></div>
       <div id="sd-lineup-mount" class="sd-lineup-mount"></div>
     </div>

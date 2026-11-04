@@ -2,15 +2,16 @@
 // data/showdown/2026-w03-ATLGB/build-sheet.mjs — same dark palette and type as the rest of the app, same
 // nine columns (no Lev, standard A2): Player (team chip, position, status pill), Sal, CPT Sal (gold), Proj, CPT Proj (gold),
 // Own, CPT Own (gold), Val (one column — Captain value is identical to FLEX value since Captain price and points are both
-// 1.5x), Notes (words per optimizer standard D1, 2026-11-03). No inline editing here (unlike the classic table): the brief's
-// column list for Showdown Rankings has no star or edit affordance, only display plus sort and filter.
+// 1.5x); words per optimizer standard D1, 2026-11-03. Since round 4 there is no Notes column (C23: the note is a pencil in the name cell, as classic's) and the pool's
+// cells carry the star and the typed Proj and Own editors through `hooks` (B2, B3; showdown/pool-edit.js).
 import { escapeHtml, money, dec1, dec2, pct1 } from "../format.js";
 import { rowIsOut } from "../table.js";
 import { playerLineHtml, showPos } from "../player-row.js";
-import { store } from "../state.js";
+import { sdShowAll } from "./show-all.js";
 
-export function shownRows(rows) {
-  return store.get().filters.showAllPlayers ? rows : rows.filter((row) => !rowIsOut(row));
+/** The rows a Showdown list shows: every man with the Showdown's own `Show all players` on (C24: not classic's switch), else without the men listed out (D45). */
+export function shownRows(rows, showAll = sdShowAll()) {
+  return showAll ? rows : rows.filter((row) => !rowIsOut(row));
 }
 
 // The standard's order (A1: Player, Sal, Proj, Own, Val); the Lev and CPT Lev columns are gone (A2, 2026-11-03).
@@ -23,7 +24,6 @@ export const SD_COLUMNS = [
   { key: "ownFlex", label: "Own" },
   { key: "ownCpt", label: "CPT Own", gold: true },
   { key: "value", label: "Val" },
-  { key: "note", label: "Notes" },
 ];
 
 // One colour per position (D41), same six tokens used by the position filter chips (public/style.css
@@ -85,12 +85,6 @@ function projCellHtml(value, row, extraTitlePrefix = "") {
   return `<span title="${escapeHtml(projTitleText(value, row, extraTitlePrefix))}">${value == null ? "no proj" : dec1(value)}</span>`;
 }
 
-function noteCellHtml(row) {
-  if (!row.note) return "";
-  const preview = row.note.length > 40 ? `${row.note.slice(0, 40)}…` : row.note;
-  return `<span class="note-preview" title="${escapeHtml(row.note)}">${escapeHtml(preview)}</span>`;
-}
-
 // ---------- the Optimizer's player pool (Adam 2026-10-26 3:22 PM: the Optimizer looks like the retired Rankings tab, D81) ----------
 // The pool (pool.js) draws these same columns and cells through `hooks`, which add what the Optimizer needs: the figures the slots
 // show (`figures(row, isCpt)`: lineup-meter.js playerFigures, the board row's own plus the modes answer's notes), the Player cell
@@ -123,13 +117,16 @@ function hookedProjHtml(row, isCpt, h) {
 function hookedOwnHtml(row, isCpt, h) {
   const f = h.figures(row, isCpt);
   const title = f.notOnBoard ? "Not on TwoGun's board, 0%" : f.own == null && f.missingReason ? f.missingReason : ownTitleText(f.own, row.ownHow, isCpt ? "Captain" : "FLEX");
-  return `<span title="${escapeHtml(title)}">${pct1(f.own) ?? "—"}</span>`;
+  const text = pct1(f.own) ?? "—";
+  const inner = (h.ownCell ? h.ownCell(row, f.own, isCpt, text) : null) ?? text; // B3: the pool wraps it as the typed-Own editor (pool-edit.js)
+  return `<span title="${escapeHtml(title)}">${inner}</span>`;
 }
 
 function cellHtml(row, key, h) {
   const hooked = typeof h.figures === "function";
   switch (key) {
-    case "player": return `<td>${h.playerCell ? h.playerCell(row) : playerCellHtml(row)}</td>`;
+    case "star": return `<td class="lineup-star-col">${h.starCell ? h.starCell(row) : ""}</td>`; // B2: the pool's star button
+    case "player": return `<td class="sd-name-cell">${h.playerCell ? h.playerCell(row) : playerCellHtml(row)}</td>`;
     case "salary": return `<td>${money(row.salary)}</td>`;
     case "cptSalary": return `<td class="sd-cpt-col">${money(row.cptSalary)}</td>`;
     case "proj": return `<td>${hooked ? hookedProjHtml(row, false, h) : projCellHtml(row.proj, row)}</td>`;
@@ -137,7 +134,6 @@ function cellHtml(row, key, h) {
     case "value": return `<td>${h.valueCell ? h.valueCell(row) : gradedValueHtml(row)}</td>`;
     case "ownFlex": return `<td>${hooked ? hookedOwnHtml(row, false, h) : ownCellHtml(row.ownFlex, row.ownHow)}</td>`;
     case "ownCpt": return `<td class="sd-cpt-col">${hooked ? hookedOwnHtml(row, true, h) : ownCellHtml(row.ownCpt, row.ownHow)}</td>`;
-    case "note": return `<td class="sd-notes-cell">${noteCellHtml(row)}</td>`;
     default: return h.ctlCell ? h.ctlCell(row, key) : "<td></td>"; // the pool's row controls (pool.js controlCellHtml)
   }
 }

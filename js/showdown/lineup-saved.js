@@ -249,6 +249,13 @@ export function wireSavedCards(container, actions) {
       actions.renameSave(btn.dataset.id, input ? input.value : "");
     });
   });
+  container.querySelectorAll("[data-rename-input]").forEach((input) => { // C27: Enter saves the new name, as the Save button does
+    input.addEventListener("keydown", (e) => {
+      if (e.key !== "Enter") return;
+      const id = container.querySelector("[data-action='sd-rename-save']")?.dataset.id;
+      if (id) actions.renameSave(id, input.value);
+    });
+  });
   container.querySelectorAll("[data-action='sd-delete-start']").forEach((btn) => {
     btn.addEventListener("click", () => actions.deleteStart(btn.dataset.id));
   });

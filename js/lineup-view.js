@@ -32,6 +32,7 @@ import {
 import { poolPicker } from "./lineup-pool-fit.js"; // A18, D3: what a click on each pool row may do, and why a row is greyed
 import { rowIconButtonHtml } from "./row-controls.js"; // round 3: Lock and Exclude are the same small buttons in both Optimizers
 import { rowResetHtml } from "./row-reset.js"; // B12: the x beside a projection that clears his typed numbers and bump
+import { crossedNoteHtml } from "./limit-cross.js"; // item 18: Min % above Max % is said under the Max box
 import { refusalNoteHtml } from "./limit-box.js"; // item 7: a refused Min % / Max % text is drawn beside its row until the next press
 import { confirmHtml, anchorHtml, CLEAR_QUESTION, DELETE_QUESTION, REPLACE_QUESTION } from "./confirm-inline.js"; // B13, C11, A12: the confirms beside their buttons
 import { dkSelectHtml, dkDownloadHtml } from "./dk-lineup-ui.js"; // A12: Download DK CSV for the saved lineups ticked
@@ -98,7 +99,7 @@ export function saveControlsHtml({ loaded, hasAnySlot, saving, saveName }) {
       ${loaded ? `${btn("lineup-save-btn", "Save working lineup", "Save your changes to the loaded lineup")}${btn("lineup-save-new-btn", "Copy", "Save as a new lineup and keep this one")}` : btn("lineup-save-btn", "Save working lineup")}`;
 }
 
-/** B13 (round 3): Clear all asks `Clear the lineup?` beside itself before it empties the slots, locks and excludes; `confirm` is the open confirm's key. */
+/** B13 (round 3), B6 (round 4): Clear lineup asks `Clear the lineup?` beside itself before it empties the slots and their locks (the excludes stay); `confirm` is the open confirm's key. */
 export { CLEAR_QUESTION }; // confirm-inline.js has the words, one copy for both Optimizers
 
 function controlsHtml() {
@@ -106,7 +107,7 @@ function controlsHtml() {
   const loaded = state.loadedId != null && state.savedLineups.some((l) => l.id === state.loadedId);
   return `
     <div class="lineup-controls">
-      ${anchorHtml(`<button type="button" id="lineup-clear-all-btn" class="lineup-clear-all-btn">Clear all</button>`, state.confirm === "clear" ? confirmHtml(CLEAR_QUESTION, { data: "clear" }) : "", { align: "left" })}${saveControlsHtml({ loaded, hasAnySlot, saving: state.saving, saveName: state.saveName })}
+      ${anchorHtml(`<button type="button" id="lineup-clear-all-btn" class="lineup-clear-all-btn">Clear lineup</button>`, state.confirm === "clear" ? confirmHtml(CLEAR_QUESTION, { data: "clear" }) : "", { align: "swap" })}${saveControlsHtml({ loaded, hasAnySlot, saving: state.saving, saveName: state.saveName })}
     </div>`;
 }
 
@@ -584,7 +585,7 @@ function rightRowHtml(row, picked, placedSet, posShown, maxMap = {}, minMap = {}
     lock: () => `<td class="lineup-row-actions">${rowIconButtonHtml({ kind: "lock", on: locked, title: locked ? "Locked in every lineup. Click to unlock" : "Lock him into your lineup and every build", attrs: `data-action="row-lock" data-id="${escapeHtml(id)}"`, disabled: excluded })}</td>`,
     exclude: () => `<td class="lineup-row-actions">${rowIconButtonHtml({ kind: "exclude", on: excluded, title: excluded ? "Excluded from every lineup. Click to include again" : "Exclude from every lineup", attrs: `data-action="row-exclude" data-id="${escapeHtml(id)}"` })}</td>`,
     min_pct: () => `<td class="lineup-min-cell"><input type="text" inputmode="decimal" maxlength="5" class="opt-input lineup-min-input${minBad ? " invalid" : ""}" data-player-min="${escapeHtml(id)}" value="${escapeHtml(minText)}" aria-label="Min % for ${name}" />${refusalNoteHtml(`[data-player-min="${id}"]`)}</td>`,
-    max_pct: () => `<td class="lineup-max-cell"><input type="text" inputmode="decimal" maxlength="5" class="opt-input lineup-max-input${maxBad ? " invalid" : ""}" data-player-max="${escapeHtml(id)}" value="${escapeHtml(maxText)}" aria-label="Max % for ${name}" />${refusalNoteHtml(`[data-player-max="${id}"]`)}</td>`,
+    max_pct: () => `<td class="lineup-max-cell"><input type="text" inputmode="decimal" maxlength="5" class="opt-input lineup-max-input${maxBad ? " invalid" : ""}" data-player-max="${escapeHtml(id)}" value="${escapeHtml(maxText)}" aria-label="Max % for ${name}" />${refusalNoteHtml(`[data-player-max="${id}"]`)}${crossedNoteHtml(minText, maxText, parsePct)}</td>`,
   };
   // A20: the list wears a much lighter version of the lineup's team tint and stripe (style.css .lineup-row), from the same slate palette.
   const c = teamColours(palette, row.team);

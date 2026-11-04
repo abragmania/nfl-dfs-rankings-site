@@ -5,10 +5,16 @@
 import { escapeHtml } from "./format.js";
 import { bumpStepsOf } from "./bump-control.js";
 
-/** Whether `row` has anything for the reset to clear: a typed projection, a typed ownership or a bump. */
+/** Whether `row` has anything for the reset to clear: a typed projection, a typed ownership (a Showdown man's Captain ownership too, B3) or a bump. */
 export function hasRowOverride(row) {
   const o = row?.override;
-  return Boolean(o && (o.proj != null || o.own != null)) || bumpStepsOf(row) !== 0;
+  return Boolean(o && (o.proj != null || o.own != null || o.ownCpt != null)) || bumpStepsOf(row) !== 0;
+}
+
+/** Whether Reset all overrides has something to clear on a Showdown `board`: on the public site the board says whether the visitor typed any number (board.siteTypedNumbers, site-overrides.js;
+ *  Adam's published numbers alone are not the visitor's to reset), in the app any man with a typed number or a bump. */
+export function resetAllEnabled(board) {
+  return board?.siteTypedNumbers ?? (board?.rows ?? []).some(hasRowOverride);
 }
 
 export const ROW_RESET_TITLE = "Clear his typed numbers and bump";

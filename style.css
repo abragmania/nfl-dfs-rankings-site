@@ -953,7 +953,7 @@ body.table-expanded { overflow: hidden; }
   pointer-events: none;
 }
 /* The last row of a table has nothing under it to show the hint on (it was clipped), so the hint opens above the cell there. */
-tr:last-child .cell-edit-hint { top: auto; bottom: 100%; margin-top: 0; margin-bottom: 2px; }
+tr:last-child .cell-edit-hint, tr:last-child .cell-edit-error { top: auto; bottom: 100%; margin-top: 0; margin-bottom: 2px; } /* round 4 item 13: the message and `Not saved` of the last row, or of a row alone, open upward too */
 .row-flag-marker { font-size: var(--fs-sm); margin-left: 1px; color: var(--amber); cursor: default; }
 
 .grade-cell { padding: 1px 5px; border-radius: 3px; }
@@ -1842,10 +1842,13 @@ th.sd-cpt-col.sorted { color: var(--amber); }
    the totals row are all in the sticky thead). Each cell keeps its one bottom border, so the look is the same. */
 .sd-pool-table { border-collapse: separate; border-spacing: 0; font-size: 14px; }
 .sd-pool-table :is(th, td) { text-align: right; font-variant-numeric: tabular-nums; }
-.sd-pool-table :is(th, td):first-child, .sd-pool-table th[data-col="note"], .sd-pool-table td.sd-notes-cell { text-align: left; }
+.sd-pool-table :is(th, td):first-child, .sd-pool-table th[data-col="player"], .sd-pool-table td.sd-name-cell { text-align: left; }
+.sd-pool-table td .editable-cell { display: flex; justify-content: flex-end; cursor: text; } /* B3: the Proj and Own cells are click-to-type; the figure stays right-aligned in its column */
+.sd-pool-table .note-slot { display: inline-block; margin-left: 4px; vertical-align: middle; } /* C23: the pencil sits beside the name, as classic's */
+.sd-pool-table .note-icon.note-static { cursor: help; }
+.sd-pool-table .star-btn.star-static { cursor: default; }
 .sd-pool-table .player-cell { max-width: none; } /* the name column grows with the tags beside the name (seat tag, padlock): no name is cut inside the panel (Round 2 fix 16) */
 .sd-pool-table :is(th, td).sd-fill { width: 100%; min-width: 0; padding: 0; }
-.sd-pool-table .note-preview { display: inline-block; max-width: 4em; overflow: hidden; text-overflow: ellipsis; vertical-align: middle; } /* the start of the note; its hover has it whole (Q1: the pool fits beside the builder) */
 .sd-pool-table tbody tr.sd-row-seated { background: rgba(var(--accent-rgb), 0.1); } /* C20, C21: a man in the lineup, on either list, keeps this tint; a lock is the padlock beside his name (.sd-lock-ico), not a tint */
 .sd-pool-table td.sd-pool-empty { text-align: center; color: var(--text-muted); }
 /* The cells pack 5px a side, half the Rankings table's 10px (Q1: the pool beside the 600px builder fits 1920's column, and a 1366px
@@ -1869,6 +1872,12 @@ th.sd-cpt-col.sorted { color: var(--amber); }
 .sd-filterbar { display: flex; flex-direction: column; gap: var(--sp-2); margin-bottom: var(--sp-4); }
 .sd-filterbar .link-btn { margin-left: 0; } /* 👁 V4: Clear filters right after the count, as classic's, not at the far end of a wide bar */
 .sd-filter-note { color: var(--amber); font-size: var(--fs-sm); font-weight: 600; margin-left: var(--sp-1); } /* 🔵 R3: "Min is above Max" */
+/* B11, C26: the four as-of stamps (stamps.js), one quiet line of small type; a stamp with no time reads `missing` in the amber emphasis, never as a guess. */
+.stamps-host:empty { display: none; }
+.stamps-line { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px var(--sp-3); font-size: var(--fs-sm); color: var(--text-muted); margin: 0 0 var(--sp-2); }
+.stamps-line .stamp i { font-style: normal; color: var(--text-dim); font-weight: 600; }
+.stamps-line .stamp-missing { color: var(--amber); }
+.stamps-line .link-btn { margin-left: 0; font-size: var(--fs-sm); }
 
 /* ---------- Showdown game line (👁 visual-qa: four small boxes above the Rankings table, like the hosted
    sheet's Total/Line/implied boxes) ---------- */
@@ -2239,7 +2248,7 @@ td.opt-exp-opp { color: var(--text-muted); } /* the cells only: the Matchup head
 .sd-cpt-slot .opt-p-slot { background: var(--amber); color: var(--bg-elevated); border-radius: 3px; text-align: center; font-weight: 700; letter-spacing: 0.04em; }
 .sd-cpt-slot .opt-p-slot { padding: 1px 0; }
 
-/* The Showdown controls in two rows of the column's width: Build and Clear all, then Save as and Save lineup; every control 32px tall, the buttons 96px so their right edges line up. */
+/* The Showdown controls in two rows of the column's width: Build and Clear lineup, then Save as and Save lineup; every control 32px tall, the buttons 96px so their right edges line up. */
 .lineup-controls.sd-controls { flex-direction: column; align-items: stretch; gap: var(--sp-2); }
 .sd-controls-row { display: flex; align-items: flex-end; gap: var(--sp-3); }
 .sd-controls-row .lineup-control { flex: 1 1 auto; min-width: 0; }
@@ -2415,6 +2424,10 @@ td.opt-exp-opp { color: var(--text-muted); } /* the cells only: the Matchup head
    left column only, so it never covers the pool list's rows. The batch is full width below both columns (Adam 2026-10-19 11:17 PM:
    "generated lineups should go 4 across"): the cards in one flat grid of four, stepping down as the saved grid does, and the
    Captain and FLEX exposure tables side by side above them, each as tall as its rows (👁 V2: a fixed height sliced the last row). */
+/* Round 4 item 17: the Make row keeps Build at its right edge however long the summary grows (the summary takes the room and wraps in it; it was a sibling that pushed the button to a new line). */
+.opt-footer.sd-opt-go .opt-summary { flex: 1 1 0; min-width: 0; white-space: normal; }
+.opt-footer.sd-opt-go > .lineup-build-btn { flex: none; margin-left: auto; }
+.opt-footer.sd-opt-go > .opt-form-error-footer { flex: 1 1 100%; order: -1; }
 .lineup-left.sd-opt-left { flex: 0 0 51%; max-width: 51%; min-width: 0; } /* 51 (was 52) since 2026-10-25: the pool's Player column needs the width for the longest names once the chip is gone (D80 as amended) */
 /* Adam 2026-10-20 ("I can't see the main lineup that I'm building"): the column runs head, controls, the six slots, the meter, the
    salary bar, totals, build status, then the Pool and Build boxes, then the sticky Make row. The head is a bare row; the boxes lose
@@ -2424,7 +2437,7 @@ td.opt-exp-opp { color: var(--text-muted); } /* the cells only: the Matchup head
 /* Adam 2026-10-20 (visual check): the Pool and Build boxes square off at the same height (Pool was 85px beside Build's 229px). */
 .opt-panel.sd-opt-panel .opt-groups { align-items: stretch; }
 /* Adam 2026-10-20 9:05 AM: the Showdown builder's six slots and meter must fit a 1920x947 window above the Make row. On a window
-   1600px or wider the two control rows (Build, Clear all / Save as, Save lineup) sit side by side, which gives back about
+   1600px or wider the two control rows (Build, Clear lineup / Save as, Save lineup) sit side by side, which gives back about
    60px; a narrower window keeps them stacked, as the column is too narrow for one line. */
 @media (min-width: 1600px) {
   .sd-opt-left .lineup-controls.sd-controls { flex-direction: row; align-items: flex-end; }
@@ -2515,10 +2528,6 @@ td.opt-exp-opp { color: var(--text-muted); } /* the cells only: the Matchup head
   /* The sticky Build bar keeps its summary to one line so it never takes a third of a phone screen (🔵 d842f0b). */
   .opt-summary { flex: 1 1 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 }
-
-/* Temporary (Adam 2026-10-18): the Teams (sample) tab, one card-width box per team; remove with public/js/teams-sample.js. */
-.teams-sample-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 8px; }
-.teams-sample-box { gap: var(--sp-1); }
 
 /* ---------- The Sources page (public/js/sources-page.js, sources-page-html.js; Adam 2026-10-18) ----------
    One screen for classic and Showdown: a header line with the presets, the choice tables (classic: Projections | Ownership; Showdown:
@@ -2667,11 +2676,17 @@ td.opt-exp-opp { color: var(--text-muted); } /* the cells only: the Matchup head
 .sd-pool-table tr > :is(th, td):first-child:not([colspan]) { position: sticky; left: 0; z-index: 1; background: var(--bg); }
 .sd-pool-table thead tr > th:first-child:not([colspan]) { background: var(--bg-elevated-2); z-index: 3; } /* the head's first cell is the head band's own colour, not the page's black (Round 2 fix 20; the rule above names the body's first column) */
 .sd-pool-table thead tr.sd-own-total-row > th:first-child:not([colspan]) { background: var(--bg-elevated); }
-.sd-pool-table tbody tr.sd-row-seated > td:first-child:not([colspan]) { background: color-mix(in srgb, var(--accent) 10%, var(--bg)); }
+/* Round 4 (B2): the star is the first column, so it sticks at the left and the name column sticks beside it (28px on), with the same band, tints and flare as the first cell had. */
+.sd-pool-table tr > :is(th, td).lineup-star-col:first-child { width: 28px; min-width: 28px; max-width: 28px; box-sizing: border-box; text-align: center; padding-left: 4px; padding-right: 2px; }
+.sd-pool-table tr > :is(th, td).lineup-star-col:first-child + :is(th, td):not([colspan]) { position: sticky; left: 28px; z-index: 1; background: var(--bg); }
+.sd-pool-table thead tr > th.lineup-star-col:first-child + th:not([colspan]) { background: var(--bg-elevated-2); z-index: 3; }
+.sd-pool-table thead tr.sd-own-total-row > th.lineup-star-col:first-child + th:not([colspan]) { background: var(--bg-elevated); }
+.sd-pool-table tbody tr.sd-row-seated > td:is(:first-child, .lineup-star-col:first-child + td):not([colspan]) { background: color-mix(in srgb, var(--accent) 10%, var(--bg)); }
 /* 👁 V6: on the dark theme a seated row's tint is 18%, so a placed man shows without reading his greyed button. */
 [data-theme="dark"] .sd-pool-table tbody tr.sd-row-seated { background: rgba(var(--accent-rgb), 0.18); }
-[data-theme="dark"] .sd-pool-table tbody tr.sd-row-seated > td:first-child:not([colspan]) { background: color-mix(in srgb, var(--accent) 18%, var(--bg)); }
+[data-theme="dark"] .sd-pool-table tbody tr.sd-row-seated > td:is(:first-child, .lineup-star-col:first-child + td):not([colspan]) { background: color-mix(in srgb, var(--accent) 18%, var(--bg)); }
 /* A20: the Showdown list's rows carry the same much lighter team flare as classic's: a 2px stripe and a 3% wash over the name cell's first 120px (the first cell is sticky and opaque, so the flare sits on it). */
+.sd-pool-table tbody tr:is(.sd-pool-pick, .sd-row-greyed) > td.sd-name-cell:not([colspan]),
 .sd-pool-table tbody tr:is(.sd-pool-pick, .sd-row-greyed) > td:first-child:not([colspan]) { background-image: linear-gradient(90deg, color-mix(in srgb, var(--tcv) 3%, transparent) 0, transparent 120px); box-shadow: inset 2px 0 color-mix(in srgb, var(--tcv) 45%, transparent); }
 /* C20 and C21: the seat tag (CPT in gold, FLEX) beside the name of a man in the lineup, and the padlock of a locked man. */
 .sd-seat { display: inline-flex; align-items: center; height: 18px; padding: 0 5px; border: 1px solid var(--border); border-radius: 4px; font-size: 11px; font-weight: 700; letter-spacing: 0.03em; color: var(--text-muted); }
@@ -2684,7 +2699,8 @@ td.opt-exp-opp { color: var(--text-muted); } /* the cells only: the Matchup head
 /* 👁 V3: in the 600px builder column the Pool and Build boxes stack, and "Build by" stays on one line with its chips. */
 @media (min-width: 1101px) { .sd-pool-layout .opt-panel.sd-opt-panel .opt-groups.opt-groups-cash { grid-template-columns: minmax(0, 1fr); } }
 .sd-opt-panel .opt-set-label { white-space: nowrap; }
-.sd-pool-table tbody tr:hover > td:first-child:not([colspan]) { background: var(--row-hover); }
+.sd-pool-table tbody tr:hover > td:is(:first-child, .lineup-star-col:first-child + td):not([colspan]) { background: var(--row-hover); }
+.sd-pool-table tbody tr > td.lineup-star-col:first-child + td.sd-name-cell { box-shadow: none; } /* with the star first, the team stripe is the star cell's (the row's left edge), not the name's */
 @media (max-width: 700px) {
   /* The gold band wraps instead of pushing the page wider than the phone (it measured 805px at 375). */
   .sd-band-text { white-space: normal; font-size: var(--fs-md); }
@@ -2716,11 +2732,11 @@ td.opt-exp-opp { color: var(--text-muted); } /* the cells only: the Matchup head
 /* A18: a pool row that cannot go into the lineup being built is greyed (its figures stay readable, its name still opens his card, the reason is its hover);
    the row's own buttons and boxes (Lock, Exclude, In, thumbs, Min % and Max %) keep their full strength, since unlocking or un-excluding is how a greyed man gets back. */
 .lineup-pool-table tbody tr:is(.lineup-row-greyed, .lineup-row-excluded) > td:not(.lineup-row-actions, .lineup-thumbs-cell, .lineup-min-cell, .lineup-max-cell, .lineup-cash-cell, .lp-fill, .lp-name),
-.sd-pool-table tbody tr:is(.sd-row-greyed, .lineup-row-excluded) > td:not(.sd-pool-btn, .sd-pool-in, .lineup-thumbs-cell, .lineup-min-cell, .lineup-max-cell, .sd-fill, :first-child) { opacity: 0.5; } /* an excluded row is the same grey (item 14) */
+.sd-pool-table tbody tr:is(.sd-row-greyed, .lineup-row-excluded) > td:not(.sd-pool-btn, .sd-pool-in, .lineup-thumbs-cell, .lineup-min-cell, .lineup-max-cell, .sd-fill, .sd-name-cell, .lineup-star-col) { opacity: 0.5; } /* an excluded row is the same grey (item 14); the star is a control, kept at full strength like the buttons */
 /* A refused click's message in a greyed row keeps full strength (the name cell's other children are dimmed, not the cell) and stays on one line when the cell has room. */
 .lineup-pool-table tbody tr:is(.lineup-row-greyed, .lineup-row-excluded) > td.lp-name > :not(.row-msg),
-.sd-pool-table tbody tr:is(.sd-row-greyed, .lineup-row-excluded) > td:first-child > :not(.row-msg) { opacity: 0.5; }
-.lineup-pool-table .lp-name .row-msg, .sd-pool-table td:first-child .row-msg { width: max-content; max-width: min(640px, 60vw); }
+.sd-pool-table tbody tr:is(.sd-row-greyed, .lineup-row-excluded) > td.sd-name-cell > :not(.row-msg) { opacity: 0.5; }
+.lineup-pool-table .lp-name .row-msg, .sd-pool-table td.sd-name-cell .row-msg { width: max-content; max-width: min(640px, 60vw); }
 .lineup-pool-table tbody tr.lineup-row-greyed, .sd-pool-table tbody tr.sd-row-greyed { cursor: not-allowed; }
 .lineup-pool-table tbody tr.lineup-row-greyed .player-name, .sd-pool-table tbody tr.sd-row-greyed .player-name { cursor: pointer; }
 /* D3: a man clicked into the lineup (not locked) wears the same light tint as a locked one, so the list shows who is in. */
@@ -2738,7 +2754,10 @@ td.opt-exp-opp { color: var(--text-muted); } /* the cells only: the Matchup head
 .lineup-pool-table td.lp-proj { padding-right: 18px; }
 .lineup-pool-table td.lp-proj .row-reset.reset-icon { right: 0; width: 16px; height: 24px; font-size: 15px; display: inline-flex; align-items: center; justify-content: center; }
 /* Showdown's x: the same room beside the bumped figure's chip (it overlapped the green chip), kept in every row's projection cell (the cell of the figure), so the figures stay in line. */
-.sd-pool-table td:has(.bump-fig) { padding-right: 18px; }
+.sd-pool-table td:is(:has(.bump-fig), :has(.row-reset)) { padding-right: 18px; }
+/* A3, B3: the typed-number and note boxes, a Min % / Max % box's hint and any `Not saved` hang under their cell, so the pool's cells let them show (the table's cells clip their content). */
+.sd-pool-table td:is(:has(.cell-edit-wrap), :has(.cell-not-saved), :has(.limit-hint)) { overflow: visible; }
+.sd-pool-table td.lineup-min-cell, .sd-pool-table td.lineup-max-cell { position: relative; }
 .sd-pool-table td .row-reset.reset-icon { right: 0; width: 16px; height: 24px; font-size: 15px; display: inline-flex; align-items: center; justify-content: center; }
 .row-reset.reset-icon:disabled { opacity: 0.3; cursor: default; }
 
@@ -2763,6 +2782,26 @@ td.opt-exp-opp { color: var(--text-muted); } /* the cells only: the Matchup head
 .confirm-anchor > .inline-confirm { position: absolute; top: calc(100% + 4px); margin: 0; z-index: 40; box-shadow: 0 4px 14px rgba(0, 0, 0, 0.3); }
 .confirm-right > .inline-confirm { right: 0; }
 .confirm-left > .inline-confirm { left: 0; }
+/* Round 4 item 16: Clear lineup's question takes the button's own place (the button steps aside while it is open), so it covers neither the CPT slot's label nor Save working lineup. */
+/* Item 15: a write is out: the figure, star or pencil is dimmed and pulses until the answered board redraws it (a refusal puts it back with the red message). */
+.is-pending { opacity: 0.5; animation: sd-pending 1s ease-in-out infinite; }
+@keyframes sd-pending { 50% { opacity: 0.85; } }
+@media (prefers-reduced-motion: reduce) { .is-pending { animation: none; } }
+/* Item 14: nothing moves when a box opens or a man is seated. The note box floats over the name cell (absolute, no row height change; its pencil's place is kept), and the
+   seat tag and padlock have a place of their own that is held whether they are drawn or not, so seating a man shifts no column. */
+.sd-pool-table td .editable-cell .cell-edit-wrap { width: 100%; }
+.sd-pool-table td .editable-cell .cell-edit-input { width: 100%; min-width: 0; padding: 1px 2px; text-align: right; } /* the box takes the width its column already has: opening it moves no column */
+.sd-pool-table td .editable-cell .cell-edit-input::-webkit-inner-spin-button, .sd-pool-table td .editable-cell .cell-edit-input::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+.sd-pool-table .note-slot { position: relative; min-width: 14px; min-height: 1em; vertical-align: middle; }
+.sd-pool-table .note-edit-wrap { position: absolute; left: 0; top: 50%; transform: translateY(-50%); z-index: 6; }
+.sd-pool-table .sd-seat-slot { display: inline-flex; align-items: center; gap: 4px; min-width: 56px; vertical-align: middle; }
+/* Item 19: the Captain columns are gold already, so a typed number there (amber everywhere else) would be gold on gold: it reads as bold body-colour text on a gold wash. */
+.sd-pool-table td.sd-cpt-col .cell-value.is-override { color: var(--text); font-weight: 700; background: rgba(var(--amber-rgb), 0.28); border-radius: 3px; padding: 0 4px; }
+.limit-cross { color: var(--amber); border-color: var(--amber); right: 0; z-index: 4; } /* item 18: `Min is above Max` under the Max box of a crossed man */
+.confirm-swap > .inline-confirm { position: static; margin: 0; box-shadow: none; }
+.confirm-swap:has(> .inline-confirm) > :not(.inline-confirm) { display: none; }
+/* Yes reads on the dark card: the danger colour lifted toward the text colour (as Clear lineup's own), on a faint danger wash. */
+.inline-confirm .saved-lineup-mini-btn.danger { color: color-mix(in srgb, var(--danger) 45%, var(--text)); background: rgba(var(--danger-rgb), 0.16); font-weight: 600; }
 
 /* A12: the Cash or GPP mark on every saved card, the tick box and the Download DK CSV bar. */
 .saved-lineup-badge-gpp { color: var(--text-muted); background: var(--bg-elevated-2); font-weight: 600; }

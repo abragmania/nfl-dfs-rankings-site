@@ -432,6 +432,8 @@ export function wireThemeToggle(btn, { onChange = null } = {}) {
       /* localStorage unavailable — the toggle still works for this page load */
     }
     paintThemeToggle(btn);
+    // B9: the main-slate header and the Showdown header each have one; the one not on screen reads right when its header shows.
+    if (typeof document.querySelectorAll === "function") document.querySelectorAll(".theme-toggle-btn").forEach((other) => { if (other !== btn) paintThemeToggle(other); });
     onChange?.(next); // C15 (round 3): the page draws its logos again in the new theme's variant
   });
 }

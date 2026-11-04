@@ -10,6 +10,7 @@
 // exclude by FLEX id takes the man out of every lineup; by Captain id only his Captain spot. An include (Adam 2026-10-19
 // 10:27 PM) is a man's FLEX id: he must be in the lineup at Captain or FLEX and the optimizer picks the role.
 import { parsePct, parseWhole } from "../lineup.js";
+import { limitsCrossed, crossedSentence } from "../limit-cross.js"; // item 18: Min % above Max % is refused by name
 import { countAfterDefaultsChange, COUNT_DEFAULTS_VERSION } from "../lineup-cash.js";
 
 export const STORAGE_KEY = "nfldfs.sdOptimizer.v1";
@@ -295,6 +296,13 @@ export function capProblem(ms, mode, board) {
   for (const c of CAP_KEYS) {
     for (const [id, text] of Object.entries(ms[c.field] ?? {})) {
       if (Number.isNaN(parsePct(text))) return `${rowOf.get(id)?.name ?? id}'s ${c.role} ${c.word} must be a percent from 0 to 100, or blank for ${c.none}.`;
+    }
+  }
+  // Item 18: a man whose Min % is above his Max % for one seat is refused by name, as the row already says.
+  for (const [role, min, max] of [["FLEX", "flexMin", "flexMax"], ["Captain", "cptMin", "cptMax"]]) {
+    for (const [id, minText] of Object.entries(ms[min] ?? {})) {
+      const maxText = ms[max]?.[id];
+      if (maxText !== undefined && limitsCrossed(minText, maxText, parsePct)) return crossedSentence(rowOf.get(id)?.name ?? id, minText, maxText, role);
     }
   }
   return null;

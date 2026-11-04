@@ -23,9 +23,13 @@
 // site-lineups.js). Saved data that is not well formed is ignored entry by entry; a write the browser refuses is a
 // plain refusal and the board is left as it was. `storage` is passed in (the page's localStorage or a test double);
 // null means unavailable. Pure apart from that: no network, no page.
-import { applyOverrideChanges, validateOverrides, BUMP_MAX_STEPS } from "../server/overrides/merge.js";
+import { applyOverrideChanges, validateOverrides, mergeOverridesIntoRows, assertShowdownWriteIds, BUMP_MAX_STEPS } from "../server/overrides/merge.js";
 import { remergeOverrides } from "../server/rank/remerge.js";
-import { sidelinedIdsOf } from "../server/rank/sidelined.js";
+import { sidelinedIdsOf, zeroOutRows, rowIsOut } from "../server/rank/sidelined.js";
+import { valueOf } from "../server/rank/value-core.js";
+import { lineupRows } from "../server/showdown/lineup-rows.js";
+import { TWOGUN_ID } from "../server/sources/selection-core.js";
+import { overrideHow } from "../server/overrides/how.js"; // the sentence the served Showdown board writes for a typed projection and a bump
 
 export const STORAGE_PREFIX = "nfldfs-site-overrides:";
 export const STORAGE_UNAVAILABLE_MESSAGE = "This browser is not letting the site keep your changes (storage is switched off or full), so nothing was saved.";
@@ -55,6 +59,7 @@ function copyEdits(edits) {
   return {
     proj: { ...edits.proj }, own: { ...edits.own }, stars: { ...edits.stars }, notes: { ...edits.notes }, bump: { ...edits.bump },
     cleared: { proj: { ...edits.cleared.proj }, own: { ...edits.cleared.own }, bump: { ...edits.cleared.bump } },
+    ...(edits.revive ? { revive: { ...edits.revive } } : {}),
   };
 }
 
@@ -68,6 +73,12 @@ function cleanEdits(raw) {
   for (const [id, v] of section(raw, "stars")) if (typeof v === "boolean" && id !== "") out.stars[id] = v;
   for (const [id, v] of section(raw, "notes")) if (v === null || (typeof v === "string" && v.length < 500)) out.notes[id] = v;
   for (const [id, v] of section(raw, "bump")) if (v === null || validBump(v)) out.bump[id] = v;
+  // Whether each typed projection revived a man the baked board listed out, decided when it was typed (as the app decides at its write, never again on a read). Edits saved before this
+  // record existed have none (`revive` absent), and are judged once, on the next write.
+  if (isObject(raw.revive)) {
+    out.revive = {};
+    for (const [id, v] of section(raw, "revive")) if (typeof v === "boolean") out.revive[id] = v;
+  }
   const cleared = isObject(raw.cleared) ? raw.cleared : {};
   for (const [id, v] of section(cleared, "proj")) if (validProj(v)) out.cleared.proj[id] = v;
   for (const [id, v] of section(cleared, "own")) if (validOwn(v)) out.cleared.own[id] = v;
@@ -94,14 +105,20 @@ function reconcile(edits, published) {
     if (v === null && (out.cleared.bump[id] === undefined || out.cleared.bump[id] !== published.bump[id])) delete out.bump[id];
   }
   for (const id of Object.keys(out.cleared.bump)) if (out.bump[id] !== null) delete out.cleared.bump[id];
+  for (const id of Object.keys(out.revive ?? {})) if (!isFiniteNumber(out.proj[id])) delete out.revive[id]; // a revive stands with the typed number it came with
   return out;
 }
 
+// What differs between the main slate's overlay and a Showdown game's (round 4, item 7: the one copy of the storage, the change record and the checks serves both): where the
+// changes are kept (`keyOf(season, week)`; a Showdown passes its game key as `week`), what the baked board already says Adam published (`published(board)`), and how a board is
+// rebuilt from the baked one and the effective overrides (`remerge(board, slate, overrides)`). The main slate's is the default of every function below.
+const CLASSIC = Object.freeze({ keyOf: (season, week) => storageKey(season, week), published: (board) => publishedOverrides(board), remerge: (board, slate, overrides) => remergeOverrides(board, slate, overrides) });
+
 /** The visitor's saved changes for the week; empty when storage is unavailable, empty or unreadable. */
-function readEdits(storage, season, week, published) {
+function readEdits(storage, season, week, published, adapter = CLASSIC) {
   if (!storage) return emptyEdits();
   try {
-    const raw = storage.getItem(storageKey(season, week));
+    const raw = storage.getItem(adapter.keyOf(season, week));
     return raw ? reconcile(cleanEdits(JSON.parse(raw)), published) : emptyEdits();
   } catch {
     return emptyEdits(); // unreadable or not JSON: ignored, the published board shows
@@ -109,10 +126,10 @@ function readEdits(storage, season, week, published) {
 }
 
 /** Writes the week's changes. Returns true, or false when storage is unavailable or the browser refused. */
-function writeEdits(storage, season, week, edits) {
+function writeEdits(storage, season, week, edits, adapter = CLASSIC) {
   if (!storage) return false;
   try {
-    const key = storageKey(season, week);
+    const key = adapter.keyOf(season, week);
     if (isEmpty(edits)) storage.removeItem(key);
     else storage.setItem(key, JSON.stringify(edits));
     return true;
@@ -141,7 +158,7 @@ export function publishedOverrides(board) {
  * `edits` with a PUT /api/overrides body's changes recorded, values as sent (validated on the merged result). A null
  * number is the cell's reset x: the visitor's own number goes first; with none, Adam's number is cleared and recorded.
  */
-function recordChanges(edits, changes, published) {
+function recordChanges(edits, changes, published, sidelined = null) {
   const next = copyEdits(edits);
   for (const f of NUMBER_FIELDS) {
     for (const [id, v] of Object.entries(changes?.[f] ?? {})) {
@@ -152,6 +169,18 @@ function recordChanges(edits, changes, published) {
         next[f][id] = null; // clears Adam's number: the base shows
         next.cleared[f][id] = published[f][id];
       } else delete next[f][id];
+    }
+  }
+  // Whether a typed projection revives a man the baked board lists out is decided here, at the write, as the app decides it (merge.js applyOverrideChanges, routes.js), and kept: a later
+  // baked board that lists him differently does not bring him back or put him out. `sidelined`: the baked board's listed-out ids (null for a write that types no projection).
+  if (sidelined) {
+    next.revive = { ...(edits.revive ?? {}) };
+    for (const [id, v] of Object.entries(changes?.proj ?? {})) {
+      if (typeof v === "number" && v > 0) next.revive[id] = sidelined.has(id);
+      else delete next.revive[id];
+    }
+    if (!edits.revive) { // edits saved before the record existed: judged once, now
+      for (const [id, v] of Object.entries(next.proj)) if (isFiniteNumber(v) && v > 0 && !(id in next.revive)) next.revive[id] = sidelined.has(id);
     }
   }
   for (const [id, v] of Object.entries(changes?.stars ?? {})) next.stars[id] = Boolean(v); // truthy stars, as the app
@@ -171,13 +200,16 @@ function recordChanges(edits, changes, published) {
 
 /** Adam's published overrides with the visitor's changes applied (the `cleared` record is not part of them). */
 function effective(published, edits, board) {
-  const { cleared: _cleared, ...changes } = edits;
-  return applyOverrideChanges(published, changes, sidelinedIdsOf(board?.rows));
+  const { cleared: _cleared, revive, ...changes } = edits;
+  if (!revive) return applyOverrideChanges(published, changes, sidelinedIdsOf(board?.rows)); // saved before the revive record existed: judged on the baked board, as it was
+  const out = applyOverrideChanges(published, changes, null); // a read never judges a revive again: the record made at the write is used
+  for (const [id, v] of Object.entries(revive)) if (v === true && out.proj[id] !== undefined && !out.revive.includes(id)) out.revive.push(id);
+  return out;
 }
 
 /** The baked board with Adam's published overrides plus `edits` merged by the app's remerge, flagged for Reset all. */
-function remerged(board, slate, published, edits) {
-  const merged = remergeOverrides(board, slate, effective(published, edits, board));
+function remerged(board, slate, published, edits, adapter = CLASSIC) {
+  const merged = adapter.remerge(board, slate, effective(published, edits, board));
   return { ...merged, siteTypedNumbers: hasTypedNumbers(edits) };
 }
 
@@ -185,14 +217,14 @@ function remerged(board, slate, published, edits) {
  * The board the visitor sees: the baked board with this browser's saved changes for the week merged in, or the baked
  * board itself when there are none (or when they cannot be merged, which leaves the published board on screen).
  */
-export function boardWithEdits(board, slate, storage, season, week) {
+export function boardWithEdits(board, slate, storage, season, week, adapter = CLASSIC) {
   if (!board || board.ok === false || !Array.isArray(board.rows)) return board;
-  const published = publishedOverrides(board);
-  const edits = readEdits(storage, season, week, published);
+  const published = adapter.published(board);
+  const edits = readEdits(storage, season, week, published, adapter);
   if (isEmpty(edits)) return { ...board, siteTypedNumbers: false };
   try {
     validateOverrides(effective(published, edits, board));
-    return remerged(board, slate, published, edits);
+    return remerged(board, slate, published, edits, adapter);
   } catch (e) {
     console.warn("site overrides: saved changes not applied", e);
     return { ...board, siteTypedNumbers: false };
@@ -201,36 +233,208 @@ export function boardWithEdits(board, slate, storage, season, week) {
 
 // One write: the next changes from the current ones, checked as the app's write checks them (validateOverrides on
 // the merged overrides), saved, and the board merged with them. Returns {board} or {error: {code, message}}.
-function write(storage, season, week, board, slate, nextFrom) {
+function write(storage, season, week, board, slate, nextFrom, adapter = CLASSIC) {
   if (!storage) return { error: { code: "DEVICE_STORAGE_UNAVAILABLE", message: STORAGE_UNAVAILABLE_MESSAGE } };
-  const published = publishedOverrides(board);
-  const next = nextFrom(readEdits(storage, season, week, published), published);
+  const published = adapter.published(board);
+  const next = nextFrom(readEdits(storage, season, week, published, adapter), published);
   try {
     validateOverrides(effective(published, next, board));
   } catch (e) {
     return { error: { code: e.code ?? "OVERRIDES_INVALID", message: e.message } };
   }
   // Merged before saving, so a board that cannot be merged never leaves changes behind in the browser.
-  const merged = remerged(board, slate, published, next);
-  if (!writeEdits(storage, season, week, next)) return { error: { code: "DEVICE_STORAGE_UNAVAILABLE", message: STORAGE_UNAVAILABLE_MESSAGE } };
+  const merged = remerged(board, slate, published, next, adapter);
+  if (!writeEdits(storage, season, week, next, adapter)) return { error: { code: "DEVICE_STORAGE_UNAVAILABLE", message: STORAGE_UNAVAILABLE_MESSAGE } };
   return { board: merged };
 }
 
 /** PUT /api/overrides: `changes` is the route's body ({proj?, own?, stars?, notes?}). */
-export function putEdits(storage, season, week, board, slate, changes) {
-  return write(storage, season, week, board, slate, (edits, published) => recordChanges(edits, isObject(changes) ? changes : {}, published));
+export function putEdits(storage, season, week, board, slate, changes, adapter = CLASSIC) {
+  return write(storage, season, week, board, slate, (edits, published) => recordChanges(edits, isObject(changes) ? changes : {}, published, sidelinedIdsOf(board?.rows)), adapter);
 }
 
 /** DELETE /api/overrides/:id: each of the player's two numbers as the cell's reset x, and his bump cleared as the app's
  *  reset clears it; star and note stay (D72). */
-export function resetPlayerEdits(storage, season, week, board, slate, id) {
-  return write(storage, season, week, board, slate, (edits, published) => recordChanges(edits, { proj: { [id]: null }, own: { [id]: null }, bump: { [id]: null } }, published));
+export function resetPlayerEdits(storage, season, week, board, slate, id, adapter = CLASSIC) {
+  return write(storage, season, week, board, slate, (edits, published) => recordChanges(edits, { proj: { [id]: null }, own: { [id]: null }, bump: { [id]: null } }, published), adapter);
 }
 
 /**
  * DELETE /api/overrides ("Reset all overrides"): every number the visitor typed or cleared goes, which puts back
  * Adam's published numbers; the visitor's stars and notes stay (D72).
  */
-export function resetAllEdits(storage, season, week, board, slate) {
-  return write(storage, season, week, board, slate, (edits) => ({ ...emptyEdits(), stars: { ...edits.stars }, notes: { ...edits.notes } }));
+export function resetAllEdits(storage, season, week, board, slate, adapter = CLASSIC) {
+  return write(storage, season, week, board, slate, (edits) => ({ ...emptyEdits(), stars: { ...edits.stars }, notes: { ...edits.notes } }), adapter);
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
+// A Showdown game's overlay (round 4 fix batch, item 7; D71: the site does everything the app does). The baked Showdown board cannot be rebuilt in the browser, so the visitor's changes
+// are laid over the baked rows: Adam's published overrides are read back off the rows (as the main slate's are), the visitor's changes are recorded and checked by the same
+// code above, the two are applied by the shared merge (server/overrides/merge.js), and the rows' figures follow as the server's served board makes them (proj, the Captain's 1.5x,
+// value, the revive rule, ownership per seat). One copy per game, in this browser only, never sent anywhere.
+//
+// Not redone here, and said so on the board (deviceNote): R85, the check that each ownership source covers enough of the main players, runs on the server over the
+// players' projections; a typed projection can change who counts as a main player, but the browser holds no source files to run it again, so ownership stays as published
+// (a typed ownership number still shows). And the visitor cannot clear a typed ownership Adam published: the figure under it is not on the baked board.
+// ---------------------------------------------------------------------------------------------------------------------
+
+export const SHOWDOWN_STORAGE_PREFIX = "nfldfs-site-showdown-overrides:";
+export const SHOWDOWN_DEVICE_NOTE = "Your typed projections and ± adjustments on this device do not re-check whether each ownership source covers enough of the main players (R85); ownership is as published, plus any number you typed.";
+const CPT_MULT = 1.5;
+
+/** Adam's published overrides on a Showdown board: the main slate's reading plus his typed Captain ownership, kept under the Captain id (row.override.ownCpt). */
+export function showdownPublishedOverrides(board) {
+  const out = publishedOverrides(board);
+  for (const row of board?.rows ?? []) {
+    if (row?.cptId != null && row.override?.ownCpt != null) out.own[String(row.cptId)] = row.override.ownCpt;
+  }
+  return out;
+}
+
+const pctText = (n) => `${Math.round(n * 100) / 100}%`;
+const replacedWord = (kind) => (kind === "estimate" ? "our estimate" : "the published");
+
+/** `how` with one side's sentence ("FLEX: ..." or "Captain: ...") replaced; the other side's and the shared notes stay. */
+function withSide(how, side, sentence) {
+  const marker = `${side}: `;
+  const pieces = String(how ?? "").split(/\s+(?=(?:FLEX|Captain): )/).filter(Boolean);
+  const kept = pieces.filter((p) => !p.startsWith(marker));
+  return (side === "FLEX" ? [sentence, ...kept] : [...kept, sentence]).join(" ");
+}
+
+/** The baked Showdown `board` with the effective overrides laid over its rows. Pure; the baked board is not changed. */
+export function remergeShowdown(board, overrides) {
+  const bakedHow = new Map(board.rows.map((r) => [r.id, overrideHow(r)]));
+  const typedOwn = overrides?.own ?? {};
+  const merged = zeroOutRows(mergeOverridesIntoRows(board.rows.map((r) => ({ ...r, proj: r.projBase })), overrides));
+  const rows = merged.map((m, i) => {
+    const baked = board.rows[i];
+    const { own: _own, ownBase: _ownBase, ...r } = m;
+    const strip = bakedHow.get(baked.id);
+    const baseHow = strip && String(baked.projHow ?? "").endsWith(` ${strip}`) ? String(baked.projHow).slice(0, -(strip.length + 1)) : String(baked.projHow ?? "");
+    const how = overrideHow(r);
+    r.projHow = how ? `${baseHow} ${how}` : baseHow;
+    r.cptProj = typeof r.proj === "number" ? r.proj * CPT_MULT : null;
+    r.value = valueOf(r.proj, r.salary);
+    const flexTyped = Object.hasOwn(typedOwn, baked.id) ? typedOwn[baked.id] : null;
+    const cptTyped = baked.cptId != null && Object.hasOwn(typedOwn, baked.cptId) ? typedOwn[baked.cptId] : null;
+    r.override = { ...r.override, own: flexTyped, ownCpt: cptTyped };
+    let how2 = baked.ownHow ?? "";
+    r.ownFlex = baked.ownFlex;
+    r.ownCpt = baked.ownCpt;
+    r.ownKindFlex = baked.ownKindFlex;
+    r.ownKindCpt = baked.ownKindCpt;
+    // A number typed at a seat replaces the figure; a seat with none typed keeps the baked figure (Adam's own typed number included, which stays under a visitor's clear).
+    if (flexTyped !== null && flexTyped !== (baked.override?.own ?? null)) { // Adam's own typed number is already in the baked figure and its sentence
+      how2 = withSide(how2, "FLEX", `FLEX: Your override ${pctText(flexTyped)}${baked.ownFlex == null || baked.ownKindFlex === "override" ? "" : ` replaces ${replacedWord(baked.ownKindFlex)} ${pctText(baked.ownFlex)}`}.`);
+      r.ownFlex = flexTyped;
+      r.ownKindFlex = "override";
+    }
+    if (cptTyped !== null && cptTyped !== (baked.override?.ownCpt ?? null)) {
+      how2 = withSide(how2, "Captain", `Captain: Your override ${pctText(cptTyped)}${baked.ownCpt == null || baked.ownKindCpt === "override" ? "" : ` replaces ${replacedWord(baked.ownKindCpt)} ${pctText(baked.ownCpt)}`}.`);
+      r.ownCpt = cptTyped;
+      r.ownKindCpt = "override";
+    }
+    const kinds = [r.ownKindFlex, r.ownKindCpt].filter(Boolean);
+    r.ownKind = kinds.length === 0 ? null : kinds.includes("override") ? "override" : kinds.includes("estimate") ? "estimate" : "published";
+    // A seat with a typed number reads "current", never TwoGun's alone, as the server's ownershipStep sets it, so the modes answer does not say of it that he is not on TwoGun's board (item 3).
+    if (flexTyped !== null || cptTyped !== null) r.src = { ...(baked.src ?? {}), ...(flexTyped !== null ? { ownFlex: "current" } : {}), ...(cptTyped !== null ? { ownCpt: "current" } : {}) };
+    r.ownHow = how2;
+    return r;
+  });
+  // Only men and Captain ids that are on this baked board count: an edit kept for a man a later bake dropped, or for an id the bake renumbered, moves no figure here (round 4, item 13).
+  const onBoard = new Set(board.rows.flatMap((r) => [r.id, r.cptId]).filter((id) => id != null).map(String));
+  const publishedAll = showdownPublishedOverrides(board);
+  const keep = (m) => Object.entries(m ?? {}).filter(([id]) => onBoard.has(id)).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+  const moved = (field) => JSON.stringify(keep(overrides?.[field])) !== JSON.stringify(keep(publishedAll[field]));
+  const typedProj = moved("proj") || moved("bump"); // a projection or a bump the visitor typed, or cleared from Adam's: either moves the main players' points R85 reads
+  const removed = rows.filter(rowIsOut).map((r) => ({ id: r.id, name: r.name, team: r.team, pos: r.pos, status: r.status }));
+  const sameFigures = figuresText(overrides, onBoard) === figuresText(publishedAll, onBoard);
+  return {
+    ...board,
+    rows,
+    removed,
+    notes: hiddenNoteWith(board.notes, board.removed, removed),
+    // The baked key stays while the figures are the published ones (a star, a note, or a clean board); it moves with a number that differs from them, so a batch made before it is refused after.
+    figures: board.figures && !sameFigures ? { ...board.figures, key: `${board.figures.key ?? ""}~${figuresText(overrides, onBoard)}` } : board.figures,
+    ...(typedProj ? { deviceNote: SHOWDOWN_DEVICE_NOTE } : {}),
+  };
+}
+
+// The Hidden note the board's builder writes (server/showdown/board.js, rank/select-showdown.js) over the men listed out; one wording, kept in step with them by tests/showdown-board.test.mjs.
+const HIDDEN_NOTE = "Hidden on the showdown lists";
+const hiddenText = (removed) => `${HIDDEN_NOTE} as out or not expected to play (D45; Show all players shows them): ${removed.map((r) => `${r.name} (${r.team} ${r.pos}, ${r.status})`).join(", ")}.`;
+
+/** `notes` with the Hidden note written again over `now`, the men now listed out, when that is not the baked list (`was`): a man a typed projection revived leaves it, and the note goes when nobody is out. */
+function hiddenNoteWith(notes, was, now) {
+  const list = Array.isArray(notes) ? notes : [];
+  const ids = (l) => (l ?? []).map((r) => String(r.id)).sort().join(",");
+  if (ids(was) === ids(now)) return list;
+  const at = list.findIndex((n) => String(n).startsWith(HIDDEN_NOTE));
+  if (!now.length) return at < 0 ? list : list.filter((_n, i) => i !== at);
+  if (at < 0) return [...list, hiddenText(now)];
+  return list.map((n, i) => (i === at ? hiddenText(now) : n));
+}
+
+/** A short stable text of what moves a figure (typed Proj and Own, bumps, revives) for the ids on the board, so a batch made before an edit is refused after it, as the server's figures key does. */
+function figuresText(o, onBoard) {
+  const entries = (m) => Object.entries(m ?? {}).filter(([id]) => onBoard.has(id)).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+  const text = JSON.stringify([entries(o?.proj), entries(o?.own), entries(o?.bump), [...(o?.revive ?? [])].filter((id) => onBoard.has(id)).sort()]);
+  let h = 2166136261;
+  for (let i = 0; i < text.length; i++) h = Math.imul(h ^ text.charCodeAt(i), 16777619) >>> 0;
+  return h.toString(16);
+}
+
+const SHOWDOWN = Object.freeze({ keyOf: (_season, gameKey) => `${SHOWDOWN_STORAGE_PREFIX}${gameKey}`, published: showdownPublishedOverrides, remerge: (board, _slate, overrides) => remergeShowdown(board, overrides) });
+
+/** The Showdown board the visitor sees: the baked one with this browser's changes for the game `key` laid over it (the baked board itself when there are none). */
+export function showdownBoardWithEdits(board, storage, key) {
+  return boardWithEdits(board, null, storage, null, key, SHOWDOWN);
+}
+
+/**
+ * The baked modes answer with this browser's typed numbers in it. The pool and the lineup read each man's figures from the modes answer's `current` reading once it is in, and the baked
+ * file was written without the visitor's numbers, so a man whose figures differ on `edited` (the board with the edits laid over) from the `baked` board is read again as the server reads
+ * him (meter-answer.js playerFigures over lineupRows, so a typed revive TwoGun-only mode ignores reads 0 here as Build counts it): his projection and the Captain's 1.5x, his two ownership
+ * figures, the Q8 "not on TwoGun's board" flag of a seat that now has a typed number (it reads "current", not TwoGun's alone), the TwoGun-projects note only while he is still out, and no
+ * missing reason once both seats have a figure. Pure; every other entry, note and mode is as baked. An answer that is not a modes answer is returned as it is.
+ */
+export function modesWithEdits(modes, baked, edited) {
+  const players = modes?.modes?.current?.players;
+  if (!players || !Array.isArray(baked?.rows) || !Array.isArray(edited?.rows)) return modes;
+  const was = new Map(lineupRows(baked).map((r) => [String(r.id), r]));
+  const num = (v) => (typeof v === "number" && Number.isFinite(v) ? v : null);
+  const next = { ...players };
+  for (const r of lineupRows(edited)) {
+    const id = String(r.id);
+    const b = was.get(id);
+    const p = players[id];
+    if (!b || !p) continue;
+    const moved = ["proj", "cptProj", "ownFlex", "ownCpt"].some((k) => r[k] !== b[k]) || r.src?.ownFlex !== b.src?.ownFlex || r.src?.ownCpt !== b.src?.ownCpt || rowIsOut(r) !== rowIsOut(b);
+    if (!moved) continue;
+    const proj = num(r.proj);
+    const flexOff = Boolean(p.notOnBoardFlex) && r.src?.ownFlex === TWOGUN_ID;
+    const cptOff = Boolean(p.notOnBoardCpt) && r.src?.ownCpt === TWOGUN_ID;
+    const entry = { ...p, proj, cptProj: proj === null ? null : proj * CPT_MULT, ownFlex: num(r.ownFlex), ownCpt: num(r.ownCpt), notOnBoardFlex: flexOff, notOnBoardCpt: cptOff, notOnBoard: flexOff && cptOff };
+    if (!rowIsOut(r)) entry.projNote = null; // the server's answer for a man who is not out
+    if (entry.ownFlex !== null && entry.ownCpt !== null) entry.missingReason = null;
+    next[id] = entry;
+  }
+  return { ...modes, modes: { ...modes.modes, current: { ...modes.modes.current, players: next } } };
+}
+
+/** PUT /api/showdown/<key>/overrides on the site: {board} or {error: {code, message}}. */
+export function putShowdownEdits(storage, key, board, changes) {
+  // The route's own id checks (merge.js assertShowdownWriteIds): a man or Captain id that is not on this game, and a star, note, typed projection or bump under a Captain id, are refused and nothing is kept.
+  try {
+    assertShowdownWriteIds(changes, (board?.rows ?? []).map((r) => ({ id: r.id, cptId: r.cptId })));
+  } catch (e) {
+    return { error: { code: e.code ?? "OVERRIDES_INVALID", message: e.message } };
+  }
+  return putEdits(storage, null, key, board, null, changes, SHOWDOWN);
+}
+
+/** DELETE /api/showdown/<key>/overrides on the site (Reset all overrides). */
+export function resetAllShowdownEdits(storage, key, board) {
+  return resetAllEdits(storage, null, key, board, null, SHOWDOWN);
 }

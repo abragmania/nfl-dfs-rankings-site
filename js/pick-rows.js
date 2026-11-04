@@ -12,6 +12,10 @@ export const SLOT_PICK_SKIP = "button, a, input, .opt-p-name";
  *  target (a key pressed in a child box is the box's; the page does not scroll), calls act(). */
 export function wirePick(el, skip, act) {
   el.addEventListener("click", (ev) => {
+    // An inner control's own handler may have replaced the clicked node (a typed-number box opening in a cell empties the cell) before this runs, and a detached node's
+    // closest() no longer reaches the control: the path the event was dispatched along does (round 4, item 1).
+    const path = typeof ev?.composedPath === "function" ? ev.composedPath() : [];
+    if (path.some((n) => typeof n?.matches === "function" && n.matches(skip))) return;
     if (!ev?.target?.closest?.(skip)) act();
   });
   el.addEventListener("keydown", (ev) => {

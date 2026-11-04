@@ -76,10 +76,11 @@ const none = () => new Set();
 
 /**
  * `board`: the served board; `cap`: the salary cap; `placed` = {cpt: {id} | null, flex: [{id} | null x5]}; `excluded(row, tab)`: whether the list's row is excluded
- * (the Optimizer's excludes; false off the live app); `locks` = {cpt: Set of person ids locked as Captain, flex: Set locked in FLEX} (empty off the live app).
+ * (the Optimizer's excludes; false off the live app); `locks` = {cpt: Set of person ids locked as Captain, flex: Set locked in FLEX} (empty off the live app); `canType`: whether a
+ * projection can be typed here (the app; not the public site), which the missing-projection reason then offers.
  * Returns pickOf(row, tab, base) -> {action, reason}: `base` is poolPickAction's answer for the row on `tab`; the result is that action or null with the reason.
  */
-export function seatPicker({ board, cap, placed, excluded = () => false, locks = { cpt: none(), flex: none() } }) {
+export function seatPicker({ board, cap, placed, excluded = () => false, locks = { cpt: none(), flex: none() }, canType = true }) {
   const rows = board?.rows ?? [];
   const byId = new Map(rows.map((r) => [String(r.id), r]));
   const cptId = placed.cpt ? String(placed.cpt.id) : null;
@@ -124,11 +125,11 @@ export function seatPicker({ board, cap, placed, excluded = () => false, locks =
     if (!mineIsFlex && (isCptTab ? lockedFlex : lockedCpt).has(id)) {
       return grey(`${name} is locked as ${isCptTab ? "FLEX" : "Captain"}. Unlock him first, or use his ${isCptTab ? "FLEX" : "Captain"} row.`);
     }
-    // A missing figure greys a row (A18): no salary for the seat, or no projection for it (never ownership). Showdown has no place to type a projection yet.
+    // A missing figure greys a row (A18): no salary for the seat, or no projection for it (never ownership). A typed Proj brings him in, as in classic (B3); where nothing can be typed (the public site) the reason stops at the fact.
     const salary = isCptTab ? row.cptSalary : row.salary;
     if (!Number.isFinite(salary)) return grey(`${name} has no ${isCptTab ? "Captain" : "FLEX"} salary, so he cannot be costed against the cap.`);
     if (!Number.isFinite(isCptTab ? row.cptProj : row.proj)) {
-      return grey(`${name} has no ${isCptTab ? "Captain" : "FLEX"} projection, so he cannot be added. Showdown has no place to type one yet.`);
+      return grey(`${name} has no ${isCptTab ? "Captain" : "FLEX"} projection, so he cannot be added.${canType ? ` Type one in his ${isCptTab ? "CPT Proj" : "Proj"} in the pool to bring him in.` : ""}`);
     }
     // The lineup as it will stand with him in: a new Captain sends the old one to FLEX (or out), so the fit is judged on that lineup without him.
     const oldRow = cptId ? byId.get(cptId) : null;
