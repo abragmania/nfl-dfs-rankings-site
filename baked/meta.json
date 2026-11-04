@@ -1,5 +1,5 @@
 {
-  "publishedAt": "2026-11-04T19:20:26.562Z",
+  "publishedAt": "2026-11-04T19:21:13.399Z",
   "season": 2026,
   "week": 9,
   "boardGeneratedAt": "2026-11-04T19:20:19.580Z",
@@ -8,7 +8,7 @@
   "showdowns": [
     "2026-w09-JAXBAL"
   ],
-  "sourceCommit": "faaeac3bc4dc7734135d97a3f563e16a4b56b48d",
+  "sourceCommit": "3a55f9da54e9c233103a3f17128f9a4af2f296ac",
   "appCommit": "faaeac3bc4dc7734135d97a3f563e16a4b56b48d",
   "machine": "desktop",
   "matchups": false
