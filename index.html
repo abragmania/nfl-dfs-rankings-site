@@ -91,24 +91,17 @@
          hidden on the main slate. Filled by app.js's renderSlateChrome. -->
     <p id="slate-note" class="tab-note" hidden></p>
 
-    <!-- The Optimizer tab, the main screen (PROJECT.md Part 4 "Optimizer first", step 4; Rankings folded in here). The game strip,
-         the filter bar (sticky) with its banner, and the ranked list are static markup drawn by app.js; #lineup-mount is the only part
-         public/js/lineup.js's renderLineupPanel redraws, so a redraw never replaces the search box (its caret and value survive a keystroke). -->
+    <!-- The Optimizer tab, the main screen (PROJECT.md Part 4 "Optimizer first", step 4; Rankings folded in here). The game strip
+         and the filter bar (sticky) with its banner are static markup drawn by app.js; #lineup-mount is the only part
+         public/js/lineup.js's renderLineupPanel redraws (the settings, the lineup, the one player table, the pool, and the results below it), so a redraw never
+         replaces the search box (its caret and value survive a keystroke). #build-notice is the `Build finished.` line (build-notice.js), sticky under the filter bar. -->
     <div id="lineup-panel" class="panel">
       <section id="gamestrip" class="gamestrip"></section>
       <section id="filterbar" class="filterbar"></section>
+      <div id="build-notice" class="build-notice" hidden></div>
       <p id="own-banner" class="tab-note own-banner"></p>
       <div id="stamps-line" class="stamps-host"></div>
       <div id="lineup-mount" class="lineup-mount"></div>
-      <div id="ranked-list" class="ranked-list">
-        <div class="table-wrap scroll-panel">
-          <table id="rankings-table" class="rankings-table">
-            <thead id="rankings-thead"></thead>
-            <tbody id="rankings-tbody"></tbody>
-          </table>
-        </div>
-        <div class="table-legend">coloured number = your own (&times; puts the original back) &middot; &mdash; = nobody has published one</div>
-      </div>
     </div>
 
     <!-- Sources view (Adam 2026-10-18): ONE page (public/js/sources-page.js) shown while the header's Sources link is on, with the
@@ -137,6 +130,7 @@
       <div id="sd-gameline" class="sd-gameline"></div>
       <div id="sd-stamps" class="stamps-host"></div>
       <div id="sd-filterbar" class="sd-filterbar"></div>
+      <div id="sd-build-notice" class="build-notice" hidden></div>
       <div id="sd-lineup-mount" class="sd-lineup-mount"></div>
     </div>
     <div id="sd-sources-panel" class="panel sources-panel" hidden></div>

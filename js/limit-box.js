@@ -169,5 +169,5 @@ export function restoreOpenLimit(container, carry) {
   if (!el || !ctx) return;
   beginOpen(el, ctx, carry.start);
   el.value = carry.text;
-  el.focus?.();
+  el.focus?.({ preventScroll: true }); // a redraw puts the box back without moving the page
 }

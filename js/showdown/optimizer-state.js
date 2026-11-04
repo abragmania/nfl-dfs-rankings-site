@@ -409,7 +409,9 @@ export function sdPlayersOf(lineup) {
 /** A chip's words for a chosen exposure row: "Quinn Alpha (CPT)" or "Quinn Alpha (FLEX)", so the Captain table's man and the same
  *  man in the FLEX table read apart. */
 export function pickChipName(key, name) {
-  return `${name ?? key} (${String(key).startsWith("cpt:") ? "CPT" : "FLEX"})`;
+  const seat = String(key).startsWith("cpt:") ? "CPT" : "FLEX";
+  const text = String(name ?? key);
+  return text.endsWith(` (${seat})`) ? text : `${text} (${seat})`; // the seats table's Filter button already names its seat (round 5), so never twice
 }
 
 /** The Min / Max marks of a batch in role-aware keys ("cpt:<id>", "flex:<id>"), from the settings it was made with (lineup-exposure.js exposureMark). */

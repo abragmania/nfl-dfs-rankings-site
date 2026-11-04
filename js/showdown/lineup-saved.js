@@ -2,8 +2,9 @@
 // cards (with the "only lineups with" filter and its exposure tables on the live app, D77), the card buttons' wiring and the
 // one-PUT-per-card guard. The panel's state stays in ./lineup.js, which hands what this reads in as arguments.
 import { escapeHtml, dec1 } from "../format.js";
-import { TAG_OPTIONS, numberLineups, lineupPrefix } from "../lineup-tags.js"; // the one copy of the number / letter helpers
+import { TAG_OPTIONS, numberLineups, lineupPrefix, byAge } from "../lineup-tags.js"; // the one copy of the number / letter helpers
 import { filterLineups } from "../lineup-filter.js";
+import { wireRenameEnter } from "../rename-focus.js"; // C27: Enter in the rename box saves
 import { requestFailureText } from "./read-json.js";
 import { posPillHtml } from "./table.js";
 import { modeBadgeHtml } from "../lineup-cash.js";
@@ -176,7 +177,7 @@ export function savedLineupsSectionHtml(board, saved, cardOf, filter = null, dk 
       filtered ? filter.barHtml(k, n) : "",
       filter && k ? filter.exposureHtml(shown, filtered ? n : null) : "",
       dk && k ? dkDownloadHtml({ count: shown.filter((l) => dk.selected.has(l.id)).length, total: k, status: dk.status }) : "", // A12: Download DK CSV over the cards
-      k ? `<div class="saved-lineups-list">${shown.map((l) => cardOf(l, numbers)).join("")}</div>` : `<div class="saved-lineups-empty">${escapeHtml(filter.noMatchText)}</div>`,
+      k ? `<div class="saved-lineups-list">${byAge(shown).map((l) => cardOf(l, numbers)).join("")}</div>` : `<div class="saved-lineups-empty">${escapeHtml(filter.noMatchText)}</div>`, // lineup number order, oldest first: the order classic's As built shows too
     ].join("");
   }
   return `
@@ -249,13 +250,7 @@ export function wireSavedCards(container, actions) {
       actions.renameSave(btn.dataset.id, input ? input.value : "");
     });
   });
-  container.querySelectorAll("[data-rename-input]").forEach((input) => { // C27: Enter saves the new name, as the Save button does
-    input.addEventListener("keydown", (e) => {
-      if (e.key !== "Enter") return;
-      const id = container.querySelector("[data-action='sd-rename-save']")?.dataset.id;
-      if (id) actions.renameSave(id, input.value);
-    });
-  });
+  wireRenameEnter(container, "[data-action='sd-rename-save']", (id, text) => actions.renameSave(id, text)); // C27: Enter saves the new name, as the Save button does
   container.querySelectorAll("[data-action='sd-delete-start']").forEach((btn) => {
     btn.addEventListener("click", () => actions.deleteStart(btn.dataset.id));
   });

@@ -15,8 +15,12 @@ import { onSitePage } from "../tabs.js"; // the one is-site check
 import { parsePct, uniqueSavedName, duplicateSaveStatus } from "../lineup.js";
 import { countBelowMin, syncCountNote, COUNT_MIN_SENTENCE, fullLineupText } from "../lineup-settings.js";
 import { toggleMustHave, bulkUids, filterBarHtml } from "../lineup-filter.js";
+import { defaultExpState, nextExpSort, cleanExpState } from "../lineup-exposure.js"; // A10: the one exposure table's sort and Seat filter
+import { rememberedExp, saveExp } from "./view-memory.js"; // A9: kept per game in the browser's one memory
+const persistExp = () => saveExp(opt.key, opt.exp);
 import { postShowdownLineup, getShowdowns, supports, stopShowdownLineupGenerate, canStopShowdownLineupGenerate } from "./api.js"; // supports: D71, what the public site implements
 import { afterBuildingDelay, goSitsBelow, stopFailure } from "../lineup-stop.js";
+import { createNoticeController } from "../build-notice.js"; // A15: `Building...`, `Build finished.` and a failure under the filter bar while the Make row is off screen
 import { answerTone } from "../row-message.js";
 import { resyncMeterExcludes } from "./lineup-meter.js";
 import { resyncSwapsExcludes } from "./lineup-swaps.js";
@@ -32,6 +36,7 @@ const opt = {
   key: null, // the showdown these settings and this batch belong to
   ks: S.defaultKeyState(), // {mode, gpp, cash} for opt.key, mirrored to localStorage on every change
   generating: false,
+  doneNote: false, // a build has ended and its results are on screen: `Build finished.` and its link sit beside the Build button (build-notice.js)
   buildingShown: false, // the build has run a second, so the screen says so (lineup-stop.js)
   buildingBelow: false, // the Make button sits on its own line under the summary, so the build keeps that layout
   stopping: false, // Stop was pressed and the build is ending: the button reads "Stopping..." (lineup-stop.js)
@@ -43,7 +48,7 @@ const opt = {
   saveError: null,
   saveTone: "error", // "warn" when saveError is only "N saved, M already saved", else "error"
   results: null, // the batch on screen, see doGenerate
-  expSortDir: "desc",
+  exp: defaultExpState("seats"), // the one exposure table's sort and Seat filter {col, dir, filter} (lineup-exposure.js, A10); kept in the browser
   mustHave: [], // the "only lineups with" keys, in the order chosen ("cpt:<person>" / "flex:<person>", D77); page-only, hides and never deletes
   mustHaveNames: {}, // key -> the chip's words
 };
@@ -143,11 +148,14 @@ export function syncOptimizer(key, board) {
   if (key !== opt.key) {
     opt.key = key;
     opt.ks = key ? S.readKeyState(storage, key) : S.defaultKeyState();
+    opt.exp = cleanExpState(key ? rememberedExp(key) : null, "seats"); // A9: the exposure table's sort and Seat filter of this game
     opt.results = null;
+    opt.doneNote = false;
     clearMustHave();
     opt.error = null;
     opt.formError = null;
     opt.saveError = null;
+    buildNotice.reset(); // what the last build left under the filter bar belongs to the game it was made for
   }
   if ((board?.rows ?? []).length) opt.ks = { ...opt.ks, gpp: S.pruneToBoard(opt.ks.gpp, board, "gpp"), cash: S.pruneToBoard(opt.ks.cash, board, "cash") };
   if (!prunedStorage && key && key !== pruneFailedFor && optimizerLive()) {
@@ -183,15 +191,22 @@ async function doGenerate(ctx) {
   if (opt.generating || opt.saving) return;
   flushOpenLimit(); // a Min % or Max % box still open is read as a click away reads it, before the request is made (A3)
   const refused = limitRefusals().filter((r) => r.selector.startsWith("[data-sd-cap")); // a text a box refused (this press's blur included) is not silently built around: the Build stops and names him
+  noticeCtx = ctx;
   if (refused.length) {
     opt.formError = refused[0].sentence;
-    return ctx.commit();
+    ctx.commit();
+    buildNotice.finish({ error: opt.formError, tone: "warn" }); // a refusal says so where he pressed, even from far down
+    return;
   }
   const mode = opt.ks.mode;
   const seated = seatedNow(ctx.board); // the men in the seats are held as classic holds its slots (item 11)
   const held = S.heldCandidates(modeState(), seated);
   opt.formError = countBelowMin(modeState().count) ? COUNT_MIN_SENTENCE : held.length >= 6 ? fullLineupText(6) : S.capProblem(modeState(), mode, ctx.board); // item 18: a count below 1 is said, not made into 1
-  if (opt.formError) return ctx.commit();
+  if (opt.formError) {
+    ctx.commit();
+    buildNotice.finish({ error: opt.formError, tone: "warn" });
+    return;
+  }
   const sent = S.buildGenerateBody(modeState(), mode, ctx.board, seated); // no boardMode: the server builds on this game's served board
   const madeFor = opt.key;
   opt.generating = true;
@@ -199,6 +214,9 @@ async function doGenerate(ctx) {
   opt.stopError = "";
   opt.error = null;
   opt.saveError = null;
+  opt.doneNote = false;
+  noticeCtx = ctx;
+  buildNotice.reset(); // the last build's notice goes when the next one starts
   ctx.commit();
   const cancelShow = afterBuildingDelay(() => {
     if (!opt.generating) return;
@@ -234,12 +252,64 @@ async function doGenerate(ctx) {
     opt.stopError = "";
     opt.buildingShown = false;
   }
+  // A15: the page does not move by itself (the batch sits below the pool). The Build row says `Build finished.` with a link to the results; with the button off screen the notice under the filter
+  // bar says it where he is looking (build-notice.js).
+  const made = !stale && Boolean(opt.results) && !opt.error;
+  opt.doneNote = made;
   ctx.commit();
-  if (stale) return;
+  buildNotice.finish({ built: made, error: stale ? "" : opt.error ?? "", tone: opt.errorTone === "warn" ? "warn" : "error" });
+}
+
+const filterBarBottom = () => (typeof document === "undefined" ? 0 : document.getElementById?.("sd-filterbar")?.getBoundingClientRect?.().bottom ?? 0);
+
+let noticeCtx = null; // the panel's hands (container, commit) the notice looks things up through; set at each wiring and each Make
+/** Showdown's notice under the filter bar (build-notice.js): its Make button and batch, and the Stop it shares with the Make row. */
+const buildNotice = createNoticeController({
+  noticeEl: () => (typeof document === "undefined" ? null : document.getElementById?.("sd-build-notice") ?? null),
+  barBottom: filterBarBottom,
+  buildButton: () => noticeCtx?.container?.querySelector?.("#sd-opt-go-btn"),
+  resultsEl: () => noticeCtx?.container?.querySelector?.("#sd-opt-results"),
+  building: () => (opt.generating && opt.buildingShown ? { canStop: canStopShowdownLineupGenerate(), stopping: opt.stopping, stopError: opt.stopError } : null),
+  jumpResults: () => jumpToResults(noticeCtx?.container),
+  jumpBuild: () => {
+    try {
+      noticeCtx?.container?.querySelector?.(".opt-footer")?.scrollIntoView?.({ block: "center", behavior: "smooth" });
+    } catch (e) {
+      console.warn("Show Build row: the row could not be scrolled into view", e); // a convenience only; the row is on the page either way
+    }
+  },
+  stop: () => doStop(noticeCtx),
+});
+
+/** After every draw of the panel: the notice follows the state and where the Make row is (lineup.js calls it); and what the last build left goes when the game changes (syncOptimizer). */
+export const refreshBuildNotice = () => buildNotice.refresh();
+
+/** Stop (D15, D18): the Make row's button and the notice's do the same thing. */
+async function doStop(ctx) {
+  if (opt.stopping || !ctx) return;
+  opt.stopping = true; // the button reads "Stopping..." until the build's own answer ends it (D15)
+  opt.stopError = "";
+  ctx.commit();
+  let failure = "";
   try {
-    ctx.container?.querySelector?.("#sd-opt-results")?.scrollIntoView?.({ block: "start", behavior: "smooth" });
+    failure = stopFailure({ data: await (ctx.stop ?? stopShowdownLineupGenerate)() });
   } catch (e) {
-    // Scrolling is a convenience only.
+    console.error("showdown generate: the Stop was not heard", e); // the build runs on to its answer
+    failure = stopFailure({ thrown: true });
+  }
+  if (failure && opt.generating) {
+    opt.stopping = false; // Stop is pressable again; the line under it says why (D18)
+    opt.stopError = failure;
+    ctx.commit();
+  }
+}
+
+/** Brings the batch into view below the sticky filter bar (the notice's link, and the link beside the Build button). */
+function jumpToResults(container) {
+  try {
+    container?.querySelector?.("#sd-opt-results")?.scrollIntoView?.({ block: "start", behavior: "smooth" });
+  } catch (e) {
+    console.warn("Show results: the results could not be scrolled into view", e); // a convenience only; the results are on the page either way
   }
 }
 
@@ -317,7 +387,7 @@ export function optimizerBandHtml(board) {
  *  `board`: the served board (its reading names the cash basis, its rows whether Median can be built). */
 export function optimizerGoRowHtml(board) {
   if (!optimizerLive()) return "";
-  return V.goRowHtml({ summary: S.summaryText(modeState(), opt.ks.mode, board), generating: showing(), busy: showing() || opt.saving, formError: opt.formError, canStop: canStopShowdownLineupGenerate(), below: opt.buildingBelow, stopping: opt.stopping, stopError: opt.stopError });
+  return V.goRowHtml({ summary: S.summaryText(modeState(), opt.ks.mode, board), generating: showing(), busy: showing() || opt.saving, formError: opt.formError, canStop: canStopShowdownLineupGenerate(), below: opt.buildingBelow, stopping: opt.stopping, stopError: opt.stopError, done: opt.doneNote && Boolean(opt.results) });
 }
 
 /** The batch (its head, source line, exposure tables and cards), drawn full width below both columns (Adam 2026-10-19 11:17 PM:
@@ -328,7 +398,7 @@ export function optimizerResultsBlockHtml(board, saved, confirm = null) {
   const keys = r ? savedKeysOf(saved, r.mode, board) : new Set();
   const { personOf } = S.boardIndex(board);
   const savedFlags = r ? r.lineups.map((l) => keys.has(S.sdSetKey(l.slots, personOf))) : [];
-  return V.resultsHtml({ results: r, generating: showing(), saveError: opt.saveError, saveTone: opt.saveTone, busy: busy(), savedFlags, board, expSortDir: opt.expSortDir, mustHave: opt.mustHave, mustHaveNames: opt.mustHaveNames, confirm });
+  return V.resultsHtml({ results: r, generating: showing(), saveError: opt.saveError, saveTone: opt.saveTone, busy: busy(), savedFlags, board, exp: opt.exp, mustHave: opt.mustHave, mustHaveNames: opt.mustHaveNames, confirm });
 }
 
 /** The generated lineup `uid` of the batch on screen (a result card's Load), or null. */
@@ -358,7 +428,7 @@ export function optimizerSavedFilter(board) {
   return {
     mustHave: chosen,
     playersOf: (l) => S.sdPlayersOf(viewOf(l)),
-    exposureHtml: (shown, of) => V.exposureHtml(shown.map(viewOf), board, opt.expSortDir, null, { isChosen: (key) => chosen.includes(String(key)) }, of, "saved"),
+    exposureHtml: (shown, of) => V.exposureHtml(shown.map(viewOf), board, opt.exp, null, { isChosen: (key) => chosen.includes(String(key)) }, of, "saved"),
     barHtml: (shown, total) => filterBarHtml(chosen.map((key) => ({ key, name: opt.mustHaveNames[key] ?? key })), shown, total), // the batch's bar again: it can be screens above
     noMatchText: V.NO_MATCH_TEXT,
   };
@@ -428,7 +498,7 @@ function refreshLines(container, board) {
   if (info) {
     const text = S.statusLineText(modeState(), board, seatedNow(board));
     info.textContent = text;
-    info.hidden = !text;
+    info.classList.toggle("is-empty", !text); // the line keeps its room when empty (A15)
   }
 }
 
@@ -549,13 +619,24 @@ function wireBand(root, ctx) {
   });
 }
 
-/** The exposure header's sort, on the batch's tables and the saved section's: one direction (opt.expSortDir, classic's) shared by both
- *  table sets, so a click redraws the panel and both show the new order and arrow. */
+/** A10: a header of the one exposure table sorts it and a `Seat` chip filters it, on the batch's table and the saved section's alike: one state (opt.exp) shared by both, so a click redraws the panel and both
+ *  show the new order, arrow and filter. */
 function wireExposureSort(container, ctx) {
-  container.querySelectorAll(".sd-opt-results .opt-exposure [data-action='opt-exp-sort'], #sd-saved-lineups .opt-exposure [data-action='opt-exp-sort']").forEach((th) => {
-    th.addEventListener("click", () => {
-      opt.expSortDir = opt.expSortDir === "asc" ? "desc" : "asc";
-      ctx.commit();
+  const scope = ".sd-opt-results .opt-exposure, #sd-saved-lineups .opt-exposure";
+  container.querySelectorAll(scope).forEach((table) => {
+    table.querySelectorAll("[data-action='opt-exp-sort']").forEach((th) => {
+      th.addEventListener("click", () => {
+        opt.exp = nextExpSort(opt.exp, th.dataset.col, "seats");
+        persistExp();
+        ctx.commit();
+      });
+    });
+    table.querySelectorAll("[data-action='opt-exp-filter']").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        opt.exp = { ...opt.exp, filter: btn.dataset.filter };
+        persistExp();
+        ctx.commit();
+      });
     });
   });
 }
@@ -593,30 +674,19 @@ function wirePickButtons(root, ctx) {
  */
 export function wireOptimizer(ctx) {
   if (!optimizerLive()) return;
+  noticeCtx = ctx;
   const c = ctx.container;
   for (const id of ["#sd-opt-head", "#sd-opt-panel"]) {
     const piece = c.querySelector(id);
     if (piece) wireBand(piece, ctx);
   }
   c.querySelector("#sd-opt-go-btn")?.addEventListener("click", () => doGenerate(ctx));
-  c.querySelector("#sd-opt-stop-btn")?.addEventListener("click", async () => {
-    if (opt.stopping) return;
-    opt.stopping = true; // the button reads "Stopping..." until the build's own answer ends it (D15)
-    opt.stopError = "";
+  c.querySelector("[data-action='sd-opt-show-results']")?.addEventListener("click", () => { // A15: the link beside the Build button
+    opt.doneNote = false;
     ctx.commit();
-    let failure = "";
-    try {
-      failure = stopFailure({ data: await (ctx.stop ?? stopShowdownLineupGenerate)() });
-    } catch (e) {
-      console.error("showdown generate: the Stop was not heard", e); // the build runs on to its answer
-      failure = stopFailure({ thrown: true });
-    }
-    if (failure && opt.generating) {
-      opt.stopping = false; // Stop is pressable again; the line under it says why (D18)
-      opt.stopError = failure;
-      ctx.commit();
-    }
+    jumpToResults(c);
   });
+  c.querySelector("#sd-opt-stop-btn")?.addEventListener("click", () => doStop(ctx));
   c.querySelectorAll("[data-sd-opt-save]").forEach((btn) => btn.addEventListener("click", () => saveCards([btn.dataset.sdOptSave], ctx)));
   c.querySelectorAll("[data-sd-opt-load]").forEach((btn) => btn.addEventListener("click", () => ctx.loadResult?.(btn.dataset.sdOptLoad))); // A13: the card's six men into the builder's seats (lineup.js)
   c.querySelector("[data-sd-opt-save-all]")?.addEventListener("click", () => saveCards(shownUids(), ctx)); // the shown lineups only while filtered (D77)

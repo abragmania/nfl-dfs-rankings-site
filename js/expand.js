@@ -1,17 +1,15 @@
 // Expand / Minimize for the player tables (Adam, 2026-10-10: "make it so I can expand the list to take up my whole
-// view and then minimize that after"). The ranked list on the Optimizer tab, Projections and Projected Ownership each get a small
+// view and then minimize that after"). Projections and Projected Ownership each get a small
 // bar above their scroll panel holding an "Expand" button. Expanding turns that panel (and its bar) into a
-// full-screen overlay; minimizing puts it back where it was, scroll position kept.
+// full-screen overlay; minimizing puts it back where it was, scroll position kept. The Optimizer's player tables (the classic pool and the Showdown pool) are not scroll panels since
+// optimizer standard A15 (round 5: the page scrolls, the head sticks), so they have nothing to expand.
 //
 // The panel element itself is reused (only classes change), so its sorting, stars and click-to-edit cells keep
 // working while expanded. The top of the file is pure state helpers (tests/expand.test.mjs); the DOM part below
 // only runs when app.js calls initExpand().
 
-// `scrollSelector`: which scroll panel inside the tab is the target, when the tab holds more than one (the Optimizer tab also
-// holds the pool's scroll panel, which is not expandable; Optimizer-first step 4 put the ranked list there). Default: the first.
+// `scrollSelector`: which scroll panel inside the tab is the target, when the tab holds more than one. Default: the first.
 export const EXPAND_TARGETS = [
-  { panelId: "lineup-panel", title: "Rankings", scrollSelector: "#ranked-list > .scroll-panel" },
-  { panelId: "sd-lineup-panel", title: "Player pool", scrollSelector: "#sd-pool > .scroll-panel" }, // the Showdown Optimizer's pool (2026-10-26, D81)
   { panelId: "projections-panel", title: "Projections" },
   { panelId: "ownership-panel", title: "Projected Ownership" },
 ];
@@ -42,15 +40,6 @@ export function shouldMinimizeOnKey(e, expandedKey) {
  * 0 anywhere wider. One shared helper so app.js and lineup.js size their tables the same way. */
 export function phoneMinHeight(win = window) {
   return win.matchMedia("(max-width: 700px)").matches ? Math.round(win.innerHeight * 0.7) : 0;
-}
-
-/** The Optimizer pool's least height (px): the slot column's height or 60% of the window; 0 for any other panel (the Showdown pool,
- * a .table-wrap, is sized by scroll-panels.js to 60% of the window). */
-export function panelMinHeight(panelEl, top, win = window) {
-  if (!panelEl?.classList?.contains("lineup-rows-wrap")) return 0;
-  const left = panelEl.closest(".lineup-layout")?.querySelector(".lineup-left");
-  const slotColumn = left ? left.getBoundingClientRect().bottom - top : 0;
-  return Math.round(Math.max(win.innerHeight * 0.6, slotColumn));
 }
 
 // ---------- DOM part ----------

@@ -9,8 +9,9 @@ import { statusLineHtml, statusToneClass } from "../row-message.js"; // A14: red
 import { settingRowHtml, settingGroupHtml, numberBoxHtml, countNote } from "../lineup-settings.js";
 import { modeSwitchHtml, cashChipHtml, cashMedianText, unusedCapText, builtInTextCash } from "../lineup-cash.js";
 import { lineupTotals, lineupTotalsHtml } from "../lineup-totals.js"; // A11
+import { doneNoteHtml } from "../build-notice.js"; // A15: `Build finished.` beside the Build button
 import { cardPlayerRowHtml, teamColours } from "../lineup-card.js";
-import { optExposureHtml } from "../lineup-exposure.js";
+import { optExposureHtml, seatEntries } from "../lineup-exposure.js"; // A10: the one exposure table
 import { optNotesHtml, bendsLineHtml } from "../lineup.js";
 import { showdownPalette } from "./lineup-look.js";
 import { posPillHtml } from "./table.js"; // 👁 2026-10-22: the exposure rows wear the lists' coloured position pill, not the grey classic chip
@@ -79,7 +80,8 @@ export function bandBoxesHtml(v) {
   const pool = settingRowHtml("Max per team", teamSelectHtml(v.ms.maxPerTeam), "5 = DraftKings' rule: at most 5 men from one team");
   // The included / locked line is the count row's second hint, inside the Build box as classic's "1 starred QB qualifies" sits
   // in its row (👁 V7: above the boxes it pushed them down); optimizer.js refreshLines rewrites it in place.
-  const lockLine = `<div class="opt-set-hint opt-lockinfo" id="sd-opt-lockinfo"${status ? "" : " hidden"}>${escapeHtml(status)}</div>`;
+  // A15 (round 5): the line keeps its height when it is empty (class is-empty hides its text, not its room), so the first man in does not move the pool and everything under the boxes by a line.
+  const lockLine = `<div class="opt-set-hint opt-lockinfo${status ? "" : " is-empty"}" id="sd-opt-lockinfo">${escapeHtml(status)}</div>`;
   const countRow = settingRowHtml(
     "Lineups to make",
     numberBoxHtml(`type="number" min="1" max="${MAX_COUNT}" class="opt-input opt-input-num" id="sd-opt-count" value="${escapeHtml(v.ms.count)}" aria-label="How many lineups"`, countNote(v.ms.count), "opt-unit-note"),
@@ -112,13 +114,15 @@ export function goLabel(generating) {
   return generating ? BUILDING_LABEL : "Build";
 }
 
-/** The Build row (classic optimizerFooterHtml and its sticky footer, 👁 V3): the summary and the button, the last piece of the builder's column. */
-export function goRowHtml({ summary, generating: showing, busy, formError, canStop = false, below = false, stopping = false, stopError = "" }) {
+/** The Build row (classic optimizerFooterHtml, 👁 V3): the summary and the button, under the settings boxes; not sticky since A15 (round 5). `done`: a build has ended and its
+ *  batch is on screen, so `Build finished.` and the link to it sit beside the button. */
+export function goRowHtml({ summary, generating: showing, busy, formError, canStop = false, below = false, stopping = false, stopError = "", done = false }) {
   return `
     <div class="opt-footer sd-opt-go${buildingRowClass({ showing, below })}">
       ${formError ? statusLineHtml(formError, "warn", "opt-form-error-footer") : ""}
       <span class="opt-summary" id="sd-opt-summary">${escapeHtml(summary)}</span>
       ${buildingHtml({ showing, canStop, stopId: "sd-opt-stop-btn", stopping, stopError })}
+      ${done && !showing ? doneNoteHtml("sd-opt-show-results") : ""}
       <button type="button" id="sd-opt-go-btn" class="lineup-build-btn opt-go opt-go-big"${busy ? " disabled" : ""}>${goLabelHtml({ showing, idle: goLabel(false), busy: goLabel(true) })}</button>
     </div>`;
 }
@@ -232,43 +236,37 @@ export function provenanceTitle(r) {
   return [...new Set(names)].join("; ");
 }
 
-/** The Captain and FLEX exposure tables of the cards on screen, side by side and never summed (lineup-exposure.js optExposureHtml's
- *  Showdown groups). Each row's id is its role-aware key ("cpt:<person>", "flex:<person>"): the key of its Min / Max mark and, when
- *  `pick` is given (D77), of the name button that filters by him in that role. `pick` = {isChosen(key)}. `of`: the number of
- *  lineups in the batch when only some are shown (the filter is on), for the subtitle; null otherwise. `noun`: "new" for the batch,
- *  "saved" for the saved lineups (lineup-saved.js), the word before "lineup" in that subtitle. */
-export function exposureHtml(lineups, board, sortDir, marks, pick = null, of = null, noun = "new") {
-  const t = exposureTables(lineups);
-  const rowsOf = (role, list) => list.map((e) => ({ ...(rowForSlot(board, e.person) ?? {}), id: `${role}:${e.person}`, cardId: String(e.person), name: e.name, count: e.count, pct: e.pct, own: e.own }));
+/** The one exposure table of the cards on screen (A10, lineup-exposure.js optExposureHtml, kind "seats"): a man is one row with a `CPT` column and a `FLEX` column, counted apart and never summed, and a `Seat`
+ *  filter. Each seat's figure carries its role-aware key ("cpt:<person>", "flex:<person>"): the key of its Min / Max mark and, when `pick` is given (D77), of the Filter button that filters by him in that
+ *  seat. `pick` = {isChosen(key)}. `expState`: {col, dir, filter}. `of`: the number of lineups in the batch when only some are shown (the filter is on), for the subtitle; null otherwise. `noun`: "new" for
+ *  the batch, "saved" for the saved lineups (lineup-saved.js), the word before "lineup" in that subtitle. */
+export function exposureHtml(lineups, board, expState, marks, pick = null, of = null, noun = "new") {
+  const entries = seatEntries(exposureTables(lineups), (person) => rowForSlot(board, person));
   const n = lineups.length;
   const lead = of === null ? `${n} ${noun} lineup${n === 1 ? "" : "s"}` : `${n} of ${of} ${noun} lineup${of === 1 ? "" : "s"}, filtered`;
-  const subtitle = `${lead}; Captain and FLEX counted apart, never summed`;
-  return optExposureHtml(null, subtitle, sortDir, pick, marks, {
+  return optExposureHtml(entries, expState, "seats", pick, marks, {
     title: "Exposure",
-    rowOpts: { pos: true, posHtml: posPillHtml }, // Adam 2026-10-22: the position pill follows the name; the logo names the team, so no team chip (player-row.js, Adam 2026-10-25)
-    groups: [
-      { title: "Captain exposure", rows: rowsOf("cpt", t.cpt), keyOf: (r) => r.id },
-      { title: "FLEX exposure", rows: rowsOf("flex", t.flex), keyOf: (r) => r.id },
-    ],
+    subtitle: `${lead}; Captain and FLEX counted apart, never summed`,
+    posHtml: posPillHtml, // Adam 2026-10-22: the lists' coloured position pill
   });
 }
 
 /** The exposure section for a batch under the "only lineups with" filter (D77): the tables recount over the lineups shown, the names
  *  are pick buttons, and the batch's Min / Max marks are left off while the filter hides lineups (classic's rule, they describe
  *  the batch as made). `mustHave` = the chosen role-aware keys. */
-export function exposureSectionHtml(r, board, sortDir, mustHave) {
+export function exposureSectionHtml(r, board, expState, mustHave) {
   const chosen = mustHave ?? [];
   const filtered = chosen.length > 0;
   const shown = filterLineups(r.lineups, chosen, sdPlayersOf).map((e) => e.item);
   const whole = r.lineups.length === r.made;
   const marks = whole && !filtered && r.made >= r.marks.asked ? r.marks : null; // a short, trimmed or filtered batch is not marked
-  return exposureHtml(shown, board, sortDir, marks, { isChosen: (key) => chosen.includes(String(key)) }, filtered ? r.lineups.length : null);
+  return exposureHtml(shown, board, expState, marks, { isChosen: (key) => chosen.includes(String(key)) }, filtered ? r.lineups.length : null);
 }
 
 /**
  * The results under the Make row: the batch head with Save all / Discard all, the figures' source line, a save refusal, the
  * server's notes as classic shows them, the two exposure tables, the cards, then the bent line. `v` = {results, generating,
- * error, saveError, busy, savedFlags (one per lineup), board, expSortDir, mustHave (the chosen role-aware keys, D77), mustHaveNames}.
+ * error, saveError, busy, savedFlags (one per lineup), board, exp (the exposure table's {col, dir, filter}), mustHave (the chosen role-aware keys, D77), mustHaveNames}.
  * While the filter is on only the lineups holding every chosen man show (cards keep their own numbers), the exposure tables count
  * those only, and Save all / Discard all act on them only (classic lineup-view.js newLineupsTabHtml).
  */
@@ -306,7 +304,7 @@ export function resultsHtml(v) {
     const cash = r.mode === "cash";
     const whole = n === r.made;
     // Adam 2026-10-17 (classic newLineupsTabHtml): the exposure tables above the cards, so they are high on the screen.
-    parts.push(exposureSectionHtml(r, v.board, v.expSortDir, mustHave));
+    parts.push(exposureSectionHtml(r, v.board, v.exp, mustHave));
     parts.push(`<div class="opt-cards">${shown.map((e) => cardHtml(e.item, e.item.index, { cash, basis: r.basis, objective: r.objective, busy: v.busy, saved: v.savedFlags[e.index], board: v.board, confirm: v.confirm ?? null })).join("")}</div>`);
     if (whole) parts.push(bendsLineHtml(r.bends, r.made));
   }

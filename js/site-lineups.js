@@ -166,6 +166,13 @@ export function buildDevicePatch(body, board, existing, others = []) {
   const slates = Array.isArray(board?.slates) ? board.slates : [];
   const slateFound = findLineupSlate(body.slate, slates);
   if (slateFound.error) return { error: slateFound.error };
+  // A9 (round 5), as server.js handleLineupUpdate: a lineup never changes slate. One saved on a slate is refused a PUT naming another (it would write that slate's men over it); one with no slate recorded is the
+  // main slate's, listed on a second slate only when every man is in its games: a PUT from there is checked against that slate and does not move it; only a PUT naming "main" records the slate.
+  const existingSlate = typeof existing.slate === "string" ? existing.slate : "";
+  if (hasSlate && existingSlate !== "" && slateFound.lineupSlate !== existingSlate) {
+    return { error: `This lineup belongs to the ${existingSlate} slate and cannot be changed from the ${slateFound.lineupSlate} slate; save the men as a new lineup instead.` };
+  }
+  const patchSlate = existingSlate === "" && slateFound.lineupSlate !== "main" ? undefined : slateFound.lineupSlate;
   const rowById = new Map((board?.rows ?? []).map((r) => [String(r.id), r]));
   const patch = {};
   if (nameResult.name !== undefined) {
@@ -174,16 +181,12 @@ export function buildDevicePatch(body, board, existing, others = []) {
   }
   if (slotsResult.slots) {
     const check = hasSlate ? slateFound : findLineupSlate(existing.slate, slates);
-    if (check.error) return { error: `This lineup was saved to the ${existing.slate} slate, which is not loaded this week; send a slate to move it.` };
+    if (check.error) return { error: `This lineup was saved to the ${existing.slate} slate, which is not loaded this week, so it cannot be changed until it is.` };
     const snapshot = buildLineupSnapshot(slotsResult.slots, rowById, check.lineupSecondSlate);
     if (snapshot.error) return { error: snapshot.error };
     Object.assign(patch, { slots: snapshot.slots, salaryUsed: snapshot.salaryUsed, totalProj: snapshot.totalProj });
-  } else if (slateFound.lineupSecondSlate) {
-    const stored = (Array.isArray(existing.slots) ? existing.slots : []).map((s) => ({ slot: s.slot, playerId: String(s.playerId) }));
-    const check = buildLineupSnapshot(stored, rowById, slateFound.lineupSecondSlate);
-    if (check.error) return { error: check.error };
   }
-  if (typeof slateFound.lineupSlate === "string" && slateFound.lineupSlate !== "") patch.slate = slateFound.lineupSlate;
+  if (typeof patchSlate === "string" && patchSlate !== "") patch.slate = patchSlate;
   if (tagResult.tag !== undefined) patch.tag = tagResult.tag; // null clears the letter
   const dup = duplicateAfterEdit(existing, patch.slots, patch.slate, deviceOnly(others));
   if (dup) return duplicateRefusal(dup);
@@ -191,7 +194,7 @@ export function buildDevicePatch(body, board, existing, others = []) {
 }
 
 /** Edits device lineup `id` in place as store.js updateLineup does (PROJECT.md Part 4 Lineups); a slate naming another
- *  list moves it. {status: "updated", entry} | "missing" (not a device lineup) | "refused" (no storage, write failed). */
+ *  list moves it (buildDevicePatch, the route's gate, no longer lets a PUT name another slate: this storage step keeps the move for data that still names one). {status: "updated", entry} | "missing" (not a device lineup) | "refused" (no storage, write failed). */
 export function updateDeviceLineup(storage, season, week, id, patch) {
   if (!storage) return { status: "refused" };
   if (typeof id !== "string" || !id.startsWith(DEVICE_ID_PREFIX)) return { status: "missing" };

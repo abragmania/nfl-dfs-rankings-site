@@ -10,9 +10,9 @@ import { getShowdownLineups, postShowdownLineup, deleteShowdownLineup, putShowdo
 import { poolHtml, poolVisibleRows, paintPool, wirePool, wirePoolTabs, setPoolControls, POOL_PICK_SKIP } from "./pool.js"; // the one player pool, the Rankings table with both roles on each row (Adam 2026-10-26)
 import { wirePick, wirePickRows, SLOT_PICK_SKIP } from "../pick-rows.js"; // click-to-pick, the one wiring classic's Optimizer shares (D81)
 // The Showdown Optimizer (Adam 2026-10-19, sketch A): its band over the builder, its Make row under it, its batch full width below, its controls on the pool rows.
-import { syncOptimizer, optimizerState, optimizerLive, optimizerBandHeadHtml, optimizerBandBoxesHtml, optimizerGoRowHtml, optimizerResultsBlockHtml, optimizerExcludes, releaseAllLocks, resultLineup, optimizerSavedFilter, poolControls, wirePoolControls, wireOptimizer, putShowdownOverrides } from "./optimizer.js";
-import { rowIsOut } from "../table.js";
-import { wirePoolEdits, takePoolEdit, restorePoolEdit, projPatch, ownPatch, starPatch, notePatch } from "./pool-edit.js"; // B2, B3, C23: the star, the typed Proj and Own, the note's pencil
+import { syncOptimizer, optimizerState, optimizerLive, optimizerBandHeadHtml, optimizerBandBoxesHtml, optimizerGoRowHtml, optimizerResultsBlockHtml, optimizerExcludes, releaseAllLocks, releaseSeatLock, resultLineup, optimizerSavedFilter, poolControls, wirePoolControls, wireOptimizer, refreshBuildNotice } from "./optimizer.js";
+import { wirePoolEdits, takePoolEdit, restorePoolEdit } from "./pool-edit.js"; // B2, B3, C23: the star, the typed Proj and Own, the note's pencil
+import { editCtxFor, rowErrorIn } from "./pool-edit-ctx.js"; // what those cells write through, and a row's red message
 import { takeOpenLimit, restoreOpenLimit, limitRefusals, dropOlderLimitRefusals, noteLimitPress } from "../limit-box.js"; // A3: the pool's Min % and Max % boxes survive a redraw; a refused text is held
 import { handBuild } from "../lineup-builds.js";
 import { filterLineups } from "../lineup-filter.js";
@@ -26,16 +26,19 @@ import { lineupTotals, lineupTotalsHtml } from "../lineup-totals.js"; // A11
 import { findRow, SALARY_CAP, FLEX_COUNT, savedTotalsHtml, savedSlotsHtml, savedLineupCardHtml as savedCardHtml, savedLineupsSectionHtml as savedSectionHtml, wireSavedCards, cardPutGuard } from "./lineup-saved.js";
 import { onSitePage } from "../tabs.js"; // the public site marks the page is-site: its saved cards draw no letter select (it can only be refused there)
 export { savedLineupSlotHtml, savedProjTotal } from "./lineup-saved.js";
-import { syncSwaps, swapsPanelHtml, wireSwaps } from "./lineup-swaps.js"; // the uniqueness swaps, full width below both columns (Adam 2026-10-18)
+import { syncSwaps, swapsPanelHtml, wireSwaps, seatsAfterSwap, holdSwapsHeight, setSwapsRefusal } from "./lineup-swaps.js"; // the uniqueness swaps, full width below both columns (Adam 2026-10-18); C22: a click on a swap makes it
 import { showdownPerSpotText, shownTotal } from "../totals.js";
 import { syncMeter, meterStripHtml, wireMeter, playerFigures, lineupFigureRow } from "./lineup-meter.js"; // uniqueness / projection strip under the slots; every figure on the screen is the served board's (Adam 2026-10-20)
 import { lineupReadHtml } from "./lineup-read.js"; // the "Lineup read" sentences under the meter (Adam 2026-10-29 5:10 PM: "just make it not suck")
+import { showBand } from "../show-band.js"; // A12, A15: a Load brings the whole band into view
+import { focusOpenRename } from "../rename-focus.js"; // the rename box: focused and selected on open
+import { saveView, restoreLineup, saveLineup, dropMenGoneFromBoard } from "./view-memory.js"; // A9: the pool's filters and sort and the working lineup, per game
 import { onConfirmDismiss } from "../confirm-inline.js"; // B13, C11: Esc and a click outside close an open confirm
 import { notDeletedText } from "../delete-words.js"; // A12: the one sentence a failed delete leaves, the classic Optimizer's words
 import { wireStaleMessages } from "../stale-messages.js"; // item 17: a one-shot message goes at the next click on any control
 import { wireDkDownload } from "../dk-lineup-ui.js"; // A12: Download DK CSV for the saved lineups ticked
 // The working lineup, its click rules, Lock/Unlock, Clear lineup and the saved-or-not question: ./seats.js (split out to keep this file under its cap).
-import { state, setSeatBoard, reseatStoredLocks, pickPoolRow, lineupPicks, listPlacement, lockSeat, unlockSeat, clearCaptain, clearFlex, clearAll, clearAllHasContent, workingUnsaved, rowIdOf } from "./seats.js";
+import { state, setSeatBoard, reseatStoredLocks, pickPoolRow, lineupPicks, listPlacement, lockSeat, unlockSeat, clearCaptain, clearFlex, clearAll, clearAllHasContent, workingUnsaved, rowIdOf, lockedSeatPositions, swapLockRefusal } from "./seats.js";
 export { pickPoolRow, lineupPicks };
 
 let lastContainer = null;
@@ -220,11 +223,7 @@ function doLoadLineup(kind, id) {
   state.addError = null;
   releaseAllLocks(); // the whole lineup is replaced: every lock of this game goes, in both modes
   commit();
-  try {
-    lastContainer?.querySelector?.(".lineup-slots")?.scrollIntoView?.({ block: "start", behavior: "smooth" });
-  } catch (e) {
-    console.warn("Load: the slots could not be scrolled into view", e); // a convenience only; the lineup is loaded either way
-  }
+  showBand(lastContainer, "sd-lineup-panel"); // the whole band under the sticky layers, and again after the meter has drawn (show-band.js)
 }
 
 // --------------------------------------------------------------------------------------------------------
@@ -254,10 +253,8 @@ function repaintSlotFigures() {
 export const lineupReadOf = (board) => lineupReadHtml({ ...board, rows: (board?.rows ?? []).map(lineupFigureRow) }, state); // the rows as the lineup reads them (a revive TwoGun-only ignores reads 0)
 /** Redraws the Lineup read in place when the modes answer lands (it reads the same figures as the slots): replaced, removed when empty, or added above the status block. */
 function repaintLineupRead() {
-  const html = lineupReadOf(lastBoard);
-  const el = lastContainer.querySelector(".sd-read");
-  if (el) el.outerHTML = html;
-  else if (html) lastContainer.querySelector(`#${BUILD_STATUS_ID}`)?.insertAdjacentHTML?.("beforebegin", html);
+  const holder = lastContainer.querySelector("#sd-read-holder"); // A15: the read sits under the two columns, not in the lineup band, which must fit the window
+  if (holder) holder.innerHTML = lineupReadOf(lastBoard);
 }
 
 const slotsHtml = (board) => slotsMarkup(board, state); // the placed slots go in as parameters (lineup-slots.js)
@@ -285,6 +282,7 @@ function poolCtx(board) {
     onRepaint: (poolEl, rows) => { // a repainted pool's buttons are new; and the click's message follows the rows now shown (a filter can hide its row)
       wireRowButtons(poolEl, board);
       repaintBuildStatus(board, rows);
+      saveView(); // A9: a filter, a sort or a column change is remembered for this game
     },
     onCount: (shown, total) => poolCount?.(shown, total),
     // A3: a typed-number or note box, and a Min % / Max % box, that is open when the rows are redrawn goes back into the new ones with its text and focus; the removal never reads as a click away.
@@ -297,45 +295,9 @@ function poolCtx(board) {
   };
 }
 
-/** A failed write for a pool row is said beside that row, in red (B12, B3). */
-function rowError(id, text) {
-  state.addErrorId = String(id);
-  state.addError = text;
-  state.addTone = "error";
-  commit();
-}
-
-const SET_ASIDE_NOTICE = "He is listed out and TwoGun is the only projection source ticked, so your number does not bring him back: he counts 0 in lineups.";
-
-/** A short notice beside a pool row, amber (a refusal's tone, not an error): the write was taken, and this is what it did not do. */
-function rowNotice(id, text) {
-  state.addErrorId = String(id);
-  state.addError = text;
-  state.addTone = undefined;
-  commit();
-}
-
-/** What the star, the typed Proj and Own cells and the pencil need (pool-edit.js wirePoolEdits): the writes go through view.js's board writer, which applies the answered board and says
- *  a refusal in the status line; each answers whether the server took it. */
-function editCtx(board) {
-  const write = (patch, label) => (patch && boardWrite ? boardWrite((key) => putShowdownOverrides(key, patch), label) : Promise.resolve(false));
-  return {
-    rowOf: (id) => findRow(board, id),
-    figureOf: (row, field, isCpt) => {
-      const f = playerFigures(row, isCpt);
-      return field === "proj" ? f.proj : f.own;
-    },
-    save: async (row, field, seat, value) => {
-      const taken = await write(field === "proj" ? projPatch(row, seat, value) : ownPatch(row, seat, value), "the typed number");
-      // Item 5: while TwoGun is the only projection source ticked, a typed number does not bring a man listed out back (the standing ruling); say so beside his row at the write.
-      if (taken && field === "proj" && value > 0 && rowIsOut(row) && board?.mode?.cashMode === "twogun") rowNotice(row.id, SET_ASIDE_NOTICE);
-      return taken;
-    },
-    saveNote: (row, text) => write(notePatch(row, text), "the note"),
-    toggleStar: (row) => write(starPatch(row), "the star"),
-    rowError,
-  };
-}
+/** A failed write for a pool row is said beside that row, in red (B12, B3); the star, the typed numbers and the pencil: pool-edit-ctx.js. */
+const rowError = (id, text) => rowErrorIn(state, commit, id, text);
+const editCtx = (board) => editCtxFor({ board, state, commit, boardWrite: () => boardWrite });
 
 /** Redraws the pool alone, for the filter bar above the builder (view.js): a chip or a typed filter never redraws the builder. */
 export function repaintShowdownPool() {
@@ -360,29 +322,27 @@ function shownSavedLineups(board) {
 
 // `poolRows`: the pool's rows (pool.js poolVisibleRows), read once per draw so the filter bar's count is the same list.
 function panelHtml(board, poolRows) {
-  // The Optimizer (sketch A, Adam 2026-10-19): its band head over the builder (the left column, wider then, .sd-opt-left), whose
-  // Make row (sticky, as classic's footer) ends it; the Pool and Build boxes come after the six slots and the meter (Adam 2026-10-20:
-  // "I can't see the main lineup that I'm building"). The player pool sits beside it (below; Adam 2026-10-26: the Rankings table as
-  // the pool, its filter bar above the builder, view.js), then the batch, its cards four
-  // across (Adam 2026-10-19 11:17 PM: "generated lineups should go 4 across"). Off the live app the Optimizer's pieces are empty, as before.
-  // Adam 2026-10-26 3:59 PM: "i like the list to the side of the optimizer not beneath": the player pool is the right column, beside the
-  // builder, on the live app and the public site alike; both columns start under the band's head (the Objective row and the pool's
-  // heading level). Below 1100px of window the pool wraps under the builder (style.css .sd-pool-col).
+  // The Optimizer (sketch A, Adam 2026-10-19): its band head, the Pool and Build boxes and the Build row (optimizer standard A15, round 5: no sticky Make row, so it ends the settings in the page's
+  // flow, as classic's does) sit above the two columns, so the left column holds only the lineup: the controls, the six slots, the totals, the meter and the status line, which stick under the filter
+  // bar as a band at 1760px and wider while the pool runs down the page beside them (style.css). The player pool is the right column (Adam 2026-10-26: the Rankings table as the pool, its filter
+  // bar above the builder, view.js), then the batch, its cards four across (Adam 2026-10-19 11:17 PM: "generated lineups should go 4 across"). Off the live app the Optimizer's pieces are
+  // empty, as before. Adam 2026-10-26 3:59 PM: "i like the list to the side of the optimizer not beneath": the pool is beside the lineup on the live app and the public site alike; under 1760px
+  // of window it stacks under the lineup (style.css .sd-pool-col).
   return `
     ${optimizerBandHeadHtml(board)}
+    ${optimizerBandBoxesHtml(board)}
+    ${optimizerGoRowHtml(board)}
     <div class="lineup-layout sd-pool-layout">
       <div class="lineup-left${optimizerLive() ? " sd-opt-left" : ""}">
         ${controlsHtml()}
         <div class="lineup-slots">${slotsHtml(board)}</div>
         ${workingTotalsHtml(board)}
         ${meterStripHtml()}
-        ${lineupReadOf(board)}
         <div id="${BUILD_STATUS_ID}">${buildStatusHtml(board, messageRowShown(poolRows))}</div>
-        ${optimizerBandBoxesHtml(board)}
-        ${optimizerGoRowHtml(board)}
       </div>
       <div class="lineup-right sd-pool-col">${poolHtml(board, listPlacement(), poolRows)}</div>
     </div>
+    <div id="sd-read-holder">${lineupReadOf(board)}</div>
     ${optimizerResultsBlockHtml(board, state.savedLineups, state.confirm)}
     ${swapsPanelHtml()}
     ${savedLineupsSectionHtml(board)}`;
@@ -415,9 +375,37 @@ function wireRowButtons(container, board) {
   });
 }
 
+/**
+ * C22: a click on a swap makes it. The seat's man goes out and the swap's man goes in; the builder, the totals, the meter and the swaps follow, and
+ * the swaps panel stays where it is: it keeps its height while its new answer is out and the page is scrolled back to put it under the pointer again. A swap that cannot be made here (the
+ * lineup changed under the click, or the man is already in it) changes nothing; one that would take out a man who is locked in his seat is refused with the click rules' sentence beside the panel.
+ */
+function applySwap(swap, panelEl) {
+  const next = seatsAfterSwap({ cpt: state.cpt, flex: state.flex }, swap);
+  if (!next) return;
+  // A swap is not a way round a lock: it says what the click rules say, beside the panel, and changes nothing (C22).
+  const refusal = swapLockRefusal(findRow(lastBoard, next.outId), swap.seat);
+  if (refusal) {
+    setSwapsRefusal(refusal);
+    return;
+  }
+  setSwapsRefusal("");
+  const top = panelEl?.getBoundingClientRect?.().top;
+  holdSwapsHeight(panelEl?.getBoundingClientRect?.().height);
+  const gone = findRow(lastBoard, next.outId);
+  state.cpt = next.cpt;
+  state.flex = next.flex;
+  releaseSeatLock(gone, swap.seat === "CPT" ? "cpt" : "flex");
+  state.addError = null;
+  state.addErrorId = null;
+  commit();
+  const after = lastContainer?.querySelector?.(".sd-swaps")?.getBoundingClientRect?.().top;
+  if (typeof top === "number" && typeof after === "number" && typeof window !== "undefined") window.scrollBy(0, after - top);
+}
+
 function wire(container, board, key) {
   wireMeter(container);
-  wireSwaps(container);
+  wireSwaps(container, { apply: applySwap });
   wireConfirmDismiss();
   // B13, B6: Clear lineup asks `Clear the lineup?` beside itself when it would lose a man, as classic's does (confirm-inline.js); with nothing in the seats it just clears. It empties the seats and their locks only.
   container.querySelector("#sd-lineup-clear-all-btn")?.addEventListener("click", () => {
@@ -524,6 +512,8 @@ function focusOpenConfirm(container) {
 }
 
 let lastValidatedKey = null;
+let lastSeatBoard = null; // the board the seats were last checked against (a new one for the same game checks them again)
+let rememberedNote = ""; // the sentence naming the men a remembered lineup lost, from a game's first draw to its stale-message pass
 let lastMessageScope = null; // "game|optimizer mode" the one-shot messages were made under
 
 /** Item 17 (round 3 fixes): the messages a click leaves (`Saved "..."`, the DK status, a refused pool click) belong to the game and mode they
@@ -559,11 +549,13 @@ export function renderShowdownLineupPanel(container, board, key, { onOpenSources
     state.savedLoaded = false;
     state.savedLineups = [];
     state.savedError = null;
-    // A different showdown means a different player pool: last week's (or the other game's) placed
-    // Captain/FLEX, ticked saved lineups and open rename/delete prompts must never carry over (🔵 review item 7).
-    state.cpt = null;
-    state.flex = new Array(FLEX_COUNT).fill(null);
+    // A different showdown means a different player pool: the other game's ticked saved lineups and open rename/delete prompts must never carry over (🔵 review item 7). Its placed Captain/FLEX
+    // are the game's own (A9): this game's remembered lineup comes back, and the other game's was written as it changed, so a switch back finds it. A man who is gone from this board is dropped and named.
+    const remembered = restoreLineup(key, board, FLEX_COUNT);
+    state.cpt = remembered.cpt;
+    state.flex = remembered.flex;
     state.addError = null; // a refusal beside a row of the other game's pool is not this game's
+    rememberedNote = remembered.note; // what a remembered lineup lost is said once (set below, after the stale-message pass, which clears a game switch's messages)
     state.addErrorId = null;
     state.addTone = undefined;
     state.dkSelected.clear();
@@ -573,9 +565,20 @@ export function renderShowdownLineupPanel(container, board, key, { onOpenSources
     state.deleteConfirmId = null;
     state.confirm = null;
     if (key) loadSavedLineups(key);
+  } else if (board !== lastSeatBoard) {
+    // The same game on a new board (a refresh, a re-upload): a man it no longer has (a new id, or he left the file) is taken out and named from the memory, never blank (A9).
+    const kept = dropMenGoneFromBoard(key, board, state.cpt, state.flex);
+    if (kept.note) {
+      state.cpt = kept.cpt;
+      state.flex = kept.flex;
+      rememberedNote = kept.note;
+    }
   }
+  lastSeatBoard = board;
   syncOptimizer(key, board); // this showdown's Optimizer settings; another showdown's batch is dropped (first: the meter reads its excludes)
   dropStaleMessages(key);
+  if (rememberedNote) state.addError = rememberedNote;
+  rememberedNote = "";
   reseatStoredLocks(`${key}|${optimizerState().ks?.mode ?? ""}`); // stored locks get their seats (or are dropped, with a sentence) at a game's first draw and at a mode switch
   wireStaleMessages(container, {
     hasAny: () => Boolean(state.dkStatus || state.saveConfirm || state.addError || limitRefusals().length),
@@ -584,9 +587,8 @@ export function renderShowdownLineupPanel(container, board, key, { onOpenSources
     selector: ".dk-status, .row-msg-warn, .row-msg-notice, .lineup-status:not(.lineup-status-error):not(.lineup-status-warning)",
   });
   syncMeter({ board, key, cpt: state.cpt, flex: state.flex, container, excludes: optimizerExcludes(), onSources: openSources, onModes: repaintSlotFigures }); // the meter repaints only its own strip and the slots' notes; the on-screen mode's excludes, as a batch card's meter has them (🔵 866b0ce B1)
-  syncSwaps({ board, key, cpt: state.cpt, flex: state.flex, container, excludes: optimizerExcludes() }); // after the meter: the swaps exist while it has a complete live lineup; the meter's excludes, so no excluded man is offered
+  syncSwaps({ board, key, cpt: state.cpt, flex: state.flex, container, excludes: optimizerExcludes(), locked: lockedSeatPositions() }); // after the meter: the swaps exist while it has a complete live lineup; the meter's excludes, so no excluded man is offered
   const poolRows = poolVisibleRows(board);
-  const poolScroll = container.querySelector?.("#sd-pool .scroll-panel")?.scrollTop ?? 0; // an Add click redraws the panel: the pool keeps its place
   const openEdit = takePoolEdit(container); // a typed-number or note box, or a Min % / Max % box, that he is typing in survives the redraw with its text and focus (A3)
   const openLimit = takeOpenLimit();
   container.innerHTML = panelHtml(board, poolRows);
@@ -595,6 +597,7 @@ export function renderShowdownLineupPanel(container, board, key, { onOpenSources
   restoreOpenLimit(container, openLimit);
   poolCount?.(poolRows.length, (board?.rows ?? []).length);
   afterDraw?.();
-  const poolPanel = poolScroll ? container.querySelector?.("#sd-pool .scroll-panel") : null;
-  if (poolPanel) poolPanel.scrollTop = poolScroll;
+  saveLineup(key, board, state.cpt, state.flex); // A9: the lineup is remembered under its game as it changes (nothing is written when it did not)
+  focusOpenRename(container, state.renamingId); // the rename box takes the keyboard when it opens, its name selected
+  refreshBuildNotice(); // A15: the notice under the filter bar follows the build's state and where the Make row is
 }

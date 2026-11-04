@@ -155,7 +155,9 @@ function swapRowHtml(w, basis = null) {
     + (inn.notOnBoard ? `<span class="sd-swaps-tag sd-swaps-off" title="${escapeHtml(`${inn.name}: ${NOT_ON_BOARD_WORDS}`)}">${escapeHtml(NOT_ON_BOARD_WORDS)}</span>` : "");
   // The label is drawn only when a figure on the row is itself under 10 copies, as on the headline and the card strip; its hover wording is unchanged.
   const label = isEstimate(w.copiesBefore) || isEstimate(w.copiesAfter) ? estimateLabelHtml(swapEstimateTitle(w.copiesBefore, w.copiesAfter, basis?.model, basis?.field)) : "";
-  return `<div class="sd-swaps-row" title="${escapeHtml(title)}"><span class="sd-swaps-in"><span class="sd-swaps-arrow" aria-hidden="true">→</span>${manHtml(inn)}</span>`
+  // C22 (round 5): a click on the row makes the swap in the builder's seats (wireSwaps); his name keeps opening his card.
+  const pick = `data-swap-seat="${escapeHtml(String(w.seat ?? ""))}" data-swap-slot="${w.slot == null ? "" : escapeHtml(String(w.slot))}" data-swap-in="${escapeHtml(String(inn.id ?? ""))}" tabindex="0" role="button"`;
+  return `<div class="sd-swaps-row sd-swaps-pick" ${pick} title="${escapeHtml(`Click to make this swap. ${title}`)}"><span class="sd-swaps-in"><span class="sd-swaps-arrow" aria-hidden="true">→</span>${manHtml(inn)}</span>`
     + `<span class="sd-swaps-sal">${sal ? escapeHtml(sal) : ""}</span>`
     + `<span class="sd-swaps-pts${gain}">${pts ? escapeHtml(pts) : ""}</span>`
     + `<span class="sd-swaps-copies">${copies ? escapeHtml(copies) + (fold ? "" : label) : ""}</span>`
@@ -164,14 +166,15 @@ function swapRowHtml(w, basis = null) {
 }
 
 /** A seat's head: its slot (CPT in gold), the man being replaced with his chips, and his projection and ownership in this seat. */
-function seatHeadHtml(s) {
+function seatHeadHtml(s, locked = false) {
   const m = s.man;
   const own = m.notOnBoard || typeof m.ownPct === "number" ? ownWords(m) : "";
   const proj = typeof m.proj === "number" ? `${dec1(m.proj)} proj` : "";
   const figs = [proj, own].filter(Boolean).join(" · ");
   const title = `${m.name}: ${money(m.salary)} in this seat${s.legal !== undefined ? `; ${s.legal} legal swaps for this seat` : ""}`;
-  return `<div class="sd-swaps-seat-head" title="${escapeHtml(title)}"><span class="sd-swaps-slot${s.seat === "CPT" ? " sd-swaps-slot-cpt" : ""}">${slotLabel(s.seat)}</span>`
-    + `<span class="sd-swaps-in">${manHtml(m)}</span><span class="sd-swaps-seat-figs">${escapeHtml(figs)}</span></div>`;
+  const lock = locked ? `<span class="sd-swaps-locked" title="${escapeHtml(`${m.name} is locked in this seat: a swap here is refused until you unlock him`)}">Locked</span>` : ""; // C22: a swap does not go round a lock
+  return `<div class="sd-swaps-seat-head${locked ? " sd-swaps-seat-locked" : ""}" title="${escapeHtml(title)}"><span class="sd-swaps-slot${s.seat === "CPT" ? " sd-swaps-slot-cpt" : ""}">${slotLabel(s.seat)}</span>`
+    + `<span class="sd-swaps-in">${manHtml(m)}</span>${lock}<span class="sd-swaps-seat-figs">${escapeHtml(figs)}</span></div>`;
 }
 
 /** What was left out and why, in one line (the names are on hover); "" when nothing was. */
@@ -190,7 +193,7 @@ function skippedHtml(skipped) {
  * The panel's inner html for one answer of the swaps route (`d`), or the words saying why there are no swaps. `open` is the
  * set of seat positions (0 to 5) whose whole frontier is shown; any other seat shows its first few and a "Show all N" button.
  */
-export function swapsBodyHtml(d, { open = new Set(), basis = null } = {}) {
+export function swapsBodyHtml(d, { open = new Set(), basis = null, locked = new Set() } = {}) {
   if (d.available === false) return `<div class="sd-meter-none">${escapeHtml(d.message || "Swaps are not available for this lineup.")}</div>`;
   const seats = (d.seats ?? []).map((s, i) => {
     const more = Array.isArray(s.more) ? s.more : [];
@@ -202,7 +205,7 @@ export function swapsBodyHtml(d, { open = new Set(), basis = null } = {}) {
     const toggle = more.length
       ? `<button type="button" class="sd-swaps-more" data-swaps-toggle="${i}" aria-expanded="${expanded}">${expanded ? `Show top ${s.swaps.length}` : `Show all ${s.swaps.length + more.length}`}</button>`
       : "";
-    return `<div class="sd-swaps-seat">${seatHeadHtml(s)}${rows}${toggle}</div>`;
+    return `<div class="sd-swaps-seat">${seatHeadHtml(s, locked.has(i))}${rows}${toggle}</div>`;
   }).join("");
   const b = d.bestProjection;
   const best = b
@@ -220,8 +223,10 @@ export function swapsHtml(st, opts = {}) {
   let body;
   if (st.status === "loading") body = `<div class="sd-meter-none">Working out swaps…</div>`;
   else if (st.status === "error") body = `<div class="sd-meter-error">${escapeHtml(st.message || "Could not work out the swaps.")}</div>`;
-  else body = swapsBodyHtml(st.data, { open: opts.open ?? st.open ?? new Set(), basis: opts.basis ?? null });
-  return `<div class="sd-swaps" aria-live="polite">${head}${body}</div>`; // not .sd-meter: the meter's repaint looks that class up, and the box look is shared in the stylesheet
+  else body = swapsBodyHtml(st.data, { open: opts.open ?? st.open ?? new Set(), basis: opts.basis ?? null, locked: st.locked ?? new Set() });
+  const hold = st.status === "loading" && st.holdH ? ` style="min-height:${st.holdH}px"` : ""; // a swap just made: the panel keeps its height while the new answer is out (holdSwapsHeight)
+  const refusal = st.refusal ? `<div class="row-msg row-msg-warn sd-swaps-refusal" role="alert">${escapeHtml(st.refusal)}</div>` : ""; // C22: a swap that would take out a locked man says so beside the panel's head
+  return `<div class="sd-swaps" aria-live="polite"${hold}>${head}${refusal}${body}</div>`; // not .sd-meter: the meter's repaint looks that class up, and the box look is shared in the stylesheet
 }
 
 /** The request body: the meter's (the board path, lineup-meter.js meterRequestBody), for the same lineup and Optimizer excludes
@@ -240,7 +245,7 @@ export async function postLineupSwaps(key, body, fetchImpl = fetch) {
 
 // ---------- state and trigger ----------
 
-const st = { sig: null, status: null, data: null, message: null, timer: null, open: new Set() }; // open: the seats (0 to 5) showing their whole frontier
+const st = { sig: null, status: null, data: null, message: null, timer: null, open: new Set(), holdH: null, locked: new Set(), refusal: "" }; // open: the seats (0 to 5) showing their whole frontier; holdH: the height to keep while an answer is out (C22); locked: the seats whose man is locked; refusal: the sentence a refused swap leaves
 let last = null; // the last syncSwaps arguments, so an exclude toggle asks again without a panel draw
 const wired = new WeakSet();
 
@@ -252,11 +257,18 @@ function reset() {
   st.data = null;
   st.message = null;
   st.open = new Set(); // another lineup or board: every seat starts at its first three
+  st.refusal = ""; // and a refusal belongs to the lineup it was made on
+}
+
+/** C22: the sentence a refused swap leaves beside the panel's head ("" takes it away); only the panel is repainted. */
+export function setSwapsRefusal(text) {
+  st.refusal = String(text ?? "");
+  repaint();
 }
 
 /** Test hook: the current state. */
 export function swapsState() {
-  return { sig: st.sig, status: st.status, data: st.data, message: st.message, open: [...st.open] };
+  return { sig: st.sig, status: st.status, data: st.data, message: st.message, open: [...st.open], refusal: st.refusal, locked: [...st.locked] };
 }
 
 /** The panel's current html (call inside the panel draw, right after the meter strip and after syncSwaps). */
@@ -283,11 +295,13 @@ onMeterAnswer(() => {
  * an answer for a lineup that has since changed is dropped. `excludes`: the Optimizer's for the mode on screen, as the meter
  * gets them (optimizer.js optimizerExcludes); none by default.
  */
-export function syncSwaps({ board, key, cpt, flex, container = null, post = postLineupSwaps, delayMs = DELAY_MS, enabled = meterState().sig !== null, excludes = [] }) {
-  last = { board, key, cpt, flex, container, post, delayMs, enabled, excludes };
+export function syncSwaps({ board, key, cpt, flex, container = null, post = postLineupSwaps, delayMs = DELAY_MS, enabled = meterState().sig !== null, excludes = [], locked = new Set() }) {
+  last = { board, key, cpt, flex, container, post, delayMs, enabled, excludes, locked };
+  st.locked = locked; // the seats whose man is locked, marked on the panel (C22)
   const body = enabled && key ? swapsRequestBody(board, cpt, flex, excludes) : null;
   if (!body) {
     if (st.sig !== null || st.status !== null) reset();
+    st.holdH = null; // no complete lineup, no swaps to wait for
     return;
   }
   const sig = lineupSig(key, board, body, cpt, flex); // the meter's own signature: a typed number that changes a placed man's figures re-asks both
@@ -310,6 +324,7 @@ export function syncSwaps({ board, key, cpt, flex, container = null, post = post
     st.status = next.status;
     st.data = next.data ?? null;
     st.message = next.message ?? null;
+    st.holdH = null;
     repaint();
   }, delayMs);
 }
@@ -323,19 +338,66 @@ export function resyncSwapsExcludes(excludes) {
 }
 
 /**
- * After a panel draw: a click on a seat's "Show all N" / "Show top 3" button opens or closes that seat's whole frontier (the
- * panel alone is repainted). One listener per panel element, however often the panel is redrawn.
+ * C22: the seats after one swap is made, or null when it cannot be made here. `picked` = {cpt, flex} (the builder's seats, `{id}` or null); `swap` = {seat: "CPT" | "FLEX", slot (the FLEX seat's
+ * index, 0 to 4; null for the Captain), inId (the man going in, his person id)}. Only the one seat changes: the Captain's, or the FLEX seat `slot`; a man already in the lineup cannot go in again.
+ * Returns {cpt, flex, outId} (outId: the man the swap took out, whose lock goes with him), never changing `picked`. Pure.
  */
-export function wireSwaps(container) {
+export function seatsAfterSwap(picked, swap) {
+  const inId = String(swap?.inId ?? "");
+  if (!inId) return null;
+  const flex = [...(picked?.flex ?? [])];
+  const placed = [picked?.cpt, ...flex].filter(Boolean).map((s) => String(s.id));
+  if (placed.includes(inId)) return null;
+  if (swap.seat === "CPT") {
+    if (!picked?.cpt) return null;
+    return { cpt: { id: inId }, flex, outId: String(picked.cpt.id) };
+  }
+  const slot = Number(swap.slot);
+  if (swap.seat !== "FLEX" || !Number.isInteger(slot) || slot < 0 || slot >= flex.length || !flex[slot]) return null;
+  const outId = String(flex[slot].id);
+  flex[slot] = { id: inId };
+  return { cpt: picked.cpt, flex, outId };
+}
+
+/** The swap a clicked row describes ({seat, slot, inId}), or null when the click was on the man's name (his card) or not on a swap row. */
+export function swapOfClick(target) {
+  if (target?.closest?.(".player-name, a, button")) return null;
+  const row = target?.closest?.("[data-swap-in]");
+  if (!row) return null;
+  return { seat: row.dataset.swapSeat, slot: row.dataset.swapSlot === "" ? null : Number(row.dataset.swapSlot), inId: row.dataset.swapIn };
+}
+
+/** Keeps the panel as tall as it was while its next answer is out (`px`), so a swap made from it does not pull the page up under the pointer; the answer ends the hold. */
+export function holdSwapsHeight(px) {
+  st.holdH = Number.isFinite(px) && px > 0 ? Math.round(px) : null;
+}
+
+/**
+ * After a panel draw: a click on a seat's "Show all N" / "Show top 3" button opens or closes that seat's whole frontier (the
+ * panel alone is repainted); a click on a swap row (or Enter or Space on it) makes the swap through `apply({seat, slot, inId})` and the panel stays where it is (C22). One listener per panel
+ * element, however often the panel is redrawn.
+ */
+export function wireSwaps(container, { apply = null } = {}) {
   if (!container?.addEventListener || wired.has(container)) return;
   wired.add(container);
+  const make = (target) => {
+    const swap = swapOfClick(target);
+    if (swap && apply) apply(swap, container.querySelector?.(".sd-swaps"));
+  };
   container.addEventListener("click", (e) => {
     const toggle = e.target?.closest?.("[data-swaps-toggle]");
-    if (!toggle || !last) return;
+    if (!toggle) return make(e.target);
+    if (!last) return;
     const seat = Number(toggle.dataset?.swapsToggle);
     if (!Number.isInteger(seat)) return;
     if (st.open.has(seat)) st.open.delete(seat);
     else st.open.add(seat);
     repaint();
+  });
+  container.addEventListener("keydown", (e) => {
+    if ((e.key === "Enter" || e.key === " ") && e.target?.matches?.(".sd-swaps-pick")) {
+      e.preventDefault();
+      make(e.target);
+    }
   });
 }

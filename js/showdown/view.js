@@ -9,6 +9,7 @@
 // filters the pool (pool.js poolState), so a keystroke in its boxes never destroys a box.
 import { getShowdownBoard, postShowdownRefresh, postShowdownProjectionsPaste, supports, isShowdownSampleMode } from "./api.js";
 import { resetAllEnabled } from "../row-reset.js";
+import { stickyHeights } from "../build-notice.js"; // A15: the sticky stack's heights, the notice a layer of it
 import { deleteShowdownOverrides } from "./optimizer.js";
 import { renderPills, kickoffDateAndClock, paintSourcesLink, wireSourcesLink, modePillHtml } from "../header.js";
 import { isSourcesTab, sourcesTabToOpen } from "../tabs.js";
@@ -26,6 +27,7 @@ import { renderShowdownTabs, renderShowdownProjectionsPanel, renderShowdownOwner
 import { repaintShowdownPool } from "./lineup.js";
 import { lineupFigureRow } from "./lineup-meter.js";
 import { poolState, poolCountText } from "./pool.js";
+import { restoreView } from "./view-memory.js"; // A9: the pool's filters and sort per game
 import { filterBarHtml, wireFilterBar, takeBarFocus, restoreBarFocus } from "./filter-bar.js"; // the filter bar above the builder (team and position chips, search, salary range, Min Proj)
 import { figuresPillHtml } from "./figures-label.js"; // the header pill naming the sources this game's board reads (Adam 2026-10-20)
 import { normalizeBoard, teamFullName } from "./board-shape.js"; // the board's pure shaping (moved for the 600-line cap)
@@ -195,9 +197,16 @@ function resetButton() {
 function syncFilterbarHeight() {
   if (!els.lineupPanel || !els.filterbar) return;
   const sticky = !els.lineupPanel.hidden && getComputedStyle(els.filterbar).position === "sticky";
-  els.lineupPanel.style.setProperty("--filterbar-h", `${sticky ? Math.ceil(els.filterbar.getBoundingClientRect().height) : 0}px`);
+  const notice = document.getElementById("sd-build-notice");
+  const { bar, total } = stickyHeights({ sticky, barHeight: els.filterbar.getBoundingClientRect().height, noticeShown: Boolean(notice) && !notice.hidden, noticeHeight: notice?.getBoundingClientRect().height }); // A15: the build notice is a layer of the stack, so the head and the band sit under it too
+  els.lineupPanel.style.setProperty("--filterbar-bar-h", `${bar}px`);
+  els.lineupPanel.style.setProperty("--filterbar-h", `${total}px`);
 }
 window.addEventListener("resize", syncFilterbarHeight);
+if (typeof ResizeObserver !== "undefined") {
+  const notice = document.getElementById("sd-build-notice");
+  if (notice) new ResizeObserver(syncFilterbarHeight).observe(notice);
+}
 
 // After each draw of the Optimizer's part (lineup.js calls it on its own redraws too): the pool's Expand bar (expand.js), its height
 // (60% of the window, whole rows, scroll-panels.js) and the sticky bar's height.
@@ -339,6 +348,7 @@ function render() {
     // One screen (Adam 2026-10-26, D81): the game line and the filter bar, then the Optimizer's own part, with the pool, in its mount.
     renderGameLine();
     renderStamps();
+    restoreView(state.boardKey, state.board); // A9: a game not drawn last gets its remembered filters and sort before the filter bar is drawn from them
     renderFilterBar();
     renderShowdownLineupPanel(els.lineupMount, state.board, state.boardKey, { onOpenSources: openSources, onBoardWrite: writeBoard, onPoolCount: setPoolCount, onDrawn: afterLineupDraw });
   } else if (isSourcesTab(state.activeTab)) {

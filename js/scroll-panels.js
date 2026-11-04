@@ -1,5 +1,5 @@
 // Sizes every ".scroll-panel" table to the room left below it (moved out of public/app.js unchanged; a leaf module that imports nothing from app.js).
-import { phoneMinHeight, panelMinHeight } from "./expand.js";
+import { phoneMinHeight } from "./expand.js";
 
 // Whole-row snapping by geometry rather than by one row's height (👁 visual-qa fourth/fifth pass): finds
 // the last tbody row whose bottom edge actually fits within the available height and snaps the panel's
@@ -22,7 +22,7 @@ function snapPanelMaxHeight(panelEl, top, reserve) {
   // On a phone (max-width 700px) the table gets at least 70% of the window's height, however much of the page
   // sits above it (Adam, 2026-10-10: the list showed about three rows); the page scrolls to reach it. Wider
   // windows size exactly as before. window.innerHeight is the dynamic viewport height (what dvh measures).
-  const phoneMin = Math.max(phoneMinHeight(), panelMinHeight(panelEl, top)); // the Optimizer pool's floor too (expand.js)
+  const phoneMin = phoneMinHeight();
   const available = Math.max(window.innerHeight - docTop - reserve, phoneMin);
   const rows = panelEl.querySelectorAll("tbody tr");
   const borderAllowance = panelEl.offsetHeight - panelEl.clientHeight;
@@ -52,22 +52,11 @@ function snapPanelMaxHeight(panelEl, top, reserve) {
 export function adjustScrollPanels() {
   document.querySelectorAll(".scroll-panel").forEach((panelEl) => {
     const top = panelEl.getBoundingClientRect().top;
-    // Optimizer-first step 4: the ranked list under the builder is not sized to the room below it (that is the whole page) but
-    // to 60% of the window, 420px at least, snapped to whole rows: the reserve is chosen so the room snapPanelMaxHeight sees is that height.
-    // The Showdown Optimizer's player pool under its builder (#sd-pool, 2026-10-26, D81) is sized the same way.
-    if (panelEl.closest("#ranked-list") || panelEl.closest("#sd-pool")) {
-      const target = Math.max(420, window.innerHeight * 0.6);
-      snapPanelMaxHeight(panelEl, top, window.innerHeight - (top + window.scrollY) - target);
-      return;
-    }
-    // The rankings table's legend line sits right below .table-wrap; if its height isn't reserved here
-    // the table claims that room too, slicing the legend and forcing a second page-level scrollbar (👁
-    // visual-qa). Every other .scroll-panel has nothing below it, so this only adds for that one.
+    // A table's legend line can sit right below its .table-wrap; if its height isn't reserved here the table claims that room too,
+    // slicing the legend and forcing a second page-level scrollbar (👁 visual-qa). The Optimizer's pools are no longer scroll panels (A15).
     let reserve = 16;
     const legend = panelEl.parentElement?.querySelector(".table-legend");
     if (legend) reserve += legend.getBoundingClientRect().height + 8;
-    // The sticky Build footer covers the window bottom, so the pool must end above it (🔵 d842f0b); lineup.js keeps the same line.
-    reserve += document.querySelector("#lineup-panel .opt-footer")?.getBoundingClientRect().height ?? 0;
     snapPanelMaxHeight(panelEl, top, reserve);
   });
 }

@@ -5,7 +5,8 @@
 // One copy for the classic pool (lineup-view.js) and the Showdown pool (showdown/pool.js).
 import { escapeHtml } from "./format.js";
 
-/** Classic GPP, in the standard's order (A1): star, name, Sal, Proj, Own, Val, then the row controls, thumbs, lock, exclude, Min %, Max %. */
+/** Classic GPP, in the standard's order (A1): star, name, Sal, Proj, Own, Val, then the row controls, thumbs, lock, exclude, Min %, Max %, then the rest: the columns the retired ranked list had
+ *  (C9, C10, C17): Pos (the name cell already carries the position chip, so it starts off), TwoGun's Med, Nuke, 3x% and 4x% (drawn only on a TwoGun board, on by default), Tags (on by default: the tags he researched stay on screen) and Note (wide, so it starts off). */
 export const CLASSIC_GPP_COLUMNS = Object.freeze([
   { key: "star", label: "Star" },
   { key: "player", label: "Player", required: true },
@@ -18,7 +19,17 @@ export const CLASSIC_GPP_COLUMNS = Object.freeze([
   { key: "exclude", label: "Exclude" },
   { key: "min_pct", label: "Min %" },
   { key: "max_pct", label: "Max %" },
+  { key: "pos", label: "Pos", off: true },
+  { key: "tgMed", label: "Med" },
+  { key: "tgNuke", label: "Nuke" },
+  { key: "tgP3x", label: "3x%" },
+  { key: "tgP4x", label: "4x%" },
+  { key: "tags", label: "Tags" }, // on by default: the tags he researched stay on screen, as the retired ranked list showed them
+  { key: "note", label: "Note", off: true },
 ]);
+
+/** The TwoGun columns of the classic pool: on a TwoGun board only (lineup-pool.js poolAvailableKeys). */
+export const CLASSIC_TG_KEYS = Object.freeze(["tgMed", "tgNuke", "tgP3x", "tgP4x"]);
 
 /** Classic Cash: the Cash chips (Lock, Want, Fine) are one column in place of Lock, Min % and Max %. */
 export const CLASSIC_CASH_COLUMNS = Object.freeze(CLASSIC_GPP_COLUMNS.filter((c) => !["lock", "min_pct", "max_pct"].includes(c.key)).flatMap((c) => (c.key === "thumbs" ? [c, { key: "cash", label: "Cash" }] : [c])));
@@ -78,10 +89,10 @@ export function parseColumns(defs, text) {
 /** The keys the table draws, in order: ticked ones, and only those `available` (a Set, when given) at this moment. */
 export const shownKeys = (st, available = null) => st.order.filter((k) => !st.hidden.includes(k) && (!available || available.has(k)));
 
-/** The Columns list's entries, in order. */
-export const listedColumns = (defs, st) => {
+/** The Columns list's entries, in order; only those `available` (a Set, when given) at this moment are offered: a column the board cannot show is not listed, and a tick remembered for it stays harmless in the state. */
+export const listedColumns = (defs, st, available = null) => {
   const map = byKey(defs);
-  return st.order.map((k) => ({ ...map.get(k), on: !st.hidden.includes(k) }));
+  return st.order.filter((k) => !available || available.has(k)).map((k) => ({ ...map.get(k), on: !st.hidden.includes(k) }));
 };
 
 /** Ticks or unticks a column; a required one stays on. */
@@ -110,8 +121,8 @@ export function dropEdge(st, key, over) {
 }
 
 /** The list's markup: a row per column (drag handle, tick box; the name column's box is disabled), then Reset columns. */
-export function columnsListHtml(defs, st) {
-  const rows = listedColumns(defs, st).map((c) => `<li class="colrow" data-col="${escapeHtml(c.key)}"><span class="hnd" draggable="true" tabindex="0" role="button" data-col-handle="${escapeHtml(c.key)}" title="Drag to move ${escapeHtml(c.label)}; the up and down arrow keys move it too" aria-label="Move ${escapeHtml(c.label)}">⠿</span>`
+export function columnsListHtml(defs, st, available = null) {
+  const rows = listedColumns(defs, st, available).map((c) => `<li class="colrow" data-col="${escapeHtml(c.key)}"><span class="hnd" draggable="true" tabindex="0" role="button" data-col-handle="${escapeHtml(c.key)}" title="Drag to move ${escapeHtml(c.label)}; the up and down arrow keys move it too" aria-label="Move ${escapeHtml(c.label)}">⠿</span>`
     + `<label><input type="checkbox" data-col-tick="${escapeHtml(c.key)}"${c.on ? " checked" : ""}${c.required ? ` disabled title="The name column stays on"` : ""}> ${escapeHtml(c.label)}</label></li>`).join("");
   return `<ul class="collist">${rows}</ul><button type="button" class="colreset" data-col-reset>Reset columns</button>`;
 }
@@ -157,13 +168,13 @@ const openScopes = new Set(); // a redraw of the panel keeps an open list open
  * `onChange(state)` redraws the table. Dragging moves a column on the drop only (a redraw during a drag would end it); the up and down
  * arrow keys move the focused handle too. Returns nothing; the state is read again from storage by the next draw's loadColumns.
  */
-export function wireColumns(root, { defs, scope, onChange, storage = browserStorage() }) {
+export function wireColumns(root, { defs, scope, onChange, storage = browserStorage(), available = null }) {
   const btn = root.querySelector?.("[data-columns-btn]");
   const pop = root.querySelector?.("[data-columns-pop]");
   if (!btn || !pop || typeof document === "undefined" || typeof document.addEventListener !== "function" || typeof btn.closest !== "function") return; // no page behind it (a test's stand-in container)
   let st = loadColumns(defs, scope, storage);
   let dragging = null;
-  const draw = () => { pop.innerHTML = columnsListHtml(defs, st); };
+  const draw = () => { pop.innerHTML = columnsListHtml(defs, st, available?.() ?? null); }; // `available()`: the columns the board can show now (classic: no TwoGun columns on a board with no TwoGun figures)
   const open = () => { draw(); pop.hidden = false; btn.setAttribute("aria-expanded", "true"); openScopes.add(scope); };
   const close = () => { pop.hidden = true; btn.setAttribute("aria-expanded", "false"); openScopes.delete(scope); };
   const set = (next, saved = next) => {
@@ -217,7 +228,8 @@ export function wireColumns(root, { defs, scope, onChange, storage = browserStor
     const k = e.target.dataset?.colHandle;
     if (!k || (e.key !== "ArrowUp" && e.key !== "ArrowDown")) return;
     e.preventDefault();
-    const list = st.order;
+    const avail = available?.() ?? null;
+    const list = avail ? st.order.filter((x) => avail.has(x)) : st.order; // the neighbour is the one he sees
     const next = list[list.indexOf(k) + (e.key === "ArrowUp" ? -1 : 1)];
     if (next) {
       set(moveColumn(st, k, next));

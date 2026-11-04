@@ -9,6 +9,8 @@ const HINT_SHORT = "One game, six spots, one Captain at 1.5x.";
 const HINT = `${HINT_SHORT} Pick a game below; a game with a DraftKings Showdown CSV loaded opens its board.`;
 const NONE_LOADED_AT_ALL = "No showdown loaded yet. Upload a DraftKings Showdown CSV for the game you want.";
 const NONE_LOADED_THIS_WEEK = "No showdown slate is loaded for this week yet. Pick a game above, then upload its DraftKings Showdown CSV.";
+const PICK_AND_UPLOAD = "Pick a game above, then upload its DraftKings Showdown CSV."; // the hint of NONE_LOADED_THIS_WEEK, for an upcoming game
+const UPLOAD_UPCOMING = "Upload a DraftKings Showdown CSV for an upcoming game.";
 const READING_SENTENCE = "Reading the loaded showdowns…"; // 🔵 2026-10-17 (cold read is unknown)
 const SITE_UPLOAD_SENTENCE = "Uploading a showdown CSV runs in the app."; // D71: the site keeps the control's place with a plain sentence
 const READ_HERE_SENTENCE = "The file is read here and never sent anywhere else.";
@@ -62,6 +64,12 @@ export function showdownGameChoices(games = [], showdowns = []) {
   });
 }
 
+/** "" with no played game; else the plain sentence that every showdown loaded this week has been played, naming them (the live list hides played games, D30, so this is the only place they show). */
+function playedSentence(played) {
+  const names = [...new Set((Array.isArray(played) ? played : []).map((p) => (p?.gameId ? gameLabel(p.gameId) : p?.key)).filter(Boolean))];
+  return names.length ? `${names.length === 1 ? "The showdown" : "The showdowns"} loaded for this week ${names.length === 1 ? "has" : "have all"} been played: ${names.join(", ")}.` : "";
+}
+
 function tileHtml(choice, selected, unknown = false) {
   const when = kickoffDateAndClock(choice.kickoffEt);
   const loaded = choice.key != null;
@@ -88,7 +96,7 @@ function emptyHtml(text, onSite) {
 }
 
 /**
- * The panel's HTML. model: { games, showdowns, listError, onSite }; listError is the message when the loaded-showdown list
+ * The panel's HTML. model: { games, showdowns, played, listError, onSite }; played: this week's played games ([{ key, gameId }], GET /api/showdown's `played`), named when no loaded showdown is left; listError is the message when the loaded-showdown list
  * could not be read (shown as unknown, never as "none loaded"; 🔵 2026-10-17), else null; selected: a gameId the user picked, or null.
  * listRead is false only before the first list read returns (the same unknown rule); absent or true draws as the list says.
  */
@@ -101,9 +109,9 @@ export function showdownTabHtml(model, selected = null) {
   let below = "";
   if (model?.listError) below = emptyHtml(`Could not read the loaded showdowns: ${model.listError}`, onSite);
   else if (reading) below = `<p class="tab-note">${escapeHtml(READING_SENTENCE)}</p>`;
-  else if (choices.length === 0) below = emptyHtml(NONE_LOADED_AT_ALL, onSite);
+  else if (choices.length === 0) below = emptyHtml(playedSentence(model?.played) ? `${playedSentence(model.played)} ${UPLOAD_UPCOMING}` : NONE_LOADED_AT_ALL, onSite);
   else if (picked) below = emptyHtml(`No showdown slate for ${gameLabel(picked.gameId)} yet. Upload its DraftKings Showdown CSV.`, onSite);
-  else if (loadedCount === 0) below = emptyHtml(NONE_LOADED_THIS_WEEK, onSite);
+  else if (loadedCount === 0) below = emptyHtml(playedSentence(model?.played) ? `${playedSentence(model.played)} ${PICK_AND_UPLOAD}` : NONE_LOADED_THIS_WEEK, onSite);
   else below = `<p class="tab-note">${loadedCount} showdown${loadedCount === 1 ? "" : "s"} loaded; click one to open its board.</p>`;
   const tiles = choices.length
     ? `<div class="sd-game-tiles">${choices.map((c) => tileHtml(c, picked != null && c.gameId === picked.gameId, reading)).join("")}</div>`

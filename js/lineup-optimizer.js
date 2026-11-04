@@ -7,10 +7,11 @@ import { rowIsOut } from "./table.js"; // D43: the one copy of "vs DAL" / "@ DET
 import { newBuildId, batchBuild } from "./lineup-builds.js";
 import { nextSort } from "./lineup-sort.js"; // Adam 2026-10-17: sort options; geo own = geometric mean of ownership, his multiplicative uniqueness
 import { toggleMustHave, bulkUids } from "./lineup-filter.js";
-import { OPT_POSITIONS, optExposureHtml, exposureLimit, minLimit } from "./lineup-exposure.js";
+import { OPT_POSITIONS, optExposureHtml, exposureLimit, minLimit, nextExpSort, classicEntries } from "./lineup-exposure.js"; // A10: the one exposure table
 import { wireQbStacks } from "./lineup-qb-stacks.js";
 import { postLineupGenerate, postLineup, stopLineupGenerate, canStopLineupGenerate } from "./api.js";
 import { afterBuildingDelay, goSitsBelow, stopFailure } from "./lineup-stop.js";
+import { createNoticeController } from "./build-notice.js"; // A15: `Building...`, `Build finished.` and a failure under the filter bar while the Build row is off screen
 import { ruleOn, countBelowMin, syncCountNote, COUNT_MIN_SENTENCE, fullLineupText } from "./lineup-settings.js";
 import { answerTone } from "./row-message.js";
 import { wireLimitBox, flushOpenLimit, limitRefusals } from "./limit-box.js"; // A3: the Min % and Max % boxes
@@ -584,6 +585,7 @@ async function doGenerate() {
   if (refused.length) {
     opt.formError = refused[0].sentence;
     commit();
+    buildNotice.finish({ error: opt.formError, tone: "warn" });
     return false;
   }
   const board = store.get().board;
@@ -604,6 +606,7 @@ async function doGenerate() {
   opt.formError = countBelowMin(countText) ? COUNT_MIN_SENTENCE : heldAll ? fullLineupText(LINEUP_SLOTS.length) : cash ? (basis.blocked ? basis.text : null) : exposureProblem(opt.maxExp) ?? playerMaxProblem(playerMax, nameOf) ?? minProblemFor(opt.count, playerMin, playerMax, state.excludes, nameOf);
   if (opt.formError) {
     commit();
+    buildNotice.finish({ error: opt.formError, tone: "warn" }); // a refusal says so where he pressed, even from far down (Make them Must, Undo and a blank count box reach here too)
     return false;
   }
   // The week and the slate on screen when Go was pressed: a response that arrives after either changed belongs to
@@ -670,6 +673,7 @@ async function doGenerate() {
     }, nameOf);
     if (opt.formError) {
       commit();
+      buildNotice.finish({ error: opt.formError, tone: "warn" });
       return false;
     }
   }
@@ -680,6 +684,8 @@ async function doGenerate() {
   opt.canStop = canStopLineupGenerate();
   opt.error = null;
   opt.saveError = null;
+  opt.doneNote = false;
+  buildNotice.reset(); // the last build's notice goes when the next one starts
   opt.resultsTab = "new"; // D74: a Go shows the New lineups tab
   commit();
   const cancelShow = afterBuildingDelay(() => {
@@ -733,13 +739,68 @@ async function doGenerate() {
   opt.generating = false;
   opt.stopping = false;
   opt.stopError = "";
+  // A15: the page does not move by itself (the results are far below the pool). The Build button's own row says `Build finished.` with a link; with the button off screen the notice under the
+  // filter bar says it (or the failure) where he is looking (build-notice.js).
+  opt.doneNote = built;
   commit();
+  buildNotice.finish({ built, error: opt.error ?? "", tone: opt.errorTone === "warn" ? "warn" : "error" });
+  return built;
+}
+
+const filterBarBottom = () => (typeof document === "undefined" ? 0 : document.getElementById?.("filterbar")?.getBoundingClientRect?.().bottom ?? 0);
+
+/** The classic Optimizer's notice under the filter bar (build-notice.js): its Build button, its results and the Stop it shares with the Build row. */
+const buildNotice = createNoticeController({
+  noticeEl: () => (typeof document === "undefined" ? null : document.getElementById?.("build-notice") ?? null),
+  barBottom: filterBarBottom,
+  buildButton: () => lastContainer?.querySelector("#opt-go-btn"),
+  resultsEl: () => lastContainer?.querySelector("#opt-results"),
+  building: () => (opt.generating && opt.buildingShown ? { canStop: opt.canStop, stopping: opt.stopping, stopError: opt.stopError } : null),
+  jumpResults: () => jumpToResults(),
+  jumpBuild: () => jumpToBuildRow(),
+  stop: () => doStop(),
+});
+
+/** After every draw of the panel: the notice follows the state and where the Build row is (called by lineup.js renderLineupPanel); and what the last build left goes when the slate changes (resetOptimizerResults). */
+export const refreshBuildNotice = () => buildNotice.refresh();
+export const resetBuildNotice = () => buildNotice.reset();
+
+/** Takes him to the Build row below the sticky bars (the failure notice's link, D16). */
+export function jumpToBuildRow() {
+  try {
+    lastContainer?.querySelector(".opt-footer")?.scrollIntoView({ block: "center", behavior: "smooth" });
+  } catch (e) {
+    console.warn("Show Build row: the row could not be scrolled into view", e); // a convenience only; the row is on the page either way
+  }
+}
+
+/** Stop (D15, D18): the Build row's button and the notice's do the same thing. */
+async function doStop() {
+  if (opt.stopping) return;
+  opt.stopping = true; // the button reads "Stopping..." until the build's own answer ends it (D15)
+  opt.stopError = "";
+  commit();
+  let failure = "";
+  try {
+    failure = stopFailure({ data: await stopLineupGenerate() });
+  } catch (e) {
+    console.error("lineup generate: the Stop was not heard", e); // the build runs on to its answer
+    failure = stopFailure({ thrown: true });
+  }
+  if (failure && opt.generating) {
+    opt.stopping = false; // Stop is pressable again; the line under it says why (D18)
+    opt.stopError = failure;
+    commit();
+  }
+}
+
+/** Brings the results into view below the sticky filter bar (the notice's link, and the link beside the Build button). */
+export function jumpToResults() {
   try {
     lastContainer?.querySelector("#opt-results")?.scrollIntoView({ block: "start", behavior: "smooth" });
   } catch (e) {
-    // Scrolling is a convenience only.
+    console.warn("Show results: the results could not be scrolled into view", e); // a convenience only; the results are on the page either way
   }
-  return built;
 }
 
 /** Saves the given new lineups one after another through the existing save-lineup route (D57: with the active slate
@@ -807,23 +868,30 @@ function discardGenerated(uid) {
   commit();
 }
 
-/** The exposure header flips the one sort and redraws only the exposure section on screen (never the whole panel),
- *  then re-wires its headers. */
+/** A10: a header of the one exposure table sorts it (the same column flips, another starts in its own direction) and a `Pos` chip filters it; only the exposure section on screen is redrawn (never the whole
+ *  panel), then its headers and chips are wired again. The sort and the filter are kept in the browser. */
 function wireExposureSort(container) {
   const redraw = () => {
     const section = container.querySelector(".opt-exposure");
     if (!section) return;
     const holder = document.createElement("div");
-    holder.innerHTML = optExposureHtml(lastExposure.exposure, lastExposure.subtitle, opt.expSortDir, pickOptions(currentRowById()), lastExposure.marks ?? null);
+    holder.innerHTML = optExposureHtml(classicEntries(lastExposure.exposure), opt.exp, "classic", pickOptions(currentRowById()), lastExposure.marks ?? null, { subtitle: lastExposure.subtitle });
     const fresh = holder.querySelector(".opt-exposure");
     if (!fresh) return;
     section.replaceWith(fresh);
+    savePersisted();
     wireExposureSort(container);
     wirePickButtons(fresh); // only the new section; the rest keep their handlers
   };
   container.querySelectorAll(".opt-exposure [data-action='opt-exp-sort']").forEach((th) => {
     th.addEventListener("click", () => {
-      opt.expSortDir = opt.expSortDir === "asc" ? "desc" : "asc";
+      opt.exp = nextExpSort(opt.exp, th.dataset.col, "classic");
+      redraw();
+    });
+  });
+  container.querySelectorAll(".opt-exposure [data-action='opt-exp-filter']").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      opt.exp = { ...opt.exp, filter: btn.dataset.filter };
       redraw();
     });
   });
@@ -876,6 +944,7 @@ export function wireOptimizer(container) {
     el?.addEventListener("input", () => {
       opt[key] = el.value;
       if (sel === "#opt-count") countTyped(el);
+      savePersisted(); // A9: the settings are remembered as typed
       refreshSummary();
     });
   };
@@ -901,6 +970,7 @@ export function wireOptimizer(container) {
   container.querySelectorAll("[data-opt-exp]").forEach((el) => {
     el.addEventListener("input", () => {
       opt.maxExp[el.dataset.optExp] = el.value;
+      savePersisted(); // A9
       refreshSummary();
       if (opt.formError) {
         opt.formError = null;
@@ -915,6 +985,7 @@ export function wireOptimizer(container) {
     const el = container.querySelector(sel);
     el?.addEventListener("change", () => {
       opt[key] = read(el);
+      savePersisted(); // A9
       refreshSummary();
     });
   };
@@ -929,24 +1000,12 @@ export function wireOptimizer(container) {
   wireExposureSort(container);
   wirePickButtons(container);
   container.querySelector("#opt-go-btn")?.addEventListener("click", () => doGenerate());
-  container.querySelector("#opt-stop-btn")?.addEventListener("click", async () => {
-    if (opt.stopping) return;
-    opt.stopping = true; // the button reads "Stopping..." until the build's own answer ends it (D15)
-    opt.stopError = "";
+  container.querySelector("[data-action='opt-show-results']")?.addEventListener("click", () => { // A15: the link beside the Build button
+    opt.doneNote = false;
     commit();
-    let failure = "";
-    try {
-      failure = stopFailure({ data: await stopLineupGenerate() });
-    } catch (e) {
-      console.error("lineup generate: the Stop was not heard", e); // the build runs on to its answer
-      failure = stopFailure({ thrown: true });
-    }
-    if (failure && opt.generating) {
-      opt.stopping = false; // Stop is pressable again; the line under it says why (D18)
-      opt.stopError = failure;
-      commit();
-    }
+    jumpToResults();
   });
+  container.querySelector("#opt-stop-btn")?.addEventListener("click", () => doStop());
   container.querySelectorAll("[data-action='opt-rule']").forEach((btn) => {
     btn.addEventListener("click", () => {
       opt.rules[btn.dataset.key] = !ruleOn(opt.rules, btn.dataset.key);

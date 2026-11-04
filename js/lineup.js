@@ -23,28 +23,35 @@
 // lineup-view.js holds every piece of panel markup; lineup-optimizer.js holds cash mode, the request/validation helpers
 // and the Optimizer actions. Every name this file exported before is still exported from here.
 import { store, FLEX_POS, defaultDirFor, activeSlateRows } from "./state.js";
+import { storableClassicFilters } from "./memory.js";
+import { showBand } from "./show-band.js"; // A12, A15: a Load brings the whole band into view
+import { focusOpenRename, wireRenameEnter } from "./rename-focus.js"; // the rename box: focused and selected on open, Enter saves
+import { keepPoolHeadInView, poolAvailableKeys } from "./lineup-pool.js"; // A15: a filter from far down puts the table back in view
+import { saveClassicMemory, syncLineupMemory, restoreForMode, migrateLegacyLineups, droppedMenSentence, currentMemoryKey } from "./lineup-memory-sync.js"; // A9: the browser's memory of the settings and the working lineups, per slate
 import { rowIsOut, twoGunOutReason, STATUS_INFO } from "./table.js"; // D43: the one copy of "vs DAL" / "@ DET"
 import { shownTotal } from "./totals.js";
 import { handBuild } from "./lineup-builds.js";
 import { cleanSortState } from "./lineup-sort.js"; // Adam 2026-10-17: sort options; geo own = geometric mean of ownership, his multiplicative uniqueness
-import { optExposureHtml, sortExposure, exposureLimit, minLimit, exposureMark, zeroMinRows } from "./lineup-exposure.js";
-import { newQbState, listedQbs, pruneEntries, cleanSavedEntries, qbStacksPayload } from "./lineup-qb-stacks.js";
+import { optExposureHtml, exposureLimit, minLimit, exposureMark, zeroMinRows, defaultExpState } from "./lineup-exposure.js";
+import { newQbState, listedQbs, pruneEntries, qbStacksPayload } from "./lineup-qb-stacks.js";
 import { getLineups, postLineup, putLineup, deleteLineup } from "./api.js";
 import { renderEntriesSection, wireEntries } from "./entries-wire.js";
-import { phoneMinHeight, panelMinHeight } from "./expand.js";
+import { phoneMinHeight } from "./expand.js";
 import { defaultCashState, cleanCashState, swapModeStash, COUNT_DEFAULTS_VERSION } from "./lineup-cash.js";
 import { ruleOn } from "./lineup-settings.js";
 import { paintStarredQbChip } from "./filterbar.js";
 import { setPoolCallbacks, poolStarClick, panelHtml, savedOfActiveSlate, starredQbChipView, poolColumnSetup, CLASSIC_POOL_PICK_SKIP, shownSavedLineups, poolPickerNow } from "./lineup-view.js";
 import { wireColumns } from "./columns.js";
+import { wirePoolEdits, takePoolEdit, restorePoolEdit } from "./lineup-pool-edit.js"; // C9, C17: the pool's typed Proj and Own and its note pencil, taken over from the retired ranked list
 import { clearLineupHasContent, clearedLineup } from "./lineup-clear.js"; // B6: Clear lineup empties the slots and their locks, never the excludes
 import { wireDkDownload } from "./dk-lineup-ui.js"; // A12: Download DK CSV for the saved lineups ticked
 import { takeOpenLimit, restoreOpenLimit, limitRefusals, dropOlderLimitRefusals, noteLimitPress } from "./limit-box.js"; // A3: the Min % and Max % boxes survive a redraw; a refused text is held
 import { onConfirmDismiss } from "./confirm-inline.js"; // B13: Esc and a click outside close an open confirm
 import { notDeletedText } from "./delete-words.js"; // A12: the one sentence a failed delete leaves
+import { fitPoolNames, wirePoolFit } from "./pool-fit.js"; // Round 5 last batch: the pool's name column is the one that gives when the ticked columns overflow
 import { wireStaleMessages } from "./stale-messages.js"; // item 17: a one-shot message goes at the next click on any control
 import { wirePick, wirePickRows, SLOT_PICK_SKIP } from "./pick-rows.js"; // click-to-pick, the one wiring the Showdown Optimizer shares (D81)
-import { cleanPlayerMax, boardModeOf, slateKeyOf, uniqueSavedName, lockedIds, cashPick, wireOptimizer, savedSetKeys, lineupSetKey } from "./lineup-optimizer.js";
+import { cleanPlayerMax, boardModeOf, slateKeyOf, uniqueSavedName, lockedIds, cashPick, wireOptimizer, savedSetKeys, lineupSetKey, refreshBuildNotice, resetBuildNotice } from "./lineup-optimizer.js";
 
 export const LINEUP_SLOTS = ["QB", "RB", "RB", "WR", "WR", "WR", "TE", "FLEX", "DST"];
 export const SALARY_CAP = 50000;
@@ -66,7 +73,7 @@ export function builtInText(mode) {
   return `${mode === "twogun" ? "TwoGun" : "current"} mode, by projection`;
 }
 
-export { optExposureHtml, sortExposure, exposureLimit, minLimit, exposureMark, zeroMinRows }; // lineup-exposure.js
+export { optExposureHtml, exposureLimit, minLimit, exposureMark, zeroMinRows }; // lineup-exposure.js
 export const MAX_TEAM_OPTIONS = ["", "1", "2", "3", "4"];
 const STORAGE_KEY = "nfldfs.lineupBuilder.v1";
 
@@ -78,6 +85,7 @@ export const state = {
   addErrorId: null, // the pool row (board id) whose click made addError: the message is drawn beside that row (row-message.js, standard A14)
   addTone: undefined, // how addError is drawn: undefined is amber (a refusal); "error" for a write that failed (setPoolRowError)
   confirm: null, // the inline confirm that is open (confirm-inline.js): "clear" (Clear lineup) or "load:<saved lineup id>" (Load over an unsaved working lineup)
+  memoryNote: "", // the sentence a remembered lineup that lost men leaves (A9): who is gone from this slate; one-shot, goes at the next click
   dkSelected: new Set(), // saved lineup ids ticked for Download DK CSV (dk-lineup-ui.js); page-only
   dkStatus: "", // the sentence the last Download DK CSV left under its button
 
@@ -115,7 +123,7 @@ export function setPoolRowError(id, text) {
 }
 
 /** Forgets the loaded saved lineup and its prefilled name together (PROJECT.md Part 4 Lineups). */
-function clearLoaded() {
+export function clearLoaded() {
   state.loadedId = null;
   state.saveName = "";
 }
@@ -167,21 +175,18 @@ function loadPersisted() {
   }
 }
 
+/** What this key still carries of the Optimizer: the per-player Max % and Min % boxes (per slate key), the card lists' sort, the mode and Cash's Want lists (per slate key). The working lineup and every
+ *  setting (how many lineups, the caps, the rules, the stack, Spread defenses, the per-QB panels, the avoided games, Cash's count and Max per team) are the browser memory's (lineup-memory-sync.js, A9), per slate. */
 export function savePersisted() {
+  saveClassicMemory();
   try {
     window.localStorage.setItem(
       STORAGE_KEY,
       JSON.stringify({
-        slots: state.slots,
-        locks: [...state.locks],
-        excludes: [...state.excludes],
         playerMax: opt.playerMax, // per slate key: {id: "typed text"} (the pool's Max % boxes)
         playerMin: opt.playerMin,
-        qbStacks: opt.qb.entries,
-        spreadDst: opt.spreadDst,
-        mode: opt.mode, // Cash mode job 3b, 2026-10-17: the switch, cash's own settings and Want lists, and the other mode's slots
-        cash: opt.cash,
-        stash: opt.stash,
+        mode: opt.mode, // Cash mode job 3b, 2026-10-17: the switch and Cash's Want lists
+        cash: { want: opt.cash.want },
         sort: opt.sort,
         countsV: COUNT_DEFAULTS_VERSION, // D9: a saved state without it that remembers a count of 1 takes the new default once (hydrateFromStorage)
       })
@@ -197,47 +202,25 @@ let hydrated = false;
 const normalSlots = (raw) =>
   Array.isArray(raw) && raw.length === LINEUP_SLOTS.length ? raw.map((s, i) => (s && s.id != null ? { id: String(s.id), slot: LINEUP_SLOTS[i] } : null)) : null;
 
-// Cash mode job 3b: the other mode's saved build as storage gives it back (loadedId and saveName live in memory only).
-function cleanStash(raw) {
-  const out = {};
-  for (const mode of ["gpp", "cash"]) {
-    const s = raw?.[mode];
-    if (!s || typeof s !== "object") continue;
-    const ids = (list) => (Array.isArray(list) ? list.map(String) : []);
-    out[mode] = { slots: normalSlots(s.slots) ?? new Array(LINEUP_SLOTS.length).fill(null), locks: ids(s.locks), excludes: ids(s.excludes), loadedId: null, saveName: "" };
-  }
-  return out;
-}
-
 /** Reads localStorage exactly once per page load. Everything it accepts is still subject to
- *  validateAgainstBoard() once a board exists (🔵 finding 1), so a stale slate never survives here. */
+ *  validateAgainstBoard() once a board exists (🔵 finding 1), so a stale slate never survives here. The settings and the working lineups are the browser memory's, read per slate when a slate is drawn
+ *  (lineup-memory-sync.js syncLineupMemory); an older browser's one global lineup, still in this key, is moved into that memory here, before the first save of this key drops it (A9). */
 function hydrateFromStorage() {
   if (hydrated) return;
   hydrated = true;
   const persisted = loadPersisted();
   if (!persisted) return;
-  const slots = normalSlots(persisted.slots);
-  if (slots) state.slots = slots;
+  migrateLegacyLineups(persisted);
   opt.mode = persisted.mode === "cash" ? "cash" : "gpp"; // Cash mode job 3b
   opt.cash = cleanCashState(persisted.cash, persisted.countsV ?? null); // null: a state saved before the count defaults changed (D9)
-  opt.stash = cleanStash(persisted.stash);
   opt.sort = cleanSortState(persisted.sort);
-  if (Array.isArray(persisted.locks)) state.locks = new Set(persisted.locks.map(String));
-  if (Array.isArray(persisted.excludes)) state.excludes = new Set(persisted.excludes.map(String));
   opt.playerMax = cleanPlayerMax(persisted.playerMax);
   opt.playerMin = cleanPlayerMax(persisted.playerMin);
-  opt.qb.entries = cleanSavedEntries(persisted.qbStacks, OPT_STACK_OWN_MAX, OPT_STACK_OPP_MAX);
-  opt.spreadDst = persisted.spreadDst === true;
+  // The per-QB panels, Spread defenses and Cash's count, Max per team and avoided games an older browser kept here are carried by migrateLegacyLineups to the first main slate; later saves of this key leave them out.
   // Older saved state may still carry the removed Build's objective / maxFromTeam / stackQbWith; they are ignored
   // and dropped on the next save.
-  // 🔵 finding 5: an id in both locks and excludes is dropped from both.
-  for (const id of [...state.locks]) {
-    if (state.excludes.has(id)) {
-      state.locks.delete(id);
-      state.excludes.delete(id);
-    }
-  }
 }
+
 
 let lastValidatedBoard = null;
 let lastSavedKey = null; // "season-week" the saved-lineups list was last requested for
@@ -255,9 +238,11 @@ export function seasonWeekKey(board) {
  *  so a new week's upload shows that week's saved lineups without a page reload. */
 function validateAgainstBoard(board) {
   if (!board || board === lastValidatedBoard) return;
+  const before = lastValidatedBoard; // the board the lineup was last checked against: where a man who is gone from this one can still be named
   lastValidatedBoard = board;
   opt.cashUndo = null; // Cash 3b fix round 2, 2026-10-17: a snapshot made on another board never comes back past this check
   const savedKey = seasonWeekKey(board);
+  const sameWeek = savedKey === lastSavedKey;
   if (savedKey !== lastSavedKey) {
     lastSavedKey = savedKey;
     state.savedLoaded = false;
@@ -274,6 +259,9 @@ function validateAgainstBoard(board) {
     state.dkStatus = "";
   }
   const rowById = new Map((board.rows ?? []).map((r) => [String(r.id), r]));
+  // A9: a re-upload or a refresh of the same week that no longer has a man (a new id, or he left the file) takes him out, and a sentence names him; his name is the old board's or the memory's, never blank.
+  const lost = sameWeek ? [...new Set([...state.slots.filter(Boolean).map((s) => String(s.id)), ...state.locks])].filter((id) => !rowById.has(id)) : [];
+  if (lost.length) state.memoryNote = droppedMenSentence(lost, before);
   for (const id of [...state.locks]) if (!rowById.has(id)) state.locks.delete(id);
   for (const id of [...state.excludes]) if (!rowById.has(id)) state.excludes.delete(id);
   for (const key of Object.keys(opt.cash.want)) opt.cash.want[key] = opt.cash.want[key].filter((id) => rowById.has(id)); // Cash mode job 3b: Want ids off the board go, as locks do
@@ -305,34 +293,41 @@ function dropStaleMessages(board) {
   lastMessageScope = scope;
 }
 
+let lastFiltersJson = null; // the filters as of the last draw: a draw after a filter changed puts the table back in view (keepPoolHeadInView)
+
 export function renderLineupPanel(container, callbacks) {
+  const filtersNow = JSON.stringify(storableClassicFilters(store.get().filters));
+  const filtersChanged = lastFiltersJson !== null && filtersNow !== lastFiltersJson;
+  lastFiltersJson = filtersNow;
   lastContainer = container;
   if (callbacks) setPoolCallbacks(callbacks);
   hydrateFromStorage();
   validateAgainstBoard(store.get().board);
+  syncLineupMemory(store.get().board); // A9: after the board check (a new week clears the avoided games), so the remembered ones are the slate's own
   dropStaleMessages(store.get().board);
   if (state.loadedId && state.savedLoaded && !state.savedLineups.some((l) => l.id === state.loadedId)) clearLoaded();
   pruneQbStacks(store.get().board);
   syncOptimizerSlate();
-  // 🔵 finding 9: the pool's scroll position must survive the innerHTML rebuild below.
-  const prevPool = container.querySelector(".lineup-rows-wrap");
-  const savedScrollTop = prevPool ? prevPool.scrollTop : 0;
+  wirePoolEdits(container, { rowOf: (id) => store.get().board?.rows.find((r) => String(r.id) === String(id)) }); // C9, C17: the pool's typed Proj and Own and its note pencil (one listener on the mount)
   wireStaleMessages(container, {
-    hasAny: () => Boolean(state.dkStatus || state.saveConfirm || state.addError || limitRefusals().length),
-    clear: () => { state.dkStatus = ""; state.saveConfirm = null; clearAddMessage(); dropOlderLimitRefusals(container); }, // a refused Min % / Max % text made in this very press stays (limit-box.js)
+    hasAny: () => Boolean(state.dkStatus || state.saveConfirm || state.addError || state.memoryNote || limitRefusals().length),
+    clear: () => { state.dkStatus = ""; state.saveConfirm = null; state.memoryNote = ""; clearAddMessage(); dropOlderLimitRefusals(container); }, // a refused Min % / Max % text made in this very press stays (limit-box.js)
     press: noteLimitPress,
     selector: ".dk-status, .row-msg-warn, .row-msg-notice, .lineup-status:not(.lineup-status-error):not(.lineup-status-warning)", // a notice such as `Saved "..."`, the DK status, an amber refusal
   });
   const openLimit = takeOpenLimit(); // a Min % or Max % box he is typing in survives the redraw with its text and focus (A3)
+  const openEdit = takePoolEdit(container); // so does a typed Proj, Own or note box
   container.innerHTML = panelHtml();
   wire(container);
   restoreOpenLimit(container, openLimit);
+  restorePoolEdit(container, openEdit, { rowOf: (id) => store.get().board?.rows.find((r) => String(r.id) === String(id)) });
   focusOpenConfirm(container);
-  const newPool = container.querySelector(".lineup-rows-wrap");
-  if (newPool) newPool.scrollTop = savedScrollTop;
-  resizeLineupScrollPanels(container);
-  watchFooter(container);
+  focusOpenRename(container, state.renamingId); // the rename box takes the keyboard when it opens, its name selected
   syncStarredQbChip();
+  fitPoolNames(container); // the name line gives way (an ellipsis, the full name on hover) only when the ticked columns would overflow the panel
+  wirePoolFit();
+  if (filtersChanged) keepPoolHeadInView(); // a filter from far down that shrank the table leaves him at the table, not past it
+  refreshBuildNotice(); // A15: the notice under the filter bar follows the build's state and where the Build row is
 }
 
 /** The Starred QBs only chip lives in the filter bar (standard C12); its look follows the rule, the mode and the board, so each draw repaints it. */
@@ -350,42 +345,8 @@ export function toggleStarredQbOnly() {
   commit();
 }
 
-// Optimizer-first step 4: the ranked list sits under this part. style.css lays #lineup-panel out as a column with this mount as
-// display: contents and the Build footer ordered last, so the footer's sticky place is the end of the whole tab: it stays pinned to the
-// window's bottom and never rests mid-page between the results and the ranked list (it stays in this mount's DOM, so its wiring is as
-// before). It is shown only while the builder or its results are in view (footerShown; .is-away hides it, visibility only). The ranked
-// list below gives the room for the last slot and the last result to scroll into view above it.
-/** Whether the Build footer shows: some of the Optimizer's part (its first element's top to the results' bottom) lies between the
- *  sticky filter bar's bottom and the footer's top. All four are window coordinates in px. */
-export function footerShown({ partTop, partBottom, barBottom, footerTop }) {
-  return partBottom > barBottom && partTop < footerTop;
-}
-
-let footerWatched = false;
-let footerFrame = 0;
-function updateFooter() {
-  footerFrame = 0;
-  const footer = lastContainer?.querySelector?.(":scope > .opt-footer");
-  const first = lastContainer?.firstElementChild;
-  const results = footer?.previousElementSibling;
-  const bar = document.querySelector("#filterbar");
-  if (!footer || !first || !results || !bar) return;
-  const rect = (el) => el.getBoundingClientRect();
-  footer.classList.toggle("is-away", !footerShown({ partTop: rect(first).top, partBottom: rect(results).bottom, barBottom: rect(bar).bottom, footerTop: rect(footer).top }));
-}
-
-function watchFooter(container) {
-  if (typeof window === "undefined" || !container.querySelector?.(":scope > .opt-footer")) return; // a test's stand-in container
-  if (!footerWatched) {
-    footerWatched = true;
-    const later = () => {
-      if (!footerFrame) footerFrame = requestAnimationFrame(updateFooter);
-    };
-    window.addEventListener("scroll", later, { passive: true });
-    window.addEventListener("resize", later);
-  }
-  updateFooter();
-}
+// A15 (round 5): there is no sticky Build footer. The Build row (the summary and the button) sits under the settings, the pool and then the results run down the page, and a build that ends with its
+// button off screen says `Build finished.` with a link to the results (build-notice.js, lineup-optimizer.js doGenerate).
 
 let entriesContainer = null; // the Entries tab's panel, once drawn (rules repo 2026-10-17)
 
@@ -416,11 +377,11 @@ function redrawEntries() {
 // badges, etc.) never leaves a partial row peeking out at the bottom. `panelEl.offsetHeight -
 // panelEl.clientHeight` is added back on as the panel's own border/scrollbar allowance. Falls back to the
 // previous head+available calc() only when the panel has no tbody rows yet (e.g. an empty table).
+// The Optimizer pools are no longer scroll panels (A15); the Sources tables still are, and showdown/tabs.js sizes its tables with this.
 //
-// This exact function also lives in public/app.js as adjustScrollPanels's per-panel sizing step
-// (snapPanelMaxHeight there). It's duplicated here rather than imported because app.js is the page's
-// entry module — it imports tabs.js, which imports this module, so importing app.js back into lineup.js
-// would make that a circular module dependency. Keep both copies in sync.
+// This exact function also lives in public/js/scroll-panels.js as adjustScrollPanels's per-panel sizing step
+// (snapPanelMaxHeight there). It's duplicated here rather than imported because tabs.js imports this module and
+// scroll-panels.js imports expand.js; keep both copies in sync.
 export function snapPanelMaxHeight(panelEl, top, reserve) {
   // Layout round 2, 2026-10-17: a panel in a hidden tab reads every rect as 0 and would be sized to 0px: leave it alone.
   if (panelEl.getClientRects().length === 0) return;
@@ -429,7 +390,7 @@ export function snapPanelMaxHeight(panelEl, top, reserve) {
   // 1920x947) sizes it exactly as an unscrolled page does; nothing is stored, so nothing goes stale.
   const docTop = top + window.scrollY;
   // Same phone minimum as app.js's copy (70% of the window's height at max-width 700px, via expand.js).
-  const phoneMin = Math.max(phoneMinHeight(), panelMinHeight(panelEl, top)); // the Optimizer pool's floor too (expand.js)
+  const phoneMin = phoneMinHeight();
   const available = Math.max(window.innerHeight - docTop - reserve, phoneMin);
   const rows = panelEl.querySelectorAll("tbody tr");
   const borderAllowance = panelEl.offsetHeight - panelEl.clientHeight;
@@ -450,25 +411,6 @@ export function snapPanelMaxHeight(panelEl, top, reserve) {
     lastFitBottom = theadEl ? theadEl.getBoundingClientRect().bottom + window.scrollY - docTop : 0;
   }
   panelEl.style.maxHeight = `${Math.floor(lastFitBottom + borderAllowance)}px`;
-}
-
-// Mirrors app.js's adjustScrollPanels() sizing for this panel's own .scroll-panel element. app.js is out
-// of scope for this pass and doesn't export that function; it also only runs after the app-level
-// renderDynamic, which this module's own re-renders (Lock, Add, Clear, Go — all via commit(), below)
-// bypass entirely, so the pool needs its own call (🔵 finding 9).
-function resizeLineupScrollPanels(container) {
-  container.querySelectorAll(".scroll-panel").forEach((panelEl) => {
-    const top = panelEl.getBoundingClientRect().top;
-    // The repeated ownership legend (👁 visual-qa third pass) sits right below this panel, same as the
-    // Rankings table's own legend in app.js's adjustScrollPanels — its height has to be reserved here
-    // too, or the pool table claims that room and clips the legend.
-    let reserve = 16;
-    const legend = panelEl.parentElement?.querySelector(".table-legend");
-    if (legend) reserve += legend.getBoundingClientRect().height + 8;
-    // The sticky Build footer covers the window bottom, so the pool must end above it (🔵 d842f0b); app.js keeps the same line.
-    reserve += document.querySelector("#lineup-panel .opt-footer")?.getBoundingClientRect().height ?? 0;
-    snapPanelMaxHeight(panelEl, top, reserve);
-  });
 }
 
 export function commit() {
@@ -680,6 +622,7 @@ async function doSaveLineup(name, { asNew = false } = {}) {
   commit();
   const editId = !asNew && state.loadedId ? state.loadedId : null;
   const keyAtStart = lastSavedKey;
+  const slateAtStart = currentMemoryKey();
   const loadedAtStart = state.loadedId;
   const slate = slateKeyOf(store.get().board);
   // A cash hand save records the board's Cash basis (board.mode.cashMode), as a cash batch does (code review of a9455a0, MUST 1
@@ -694,7 +637,7 @@ async function doSaveLineup(name, { asNew = false } = {}) {
   } catch (e) {
     failure = `Could not reach the server: ${e.message}`;
   }
-  const after = afterSave({ data, name, editId, weekChanged: lastSavedKey !== keyAtStart, loadedAtStart, loadedNow: state.loadedId });
+  const after = afterSave({ data, name, editId, weekChanged: lastSavedKey !== keyAtStart, loadedAtStart, loadedNow: state.loadedId, slateChanged: currentMemoryKey() !== slateAtStart });
   if (!after.discard) {
     if (Array.isArray(data?.lineups)) state.savedLineups = data.lineups;
     if (after.dropId) state.savedLineups = state.savedLineups.filter((l) => l.id !== after.dropId);
@@ -710,9 +653,9 @@ async function doSaveLineup(name, { asNew = false } = {}) {
 
 /** What a finished save changes (PROJECT.md Part 4 Lineups): {discard} for a week changed under the request; a Load or
  *  Clear lineup made during the save keeps its loadedId and name; NOT_FOUND and READ_ONLY unload the edited lineup. */
-export function afterSave({ data, name, editId, weekChanged, loadedAtStart, loadedNow }) {
+export function afterSave({ data, name, editId, weekChanged, loadedAtStart, loadedNow, slateChanged = false }) {
   if (weekChanged) return { discard: true };
-  const moved = loadedNow !== loadedAtStart;
+  const moved = slateChanged || loadedNow !== loadedAtStart; // a slate switched under the request: the list is updated, but the new lineup is not loaded (nor its name put in the box) on a slate it was not made on
   if (!data || data.ok === false) {
     const code = data?.error?.code;
     const unload = editId && (code === "NOT_FOUND" || code === "READ_ONLY");
@@ -808,13 +751,9 @@ function doLoadLineup(id) {
   scrollToSlots();
 }
 
-/** A12: brings the working lineup's slots into view (a Load from a card far below them). */
+/** A12: brings the working lineup's band into view, whole under the sticky layers (a Load from a card far below it; show-band.js). */
 function scrollToSlots() {
-  try {
-    lastContainer?.querySelector?.(".lineup-slots")?.scrollIntoView?.({ block: "start", behavior: "smooth" });
-  } catch (e) {
-    console.warn("Load: the slots could not be scrolled into view", e); // a convenience only; the lineup is loaded either way
-  }
+  showBand(lastContainer, "lineup-panel");
 }
 
 /** C11: whether the working lineup holds men that no saved lineup of this slate has as its set: loading over it would lose them, so Load asks first. */
@@ -877,6 +816,10 @@ function focusOpenConfirm(container) {
 
 function wire(container) {
   wireConfirmDismiss();
+  // An empty pool offers the filter bar's own Clear filters (lineup-pool.js NO_MATCH_TEXT): the one button does the one reset, search and salary boxes included.
+  container.querySelectorAll("[data-action='pool-clear-filters']").forEach((btn) => {
+    btn.addEventListener("click", () => document.getElementById("clear-filters-btn")?.click());
+  });
   // B13 (round 3): Clear lineup asks first when it would lose something; the question sits beside the button (confirm-inline.js).
   container.querySelector("#lineup-clear-all-btn")?.addEventListener("click", () => {
     if (!clearAllHasContent()) return doClearAll();
@@ -1001,6 +944,8 @@ function wire(container) {
     });
   });
 
+  wireRenameEnter(container, "[data-action='lineup-rename-save']", (id, text) => doRenameLineup(id, text)); // Enter saves the new name, as Save does (and as Showdown's box does)
+
   container.querySelectorAll("[data-action='lineup-tag']").forEach((sel) => {
     sel.addEventListener("change", () => doLineupPut(sel.dataset.id, { tag: sel.value || null }));
   });
@@ -1027,7 +972,8 @@ function wire(container) {
     btn.addEventListener("click", () => requestLoad(btn.dataset.id));
   });
 
-  wireColumns(container, { ...poolColumnSetup(), onChange: () => commit() }); // A17: the Columns button on the pool's heading
+  const setup = poolColumnSetup();
+  wireColumns(container, { ...setup, available: () => poolAvailableKeys(setup.defs), onChange: () => commit() }); // A17: the Columns button on the pool's heading; the TwoGun columns are offered on a TwoGun board only
 
   wireOptimizer(container);
 }
@@ -1067,7 +1013,7 @@ export const RULE_GROUPS = Object.freeze({ pool: ["starredQbOnly"], build: ["noS
 export const opt = {
   mode: "gpp", // Cash mode job 3b, 2026-10-17: "gpp" | "cash"; the slots, locks and excludes in `state` belong to this mode
   cash: defaultCashState(), // cash's own settings and Want lists (lineup-cash.js)
-  stash: {}, // the other mode's slots, locks, excludes (swapModeStash)
+  stash: {}, // the other mode's slots, locks, excludes, loadedId and name for this page view only (swapModeStash); the browser memory holds them per slate and mode (lineup-memory-sync.js), the stash is the fallback of a browser with no storage
   cashUndo: null, // {slots, locks, after, names}: the build before the last "Make them Must and rebuild" and the one it left (after); page-only
   count: String(OPT_DEFAULT_COUNT),
   minUnique: String(OPT_DEFAULT_UNIQUE),
@@ -1082,15 +1028,16 @@ export const opt = {
   playerMax: {},
   playerMin: {}, // the Min % boxes, shaped like playerMax (PROJECT.md Part 4 Optimizer (Min % and soft rules, Adam 2026-10-17))
   qb: newQbState(), // per-QB stack settings (lineup-qb-stacks.js), keyed by player id, persisted with the locks
-  spreadDst: false, // "Spread defenses", persisted
+  spreadDst: false, // "Spread defenses", per slate in the browser memory
   resultsTab: null, // D74: "new" or "saved" once Go or a tab click picks one this page load; null = the default
   // Adam 2026-10-11: "only lineups with" these players (identity keys, in the order chosen), shared by the New and
   // Saved tabs, page-only, kept across Go, cleared when the slate or week changes. mustHaveNames: key -> name for the chips.
   mustHave: [],
   mustHaveNames: {},
-  expSortDir: "desc", // the exposure lists' one sort, by exposure: "desc" (highest first) or "asc"
+  exp: defaultExpState("classic"), // the one exposure table's sort and Pos filter {col, dir, filter} (lineup-exposure.js, A10), kept in the browser
   sort: cleanSortState(null), // the card lists' sort, per tab: {new: {key, dir}, saved: {key, dir}}, persisted (lineup-sort.js)
   generating: false,
+  doneNote: false, // a build has ended and its results are on screen: `Build finished.` and its link sit beside the Build button (build-notice.js)
   stopping: false, // Stop was pressed and the build is ending: the button reads "Stopping..." (lineup-stop.js)
   stopError: "", // the sentence under Stop when the server did not hear it (optimizer standard D18)
   saving: false,
@@ -1104,8 +1051,10 @@ export const opt = {
 
 export function resetOptimizerResults() {
   opt.results = null;
+  opt.doneNote = false;
   opt.error = null;
   opt.saveError = null;
+  resetBuildNotice(); // what the last build left under the filter bar belongs to the slate it was made for
 }
 
 export function clearMustHave() {
@@ -1129,6 +1078,7 @@ export function qbStacksForRequest(board, notes) {
  *  normalising and the board check (🔵 on 3a). */
 export function setMode(next) {
   if ((next !== "gpp" && next !== "cash") || next === opt.mode) return;
+  const wrote = saveClassicMemory(); // the mode on screen goes under its own name in this slate's memory before the other mode's comes back
   const swapped = swapModeStash({ slots: state.slots, locks: [...state.locks], excludes: [...state.excludes], loadedId: state.loadedId, saveName: state.saveName, stash: opt.stash }, opt.mode, next);
   state.slots = normalSlots(swapped.slots) ?? new Array(LINEUP_SLOTS.length).fill(null);
   state.locks = new Set(swapped.locks.map(String));
@@ -1137,6 +1087,7 @@ export function setMode(next) {
   state.saveName = swapped.saveName;
   opt.stash = swapped.stash;
   opt.mode = next;
+  state.memoryNote = restoreForMode(store.get().board, next, wrote); // A9: the build the new mode remembered for this slate (the page-only copy above when nothing is remembered, or when the write was refused: the memory is then behind this page); a man off the slate on screen never passes
   opt.cashUndo = null;
   opt.formError = null;
   state.addError = null;

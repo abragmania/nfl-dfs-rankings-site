@@ -25,6 +25,7 @@ export function configureShowdown(ctx) {
 // showdown header/main once a key is active.
 // ---------------------------------------------------------------------------------------------------
 let showdownList = [];
+let showdownPlayed = []; // GET /api/showdown's `played`: this week's played games, which the live list leaves out (D30)
 let showdownListError = null; // 🔵 2026-10-17: a failed list read is "unknown" (the message), never an empty list shown as "none loaded"
 let showdownListRead = false; // 🔵 2026-10-17 (cold read is unknown): false until the first list read returns, so the tab says "reading", not "none loaded"
 
@@ -104,7 +105,7 @@ export function renderModeRowNow() {
 // The Showdown tab (ChatGPT wish t, Adam 2026-10-17): its games are the whole week's main-slate games (none before an upload,
 // whichever slate is on screen; 🔵 2026-10-17) plus the loaded showdowns.
 export function renderShowdownTabNow() {
-  renderShowdownTab(el.showdownPanel, { games: store.get().board?.slate?.games ?? [], showdowns: showdownList, listError: showdownListError, listRead: showdownListRead, onSite: onSitePage() }, {
+  renderShowdownTab(el.showdownPanel, { games: store.get().board?.slate?.games ?? [], showdowns: showdownList, played: showdownPlayed, listError: showdownListError, listRead: showdownListRead, onSite: onSitePage() }, {
     onOpen: (key) => {
       window.location.hash = `sd=${encodeURIComponent(key)}`;
     },
@@ -117,13 +118,16 @@ export async function loadShowdownList() {
     const data = await getShowdowns();
     if (data?.ok) {
       showdownList = data.showdowns ?? [];
+      showdownPlayed = Array.isArray(data.played) ? data.played : []; // this week's played games: off the list, named by the tab when all loaded ones are played
       showdownListError = null;
     } else {
       showdownList = [];
+      showdownPlayed = [];
       showdownListError = data?.error?.message || "the server did not return the list"; // an empty message falls back too (🔵 low)
     }
   } catch (e) {
     showdownList = [];
+    showdownPlayed = [];
     showdownListError = e?.message || "the server did not return the list"; // a thrown value with no message is still unknown, never "none loaded" (🔵 low)
   }
   showdownListRead = true; // 🔵 2026-10-17 (cold read is unknown): the first read has returned, by success or failure

@@ -1,6 +1,6 @@
-// Tabs above the screen: Optimizer (the main-slate tab and the default, D70; since Optimizer-first step 4 it also holds the game strip,
-// the filter bar and the ranked list Rankings used to show, drawn by table.js/gamestrip.js/filterbar.js; the Rankings and Favorites
-// tabs are retired, RETIRED_TABS), Showdown, Entries (app only). Projections and Projected Ownership are not tabs here any more: the header's
+// Tabs above the screen: Optimizer (the main-slate tab and the default, D70; since Optimizer-first step 4 it also holds the game strip and
+// the filter bar, drawn by gamestrip.js/filterbar.js, and since optimizer standard C9 and C17 (round 5) the one player table, the pool, lineup-pool.js, which took over every column and control
+// of the ranked list Rankings used to show; the Rankings and Favorites tabs are retired, RETIRED_TABS: their old keys, a remembered one included, open the Optimizer), Showdown, Entries (app only). Projections and Projected Ownership are not tabs here any more: the header's
 // Sources link opens ONE Sources page (public/js/sources-page.js: which sources, their weights, when each was pulled), and the two
 // per-player tables below it are this file's renderProjectionsPanel and renderOwnershipPanel, chosen by a Projections | Ownership
 // switch on that page (Adam 2026-10-18; SOURCE_TABS keeps the two old tab keys, so "?tab=projections" and "?tab=ownership" still land there).

@@ -435,7 +435,7 @@ export function poolTabsHtml(active = poolTab()) {
   return `<span class="sp-seg sd-pool-tabs" role="group" aria-label="Player pool list">${btns}</span>`;
 }
 
-/** The whole pool: heading and figures words, the table in its scroll panel (sized by scroll-panels.js, Expand by expand.js), the legend.
+/** The whole pool: heading and figures words, the table (no scroll box since A15: the page scrolls and the head sticks under the filter bar), the legend.
  *  `rows`: poolVisibleRows(board), computed once by the caller so the filter bar's count reads the same list. */
 export function poolHtml(board, placement, rows) {
   return `
@@ -446,7 +446,7 @@ export function poolHtml(board, placement, rows) {
         ${columnsButtonHtml()}
         <span class="sd-pool-note">${escapeHtml(poolNoteText(board))}</span>
       </div>
-      <div class="table-wrap scroll-panel">
+      <div class="sd-pool-wrap">
         <table id="sd-table" class="sd-pool-table">
           <thead id="sd-thead">${poolHeadHtml(board)}</thead>
           <tbody id="sd-tbody">${poolBodyHtml(board, rows, placement)}</tbody>

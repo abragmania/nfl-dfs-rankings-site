@@ -1,41 +1,13 @@
-// Rankings table: sticky header, 36px rows, hover highlight, no zebra. Every header sorts asc then desc
-// with an arrow (default Proj desc, set once at load — not from a click; star and every other numeric
-// column default to descending on their own first click, see state.js's defaultDirFor). Proj and Own%
-// are editable in place; an override shows a marker plus the base value on hover and a reset icon. Rows
-// with a null projection show "no proj" and stay visible (D27). A player nobody published an ownership number
-// for shows an em dash in Own% (still click-to-edit, D28); the app never estimates one. There is no Lev column
-// (optimizer standard A2, 2026-11-03).
-//
-// Event handling is delegated once onto the tbody element itself (wireDelegation), rather than
-// re-attached to every cell on every render: that lets a single row (updateRow) or a single cell
-// (restoreCell) be patched in place — on a blur/Escape cancel, or after a failed save — without
-// rebuilding the whole tbody and losing whatever the next click was about to land on.
-import { escapeHtml, money, dec1, dec2, pct1 } from "./format.js";
-import { playerLineHtml, showPos } from "./player-row.js";
+// The player-list cells every classic table shares: the status badges and the red OUT tag, TwoGun's markers and Med, Nuke, 3x% and 4x% cells, the Tags and Note cells, the graded number, the
+// matchup text, the note's pencil and the sort arrow. The ranked list that used to draw them (renderTableHead, renderTableBody, the click-to-type wiring) is retired: the Optimizer's pool
+// (lineup-pool.js, optimizer standard C9, C10, C17, round 5) draws these cells and lineup-pool-edit.js wires the typed boxes. Rows with a null projection show "no proj" and stay visible
+// (D27); a player nobody published an ownership number for shows an em dash in Own (still click-to-type, D28); the app never estimates one. There is no Lev column (A2).
+import { escapeHtml, money, dec1, dec2 } from "./format.js";
 import { store } from "./state.js";
 import { twoGunOutReason, rowIsOut, untagged, revivedStatusTitle } from "./out.js";
-import { bumpStepsOf } from "./bump-control.js"; // B12: a bump makes the row resettable
-import { rowMessageHtml } from "./row-message.js";
-import { startEdit, takeOpenEditor, showNotSaved, startNoteBox } from "./typed-edit.js"; // A3: the typed-number and note boxes (moved out of this file, round 4)
 
-const BASE_COLUMNS = [
-  { key: "star", label: "★" },
-  { key: "player", label: "Player" },
-  { key: "pos", label: "Pos" },
-  { key: "salary", label: "Sal" },
-  { key: "proj", label: "Proj" },
-  { key: "own", label: "Own" },
-  // Adam 2026-10-17, DQ1 and Q2: this column is projection per $1,000 (value-core.js); the header reads "Val" (optimizer standard D1), the key stays "value".
-  { key: "value", label: "Val", title: "Val: projection per $1,000 of salary" },
-  { key: "tags", label: "Tags" },
-];
-// Adam 2026-10-18 Q1: no Opp or Status column; the shared row (player-row.js) carries the matchup pill and the status tag in the Player cell.
-const NOTE_COLUMN = { key: "note", label: "Note" };
-export const COLUMNS = BASE_COLUMNS;
-
-// TwoGun mode only (D25 as amended 2026-10-15: his published figures used as he publishes them): four more Rankings
-// columns after Val, each read from row.tg and sortable (state.js sortValue). Current mode never shows them.
-// The Ceil and Ceil/$ columns were removed (optimizer standard A21, 2026-11-03).
+// TwoGun mode only (D25 as amended 2026-10-15: his published figures used as he publishes them): four more columns after Val, each read from row.tg and sortable (state.js sortValue). Current
+// mode never shows them. The Ceil and Ceil/$ columns were removed (optimizer standard A21, 2026-11-03).
 export const TG_COLUMNS = [
   { key: "tgMed", label: "Med", field: "median", title: "TwoGun's median, DraftKings points as he publishes them" },
   { key: "tgNuke", label: "Nuke", field: "nuke", title: "TwoGun's nuke (top-end) outcome, DraftKings points as he publishes them" },
@@ -43,16 +15,8 @@ export const TG_COLUMNS = [
   { key: "tgP4x", label: "4x%", field: "p4x", title: "TwoGun's chance (percent) of 4x salary value, as he publishes it" },
 ];
 
-// The columns of the Rankings head and body, in order: Val, then the TwoGun columns when `twogun`, then Tags onward.
-function columnsFor(hasNoteColumn, twogun) {
-  const val = BASE_COLUMNS.findIndex((c) => c.key === "value");
-  const cols = twogun ? [...BASE_COLUMNS.slice(0, val + 1), ...TG_COLUMNS, ...BASE_COLUMNS.slice(val + 1)] : BASE_COLUMNS;
-  return hasNoteColumn ? [...cols, NOTE_COLUMN] : cols;
-}
-
-// Adam 2026-10-15 (TwoGun merge, adjustment 1): "put a red 'OUT' tag or something obvious so
-// I can see it". A row ruled out after TwoGun's board stamp (flag "outAfterStamp") or one TwoGun calls OUT carries a
-// red OUT tag beside the name (drawn by player-row.js since D80). Such a row gets no Value grade either. The one copy of the test and the tag.
+// Adam 2026-10-15 (TwoGun merge, adjustment 1): "put a red 'OUT' tag or something obvious so I can see it". A row ruled out after TwoGun's board stamp (flag "outAfterStamp") or one TwoGun
+// calls OUT carries a red OUT tag beside the name (drawn by player-row.js since D80). Such a row gets no Value grade either. The one copy of the test and the tag.
 export { twoGunOutReason, rowIsOut };
 
 export function outTagHtml(row) {
@@ -75,13 +39,13 @@ export function lineupOutTagHtml(row) {
 
 // TwoGun-mode markers: the same small amber dot as the A1 marker, its sentences on hover. Nothing shows in current mode
 // (rows there carry no tg or src). A figure TwoGun does not cover is the current sources' and says so (row.src).
-function markerHtml(texts) {
+export function markerHtml(texts) {
   const list = texts.filter(Boolean);
   return list.length ? `<sup class="row-flag-marker tg-marker" title="${escapeHtml(list.join(" "))}">&#8226;</sup>` : "";
 }
 
-/** The hover sentences for one Rankings cell ("proj", "own", "salary", "status") of a TwoGun-mode row. The "status"
- *  dot now follows the name in the Player cell (Adam 2026-10-18 Q1: the Status column is gone). */
+/** The hover sentences for one cell ("proj", "own", "salary", "status") of a TwoGun-mode row. The "status"
+ *  dot follows the name in the Player cell (Adam 2026-10-18 Q1: the Status column is gone). */
 export function twoGunMarkerTexts(row, field) {
   const src = row?.src;
   if (!src && !row?.tg) return [];
@@ -108,7 +72,7 @@ export function twoGunMarkerTexts(row, field) {
 }
 
 // One decimal, as he publishes them; the 3x% and 4x% headers carry the percent sign so the narrow cells never clip.
-function tgCellHtml(row, col) {
+export function tgCellHtml(row, col) {
   const v = row.tg?.[col.field];
   if (v == null || Number.isNaN(v)) return "—";
   const text = dec1(v);
@@ -166,8 +130,8 @@ function tagClass(tag) {
 }
 
 /** D43: the matchup as "vs DAL" (his team is at home) or "@ DET" (away), from the game key "AWAY@HOME"; the row's
- *  own opponent text when the game key does not place his team, and blank with neither. The one copy: the Rankings,
- *  Favorites, Projections and Projected Ownership tables and the Optimizer (lineup.js) all use it. */
+ *  own opponent text when the game key does not place his team, and blank with neither. The one copy: the Optimizer pools, the Projections and Projected Ownership tables and the
+ *  Optimizer (lineup.js) all use it. */
 export function matchupText(row) {
   const m = /^([A-Z0-9]+)@([A-Z0-9]+)$/i.exec(String(row?.gameId ?? ""));
   const team = String(row?.team ?? "").toUpperCase();
@@ -176,31 +140,18 @@ export function matchupText(row) {
   return row?.opp ? String(row.opp) : "";
 }
 
-function idAttr(row) {
-  return escapeHtml(String(row.id));
-}
-
-/** The pencil: a button that opens the note box (the Showdown pool's name cell draws it too, showdown/pool-edit.js). */
+/** The pencil: a button that opens the note box (the pool's name cell draws it, the Showdown pool's too, showdown/pool-edit.js). */
 export function noteIconHtml(row) {
   const has = Boolean(row.note);
   const title = has ? row.note : "Add a note";
-  return `<button type="button" class="note-icon${has ? " has-note" : ""}" data-action="edit-note" data-id="${idAttr(row)}" title="${escapeHtml(title)}">&#9998;</button>`;
-}
-
-// Adam 2026-10-18 Q10: the full matchup pill shows (the shared row's default). Q1: the TwoGun status-changed dot, which sat in the dropped Status cell, follows the row.
-function playerCellHtml(row) {
-  return `
-    <div class="player-cell">
-      ${playerLineHtml(row, { titled: Boolean(row.src), tag: "main" })}${markerHtml(twoGunMarkerTexts(row, "status"))}
-      <span class="note-slot" data-id="${idAttr(row)}">${noteIconHtml(row)}</span>
-    </div>`;
+  return `<button type="button" class="note-icon${has ? " has-note" : ""}" data-action="edit-note" data-id="${escapeHtml(String(row.id))}" title="${escapeHtml(title)}">&#9998;</button>`;
 }
 
 /**
  * A1: one sentence per blended source that failed for this player's position this run ("sourceFailed:<id>" flags,
  * server/rank/board.js), named by its label: "CBS Sports failed for TE this run and has no cached copy, so Proj is
  * blended without it." `sources`: board.sources (the loaded board's by default); the id stands in for a source the
- * board does not list. Shared by the Rankings and Favorites Proj cell and the Projections tab's Coverage cell.
+ * board does not list. Shared by the pool's Proj cell and the Projections tab's Coverage cell.
  */
 export function sourceFailedTexts(row, sources = store.get().board?.sources) {
   const labelOf = (id) => (sources ?? []).find((s) => s && s.id === id)?.label ?? id;
@@ -210,13 +161,14 @@ export function sourceFailedTexts(row, sources = store.get().board?.sources) {
     .map((f) => `${labelOf(f.slice("sourceFailed:".length))} failed for ${pos} this run and has no cached copy, so Proj is blended without it.`);
 }
 
-/** A1: the Rankings flag marker (a small dot with the sentences on hover) for the sourceFailed flags alone, or "". */
+/** A1: the flag marker (a small dot with the sentences on hover) for the sourceFailed flags alone, or "". */
 export function sourceFailedMarkerHtml(row, sources) {
   const texts = sourceFailedTexts(row, sources);
   return texts.length ? `<sup class="row-flag-marker" title="${escapeHtml(texts.join(" "))}">&#8226;</sup>` : "";
 }
 
-function projFlagMarkerHtml(row) {
+/** The Proj cell's flag dot: thin coverage, injured, unknown injury, and a source that failed for his position. */
+export function projFlagMarkerHtml(row) {
   const flags = row.flags ?? [];
   const present = ["thin", "injured", "injuryUnknown"].filter((f) => flags.includes(f) && !(f === "injured" && flags.includes("revived")));
   const failedText = sourceFailedTexts(row);
@@ -225,52 +177,13 @@ function projFlagMarkerHtml(row) {
   return `<sup class="row-flag-marker" title="${escapeHtml(title)}">&#8226;</sup>`;
 }
 
-function editableInnerHtml(row, field, displayHtml, extraHtml = "") {
-  const hasOverride = row.override && row.override[field] != null;
-  const baseValue = field === "proj" ? row.projBase : row.ownBase;
-  const baseDisplay = escapeHtml(baseValue == null ? "none" : dec1(baseValue));
-  // A listed-out player resets to 0, not to the blend's projBase (R82: out = 0).
-  const out = field === "proj" && (rowIsOut(row) || (row.flags ?? []).includes("revived"));
-  const outLabel = escapeHtml(STATUS_INFO[String(row.status ?? "").trim().toLowerCase()]?.label || row.status || "injured");
-  // B12 (round 3): the small x is the row's reset: it clears his typed numbers and his bump together, so the Proj cell carries it for a bump alone too.
-  const backText = `${out ? `Back to 0 (listed ${outLabel})` : `Back to the original (${baseDisplay})`}. Clears his typed numbers and bump.`;
-  // An edited number is coloured (no word beside it); the small x puts the original back.
-  const valueAttrs = hasOverride ? ` class="cell-value is-override" title="Your number. ${out ? `Without it: 0 (listed ${outLabel})` : `Original: ${baseDisplay}`}"` : ` class="cell-value"`;
-  const resetBtn = hasOverride || (field === "proj" && bumpStepsOf(row) !== 0)
-    ? `<button type="button" class="reset-icon" data-action="reset-${field}" data-id="${idAttr(row)}" title="${backText}" aria-label="${backText}">&times;</button>`
-    : "";
-  return `<span${valueAttrs}>${displayHtml}</span>${extraHtml}${resetBtn}`;
-}
-
-function projCellInner(row) {
-  const display = row.proj == null ? "no proj" : dec1(row.proj);
-  return editableInnerHtml(row, "proj", display, projFlagMarkerHtml(row) + markerHtml(twoGunMarkerTexts(row, "proj")));
-}
-
-// Own% shows the plain number, whether a named source published it or Adam typed it (D29). A typed number
-// is drawn in the amber emphasis colour with a small x to put the original back (D28); a player with no number shows an em dash, which stays click-to-edit so an
-// override can still be typed onto it. In TwoGun mode a figure he does not publish carries the hover dot (no letter, D54).
-function ownCellInner(row) {
-  const mark = markerHtml(twoGunMarkerTexts(row, "own"));
-  if (row.own == null) return editableInnerHtml(row, "own", "—", mark);
-  return editableInnerHtml(row, "own", pct1(row.own), mark);
-}
-
-function cellInnerHtml(row, field) {
-  return field === "proj" ? projCellInner(row) : ownCellInner(row);
-}
-
-function editableCellHtml(row, field) {
-  return `<div class="editable-cell" data-field="${field}" data-id="${idAttr(row)}">${cellInnerHtml(row, field)}</div>`;
-}
-
 export function gradedCellHtml(value, grade) {
   if (value == null || Number.isNaN(value)) return "—";
   const cls = grade ? ` grade-${grade}` : "";
   return `<span class="grade-cell${cls}">${dec2(value)}</span>`;
 }
 
-function tagsCellHtml(row) {
+export function tagsCellHtml(row) {
   if (!row.tags || !row.tags.length) return "";
   return row.tags
     .map((t) => {
@@ -289,7 +202,7 @@ function tagsCellHtml(row) {
 
 // Hover text for the whole tags cell, one entry per tag, "tag: reason" (just "tag" when it has no reason), so a pill the
 // narrow cell clips is still readable (👁 visual-qa fourth pass; every tag listed, round 4).
-function tagsCellTitle(row) {
+export function tagsCellTitle(row) {
   if (!row.tags || !row.tags.length) return "";
   return row.tags
     .map((t) => {
@@ -316,35 +229,11 @@ export function rowHasStatus(row) {
   return Boolean((row?.status ?? "").trim() || (row?.injury?.status ?? "").trim());
 }
 
-function noteCellHtml(row) {
+/** The Note column's cell: the first 28 characters of his note, the whole note on hover. */
+export function noteCellHtml(row) {
   if (!row.note) return "";
   const preview = row.note.length > 28 ? `${row.note.slice(0, 28)}…` : row.note;
   return `<span class="note-preview" title="${escapeHtml(row.note)}">${escapeHtml(preview)}</span>`;
-}
-
-// TwoGun mode: the four TwoGun cells after Val, plain (a stale board is the header pill's to say, visual QA 2026-10-15).
-function tgCellsHtml(row) {
-  return TG_COLUMNS.map((c) => {
-    const tip = twoGunMarkerTexts(row, c.field).join(" ");
-    return `<td class="tg-col"${tip ? ` title="${escapeHtml(tip)}"` : ""}>${tgCellHtml(row, c)}</td>`;
-  }).join("");
-}
-
-function rowHtml(row, hasNoteColumn, twogun = false) {
-  const dimmed = rowIsOut(row);
-  return `
-    <tr class="rank-row${dimmed ? " row-dimmed" : ""}" data-id="${idAttr(row)}">
-      <td><button type="button" class="star-btn${row.starred ? " active" : ""}" title="${row.starred ? "Starred" : "Star"}" data-action="toggle-star" data-id="${idAttr(row)}">${row.starred ? "★" : "☆"}</button></td>
-      <td>${playerCellHtml(row)}</td>
-      <td class="pos-col">${escapeHtml(row.pos)}</td>
-      <td>${money(row.salary)}${markerHtml(twoGunMarkerTexts(row, "salary"))}</td>
-      <td>${editableCellHtml(row, "proj")}</td>
-      <td>${editableCellHtml(row, "own")}</td>
-      <td>${gradedCellHtml(row.value, row.valueGrade)}</td>
-      ${twogun ? tgCellsHtml(row) : ""}
-      <td class="tags-cell" title="${escapeHtml(tagsCellTitle(row))}">${tagsCellHtml(row)}</td>
-      ${hasNoteColumn ? `<td${row.note ? ` title="${escapeHtml(row.note)}"` : ""}>${noteCellHtml(row)}</td>` : ""}
-    </tr>`;
 }
 
 // The one copy of the sort arrow (PROJECT.md D80). The space before it is an escaped no-break space (U+00A0) so the arrow stays on the last word's line.
@@ -357,147 +246,5 @@ export function sortArrowHtml(active, dir, reserve = false) {
   return `<span class="sort-arrow${active ? "" : " is-idle"}"${active ? "" : ' aria-hidden="true"'}>${sortArrowText(active ? dir : "desc")}</span>`;
 }
 
-// `opts.twogun`: the Rankings table in TwoGun mode adds the TG_COLUMNS and marks the <table> "tg-on" (style.css sizes
-// its columns to stay inside D54's 1250px). Favorites passes nothing, so it never shows them. `opts.pos`: the position filter (D80: one position hides Pos).
-export function renderTableHead(theadEl, sort, onSortClick, hasNoteColumn = false, opts = {}) {
-  const twogun = Boolean(opts.twogun);
-  const cols = columnsFor(hasNoteColumn, twogun);
-  const cells = cols
-    .map((c) => {
-      const title = c.title ? ` title="${escapeHtml(c.title)}"` : "";
-      // A column with nothing to sort on has no data-col, so no click handler, and no sortable class.
-      if (c.sortable === false) return `<th class="not-sortable"${title}>${escapeHtml(c.label)}</th>`;
-      const arrow = sortArrowHtml(sort.col === c.key, sort.dir); // its own span so style.css can set the arrow a little smaller: a sorted header in a narrow column must not clip (round 5)
-      const tgCls = c.field ? " tg-col" : c.key === "pos" ? " pos-col" : "";
-      return `<th data-col="${c.key}" class="sortable${sort.col === c.key ? " sorted" : ""}${tgCls}"${title}>${escapeHtml(c.label)}${arrow}</th>`;
-    })
-    .join("");
-  theadEl.closest?.("table")?.classList.toggle("tg-on", twogun);
-  theadEl.closest?.("table")?.classList.toggle("pos-off", !showPos(opts.pos ?? "All"));
-  theadEl.innerHTML = `<tr>${cells}</tr>`;
-  theadEl.querySelectorAll("th[data-col]").forEach((th) => {
-    th.addEventListener("click", () => onSortClick(th.dataset.col));
-  });
-}
-
-// Module-level "what's on screen right now" so the one delegated tbody listener (wired once, see
-// wireDelegation) always reads the current rows/callbacks without needing to be re-attached.
-let currentRows = [];
-let currentCallbacks = null;
-let currentTwoGun = false; // whether the body on screen carries the TwoGun columns (updateRow redraws a row the same way)
-
-function cssEscapeId(id) {
-  const s = String(id);
-  return typeof CSS !== "undefined" && CSS.escape ? CSS.escape(s) : s.replace(/["\\]/g, "\\$&");
-}
-
-function findCurrentRow(id) {
-  return currentRows.find((r) => String(r.id) === String(id));
-}
-
-/** Restores one cell (proj or own) to its non-editing display — used by Escape/blur/empty-Enter cancel
- * so the rest of the table is left completely untouched (finding: no full tbody re-render on cancel). */
-function restoreCell(cellEl, id, field) {
-  const row = findCurrentRow(id);
-  if (!row) return;
-  cellEl.innerHTML = cellInnerHtml(row, field);
-}
-
-// The typed-number and note boxes are typed-edit.js's (moved there in round 4, so the Showdown pool uses the same two); a redraw of this table (renderTableBody,
-// updateRow) takes the open box out first (takeOpenEditor) and puts it back (reopenEditor).
+// The typed-number and note boxes are typed-edit.js's (moved there in round 4, so the Showdown pool and the classic pool use the same two); re-exported for the callers that still read them here.
 export { EDIT_HINT, NOT_SAVED_TEXT, readTypedNumber, closeDecision, startEdit, showNotSaved, noteSaves } from "./typed-edit.js";
-
-function reopenEditor(tbodyEl, carry) {
-  if (!carry) return;
-  if (carry.kind === "note") {
-    const icon = tbodyEl.querySelector(`.note-slot [data-action='edit-note'][data-id="${cssEscapeId(carry.id)}"]`);
-    if (icon) startNoteEdit(icon, carry);
-    return;
-  }
-  const cell = tbodyEl.querySelector(`.editable-cell[data-id="${cssEscapeId(carry.id)}"][data-field="${carry.field}"]`);
-  const row = findCurrentRow(carry.id);
-  if (cell && row) beginFieldEdit(cell, carry.id, carry.field, carry.field === "proj" ? row.proj : row.own, carry);
-}
-
-/** Opens the number box on a Proj or Own cell and wires what closing it does (the cell's own restore and the caller's save). `carry`: the box a redraw took out. */
-function beginFieldEdit(cellEl, id, field, current, carry = null) {
-  startEdit(cellEl, id, field, current, (idOrNull, maybeField, maybeValue, info) => {
-    if (idOrNull == null) {
-      restoreCell(cellEl, id, field);
-      if (info?.notSaved) showNotSaved(cellEl, info.notSaved); // a refused number on a click away: nothing saved, and it says so (A3)
-      return;
-    }
-    currentCallbacks?.onEditValue?.(idOrNull, maybeField, maybeValue);
-  }, carry);
-}
-
-function startNoteEdit(iconEl, carry = null) {
-  const id = iconEl.dataset.id;
-  const row = findCurrentRow(id);
-  const slot = iconEl.closest(".note-slot");
-  if (!row || !slot || slot.querySelector("input")) return;
-  startNoteBox(slot, { id, note: row.note ?? "", restoreHtml: noteIconHtml(row), onSave: (text) => currentCallbacks?.onEditNote?.(id, text), carry });
-}
-
-function wireDelegation(tbodyEl) {
-  if (tbodyEl.dataset.wired === "1") return;
-  tbodyEl.dataset.wired = "1";
-  tbodyEl.addEventListener("click", (e) => {
-    const starBtn = e.target.closest("[data-action='toggle-star']");
-    if (starBtn) {
-      currentCallbacks?.onToggleStar?.(starBtn.dataset.id);
-      return;
-    }
-    const resetBtn = e.target.closest(".reset-icon");
-    if (resetBtn) {
-      // B12 (round 3): the row's reset clears his typed numbers and his bump together; a caller with no row reset keeps the one-number reset.
-      if (currentCallbacks?.onResetRow) currentCallbacks.onResetRow(resetBtn.dataset.id);
-      else currentCallbacks?.onResetField?.(resetBtn.dataset.id, resetBtn.dataset.action === "reset-own" ? "own" : "proj");
-      return;
-    }
-    const noteIcon = e.target.closest("[data-action='edit-note']");
-    if (noteIcon) {
-      startNoteEdit(noteIcon);
-      return;
-    }
-    const cellEl = e.target.closest(".editable-cell");
-    if (cellEl) {
-      if (cellEl.querySelector("input")) return; // already editing
-      const { id, field } = cellEl.dataset;
-      const row = findCurrentRow(id);
-      if (!row) return;
-      const current = field === "proj" ? row.proj : row.own;
-      beginFieldEdit(cellEl, id, field, current);
-    }
-  });
-}
-
-export function renderTableBody(tbodyEl, rows, callbacks, hasNoteColumn = false, opts = {}) {
-  currentRows = rows;
-  currentCallbacks = callbacks;
-  currentTwoGun = Boolean(opts.twogun);
-  const carry = takeOpenEditor(null); // a box he is typing in survives the redraw (A3, round 3 fixes)
-  tbodyEl.innerHTML = rows.map((r) => rowHtml(r, hasNoteColumn, currentTwoGun)).join("");
-  wireDelegation(tbodyEl);
-  reopenEditor(tbodyEl, carry);
-}
-
-/** A write for this row failed: the sentence sits under his name, in red (the project's rule: a failed write shows beside the row it was for). It is
- *  replaced on the row's next redraw. No row on screen, no message. */
-export function showRowError(tbodyEl, id, text) {
-  const cell = tbodyEl.querySelector(`tr[data-id="${cssEscapeId(id)}"]`)?.querySelector(".player-cell")?.parentElement;
-  if (!cell) return;
-  cell.querySelectorAll(".row-msg").forEach((el) => el.remove());
-  cell.insertAdjacentHTML("beforeend", rowMessageHtml(text, "error"));
-}
-
-/** Re-renders exactly one row in place (a failed save must never leave an input open, but must also
- * never disturb any other row's scroll position, open editor or in-flight click). */
-export function updateRow(tbodyEl, row, hasNoteColumn = false) {
-  currentRows = currentRows.map((r) => (String(r.id) === String(row.id) ? row : r));
-  const tr = tbodyEl.querySelector(`tr[data-id="${cssEscapeId(row.id)}"]`);
-  if (!tr) return;
-  const carry = takeOpenEditor(tr); // only a box in this row; another row's box is not touched
-  tr.outerHTML = rowHtml(row, hasNoteColumn, currentTwoGun);
-  reopenEditor(tbodyEl, carry);
-}

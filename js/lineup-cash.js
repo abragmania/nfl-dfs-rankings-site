@@ -1,7 +1,7 @@
 // Cash mode's pure browser logic (PROJECT.md Part 4 "Cash mode"; cashmode-plan-2026-10-17.md with Adam's 2026-10-17 rulings:
 // Must = the lock, Want = his cash pool, Fine = the default). No DOM access; lineup.js (job 3b) wires it.
-// lineup.js savePersisted writes slots, locks, excludes, playerMax, playerMin, qbStacks, spreadDst, mode, cash and stash;
-// loadedId and saveName live in memory (swapModeStash keeps them). Cash 3b fix round, 2026-10-17: mode, cash and stash named.
+// lineup.js savePersisted writes playerMax, playerMin, mode, cash (the Want lists only), sort and the count-defaults version; the slots, locks, excludes, stack panels, Spread defenses, avoided games and Cash's
+// lineup count and cap per team live per slate in the browser's one memory (memory.js, lineup-memory-sync.js). loadedId and saveName live in memory (swapModeStash keeps them).
 import { escapeHtml, money, dec1 } from "./format.js";
 import { shownTotal } from "./totals.js";
 import { rowIsOut } from "./out.js";

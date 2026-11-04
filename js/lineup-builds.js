@@ -33,35 +33,3 @@ export function buildTypeText(build) {
   return [mode, objective ? `by ${objective}` : null].filter(Boolean).join(" · ");
 }
 
-function groupKey(lineup) {
-  const build = lineup?.build;
-  if (build?.kind === "hand") return "hand";
-  if (build?.kind === "batch" && typeof build.id === "string" && build.id !== "") return `batch:${build.id}`;
-  return "earlier";
-}
-
-const savedMs = (lineup) => {
-  const ms = Date.parse(lineup?.savedAt);
-  return Number.isNaN(ms) ? 0 : ms;
-};
-
-/** Lineups grouped by build, newest build first. A group is {key, kind ("batch" | "hand" | "earlier"), build (the first
- *  lineup's record, or null), newest (ms of its newest lineup), lineups (oldest saved first, Adam 2026-10-17, so a build's
- *  cards read 1, 2, 3; an unreadable time sorts as oldest; equal times keep the order given)}. Lineups saved by hand form one "hand" group;
- *  lineups with no build record (saved before the field existed) form the "earlier" group, last. */
-export function groupByBuild(lineups) {
-  const groups = new Map();
-  for (const lineup of lineups ?? []) {
-    const key = groupKey(lineup);
-    let group = groups.get(key);
-    if (!group) {
-      group = { key, kind: key === "hand" ? "hand" : key === "earlier" ? "earlier" : "batch", build: lineup.build ?? null, newest: 0, lineups: [] };
-      groups.set(key, group);
-    }
-    group.newest = Math.max(group.newest, savedMs(lineup));
-    group.lineups.push(lineup);
-  }
-  for (const group of groups.values()) group.lineups.sort((a, b) => savedMs(a) - savedMs(b)); // stable: equal times keep the given order
-  const rank = (g) => (g.kind === "earlier" ? 1 : 0);
-  return [...groups.values()].sort((a, b) => rank(a) - rank(b) || b.newest - a.newest);
-}

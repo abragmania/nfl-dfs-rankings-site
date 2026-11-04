@@ -45,6 +45,21 @@ function lockedAt(kind, id) {
 }
 const isLockedFlex = (id) => lockedAt("flex", id);
 
+/** C22 (round 5): the seats (0 the Captain, 1 to 5 the FLEX seats) whose man is locked there, for the swaps panel to mark. */
+export function lockedSeatPositions() {
+  const out = new Set();
+  if (state.cpt && lockedAt("cpt", state.cpt.id)) out.add(0);
+  state.flex.forEach((s, i) => { if (s && isLockedFlex(s.id)) out.add(i + 1); });
+  return out;
+}
+
+/** C22: the click rules' sentence when a swap would take out a man who is locked in his seat (`row` is the man going out, `seat` "CPT" or "FLEX"), or null when he is free to go. A swap is not a way round a lock. */
+export function swapLockRefusal(row, seat) {
+  if (!row) return null;
+  if (seat === "CPT") return lockedAt("cpt", row.id) ? `The Captain seat is locked on ${row.name}. Unlock him first.` : null;
+  return isLockedFlex(row.id) ? `${row.name} is locked into your lineup in a FLEX seat. Unlock him first, or click his slot.` : null;
+}
+
 function addCaptain(row, board = boardRef) {
   if (!row) return;
   state.addErrorId = String(row.id); // a refusal is drawn beside his row (row-message.js, standard A14)
@@ -194,6 +209,14 @@ export function reseatStoredLocks(scope) {
     if (!row) continue;
     const seatedHere = kind === "cpt" ? Boolean(state.cpt) && String(state.cpt.id) === String(id) : isPlacedFlex(id);
     if (seatedHere) continue;
+    // A9: the lineup is remembered too, and a stored lock must not contradict it: a lock for a seat the man does not hold in the remembered lineup, because he sits in the other seat there, is dropped with
+    // a sentence, never put into effect (seating him by the click rules would move him out of the seat the lineup has him in).
+    const seatedElsewhere = kind === "cpt" ? isPlacedFlex(id) : Boolean(state.cpt) && String(state.cpt.id) === String(id);
+    if (seatedElsewhere) {
+      releaseSeatLock(row, kind);
+      told.push(`${row.name} was unlocked: he sits at ${kind === "cpt" ? "FLEX" : "Captain"} in your remembered lineup, not at ${kind === "cpt" ? "Captain" : "FLEX"}`);
+      continue;
+    }
     const placement = listPlacement();
     const pick = placement.pickOf ? placement.pickOf(row, kind, poolPickAction(placement, String(id), kind)) : { action: null, reason: "" };
     if (pick.action) pickPoolRow(row, pick.action, boardRef);
@@ -203,7 +226,7 @@ export function reseatStoredLocks(scope) {
     }
   }
   if (told.length) {
-    state.addError = told.join(" ");
+    state.addError = [state.addError, told.join(" ")].filter(Boolean).join(" "); // what a remembered lineup lost (lineup.js) and what a lock could not do are said together
     state.addErrorId = null;
     state.addTone = undefined;
   }

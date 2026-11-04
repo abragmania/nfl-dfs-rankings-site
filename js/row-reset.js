@@ -19,11 +19,12 @@ export function resetAllEnabled(board) {
 
 export const ROW_RESET_TITLE = "Clear his typed numbers and bump";
 
-/** The x, or "" when the man has nothing to clear. `disabled`: no write is wired (the public site's Showdown, sample mode). */
-export function rowResetHtml(row, { disabled = false } = {}) {
+/** The x, or "" when the man has nothing to clear. `disabled`: no write is wired (the public site's Showdown, sample mode). `title` (plain text): the hover when it says more than the standard words
+ *  (the classic pool names the number it puts back: `Back to the original (14.0). Clears his typed numbers and bump.`). */
+export function rowResetHtml(row, { disabled = false, title = null } = {}) {
   if (!hasRowOverride(row)) return "";
   const name = escapeHtml(row?.name ?? "this player");
-  return `<button type="button" class="reset-icon row-reset" data-action="row-reset" data-id="${escapeHtml(String(row.id))}" title="${ROW_RESET_TITLE}" aria-label="Clear ${name}'s typed numbers and bump"${disabled ? " disabled" : ""}>&times;</button>`;
+  return `<button type="button" class="reset-icon row-reset" data-action="row-reset" data-id="${escapeHtml(String(row.id))}" title="${title == null ? ROW_RESET_TITLE : escapeHtml(title)}" aria-label="Clear ${name}'s typed numbers and bump"${disabled ? " disabled" : ""}>&times;</button>`;
 }
 
 /** The PUT body that clears one Showdown man: his typed projection, his typed ownership (under his FLEX id and his Captain id) and his bump. */

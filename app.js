@@ -3,16 +3,15 @@
 import {
   store,
   filterRows,
-  sortRows,
-  defaultDirFor,
   defaultFilters,
   activeSlate,
   activeSlateRows,
   activeSlateGames,
   slateDisplayName,
-  isTwoGunMode,
   sortForBoard,
+  DEFAULT_SORT,
 } from "./js/state.js";
+import { createViewMemory, uniqueTeams } from "./js/classic-view-memory.js"; // A9: the filters and the sort per slate
 import {
   getBoard,
   getSlate,
@@ -34,7 +33,6 @@ import { favoriteRows } from "./js/favorites.js";
 import { toggleStarredQbOnly, starredQbViewNow, setPoolRowError } from "./js/lineup.js";
 import { renderGameStrip, getGamestripCollapsed, setGamestripCollapsed } from "./js/gamestrip.js";
 import { renderFilterBar, updateFilterSummary, showButtonError, hasAnyOverride } from "./js/filterbar.js";
-import { renderTableHead, renderTableBody, updateRow, showRowError } from "./js/table.js";
 import { renderTabs, isSourcesTab, sourcesTabToOpen, shownTab, renderProjectionsPanel, renderOwnershipPanel, renderLineupPanel, renderEntriesPanel } from "./js/tabs.js";
 import { renderSourcesPage, APPLIED_ALL_EVENT } from "./js/sources-page.js"; // the one Sources page (Adam 2026-10-18), shared with the Showdown view
 import { initExpand, syncExpandUi } from "./js/expand.js";
@@ -42,6 +40,7 @@ import { makeFilterDebounce } from "./js/filter-debounce.js";
 import { initPlayerCard } from "./js/player-card.js";
 import { delegateBumpClicks, bumpPatch } from "./js/bump-control.js"; // Adam 2026-10-22: ± bump
 import { delegateRowReset } from "./js/row-reset.js"; // B12: the pool's row reset (typed numbers and bump)
+import { stickyHeights } from "./js/build-notice.js"; // A15: the sticky stack's heights, the notice a layer of it
 import { makeWriteSeq } from "./js/write-seq.js"; // A3: an older write's answer never paints over a newer one's
 import { makeBoardFlow } from "./js/write-runner.js"; // A3: every board write and read goes through the one numbered flow
 import { boardStamps, stampsLineHtml } from "./js/stamps.js"; // B11: Board, Injuries, Pulled and Lock, `missing` when the board carries no time
@@ -74,8 +73,6 @@ const el = {
   emptyState: document.getElementById("empty-state"),
   gamestrip: document.getElementById("gamestrip"),
   filterbar: document.getElementById("filterbar"),
-  thead: document.getElementById("rankings-thead"),
-  tbody: document.getElementById("rankings-tbody"),
 };
 
 // The Showdown module (public/js/app-showdown.js) reaches back for the element map and these three functions.
@@ -102,22 +99,12 @@ const setUploadStatus = uploadStatusSetter({ statusEl: el.status, sdStatusEl: ()
 const writeSeq = makeWriteSeq();
 const { runWrite, loadBoard } = makeBoardFlow({ seq: writeSeq, getBoard, paint: (board, n) => handleBoardLoaded(board, n), fail: (text, rowId) => failWrite(text, rowId) });
 
-// A refused or lost write is said in the status line and, when it was for a row, beside that row (the project's rule), in red.
+// A refused or lost write is said in the status line and, when it was for a row, beside that row (the project's rule), in red. The pool redraws from the board already in the store (as it stood before
+// the failed edit), so a box left open is never left dangling (lineup.js setPoolRowError).
 function failWrite(text, rowId) {
   setStatusMessage(text, true);
   if (rowId == null) return;
-  restoreRow(rowId);
-  showRowError(el.tbody, rowId, text);
-}
-
-// Redraws one row from the board already in the store (i.e. as it stood before the failed edit), used
-// only on a write-path failure; it never touches any other row or re-renders the whole tbody.
-function restoreRow(rowId) {
-  const row = findRow(rowId);
-  const board = store.get().board;
-  if (!row || !board) return;
-  const hasNoteColumn = activeSlateRows(board).some((r) => r.note);
-  updateRow(el.tbody, row, hasNoteColumn);
+  setPoolRowError(rowId, text);
 }
 
 function handleBoardFailure(raw) {
@@ -157,15 +144,6 @@ async function handleBoardLoaded(raw, seq = null) {
   // A sort on a TwoGun column falls back to Proj high to low once the board is not in TwoGun mode (state.js).
   store.set({ board: data, boardError: null, loading: false, sort: sortForBoard(store.get().sort, data) });
   renderStatic(data);
-}
-
-function uniqueTeams(games) {
-  const teams = new Set();
-  for (const g of games ?? []) {
-    if (g.away) teams.add(g.away);
-    if (g.home) teams.add(g.home);
-  }
-  return [...teams].sort();
 }
 
 // Optimizer-first step 4: the typed boxes (search, salary min and max) reach the store once typing pauses (public/js/filter-debounce.js,
@@ -209,19 +187,10 @@ function onGameClick(gameId) {
   store.setFilters({ gameId: current === gameId ? null : gameId });
 }
 
-function onSortClick(col) {
-  const sort = store.get().sort;
-  if (sort.col === col) store.setSort({ dir: sort.dir === "asc" ? "desc" : "asc" });
-  else store.setSort({ col, dir: defaultDirFor(col) });
-}
-
 const tableCallbacks = {
   onToggleStar: async (id) => {
     const row = findRow(id);
     await runWrite(() => putOverrides({ stars: { [id]: !row?.starred } }), { rowId: id });
-  },
-  onResetField: async (id, field) => {
-    await runWrite(() => putOverrides({ [field]: { [id]: null } }), { rowId: id });
   },
   // B12 (round 3): a row's reset clears his typed numbers and his bump together (DELETE /api/overrides/<id>; the site's stand-in does the same in the browser).
   onResetRow: (id) => runWrite(() => deleteOverride(id), { rowId: id, label: "the reset" }), // the board it answers, null when refused
@@ -347,8 +316,6 @@ function renderEmptyState({ loading, boardError }) {
   el.emptyState.hidden = false;
   el.gamestrip.innerHTML = "";
   el.filterbar.innerHTML = "";
-  el.thead.innerHTML = "";
-  el.tbody.innerHTML = "";
   if (loading) {
     el.emptyState.textContent = "Building the board... this can take up to 40 seconds on first load.";
     return;
@@ -366,10 +333,10 @@ initExpand({ onLayout: adjustScrollPanels });
 // The player card: a click on any player's name opens his page (public/js/player-card.js); a showdown name reads the showdown board's row.
 initPlayerCard({ findRow: (id, sd) => (sd ? showdownRowById(id) : findRow(id)), sdKey: showdownKeyFromHash, boardAsOf: (sd) => (sd ? showdownBoardAsOf() : store.get().board?.generatedAt), boardOf: (sd) => (sd ? showdownBoardNow() : store.get().board) });
 
-// The Optimizer screen's static parts (Optimizer-first step 4: what the Rankings tab drew, now inside #lineup-panel): the game strip,
-// the ownership banner, the ranked list and the filter bar's count. The filter bar itself is drawn only by renderFilterBarNow (a board
+// The Optimizer screen's static parts (Optimizer-first step 4: what the Rankings tab drew, now inside #lineup-panel): the game strip, the ownership banner and the filter bar's count. The player table
+// is the pool, drawn with the rest of the Optimizer's part (lineup-pool.js; the ranked list is retired, optimizer standard C9, C17). The filter bar itself is drawn only by renderFilterBarNow (a board
 // load or Clear filters), never here, so a keystroke in its search box keeps the box, its value and its caret.
-function renderRankedParts(board, filters, sort, slateRows) {
+function renderRankedParts(board, filters, slateRows) {
   renderGameStrip(el.gamestrip, activeSlateGames(board) ?? [], filters.gameId, onGameClick, {
     collapsed: getGamestripCollapsed(),
     onToggleCollapse: onToggleGamestripCollapse,
@@ -378,11 +345,6 @@ function renderRankedParts(board, filters, sort, slateRows) {
   el.ownBanner.textContent = [ownBannerText(allRows), board.injuryNote, ...(board.tabNotes?.favorites ?? [])].filter(Boolean).join(" ");
   if (el.stampsLine) el.stampsLine.innerHTML = stampsLineHtml(boardStamps(board, { games: activeSlateGames(board) })); // B11: the board's own times, `missing` for one it does not carry
   const filtered = filterRows(allRows, filters);
-  const sorted = sortRows(filtered, sort.col, sort.dir);
-  const hasNoteColumn = allRows.some((r) => r.note);
-  const tg = { twogun: isTwoGunMode(board), pos: filters.pos }; // TwoGun mode adds Med, Nuke, 3x%, 4x% (table.js TG_COLUMNS); a one-position list hides Pos (D80)
-  renderTableHead(el.thead, sort, onSortClick, hasNoteColumn, tg);
-  renderTableBody(el.tbody, sorted, tableCallbacks, hasNoteColumn, tg);
   const activeGame = filters.gameId ? (board.slate?.games ?? []).find((g) => g.id === filters.gameId) : null;
   updateFilterSummary(el.filterbar, {
     filteredCount: filtered.length,
@@ -394,7 +356,7 @@ function renderRankedParts(board, filters, sort, slateRows) {
 }
 
 function renderDynamic() {
-  const { board, filters, sort, loading, boardError } = store.get();
+  const { board, filters, loading, boardError } = store.get();
   const activeTab = shownTab(store.get().activeTab); // a tab the page does not draw (Entries on the site) shows the Optimizer
 
   // Every list below reads the slate on screen's rows (D57): the whole board, or the active second slate's.
@@ -435,7 +397,7 @@ function renderDynamic() {
 
   if (activeTab === "lineup") {
     // One screen (Optimizer-first step 4): the strip, banner and ranked list, then the Optimizer's own part in its mount between them.
-    renderRankedParts(board, filters, sort, slateRows);
+    renderRankedParts(board, filters, slateRows);
     renderLineupPanel(el.lineupMount, tableCallbacks);
   } else if (isSourcesTab(activeTab)) {
     // The Sources page (always the main slate's choices, D57), then the Projections or Ownership table under its Players heading.
@@ -458,10 +420,22 @@ function renderDynamic() {
 // --filterbar-h, kept here to the bar's height while it sticks (0 where it does not: another tab, or a phone, where it is static).
 function syncFilterbarHeight() {
   const sticky = !el.lineupPanel.hidden && getComputedStyle(el.filterbar).position === "sticky";
-  el.lineupPanel.style.setProperty("--filterbar-h", `${sticky ? Math.ceil(el.filterbar.getBoundingClientRect().height) : 0}px`);
+  const notice = document.getElementById("build-notice");
+  const { bar, total } = stickyHeights({ sticky, barHeight: el.filterbar.getBoundingClientRect().height, noticeShown: Boolean(notice) && !notice.hidden, noticeHeight: notice?.getBoundingClientRect().height }); // A15: the build notice is a layer of the stack, so the head and the band sit under it too
+  el.lineupPanel.style.setProperty("--filterbar-bar-h", `${bar}px`);
+  el.lineupPanel.style.setProperty("--filterbar-h", `${total}px`);
 }
 window.addEventListener("resize", syncFilterbarHeight);
+// A15: the sticky layers under the filter bar (the pool's head, the lineup band, the build notice) sit at its height, which changes as its chips wrap or the count line appears; the notice's own height counts too.
+if (typeof ResizeObserver !== "undefined") {
+  const ro = new ResizeObserver(syncFilterbarHeight);
+  ro.observe(el.filterbar);
+  const notice = document.getElementById("build-notice");
+  if (notice) ro.observe(notice);
+}
 
+// A9 (round 5): the filters and the sort are remembered per slate in the browser's one memory (classic-view-memory.js); subscribed before the screen's own draw, so the screen draws what was remembered.
+store.subscribe(createViewMemory({ store, activeSlate, activeSlateGames, defaultFilters, sortForBoard, defaultSort: DEFAULT_SORT, afterRestore: (board) => renderFilterBarNow(board) }));
 store.subscribe(renderDynamic);
 
 const { handleFile } = wireUpload(

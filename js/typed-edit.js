@@ -1,7 +1,7 @@
 // The typed-number box and the note box (optimizer standard A3, round 3; moved out of table.js in round 4 so the Showdown pool uses the same two editors, B3).
 // A click away saves, Enter saves, Esc cancels; the hint `Enter saves, Esc cancels` is under every box; a bad number on a click away says `Not saved` and saves
 // nothing, on Enter keeps the box open with the sentence; an emptied number box cancels; an emptied note removes the note. The boxes know nothing of the table they
-// sit in: the caller passes what to do on a save and how to put the cell back (table.js for the classic ranked list, showdown/pool-edit.js for the Showdown pool).
+// sit in: the caller passes what to do on a save and how to put the cell back (lineup-pool-edit.js for the classic pool, showdown/pool-edit.js for the Showdown pool).
 // The one box that is open is kept here (openEditor) so a redraw of the table takes it out first and puts it back with its text and focus (takeOpenEditor), and
 // the removal never reads as a click away.
 
@@ -37,6 +37,12 @@ export function closeDecision(how, read, start) {
 // the removal's blur was the bug). `released` makes the old box's handlers do nothing.
 let openEditor = null; // {kind: "field"|"note", id, field, input, wrap, start, released}
 
+/** Focuses a box. One a redraw took out and put back (`carry`) keeps the page where it is (preventScroll): the redraw must not move what he is looking at; a box he just opened may scroll into view as before. */
+export function focusBox(input, carry = null) {
+  if (carry) input.focus({ preventScroll: true });
+  else input.focus();
+}
+
 /** The open box, taken out of the redraw's way: {kind, id, field, text, start} to put back with the table's own reopen, or null when none is open (or it is outside `within`). */
 export function takeOpenEditor(within) {
   const ed = openEditor;
@@ -70,7 +76,7 @@ export function startEdit(cellEl, id, field, currentValue, onCommit, carry = nul
   wrap.appendChild(errorEl);
   cellEl.innerHTML = "";
   cellEl.appendChild(wrap);
-  input.focus();
+  focusBox(input, carry); // a box put back by a redraw takes focus without moving the page
   if (!carry) input.select();
   const editor = { kind: "field", id, field, input, wrap, start, released: false };
   openEditor = editor;
@@ -123,13 +129,41 @@ export function startEdit(cellEl, id, field, currentValue, onCommit, carry = nul
 }
 
 /** The "Not saved" note beside a cell whose number was refused on a click away; it goes by itself after a few seconds. `reason` is the hover. */
-export function showNotSaved(cellEl, reason, doc = document, setTimer = setTimeout) {
+export const NOT_SAVED_MS = 4000;
+let heldNotSaved = null; // {id, field, reason, until}: the `Not saved` showing now, so a redraw of the table (a click on a row) does not take it away early (A3, round 5)
+
+export function showNotSaved(cellEl, reason, doc = document, setTimer = setTimeout, mark = null, now = Date.now) {
+  appendNotSaved(cellEl, reason, NOT_SAVED_MS, doc, setTimer);
+  if (mark) heldNotSaved = { id: String(mark.id), field: mark.field, reason, until: now() + NOT_SAVED_MS };
+}
+
+function appendNotSaved(cellEl, reason, ms, doc = document, setTimer = setTimeout) {
   const el = doc.createElement("span");
   el.className = "cell-edit-error cell-not-saved";
   el.textContent = NOT_SAVED_TEXT;
   if (reason) el.title = reason;
   cellEl.appendChild(el);
-  setTimer(() => el.remove(), 4000);
+  setTimer(() => el.remove(), ms);
+}
+
+/** After a redraw of the table: a `Not saved` that was still showing is put back on its cell for the time it had left. `cellFor(id, field)` finds the redrawn cell (null when it is gone, a filter hid the man). Returns whether it was. */
+export function carryNotSaved(cellFor, doc = globalThis.document, setTimer = setTimeout, now = Date.now) {
+  const held = heldNotSaved;
+  if (!held) return false;
+  const left = held.until - now();
+  if (left <= 0) {
+    heldNotSaved = null;
+    return false;
+  }
+  const cell = cellFor(held.id, held.field);
+  if (!cell || cell.querySelector?.(".cell-not-saved") || cell.querySelector?.("input")) return false;
+  appendNotSaved(cell, held.reason, left, doc, setTimer);
+  return true;
+}
+
+/** Forgets the `Not saved` on hold (a new box opened on the cell, or a number was saved). */
+export function dropHeldNotSaved() {
+  heldNotSaved = null;
 }
 
 /** Whether closing a note box writes (A3): Enter saves, a click away saves only a changed note, Esc never; an emptied note is saved as a removal, but a box that
@@ -162,7 +196,7 @@ export function startNoteBox(slot, { id, note, restoreHtml, onSave, onRestore = 
   wrap.appendChild(hintEl);
   slot.innerHTML = "";
   slot.appendChild(wrap);
-  input.focus();
+  focusBox(input, carry);
   if (!carry) input.select();
   const editor = { kind: "note", id, field: "note", input, wrap, start, released: false };
   openEditor = editor;
