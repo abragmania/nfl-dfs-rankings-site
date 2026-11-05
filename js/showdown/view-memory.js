@@ -42,28 +42,34 @@ export function saveView() {
   updateMemory((m) => Object.assign(slateEntry(m, "showdown", key), { filters: v.filters, sort: v.sort }));
 }
 
+// The GPP and Cash tabs each have their own working lineup (Adam 5:12 PM 2026-11-04): GPP's is the entry's `lineup`, which is where the one shared lineup was kept before the tabs (so an old memory's seats are GPP's), Cash's is `lineupCash`.
+const lineupField = (mode) => (mode === "cash" ? "lineupCash" : "lineup");
+
 /**
- * The remembered lineup of `key` against the men on `board`: {cpt: {id}|null, flex: [{id}|null x flexCount], note} where `note` says who is gone (a man who left the board, changed id or belongs to another
+ * The remembered lineup of `key`'s `mode` tab ("gpp" or "cash") against the men on `board`: {cpt: {id}|null, flex: [{id}|null x flexCount], note} where `note` says who is gone (a man who left the board, changed id or belongs to another
  * week is dropped and named, never replaced). An empty lineup when nothing is remembered.
  */
-export function restoreLineup(key, board, flexCount = 5) {
+export function restoreLineup(key, board, flexCount = 5, mode = "gpp") {
   setOnScreen("showdown", key);
   const entry = readMemory().showdown?.games?.[key];
+  const stored = entry?.[lineupField(mode)];
   const rowIds = new Set((board?.rows ?? []).map((r) => String(r.id)));
   // A board with no rows is not loaded (yet): nobody can be judged gone from it, so the remembered men stay seated and the next board with rows is checked against them (dropMenGoneFromBoard).
   const loaded = rowIds.size > 0;
-  const got = restoreShowdownLineup(entry?.lineup, (id) => !loaded || rowIds.has(id), flexCount);
+  const got = restoreShowdownLineup(stored, (id) => !loaded || rowIds.has(id), flexCount);
   const byId = new Map((board?.rows ?? []).map((r) => [String(r.id), r]));
   const out = [got.cpt, ...got.flex].filter((id) => id && byId.has(id) && rowIsOut(byId.get(id))).map((id) => byId.get(id).name);
   const outText = out.length ? `${out.join(", ")} ${out.length === 1 ? "is" : "are"} listed out but ${out.length === 1 ? "is" : "are"} still in your remembered lineup; Build holds ${out.length === 1 ? "him" : "them"} only as the rules already do.` : "";
   return { cpt: got.cpt ? { id: got.cpt } : null, flex: got.flex.map((id) => (id ? { id } : null)), note: [goneSentence(got.gone, "this game"), outText].filter(Boolean).join(" ") };
 }
 
-/** The names stored beside the men of `key`'s remembered lineup (id to name). */
+/** The names stored beside the men of `key`'s remembered lineups, both tabs' (id to name). */
 export function rememberedNames(key) {
-  const lineup = readMemory().showdown?.games?.[key]?.lineup;
+  const game = readMemory().showdown?.games?.[key];
   const out = new Map();
-  for (const s of [lineup?.cpt, ...(Array.isArray(lineup?.flex) ? lineup.flex : [])]) if (s && s.id != null && s.name) out.set(String(s.id), s.name);
+  for (const lineup of [game?.lineup, game?.lineupCash]) {
+    for (const s of [lineup?.cpt, ...(Array.isArray(lineup?.flex) ? lineup.flex : [])]) if (s && s.id != null && s.name) out.set(String(s.id), s.name);
+  }
   return out;
 }
 
@@ -88,10 +94,10 @@ export function dropMenGoneFromBoard(key, board, cpt, flex) {
   return { cpt: nextCpt, flex: nextFlex, note: goneSentence(lost, "this game") };
 }
 
-const lineupJson = new Map(); // game key -> what was last written, so a draw with nothing changed writes nothing
+const lineupJson = new Map(); // game key and tab -> what was last written, so a draw with nothing changed writes nothing
 
-/** Writes the working lineup under its game when it changed since the last write. */
-export function saveLineup(key, board, cpt, flex) {
+/** Writes the working lineup of the `mode` tab under its game when it changed since the last write. */
+export function saveLineup(key, board, cpt, flex, mode = "gpp") {
   if (!key || !board) return;
   if (!(board.rows ?? []).length) return; // a board with no rows (not loaded) must not overwrite what the game remembers with an empty lineup
   setOnScreen("showdown", key);
@@ -99,9 +105,10 @@ export function saveLineup(key, board, cpt, flex) {
   const before = rememberedNames(key); // a man the board does not have (for now) keeps the name he was stored with, so a later sentence can still name him
   const stored = storableShowdownLineup(cpt, flex, (id) => names.get(id) || before.get(id) || "");
   const json = JSON.stringify(stored);
-  if (lineupJson.get(key) === json) return;
-  lineupJson.set(key, json);
-  updateMemory((m) => { slateEntry(m, "showdown", key).lineup = stored; });
+  const memoKey = `${key}|${mode}`;
+  if (lineupJson.get(memoKey) === json) return;
+  lineupJson.set(memoKey, json);
+  updateMemory((m) => { slateEntry(m, "showdown", key)[lineupField(mode)] = stored; });
 }
 
 /** The exposure table's remembered sort and filter for `key` (raw, for lineup-exposure.js cleanExpState to make safe). */

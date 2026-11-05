@@ -8,6 +8,9 @@ import { showdownPalette } from "./lineup-look.js";
 import { posPillHtml } from "./table.js";
 import { findRow } from "./lineup-saved.js";
 import { playerFigures, reasonHtml, NOT_ON_BOARD_WORDS } from "./lineup-meter.js";
+import { openSpendHtml } from "./open-seat-spend.js";
+import { poolValueHtml, valuePer1k } from "./pool.js"; // the pool's Val, so the slot and the pool read one figure
+import { gradedValueHtml } from "./table.js";
 
 // The card row's line 2 carries what the old "$ · proj · own" line carried after the figures (D29: a missing figure reads missing, never zero): a man not on
 // TwoGun's board reads "(not on TwoGun's board, 0%)" (Q8), a blank ownership its reason, a listed-Out projection TwoGun's own figure on hover.
@@ -19,6 +22,13 @@ export function notesHtml({ notOnBoard, missingReason, projNote }) {
 
 // The one big card row of a placed man: salary, projection and ownership are the board row's own (playerFigures, the Captain's included); a missing
 // figure stays null so the row prints "—" / no parenthesis. D80: a Showdown row has no pill, so the matchup fields the pill reads are blanked.
+/** His Val in his seat (the working lineup's row, as NBA's panel has it): his projection in that seat per $1,000 of his salary in that seat, as the pool's Val cell reads it (pool.js poolValue); the FLEX seat's wears the
+ *  board's grade while the board's value and the shown one agree (poolValueHtml's rule), the Captain's has none (the board grades FLEX only); a dash when either figure is missing, never 0. */
+export function slotValueHtml(row, isCpt, figs) {
+  if (!isCpt) return poolValueHtml(row, () => figs);
+  return gradedValueHtml({ value: valuePer1k(Number.isFinite(figs.proj) ? figs.proj : null, row.cptSalary), valueGrade: null });
+}
+
 export function slotPlayerHtml(row, isCpt, palette = null) {
   const figs = playerFigures(row, isCpt);
   const p = { ...row, salary: isCpt ? row.cptSalary : row.salary, proj: figs.proj, own: figs.notOnBoard ? null : figs.own };
@@ -26,7 +36,8 @@ export function slotPlayerHtml(row, isCpt, palette = null) {
     rolesFor: () => notesHtml(figs),
     coloursFor: (team) => teamColours(palette, team),
   };
-  return cardPlayerRowHtml(p, isCpt ? "CPT" : "FLEX", decor, { big: true, pos: true, posHtml: posPillHtml, bareOpp: true }).trim(); // D80 as amended: the bare opponent code on the small second line, no pill (the slot's .sd-cpt-slot gives the Captain's row its amber chip) // every slot is FLEX, so the row names his position, as the pool does
+  const html = cardPlayerRowHtml(p, isCpt ? "CPT" : "FLEX", decor, { big: true, pos: true, posHtml: posPillHtml, bareOpp: true }).trim(); // D80 as amended: the bare opponent code on the small second line, no pill (the slot's .sd-cpt-slot gives the Captain's row its amber chip) // every slot is FLEX, so the row names his position, as the pool does
+  return html.replace('<span class="opt-p-fig opt-p-own">', `<span class="opt-p-fig opt-p-val"><i>Val</i><b>${slotValueHtml(row, isCpt, figs)}</b></span><span class="opt-p-fig opt-p-own">`); // Sal, Proj, Val, Own across the row (the shared card row has no Val; the saved and result cards keep theirs)
 }
 
 // Repaints only the placed slots' big rows (the panel is not redrawn, so a typed lineup name survives);
@@ -45,9 +56,9 @@ export function repaintSlots(container, board, { cpt, flex }) {
 // One slot, classic's shapes (lineup-view.js slotsHtml) without its Clear button (D39, Adam 4:45 PM 2026-10-29: "I don't want the tiny ... clear
 // buttons"): filled is the card row (it carries the slot name), and a click on a placed slot takes his man out (lineup.js wires `clearAttrs`);
 // Empty and "Not on this board" keep the label and the same 64px (style.css .lineup-slot-big).
-function slotHtml({ label, placed, row, palette, attrs, clearAttrs }) {
+function slotHtml({ label, placed, row, palette, attrs, clearAttrs, spend }) {
   const body = !placed
-    ? `<span class="lineup-slot-player lineup-slot-empty">Empty</span>`
+    ? `<span class="lineup-slot-player lineup-slot-empty">Empty</span>${openSpendHtml(spend?.[label === "CPT" ? "cpt" : "flex"], label === "CPT" ? "cpt" : "flex", spend?.[label === "CPT" ? "cptMin" : "flexMin"])}` // an open seat says the most it can still spend (open-seat-spend.js)
     : row
       ? slotPlayerHtml(row, label === "CPT", palette)
       : `<span class="lineup-slot-player lineup-slot-missing">Not on this board</span>`;
@@ -59,11 +70,12 @@ function slotHtml({ label, placed, row, palette, attrs, clearAttrs }) {
     </div>`;
 }
 
-export function slotsHtml(board, { cpt, flex }) {
+/** `spend`: openSeatSpend's answer ({cpt, flex, cptMin, flexMin}: each seat's figure and the cheapest man for it; null or missing draws none). */
+export function slotsHtml(board, { cpt, flex }, spend = null) {
   const palette = showdownPalette(board);
-  const cptHtml = slotHtml({ label: "CPT", placed: cpt, row: cpt ? findRow(board, cpt.id) : null, palette, attrs: { cls: " sd-cpt-slot", data: "" }, clearAttrs: `data-action="clear-cpt"` });
+  const cptHtml = slotHtml({ label: "CPT", placed: cpt, row: cpt ? findRow(board, cpt.id) : null, palette, attrs: { cls: " sd-cpt-slot", data: "" }, clearAttrs: `data-action="clear-cpt"`, spend });
   const flexHtml = flex
-    .map((s, i) => slotHtml({ label: "FLEX", placed: s, row: s ? findRow(board, s.id) : null, palette, attrs: { cls: "", data: ` data-flex-index="${i}"` }, clearAttrs: `data-action="clear-flex" data-flex="${i}"` }))
+    .map((s, i) => slotHtml({ label: "FLEX", placed: s, row: s ? findRow(board, s.id) : null, palette, attrs: { cls: "", data: ` data-flex-index="${i}"` }, clearAttrs: `data-action="clear-flex" data-flex="${i}"`, spend }))
     .join("");
   return cptHtml + flexHtml;
 }

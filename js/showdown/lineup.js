@@ -32,7 +32,9 @@ import { syncMeter, meterStripHtml, wireMeter, playerFigures, lineupFigureRow } 
 import { lineupReadHtml } from "./lineup-read.js"; // the "Lineup read" sentences under the meter (Adam 2026-10-29 5:10 PM: "just make it not suck")
 import { showBand } from "../show-band.js"; // A12, A15: a Load brings the whole band into view
 import { focusOpenRename } from "../rename-focus.js"; // the rename box: focused and selected on open
-import { saveView, restoreLineup, saveLineup, dropMenGoneFromBoard } from "./view-memory.js"; // A9: the pool's filters and sort and the working lineup, per game
+import { saveView } from "./view-memory.js"; // A9: the pool's filters and sort, per game
+import { loadTabSeats, showTabSeats, dropGoneFromTabs, saveTabSeats } from "./tab-seats.js"; // the GPP and Cash tabs' own lineups: the seats on screen are the tab on screen's
+import { openSeatSpend, repaintOpenSpend } from "./open-seat-spend.js"; // what each open seat can still spend
 import { onConfirmDismiss } from "../confirm-inline.js"; // B13, C11: Esc and a click outside close an open confirm
 import { notDeletedText } from "../delete-words.js"; // A12: the one sentence a failed delete leaves, the classic Optimizer's words
 import { wireStaleMessages } from "../stale-messages.js"; // item 17: a one-shot message goes at the next click on any control
@@ -132,18 +134,18 @@ export function workingTotalsHtml(board, picked = state, figures = playerFigures
  * The POST .../lineups body for the lineup built by hand: {name, slots, build}. build is classic's hand record with the board's
  * reading (lineup-builds.js handBuild; board.mode.cashMode, as classic's cash hand save records it), because the server learns
  * whose figures to snapshot from build.boardMode (🔵 re-check of the saved routes, V8). Pure; `picked` = {cpt, flex} (the panel's
- * state), `boardMode` = the board's mode.cashMode ("twogun" or "current"; null records none).
+ * state), `boardMode` = the board's mode.cashMode ("twogun" or "current"; null records none), `mode` = the tab the lineup was built on: only "cash" is sent, as classic's hand save sends it (a GPP body keeps its old shape).
  */
-export function handSaveBody(name, picked, boardMode) {
+export function handSaveBody(name, picked, boardMode, mode = "gpp") {
   const slots = [];
   if (picked.cpt) slots.push({ slot: "CPT", playerId: String(picked.cpt.id) });
   for (const s of picked.flex ?? []) if (s) slots.push({ slot: "FLEX", playerId: String(s.id) });
-  return { name, slots, build: handBuild(boardMode) };
+  return { name, slots, ...(mode === "cash" ? { mode: "cash" } : {}), build: handBuild(boardMode) };
 }
 
 async function doSaveLineup(key, name) {
   if (state.saving) return;
-  const body = handSaveBody(name, state, lastBoard?.mode?.cashMode ?? null);
+  const body = handSaveBody(name, state, lastBoard?.mode?.cashMode ?? null, optimizerState().ks?.mode);
   const slotsPayload = body.slots;
   if (slotsPayload.length === 0) {
     state.saveError = "Add at least one player to the lineup before saving.";
@@ -221,7 +223,7 @@ function doLoadLineup(kind, id) {
   state.cpt = cptSlot ? { id: personOf(cptSlot) } : null;
   state.flex = new Array(FLEX_COUNT).fill(null).map((_, i) => (flexSlots[i] ? { id: personOf(flexSlots[i]) } : null));
   state.addError = null;
-  releaseAllLocks(); // the whole lineup is replaced: every lock of this game goes, in both modes
+  releaseAllLocks(); // the whole lineup is replaced: every lock of the tab on screen goes (the other tab's are its own)
   commit();
   showBand(lastContainer, "sd-lineup-panel"); // the whole band under the sticky layers, and again after the meter has drawn (show-band.js)
 }
@@ -257,11 +259,12 @@ function repaintLineupRead() {
   if (holder) holder.innerHTML = lineupReadOf(lastBoard);
 }
 
-const slotsHtml = (board) => slotsMarkup(board, state); // the placed slots go in as parameters (lineup-slots.js)
+const openSpend = (board) => openSeatSpend({ board, cap: SALARY_CAP, placed: state, excluded: (row, tab) => poolControls.excluded(row, tab) }); // the tab on screen's excludes; none off the live app
+const slotsHtml = (board) => slotsMarkup(board, state, openSpend(board)); // the placed slots go in as parameters (lineup-slots.js)
 
 function controlsHtml() {
   const hasAnySlot = Boolean(state.cpt) || state.flex.some(Boolean);
-  return controlsMarkup({ saving: state.saving, saveName: state.saveName, hasAnySlot, confirm: state.confirm });
+  return controlsMarkup({ saving: state.saving, saveName: state.saveName, hasAnySlot, confirm: state.confirm, mode: optimizerLive() ? optimizerState().ks.mode : null });
 }
 
 // The status block under the slots and the click's message beside its pool row (standard A14): lineup-status.js.
@@ -358,6 +361,7 @@ function optCtx(board, key) {
     getSaved: () => state.savedLineups,
     setSaved: (list) => { state.savedLineups = list; },
     repaintPool: () => { if (lastContainer) paintPool(lastContainer, poolCtx(board)); },
+    repaintOpenSpend: () => repaintOpenSpend(lastContainer, openSpend(board)), // an exclude changes who can fill the other seats
     onLock: (row, kind, on) => (on ? lockSeat(row, kind) : unlockSeat(row, kind)), // D3: Lock seats the man; Unlock takes him out
     loadResult: (uid) => requestLoad("result", uid), // A13: a generated card into the builder's seats
     boardWrite: (send, label) => (boardWrite ? boardWrite(send, label) : console.error("A Showdown board write was asked for, but view.js passed no board writer.")), // the ± bump (Adam 2026-10-22)
@@ -523,6 +527,8 @@ function dropStaleMessages(key) {
   if (lastMessageScope !== null && scope !== lastMessageScope) {
     state.dkStatus = "";
     state.saveConfirm = null;
+    state.saveError = null; // the other tab's Save refusal and swap refusal are not this tab's
+    setSwapsRefusal("");
     state.addError = null;
     state.addErrorId = null;
     state.addTone = undefined;
@@ -550,12 +556,10 @@ export function renderShowdownLineupPanel(container, board, key, { onOpenSources
     state.savedLineups = [];
     state.savedError = null;
     // A different showdown means a different player pool: the other game's ticked saved lineups and open rename/delete prompts must never carry over (🔵 review item 7). Its placed Captain/FLEX
-    // are the game's own (A9): this game's remembered lineup comes back, and the other game's was written as it changed, so a switch back finds it. A man who is gone from this board is dropped and named.
-    const remembered = restoreLineup(key, board, FLEX_COUNT);
-    state.cpt = remembered.cpt;
-    state.flex = remembered.flex;
+    // are the game's own (A9): this game's remembered lineups (one for the GPP tab, one for Cash) come back, and the other game's were written as they changed, so a switch back finds them. A man who is gone from this board is dropped and named.
+    loadTabSeats(key, board); // the tab on screen's seats are put in below, once its mode is known (showTabSeats)
     state.addError = null; // a refusal beside a row of the other game's pool is not this game's
-    rememberedNote = remembered.note; // what a remembered lineup lost is said once (set below, after the stale-message pass, which clears a game switch's messages)
+    rememberedNote = ""; // what a remembered lineup lost is said once (set below, after the stale-message pass, which clears a game switch's messages)
     state.addErrorId = null;
     state.addTone = undefined;
     state.dkSelected.clear();
@@ -566,16 +570,12 @@ export function renderShowdownLineupPanel(container, board, key, { onOpenSources
     state.confirm = null;
     if (key) loadSavedLineups(key);
   } else if (board !== lastSeatBoard) {
-    // The same game on a new board (a refresh, a re-upload): a man it no longer has (a new id, or he left the file) is taken out and named from the memory, never blank (A9).
-    const kept = dropMenGoneFromBoard(key, board, state.cpt, state.flex);
-    if (kept.note) {
-      state.cpt = kept.cpt;
-      state.flex = kept.flex;
-      rememberedNote = kept.note;
-    }
+    // The same game on a new board (a refresh, a re-upload): a man it no longer has (a new id, or he left the file) is taken out of both tabs' lineups and named from the memory, never blank (A9).
+    rememberedNote = dropGoneFromTabs(key, board);
   }
   lastSeatBoard = board;
   syncOptimizer(key, board); // this showdown's Optimizer settings; another showdown's batch is dropped (first: the meter reads its excludes)
+  rememberedNote = [rememberedNote, showTabSeats(optimizerState().ks?.mode === "cash" ? "cash" : "gpp")].filter(Boolean).join(" "); // the tab on screen's own seats (a tab switch swaps them here)
   dropStaleMessages(key);
   if (rememberedNote) state.addError = rememberedNote;
   rememberedNote = "";
@@ -597,7 +597,7 @@ export function renderShowdownLineupPanel(container, board, key, { onOpenSources
   restoreOpenLimit(container, openLimit);
   poolCount?.(poolRows.length, (board?.rows ?? []).length);
   afterDraw?.();
-  saveLineup(key, board, state.cpt, state.flex); // A9: the lineup is remembered under its game as it changes (nothing is written when it did not)
+  saveTabSeats(key, board); // A9: each tab's lineup is remembered under its game as it changes (nothing is written when it did not)
   focusOpenRename(container, state.renamingId); // the rename box takes the keyboard when it opens, its name selected
   refreshBuildNotice(); // A15: the notice under the filter bar follows the build's state and where the Make row is
 }

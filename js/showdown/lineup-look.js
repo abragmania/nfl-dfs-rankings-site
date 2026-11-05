@@ -22,11 +22,13 @@ export function showdownPalette(board) {
 /** The working lineup's controls: Clear lineup on the first row, Save as and `Save working lineup` on the second (each row the column's full width). The
  *  one Build is in the Optimizer's Build row under the slots (optimizer standard A13, round 3: Showdown's top Build folded into it), and no Objective
  *  choice is drawn while Projection is the only objective (A21). */
-export function controlsHtml({ saving, saveName, hasAnySlot, confirm = null }) {
+export function controlsHtml({ saving, saveName, hasAnySlot, confirm = null, mode = null }) {
+  // The tab this lineup belongs to, in the tab's colour (GPP and Cash each have their own lineup): once the page is scrolled the tabs are off screen and nothing else says which one this is. None off the live app (mode null).
+  const tag = mode ? `<span class="sd-tab-tag${mode === "cash" ? " is-cash" : ""}" title="This is the ${mode === "cash" ? "Cash" : "GPP"} tab's lineup">${mode === "cash" ? "$ Cash" : "GPP"}</span>` : "";
   return `
     <div class="lineup-controls sd-controls">
       <div class="sd-controls-row">
-        ${anchorHtml(`<button type="button" id="sd-lineup-clear-all-btn" class="lineup-clear-all-btn">Clear lineup</button>`, confirm === "clear" ? confirmHtml(CLEAR_QUESTION, { data: "clear" }) : "", { align: "swap" })}
+        ${anchorHtml(`<button type="button" id="sd-lineup-clear-all-btn" class="lineup-clear-all-btn">Clear lineup</button>`, confirm === "clear" ? confirmHtml(CLEAR_QUESTION, { data: "clear" }) : "", { align: "swap" })}${tag}
       </div>
       <div class="sd-controls-row">
         <label class="lineup-control">Save as

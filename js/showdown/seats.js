@@ -177,7 +177,7 @@ export function unlockSeat(row, kind) {
     const idx = state.flex.findIndex((s) => s && String(s.id) === id);
     if (idx !== -1) state.flex[idx] = null;
   }
-  releaseSeatLock(row, kind); // in the other mode too: the seat is empty now
+  releaseSeatLock(row, kind); // the seat is empty now (the tab on screen's lock only)
   state.addError = null;
   return true;
 }
@@ -193,8 +193,8 @@ setSeatedSource((board) => {
 
 let reconciledScope = null;
 /**
- * Locks persist (browser storage, per game and mode); the seats do not. At the first draw of a game and at every mode switch (`scope` names the pair) each stored lock is put in its seat by
- * the same rules as a click, the Captain's first; one that cannot sit is dropped, and a sentence says who and why. After this a lock always has his seat (a slot click, Unlock, Clear all
+ * Locks and each tab's seats persist (browser storage, per game and tab: optimizer-state.js, tab-seats.js). At the first draw of a game and at every tab switch (`scope` names the pair) each stored lock whose man is not already in his
+ * seat is put there by the same rules as a click, the Captain's first; one that cannot sit is dropped, and a sentence says who and why. After this a lock always has his seat (a slot click, Unlock, Clear all
  * and Load remove the locks they leave behind), so a Build never forces a man the lineup does not show, and a lock never comes back on with an empty seat.
  */
 export function reseatStoredLocks(scope) {
@@ -232,7 +232,7 @@ export function reseatStoredLocks(scope) {
   }
 }
 
-// A man leaving a seat takes his lock in that seat with him, in both modes (classic's removeSlot). A lock stored with no seat is dealt with by reseatStoredLocks, not left to point at an empty seat.
+// A man leaving a seat takes his lock in that seat with him, in the tab on screen (classic's removeSlot). A lock stored with no seat is dealt with by reseatStoredLocks, not left to point at an empty seat.
 export function clearCaptain() {
   const gone = state.cpt ? findRow(boardRef, state.cpt.id) : null;
   state.cpt = null;
@@ -252,7 +252,7 @@ export function clearAll() {
   state.cpt = null;
   state.flex = new Array(FLEX_COUNT).fill(null);
   state.addError = null;
-  releaseAllLocks(); // every lock of this game, both modes: none is left to come back on with an empty seat
+  releaseAllLocks(); // every lock of the tab on screen: none is left to come back on with an empty seat
 }
 
 /** Whether Clear all would lose something (B13): a man in any seat. */

@@ -75,6 +75,21 @@ export const lockedInText = (name) => `${name} is locked into your lineup. Unloc
 const none = () => new Set();
 
 /**
+ * Who could fill an open seat, the one rule for the greying below and for the open seats' spend (open-seat-spend.js). A FLEX seat needs his FLEX salary and projection and no exclude from every lineup; the
+ * Captain seat needs his Captain salary and projection and no Captain exclude. A man who can take only one of the two (a Captain-only man, a kicker with no FLEX projection, a man excluded as Captain) stays
+ * in the fill for that seat (his other price is left out), so a man who fits is never greyed for want of a cheap Captain. `excluded(row, tab)`: the Optimizer's excludes.
+ * Returns {fillable(row), asFiller(row) -> {id, salary, cptSalary}} (a price he cannot be filled at is null).
+ */
+export function fillerRules(excluded = () => false) {
+  const flexOk = (r) => Number.isFinite(r.salary) && Number.isFinite(r.proj) && !excluded(r, "flex");
+  const cptOk = (r) => Number.isFinite(r.cptSalary) && Number.isFinite(r.cptProj) && !excluded(r, "cpt");
+  return {
+    fillable: (r) => flexOk(r) || cptOk(r),
+    asFiller: (r) => ({ id: r.id, salary: flexOk(r) ? r.salary : null, cptSalary: cptOk(r) ? r.cptSalary : null }),
+  };
+}
+
+/**
  * `board`: the served board; `cap`: the salary cap; `placed` = {cpt: {id} | null, flex: [{id} | null x5]}; `excluded(row, tab)`: whether the list's row is excluded
  * (the Optimizer's excludes; false off the live app); `locks` = {cpt: Set of person ids locked as Captain, flex: Set locked in FLEX} (empty off the live app); `canType`: whether a
  * projection can be typed here (the app; not the public site), which the missing-projection reason then offers.
@@ -92,13 +107,7 @@ export function seatPicker({ board, cap, placed, excluded = () => false, locks =
     const r = byId.get(String(id));
     return r ? (isCpt ? r.cptSalary : r.salary) ?? 0 : 0;
   };
-  // The men who could fill an open seat, each for the seats he could take: a FLEX seat needs his FLEX salary and projection and no exclude from every lineup; the Captain seat
-  // needs his Captain salary and projection and no Captain exclude. A man who can take only one of the two (a Captain-only man, a kicker with no FLEX projection, a man excluded
-  // as Captain) stays in the fill for that seat (his other price is left out), so a man who fits is never greyed for want of a cheap Captain.
-  const flexOk = (r) => Number.isFinite(r.salary) && Number.isFinite(r.proj) && !excluded(r, "flex");
-  const cptOk = (r) => Number.isFinite(r.cptSalary) && Number.isFinite(r.cptProj) && !excluded(r, "cpt");
-  const fillable = (r) => flexOk(r) || cptOk(r);
-  const asFiller = (r) => ({ id: r.id, salary: flexOk(r) ? r.salary : null, cptSalary: cptOk(r) ? r.cptSalary : null });
+  const { fillable, asFiller } = fillerRules(excluded); // the men who could fill an open seat, each for the seats he could take
   const others = rows.filter((r) => !seated.has(String(r.id)) && fillable(r)).map(asFiller);
   const grey = (reason) => ({ action: null, reason });
   return function pickOf(row, tab, base) {

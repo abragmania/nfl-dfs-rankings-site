@@ -28,30 +28,24 @@ import { requestFailureText } from "./read-json.js"; // the one JSON reader (ðŸ”
 import { postShowdownGenerate, putShowdownOverrides, deleteShowdownOverrides, resultsFromAnswer, savedKeysOf, saveBody } from "./optimizer-requests.js"; // the requests and plain shapes, moved out in round 4
 import * as S from "./optimizer-state.js";
 import * as V from "./optimizer-view.js";
+import { newTabs, tabName, bindTabFields } from "./optimizer-tabs.js"; // each tab's own batch and messages
 
 const browserStorage = () => window.localStorage;
 const BUSY_TEXT = "Lineups are already being made; try again when that finishes.";
 
 const opt = {
   key: null, // the showdown these settings and this batch belong to
-  ks: S.defaultKeyState(), // {mode, gpp, cash} for opt.key, mirrored to localStorage on every change
+  ks: S.defaultKeyState(), // {mode, variance, gpp, cash} for opt.key (variance: the one GPP-only setting for the showdown), mirrored to localStorage on every change
+  tabs: newTabs(), // each tab's batch, messages and filter (optimizer-tabs.js); results, doneNote, error, errorTone, formError, saveError, saveTone, mustHave and mustHaveNames below are the tab on screen's
   generating: false,
-  doneNote: false, // a build has ended and its results are on screen: `Build finished.` and its link sit beside the Build button (build-notice.js)
   buildingShown: false, // the build has run a second, so the screen says so (lineup-stop.js)
   buildingBelow: false, // the Make button sits on its own line under the summary, so the build keeps that layout
   stopping: false, // Stop was pressed and the build is ending: the button reads "Stopping..." (lineup-stop.js)
   stopError: "", // the sentence under Stop when the server did not hear it (optimizer standard D18)
   saving: false,
-  error: null, // the server's sentence for a refused or failed Make
-  errorTone: "error", // "warn" for a build already running (a notice, not a failure), else "error" (row-message.js)
-  formError: null, // a box that is not a percent: blocks Make
-  saveError: null,
-  saveTone: "error", // "warn" when saveError is only "N saved, M already saved", else "error"
-  results: null, // the batch on screen, see doGenerate
   exp: defaultExpState("seats"), // the one exposure table's sort and Seat filter {col, dir, filter} (lineup-exposure.js, A10); kept in the browser
-  mustHave: [], // the "only lineups with" keys, in the order chosen ("cpt:<person>" / "flex:<person>", D77); page-only, hides and never deletes
-  mustHaveNames: {}, // key -> the chip's words
 };
+bindTabFields(opt);
 let seq = 0;
 let storage = browserStorage;
 let listShowdowns = () => getShowdowns(); // GET /api/showdown, the loaded showdowns (B11)
@@ -92,26 +86,19 @@ export function optimizerLocks(board) {
   return out;
 }
 
-/** The man left a seat (his slot was clicked, Unlock): his lock in that seat goes with him, in both modes (the seats are one set; a lock left in the other mode would come back on
- *  with nobody in the seat), as classic's removeSlot drops it. */
+/** The man left a seat (his slot was clicked, Unlock): his lock in that seat goes with him, in the tab on screen only (each tab has its own seats and locks; the other tab's are never touched), as classic's removeSlot drops it. */
 export function releaseSeatLock(row, kind) {
   if (!optimizerLive() || !row) return;
   const id = kind === "cpt" ? (row.cptId == null ? null : String(row.cptId)) : String(row.id);
-  if (id === null) return;
-  let next = opt.ks;
-  for (const mode of S.MODES) if (next[mode].locks.includes(id)) next = { ...next, [mode]: { ...next[mode], locks: next[mode].locks.filter((x) => x !== id) } };
-  if (next !== opt.ks) {
-    opt.ks = next;
-    persist();
-  }
+  if (id === null || !modeState().locks.includes(id)) return;
+  setModeState({ ...modeState(), locks: modeState().locks.filter((x) => x !== id) });
 }
 
-/** Clear all and Load replace the whole lineup: every lock of this game goes, in both modes (none is left pointing at a seat that is not his any more). */
+/** Clear all and Load replace the whole lineup: every lock of the tab on screen goes (none is left pointing at a seat that is not his any more); the other tab's lineup and locks stay. */
 export function releaseAllLocks() {
   if (!optimizerLive()) return;
-  if (!S.MODES.some((mode) => opt.ks[mode].locks.length)) return;
-  opt.ks = { ...opt.ks, gpp: { ...opt.ks.gpp, locks: [] }, cash: { ...opt.ks.cash, locks: [] } };
-  persist();
+  if (!modeState().locks.length) return;
+  setModeState({ ...modeState(), locks: [] });
 }
 
 // The men in the builder's seats, as candidate ids (the Captain by his Captain id): seats.js registers the reader, so the Optimizer can hold them in a Build and say so (item 11)
@@ -149,12 +136,7 @@ export function syncOptimizer(key, board) {
     opt.key = key;
     opt.ks = key ? S.readKeyState(storage, key) : S.defaultKeyState();
     opt.exp = cleanExpState(key ? rememberedExp(key) : null, "seats"); // A9: the exposure table's sort and Seat filter of this game
-    opt.results = null;
-    opt.doneNote = false;
-    clearMustHave();
-    opt.error = null;
-    opt.formError = null;
-    opt.saveError = null;
+    opt.tabs = newTabs(); // both tabs' batches, messages and filters are the last showdown's
     buildNotice.reset(); // what the last build left under the filter bar belongs to the game it was made for
   }
   if ((board?.rows ?? []).length) opt.ks = { ...opt.ks, gpp: S.pruneToBoard(opt.ks.gpp, board, "gpp"), cash: S.pruneToBoard(opt.ks.cash, board, "cash") };
@@ -190,7 +172,7 @@ export { postShowdownGenerate, putShowdownOverrides, deleteShowdownOverrides, re
 async function doGenerate(ctx) {
   if (opt.generating || opt.saving) return;
   flushOpenLimit(); // a Min % or Max % box still open is read as a click away reads it, before the request is made (A3)
-  const refused = limitRefusals().filter((r) => r.selector.startsWith("[data-sd-cap")); // a text a box refused (this press's blur included) is not silently built around: the Build stops and names him
+  const refused = opt.ks.mode === "gpp" ? limitRefusals().filter((r) => r.selector.startsWith("[data-sd-cap")) : []; // a text a box refused (this press's blur included) is not silently built around: the Build stops and names him; Cash has no Min % / Max % boxes, so a GPP box's refusal never stops a Cash build
   noticeCtx = ctx;
   if (refused.length) {
     opt.formError = refused[0].sentence;
@@ -201,13 +183,13 @@ async function doGenerate(ctx) {
   const mode = opt.ks.mode;
   const seated = seatedNow(ctx.board); // the men in the seats are held as classic holds its slots (item 11)
   const held = S.heldCandidates(modeState(), seated);
-  opt.formError = countBelowMin(modeState().count) ? COUNT_MIN_SENTENCE : held.length >= 6 ? fullLineupText(6) : S.capProblem(modeState(), mode, ctx.board); // item 18: a count below 1 is said, not made into 1
+  opt.formError = countBelowMin(modeState().count) ? COUNT_MIN_SENTENCE : held.length >= 6 ? fullLineupText(6) : S.capProblem(modeState(), mode, ctx.board) ?? S.varianceProblem(opt.ks.variance, mode); // item 18: a count below 1 is said, not made into 1
   if (opt.formError) {
     ctx.commit();
     buildNotice.finish({ error: opt.formError, tone: "warn" });
     return;
   }
-  const sent = S.buildGenerateBody(modeState(), mode, ctx.board, seated); // no boardMode: the server builds on this game's served board
+  const sent = S.buildGenerateBody(modeState(), mode, ctx.board, seated, opt.ks.variance); // no boardMode: the server builds on this game's served board
   const madeFor = opt.key;
   opt.generating = true;
   opt.stopping = false;
@@ -225,6 +207,7 @@ async function doGenerate(ctx) {
     ctx.commit();
   });
   let stale = false;
+  const tabNow = () => opt.tabs[tabName(mode)]; // the tab this build was made on, looked up after the await: leaving the game and coming back replaces opt.tabs, and the answer belongs to the tabs of the game on screen
   try {
     const data = await (ctx.post ?? postShowdownGenerate)(madeFor, sent);
     // Another showdown on screen now: nothing of this answer is kept, but the screen is still redrawn below so its Make button
@@ -232,18 +215,19 @@ async function doGenerate(ctx) {
     stale = opt.key !== madeFor;
     if (!stale && (!data || data.ok === false || data.error)) {
       const busy = data?.error?.code === "GENERATE_BUSY";
-      opt.error = busy ? data.error.message || BUSY_TEXT : data?.error?.message ?? "Could not make lineups.";
-      opt.errorTone = answerTone(data?.error?.code); // a refusal (bad settings, a build already running) is amber; a build that failed outright is red
+      tabNow().error = busy ? data.error.message || BUSY_TEXT : data?.error?.message ?? "Could not make lineups.";
+      tabNow().errorTone = answerTone(data?.error?.code); // a refusal (bad settings, a build already running) is amber; a build that failed outright is red
     } else if (!stale) {
-      opt.results = resultsFromAnswer(data, sent, seq, ctx.board ?? null);
-      clearMustHave(); // a new batch starts unfiltered (D77)
-      seq += opt.results.lineups.length;
+      tabNow().results = resultsFromAnswer(data, sent, seq, ctx.board ?? null);
+      tabNow().mustHave = []; // a new batch starts unfiltered (D77)
+      tabNow().mustHaveNames = {};
+      seq += tabNow().results.lineups.length;
     }
   } catch (e) {
     stale = opt.key !== madeFor;
     if (!stale) {
-      opt.error = requestFailureText(e); // a non-JSON answer reads "The server's answer could not be read (status N)." (B3)
-      opt.errorTone = "error";
+      tabNow().error = requestFailureText(e); // a non-JSON answer reads "The server's answer could not be read (status N)." (B3)
+      tabNow().errorTone = "error";
     }
   } finally {
     cancelShow();
@@ -254,10 +238,11 @@ async function doGenerate(ctx) {
   }
   // A15: the page does not move by itself (the batch sits below the pool). The Build row says `Build finished.` with a link to the results; with the button off screen the notice under the filter
   // bar says it where he is looking (build-notice.js).
-  const made = !stale && Boolean(opt.results) && !opt.error;
-  opt.doneNote = made;
+  const made = !stale && Boolean(tabNow().results) && !tabNow().error;
+  if (!stale) tabNow().doneNote = made;
   ctx.commit();
-  buildNotice.finish({ built: made, error: stale ? "" : opt.error ?? "", tone: opt.errorTone === "warn" ? "warn" : "error" });
+  if (stale || opt.ks.mode !== mode) buildNotice.finish({ built: false, error: "" }); // another game or the other tab is on screen now: its notice is not this build's (the batch waits on its own tab)
+  else buildNotice.finish({ built: made, error: tabNow().error ?? "", tone: tabNow().errorTone === "warn" ? "warn" : "error" });
 }
 
 const filterBarBottom = () => (typeof document === "undefined" ? 0 : document.getElementById?.("sd-filterbar")?.getBoundingClientRect?.().bottom ?? 0);
@@ -319,11 +304,14 @@ async function saveCards(uids, ctx) {
   if (opt.saving || opt.generating || !opt.results) return;
   const results = opt.results;
   const key = opt.key;
+  const mode = opt.ks.mode;
+  const tabNow = () => opt.tabs[tabName(mode)]; // a save's message belongs to the tab it was pressed on, looked up after the awaits (leaving the game and coming back replaces opt.tabs)
   opt.saving = true;
-  opt.saveError = null;
+  tabNow().saveError = null;
   ctx.commit();
   const skipped = [];
   let savedCount = 0;
+  let saveError = null;
   for (const uid of uids) {
     const lineup = results.lineups.find((l) => l.uid === uid);
     if (!lineup || savedKeysOf(ctx.getSaved(), results.mode, ctx.board).has(S.sdSetKey(lineup.slots, S.boardIndex(ctx.board).personOf))) continue;
@@ -338,21 +326,25 @@ async function saveCards(uids, ctx) {
         continue;
       }
       if (!data || data.ok === false) {
-        opt.saveError = data?.error?.message ?? "Could not save the lineup.";
+        saveError = data?.error?.message ?? "Could not save the lineup.";
         break;
       }
       if (Array.isArray(data.lineups)) ctx.setSaved(data.lineups);
       savedCount++;
     } catch (e) {
-      opt.saveError = requestFailureText(e);
+      saveError = requestFailureText(e);
       break;
     }
   }
-  opt.saveTone = "error";
-  if (skipped.length) {
-    const status = duplicateSaveStatus(uids.length, savedCount, skipped);
-    if (!opt.saveError) opt.saveTone = "warn"; // only "already saved": a notice, amber; a real failure alongside keeps it red
-    opt.saveError = opt.saveError ? `${status}. ${opt.saveError}` : status;
+  if (opt.key === key) { // another game on screen now: its tabs are not told of this save
+    const tab = tabNow();
+    tab.saveError = saveError;
+    tab.saveTone = "error";
+    if (skipped.length) {
+      const status = duplicateSaveStatus(uids.length, savedCount, skipped);
+      if (!saveError) tab.saveTone = "warn"; // only "already saved": a notice, amber; a real failure alongside keeps it red
+      tab.saveError = saveError ? `${status}. ${saveError}` : status;
+    }
   }
   opt.saving = false;
   ctx.commit();
@@ -363,7 +355,7 @@ async function saveCards(uids, ctx) {
 const showing = () => opt.generating && opt.buildingShown; // a build under a second shows nothing (lineup-stop.js); doGenerate itself refuses a second click
 const busy = () => opt.generating || opt.saving;
 
-const bandView = (board) => ({ mode: opt.ks.mode, ms: modeState(), board, error: opt.error, errorTone: opt.errorTone, formError: opt.formError, seated: seatedNow(board) });
+const bandView = (board) => ({ mode: opt.ks.mode, ms: modeState(), variance: opt.ks.variance, board, error: opt.error, errorTone: opt.errorTone, formError: opt.formError, seated: seatedNow(board) });
 
 /** The Optimizer band's head (title, GPP | Cash switch, refusal sentences), at the top of the left column; "" off the live app. */
 export function optimizerBandHeadHtml(board) {
@@ -387,7 +379,7 @@ export function optimizerBandHtml(board) {
  *  `board`: the served board (its reading names the cash basis, its rows whether Median can be built). */
 export function optimizerGoRowHtml(board) {
   if (!optimizerLive()) return "";
-  return V.goRowHtml({ summary: S.summaryText(modeState(), opt.ks.mode, board), generating: showing(), busy: showing() || opt.saving, formError: opt.formError, canStop: canStopShowdownLineupGenerate(), below: opt.buildingBelow, stopping: opt.stopping, stopError: opt.stopError, done: opt.doneNote && Boolean(opt.results) });
+  return V.goRowHtml({ summary: S.summaryText(modeState(), opt.ks.mode, board, opt.ks.variance), generating: showing(), busy: showing() || opt.saving, formError: opt.formError, canStop: canStopShowdownLineupGenerate(), below: opt.buildingBelow, stopping: opt.stopping, stopError: opt.stopError, done: opt.doneNote && Boolean(opt.results) });
 }
 
 /** The batch (its head, source line, exposure tables and cards), drawn full width below both columns (Adam 2026-10-19 11:17 PM:
@@ -493,11 +485,12 @@ export const poolControls = {
 /** Puts the summary (which names the count) and the included / locked line back after a box changed, without a redraw (focus stays). */
 function refreshLines(container, board) {
   const summary = container.querySelector("#sd-opt-summary");
-  if (summary) summary.textContent = S.summaryText(modeState(), opt.ks.mode, board);
+  if (summary) summary.textContent = S.summaryText(modeState(), opt.ks.mode, board, opt.ks.variance);
   const info = container.querySelector("#sd-opt-lockinfo");
   if (info) {
     const text = S.statusLineText(modeState(), board, seatedNow(board));
     info.textContent = text;
+    info.title = text; // one line, cut with an ellipsis: the full list is the hover
     info.classList.toggle("is-empty", !text); // the line keeps its room when empty (A15)
   }
 }
@@ -548,6 +541,7 @@ export function wirePoolControls(listEl, ctx) {
       if (next.excludes !== ms.excludes) {
         resyncMeterExcludes(optimizerExcludes()); // the builder's meter re-measures against the same best as the batch (B1)
         resyncSwapsExcludes(optimizerExcludes()); // after the meter: an excluded man is no longer offered as a swap
+        ctx.repaintOpenSpend?.(); // and an excluded man is no longer fill for the open seats' spend
       }
     });
   });
@@ -588,11 +582,31 @@ function wireBand(root, ctx) {
     btn.addEventListener("click", () => {
       const next = btn.dataset.optMode === "cash" ? "cash" : "gpp";
       if (next === opt.ks.mode) return;
-      opt.ks = { ...opt.ks, mode: next };
-      opt.formError = null;
+      opt.ks = { ...opt.ks, mode: next }; // each tab keeps its own settings, lineup, batch and messages (optimizer-tabs.js, tab-seats.js): nothing is cleared here
+      persist();
+      buildNotice.reset(); // the notice under the filter bar is the last build's, which may be the other tab's
+      ctx.commit();
+    });
+  });
+  // The Variance switch and its percent box (GPP tab only; one setting for the showdown, kept with it): Off / On, and a typed percent from 0 to 100 (blank or 0 sends nothing).
+  root.querySelectorAll("[data-sd-variance]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const on = btn.dataset.sdVariance === "on";
+      if (opt.ks.variance.on === on) return;
+      opt.ks = { ...opt.ks, variance: { ...opt.ks.variance, on } };
+      if (!on && opt.formError === S.VARIANCE_SENTENCE) opt.formError = null;
       persist();
       ctx.commit();
     });
+  });
+  const variancePct = root.querySelector("#sd-opt-variance-pct");
+  variancePct?.addEventListener("input", () => {
+    opt.ks = { ...opt.ks, variance: { ...opt.ks.variance, pct: variancePct.value } };
+    persist();
+    const bad = Boolean(S.varianceProblem(opt.ks.variance, "gpp"));
+    variancePct.classList.toggle("invalid", bad); // marked while On over a text that is not a percent from 0 to 100
+    if (!bad && opt.formError === S.VARIANCE_SENTENCE) clearFormError(ctx.container);
+    refreshLines(ctx.container, ctx.board); // the summary beside Build says `variance Â±N%` only while it will be sent
   });
   for (const [sel, field] of [["#sd-opt-count", "count"], ["#sd-opt-min-unique", "minUnique"]]) {
     const el = root.querySelector(sel);

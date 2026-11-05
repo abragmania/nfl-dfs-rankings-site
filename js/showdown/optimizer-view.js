@@ -7,7 +7,7 @@ import { escapeHtml, dec1 } from "../format.js";
 import { buildingHtml, goLabelHtml, buildingRowClass, BUILDING_LABEL } from "../lineup-stop.js";
 import { statusLineHtml, statusToneClass } from "../row-message.js"; // A14: red only for an error
 import { settingRowHtml, settingGroupHtml, numberBoxHtml, countNote } from "../lineup-settings.js";
-import { modeSwitchHtml, cashChipHtml, cashMedianText, unusedCapText, builtInTextCash } from "../lineup-cash.js";
+import { cashChipHtml, cashMedianText, unusedCapText, builtInTextCash } from "../lineup-cash.js";
 import { lineupTotals, lineupTotalsHtml } from "../lineup-totals.js"; // A11
 import { doneNoteHtml } from "../build-notice.js"; // A15: `Build finished.` beside the Build button
 import { cardPlayerRowHtml, teamColours } from "../lineup-card.js";
@@ -18,7 +18,7 @@ import { posPillHtml } from "./table.js"; // 👁 2026-10-22: the exposure rows 
 import { copiesText, gapText, scaleColour, noUniquenessText, sourceLineText } from "./lineup-meter.js";
 import { likelyRangeText, likelyFactText } from "./likely-copies.js";
 import { calcSentence, modelNote, isEstimate, estimateTitle, estimateLabelHtml } from "./field-explain.js"; // the field model's words (D82)
-import { OBJECTIVES, TEAM_OPTIONS, MAX_COUNT, MAX_UNIQUE, effectiveObjective, boardHasTg, cashBasisText, statusLineText, isLocked, isIncluded, excludeState, exposureTables, sdPlayersOf } from "./optimizer-state.js";
+import { OBJECTIVES, TEAM_OPTIONS, MAX_COUNT, MAX_UNIQUE, effectiveObjective, boardHasTg, cashBasisText, varianceProblem, statusLineText, isLocked, isIncluded, excludeState, exposureTables, sdPlayersOf } from "./optimizer-state.js";
 import { filterLineups, bulkLabel, filterBarHtml } from "../lineup-filter.js";
 import { LOCK_SVG, rowIconButtonHtml } from "../row-controls.js"; // round 3: Lock, In and Exclude are the same small buttons in classic and Showdown
 import { confirmHtml, anchorHtml, REPLACE_QUESTION } from "../confirm-inline.js"; // A13, C11: Load on a result card asks before replacing unsaved slots
@@ -44,6 +44,16 @@ export function objectiveChipsHtml(picked, board) {
   }).join("");
 }
 
+/** The Variance control (GPP tab only; the showdown's one setting, optimizer-state.js): an Off | On switch and a typed percent from 0 to 100 (decimals allowed; blank or 0 sends nothing). The box starts blank and
+ *  is off the keyboard while the switch is Off. `variance` = {on, pct}. */
+export function varianceRowHtml(variance) {
+  const on = variance?.on === true;
+  const chip = (value, label) => `<button type="button" class="chip toggle-chip opt-chip${on === (value === "on") ? " active" : ""}" data-sd-variance="${value}" aria-pressed="${on === (value === "on")}">${label}</button>`;
+  const bad = Boolean(varianceProblem(variance, "gpp")); // On over a box that is not a percent from 0 to 100: marked, and it blocks Build
+  const box = numberBoxHtml(`type="text" inputmode="decimal" maxlength="6" class="opt-input opt-input-num${bad ? " invalid" : ""}" id="sd-opt-variance-pct" value="${escapeHtml(variance?.pct ?? "")}" aria-label="Variance percent"${on ? "" : " disabled"}`, "%");
+  return settingRowHtml("Variance", `<span class="opt-chips sd-variance">${chip("off", "Off")}${chip("on", "On")}</span>${box}`, "Blank or 0 is off");
+}
+
 function teamSelectHtml(value) {
   const options = TEAM_OPTIONS.map((v) => `<option value="${v}"${String(value) === v ? " selected" : ""}>${v}</option>`).join("");
   return `<select id="sd-opt-max-team" class="opt-input opt-select" aria-label="Max per team">${options}</select>`;
@@ -59,51 +69,73 @@ export function bandHtml(v) {
   return bandHeadHtml(v) + bandBoxesHtml(v);
 }
 
-/** The head: the heading row (the title, the green $ chip in cash, the GPP | Cash switch, a refused Make's sentence) and a blocked
+/** The GPP and Cash tabs (optimizer standard Part F, Adam 5:12 PM 2026-11-04: separate tabs, each with its own settings, lineup and batch). The classic `.opt-tab` look; the buttons keep `data-opt-mode`, which wireBand reads. */
+export function modeTabsHtml(mode) {
+  const active = mode === "cash" ? "cash" : "gpp";
+  const tab = (value, inner, title) => `<button type="button" role="tab" class="opt-tab sd-opt-tab${active === value ? " active" : ""}" data-opt-mode="${value}" aria-selected="${active === value}" title="${escapeHtml(title)}">${inner}</button>`;
+  return `<div class="opt-tabs sd-opt-tabs" role="tablist" aria-label="Lineup type">${tab("gpp", "GPP", "Tournament lineups: this tab's own settings, lineup and lineups")}${tab("cash", `${cashChipHtml()} Cash`, "Cash-game lineups: this tab's own settings, lineup and lineups")}</div>`;
+}
+
+/** The head: one line with the tab pair at the top, the title beside it and a refused Make's sentence, then a blocked
  *  Make's sentence. Its own element, #sd-opt-head. */
 export function bandHeadHtml(v) {
-  const cash = v.mode === "cash";
   return `
     <div class="sd-opt-head" id="sd-opt-head">
-      <div class="opt-settings-head">
-        <h3 class="opt-title">Settings${cash ? ` ${cashChipHtml()}` : ""}${modeSwitchHtml(v.mode)}</h3>
+      <div class="opt-settings-head sd-opt-tabline">
+        ${modeTabsHtml(v.mode)}
+        <h3 class="opt-title">Settings</h3>
         ${v.error ? `<span class="${statusToneClass(v.errorTone ?? "error").trim()} opt-go-error">${escapeHtml(v.error)}</span>` : ""}
       </div>
       ${v.formError ? statusLineHtml(v.formError, "warn", "opt-form-error") : ""}
     </div>`;
 }
 
+/** A row of the other tab's Build box, drawn invisible in its place: the GPP and Cash settings bands are then the same height, so a tab switch moves nothing below them (A15). No controls, hidden from
+ *  the keyboard and screen readers. */
+const ghostRowHtml = (label, hint = "") => `<div class="opt-set sd-opt-ghost" aria-hidden="true"><div class="opt-set-main"><span class="opt-set-label">${escapeHtml(label)}</span><span class="opt-set-ctl"></span></div>${hint ? `<div class="opt-set-hint">${escapeHtml(hint)}</div>` : ""}</div>`;
+const CAPS_HINT = "Each man's Min % and Max % are on the pool rows: on the FLEX list they set his FLEX share, on the Captain list his Captain share.";
+
 /** The Pool and Build boxes (the included / locked line in Build). Its own element, #sd-opt-panel. */
 export function bandBoxesHtml(v) {
   const cash = v.mode === "cash";
   const status = statusLineText(v.ms, v.board, v.seated ?? []);
   const pool = settingRowHtml("Max per team", teamSelectHtml(v.ms.maxPerTeam), "5 = DraftKings' rule: at most 5 men from one team");
-  // The included / locked line is the count row's second hint, inside the Build box as classic's "1 starred QB qualifies" sits
-  // in its row (👁 V7: above the boxes it pushed them down); optimizer.js refreshLines rewrites it in place.
+  // The included / locked line sits at the foot of the Build box, one line: a long list is cut with an ellipsis and its full text is the hover (A15: adding a man never moves the page). optimizer.js refreshLines rewrites it in place.
   // A15 (round 5): the line keeps its height when it is empty (class is-empty hides its text, not its room), so the first man in does not move the pool and everything under the boxes by a line.
-  const lockLine = `<div class="opt-set-hint opt-lockinfo${status ? "" : " is-empty"}" id="sd-opt-lockinfo">${escapeHtml(status)}</div>`;
+  const lockLine = `<div class="opt-set-hint opt-lockinfo${status ? "" : " is-empty"}" id="sd-opt-lockinfo" title="${escapeHtml(status)}">${escapeHtml(status)}</div>`;
   const countRow = settingRowHtml(
     "Lineups to make",
     numberBoxHtml(`type="number" min="1" max="${MAX_COUNT}" class="opt-input opt-input-num" id="sd-opt-count" value="${escapeHtml(v.ms.count)}" aria-label="How many lineups"`, countNote(v.ms.count), "opt-unit-note"),
     cash ? "The best first, then the next best" : "Around the pool's locks and includes"
-  ).replace(/<\/div>$/, `${lockLine}</div>`);
+  );
   // Cash builds by the board's own reading (board.mode.cashMode): TwoGun's median while TwoGun is this game's only ticked projection source.
   const cashMode = v.board?.mode?.cashMode;
   // A13 (round 3): no Build by line while Projection is the only way a build is made (Cash on a board where TwoGun is not the only source); the median basis still says so.
+  // The Build box's rows run two across on a wide window (style.css), and each tab draws the other's rows invisible in their places, so both tabs' bands are the same height.
+  const hasMedians = boardHasTg(v.board, "median");
   const build = cash
-    ? [countRow, cashMode === "twogun" ? settingRowHtml("Build by", `<span class="cash-basis">${escapeHtml(cashBasisText(cashMode))}</span>`, "Fixed in cash: TwoGun is this game's only projection source") : ""].join("")
+    ? [
+        countRow,
+        ghostRowHtml("Min unique players", "Between any two lineups"),
+        ...(cashMode === "twogun" ? [settingRowHtml("Build by", `<span class="cash-basis">${escapeHtml(cashBasisText(cashMode))}</span>`, "Fixed in cash: TwoGun is this game's only projection source")] : hasMedians ? [ghostRowHtml("Build by")] : []),
+        ghostRowHtml("Variance", "Blank or 0 is off"),
+        `<div class="opt-set-hint sd-opt-ghost sd-opt-caps">${CAPS_HINT}</div>`,
+        lockLine,
+      ].join("")
     : [
         countRow,
         settingRowHtml("Min unique players", numberBoxHtml(`type="number" min="1" max="${MAX_UNIQUE}" class="opt-input opt-input-num" id="sd-opt-min-unique" value="${escapeHtml(v.ms.minUnique)}" aria-label="Minimum unique players between lineups"`), "Between any two lineups"),
         // No Build by control while Projection is the only objective (optimizer standard A13, A21): it shows only on a board whose rows carry TwoGun's medians, where Median is the second.
-        ...(boardHasTg(v.board, "median") ? [settingRowHtml("Build by", `<span class="opt-chips">${objectiveChipsHtml(v.ms.objective, v.board)}</span>`)] : []),
-        `<div class="opt-set-hint">Each man's Min % and Max % are on the pool rows: on the FLEX list they set his FLEX share, on the Captain list his Captain share.</div>`,
+        ...(hasMedians ? [settingRowHtml("Build by", `<span class="opt-chips">${objectiveChipsHtml(v.ms.objective, v.board)}</span>`)] : []),
+        varianceRowHtml(v.variance),
+        `<div class="opt-set-hint sd-opt-caps">${CAPS_HINT}</div>`,
+        lockLine,
       ].join("");
   return `
     <div class="opt-panel opt-settings sd-opt-panel" id="sd-opt-panel">
       <div class="opt-groups opt-groups-cash">
         ${settingGroupHtml("Pool", pool)}
-        ${settingGroupHtml("Build", build)}
+        ${settingGroupHtml("Build", build, "", "sd-opt-build")}
       </div>
     </div>`;
 }

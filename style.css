@@ -2751,3 +2751,72 @@ td.opt-exp-opp { color: var(--text-muted); } /* the cells only: the Matchup head
 .dk-status-bad { color: var(--danger); }
 .dk-status-note { color: var(--amber); }
 .link-btn:disabled { opacity: 0.4; cursor: default; }
+
+/* ---------- Showdown Optimizer: the GPP | Cash tabs, the Variance row, the open seats and the larger working lineup (2026-11-05) ----------
+   Part F: GPP and Cash are two tabs at the top of the Optimizer, the classic `.opt-tab` look (each tab has its own settings, lineup and lineups, so the pair reads as tabs, not a switch). */
+.sd-opt-tabs .opt-tab { display: inline-flex; align-items: center; gap: 6px; padding: 6px 18px; }
+.sd-opt-tabs .opt-tab.active[data-opt-mode="cash"] { border-bottom-color: var(--cash); }
+.sd-opt-tabs .opt-tab:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+/* The head is one line: the tabs, the title beside them in a quiet voice, and a refused Build's sentence; the rule under the tabs runs the whole line. */
+.sd-opt-tabline { gap: var(--sp-4); border-bottom: 1px solid var(--border); }
+.sd-opt-tabline .sd-opt-tabs { border-bottom: 0; }
+.sd-opt-tabline .opt-title { margin: 0 auto 0 0; font-size: var(--fs-sm); font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--text-dim); }
+/* The Pool and Build boxes: each only as tall as its rows (Pool no longer stretches to Build's height), each label beside its control, Build's rows two across on a wide window; the Make row ends under the Build box,
+   at its right edge, so the summary, the notices and the Build button sit together (the boxes and the row share --sd-band-w). Both tabs draw the same rows (the other tab's invisible, .sd-opt-ghost), so a tab switch moves nothing. */
+.opt-panel.sd-opt-panel .opt-groups { align-items: start; }
+.opt-panel.sd-opt-panel .opt-groups.opt-groups-cash { grid-template-columns: 300px minmax(0, 1fr); max-width: 1080px; }
+.opt-panel.sd-opt-panel + .opt-footer.sd-opt-go { max-width: 1080px; margin-bottom: var(--sp-3); }
+.sd-opt-panel .opt-set-main { justify-content: flex-start; }
+.sd-opt-panel .opt-set-label { flex: 0 0 9em; }
+.sd-opt-panel .opt-set-ctl { min-height: 28px; }
+.sd-opt-ghost { visibility: hidden; }
+.sd-opt-build { display: grid; grid-template-columns: minmax(0, 1fr); }
+.sd-opt-build > .opt-group-title, .sd-opt-build > .opt-set-hint { grid-column: 1 / -1; }
+.sd-opt-build > .opt-set + .opt-set { border-top: 0; }
+.sd-opt-build .opt-lockinfo { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } /* one line: a long list is cut and its full text is the hover (A15: adding a man never moves the page) */
+@media (min-width: 1600px) { .sd-opt-build { grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: var(--sp-5); } }
+@media (max-width: 1100px) { .opt-panel.sd-opt-panel .opt-groups.opt-groups-cash { grid-template-columns: minmax(0, 1fr); max-width: none; } .opt-panel.sd-opt-panel + .opt-footer.sd-opt-go { max-width: none; } }
+/* Which tab the lineup belongs to, on the Clear lineup row of the sticky lineup column: in the tab's colour. */
+.sd-tab-tag { margin-left: auto; align-self: center; flex: 0 0 auto; padding: 2px 10px; border-radius: 10px; font-size: 12px; font-weight: 700; letter-spacing: 0.04em; white-space: nowrap; background: rgba(var(--accent-rgb), 0.15); color: var(--accent-text); }
+.sd-tab-tag.is-cash { background: rgba(var(--cash-rgb), 0.18); color: var(--cash); }
+/* The four figures of a filled seat (Sal, Proj, Val, Own) in four columns at every width; the shared card row's grid has three, so Own wrapped under 1760px. */
+.sd-pool-layout .lineup-slots .opt-p-big .opt-p-figs { grid-template-columns: 62px 42px 50px 54px; column-gap: 8px; }
+.sd-pool-layout .lineup-slots .opt-p-big .opt-p-fig { gap: 3px; }
+.sd-pool-layout .lineup-slots .opt-p-big .opt-p-fig i { font-size: 11px; }
+.sd-pool-layout .lineup-slots .opt-p-big .opt-p-val i { padding-right: 5px; } /* the Val chip is 5px wider than its number each side: the label lines up with the number, the chip sits behind both */
+/* The Variance row (GPP tab only): the Off | On chips, then the typed percent beside them. */
+.sd-variance { margin-right: var(--sp-2); }
+#sd-opt-variance-pct { width: 4.5em; }
+#sd-opt-variance-pct:disabled { opacity: 0.5; }
+/* An open seat says the most it can still spend (open-seat-spend.js): at the right edge of the empty seat, the Captain's in the Captain's amber. */
+.lineup-slot-big .sd-open-spend { margin-left: auto; flex: 0 0 auto; font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; color: var(--text); }
+.lineup-slot-big .sd-open-spend.is-empty { display: none; }
+.sd-cpt-slot .sd-open-spend { color: var(--amber); }
+/* The working lineup is larger and clearer on a window 1760px wide or more, where it is a sticky band beside the pool (the compact rows above are the classic band's): the Captain first, then the five FLEX,
+   each row 54px with its matchup line back and the figures stacked label over number; on the 2560x1307 desktop (tall as well as wide) the full 64px card row of the narrower layout. Showdown only (.sd-pool-layout). */
+@media (min-width: 1760px) {
+  .lineup-layout.sd-pool-layout .lineup-slots { gap: 6px; }
+  .lineup-layout.sd-pool-layout .lineup-slots .lineup-slot.lineup-slot-big { min-height: 54px; }
+  .lineup-layout.sd-pool-layout .lineup-slots .opt-p.opt-p-big { min-height: 54px; gap: 8px; padding: 3px 12px 3px 12px; } /* 12px at the right: Own ends where an open seat's "Up to $X" ends */
+  .lineup-layout.sd-pool-layout .lineup-slots .opt-p-big .opt-p-slot { width: 40px; flex-basis: 40px; font-size: 14px; }
+  .lineup-layout.sd-pool-layout .lineup-slots .opt-p-big :is(.opt-p-logo, .player-badge) { flex-basis: 38px; width: 38px; height: 38px; }
+  .lineup-layout.sd-pool-layout .lineup-slots .opt-p-big .opt-p-name { font-size: 16px; }
+  .lineup-layout.sd-pool-layout .lineup-slots .opt-p-big .opt-p-line2 { display: flex; font-size: 12px; }
+  .lineup-layout.sd-pool-layout .lineup-slots .opt-p-big .opt-p-body { flex: 0 1 40%; }
+  .lineup-layout.sd-pool-layout .lineup-slots .opt-p-big .opt-p-figs { flex: 1 1 0; min-width: 0; gap: 4px; grid-template-columns: repeat(4, minmax(0, 1fr)); } /* Sal, Proj, Val, Own spread over the rest of the row (NBA's panel) */
+  .lineup-layout.sd-pool-layout .lineup-slots .opt-p-big .opt-p-fig { flex-direction: column; align-items: flex-end; gap: 3px; }
+  .lineup-layout.sd-pool-layout .lineup-slots .opt-p-big .opt-p-fig i { font-size: 11px; }
+  .lineup-layout.sd-pool-layout .lineup-slots .opt-p-big .opt-p-fig b { font-size: 15px; }
+}
+@media (min-width: 2200px) and (min-height: 1100px) {
+  .lineup-layout.sd-pool-layout .lineup-slots { gap: 8px; }
+  .lineup-layout.sd-pool-layout .lineup-slots .lineup-slot.lineup-slot-big { min-height: 64px; }
+  .lineup-layout.sd-pool-layout > .lineup-left { flex: 0 0 780px; max-width: 780px; } /* the pool's table has room to spare at this width: the lineup takes some of it */
+  .lineup-layout.sd-pool-layout .lineup-slots .opt-p.opt-p-big { min-height: 64px; padding-left: 12px; }
+  .lineup-layout.sd-pool-layout .lineup-slots .opt-p-big :is(.opt-p-logo, .player-badge) { flex-basis: 46px; width: 46px; height: 46px; }
+  .lineup-layout.sd-pool-layout .lineup-slots .opt-p-big .opt-p-name { font-size: 17px; }
+  .lineup-layout.sd-pool-layout .lineup-slots .opt-p-big .opt-p-line2 { font-size: 13px; }
+  .lineup-layout.sd-pool-layout .lineup-slots .opt-p-big .opt-p-fig i { font-size: 12px; }
+  .lineup-layout.sd-pool-layout .lineup-slots .opt-p-big .opt-p-fig b { font-size: 16px; }
+  .lineup-slot-big .sd-open-spend { font-size: 16px; } /* the size of a seat's Sal */
+}
