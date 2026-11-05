@@ -29,6 +29,8 @@ import { postShowdownGenerate, putShowdownOverrides, deleteShowdownOverrides, re
 import * as S from "./optimizer-state.js";
 import * as V from "./optimizer-view.js";
 import { newTabs, tabName, bindTabFields } from "./optimizer-tabs.js"; // each tab's own batch and messages
+import { keepBuild, newestKept } from "./lineups-store.js"; // the Lineups tab's kept builds: a finished build goes there, not onto this screen
+import { openLineupsRecent } from "./lineups-nav.js";
 
 const browserStorage = () => window.localStorage;
 const BUSY_TEXT = "Lineups are already being made; try again when that finishes.";
@@ -213,15 +215,18 @@ async function doGenerate(ctx) {
     // Another showdown on screen now: nothing of this answer is kept, but the screen is still redrawn below so its Make button
     // is live again and "Finding the best lineups" goes (🔵 866b0ce B2).
     stale = opt.key !== madeFor;
-    if (!stale && (!data || data.ok === false || data.error)) {
+    const good = Boolean(data) && data.ok !== false && !data.error;
+    const answered = good ? resultsFromAnswer(data, sent, seq, ctx.board ?? null) : null;
+    if (answered) keepBuild(madeFor, answered); // the Lineups tab keeps it, per game, even when he has left the game (the tabs below are touched only when he has not); a build with no lineups keeps nothing
+    if (!stale && !good) {
       const busy = data?.error?.code === "GENERATE_BUSY";
       tabNow().error = busy ? data.error.message || BUSY_TEXT : data?.error?.message ?? "Could not make lineups.";
       tabNow().errorTone = answerTone(data?.error?.code); // a refusal (bad settings, a build already running) is amber; a build that failed outright is red
     } else if (!stale) {
-      tabNow().results = resultsFromAnswer(data, sent, seq, ctx.board ?? null);
+      tabNow().results = answered;
       tabNow().mustHave = []; // a new batch starts unfiltered (D77)
       tabNow().mustHaveNames = {};
-      seq += tabNow().results.lineups.length;
+      seq += answered.lineups.length;
     }
   } catch (e) {
     stale = opt.key !== madeFor;
@@ -382,15 +387,21 @@ export function optimizerGoRowHtml(board) {
   return V.goRowHtml({ summary: S.summaryText(modeState(), opt.ks.mode, board, opt.ks.variance), generating: showing(), busy: showing() || opt.saving, formError: opt.formError, canStop: canStopShowdownLineupGenerate(), below: opt.buildingBelow, stopping: opt.stopping, stopError: opt.stopError, done: opt.doneNote && Boolean(opt.results) });
 }
 
-/** The batch (its head, source line, exposure tables and cards), drawn full width below both columns (Adam 2026-10-19 11:17 PM:
- *  "generated lineups should go 4 across"); "" off the live app. */
-export function optimizerResultsBlockHtml(board, saved, confirm = null) {
+/** Where the batch's cards used to be drawn: now one button, `N lineups built: open Lineups` (N = the newest kept build of this tab's mode), and, for a build that made nothing, its sentence and notes; the cards are on the Lineups tab
+ *  (lineups-screen.js). "" off the live app. */
+export function optimizerResultsBlockHtml() {
   if (!optimizerLive()) return "";
-  const r = opt.results;
-  const keys = r ? savedKeysOf(saved, r.mode, board) : new Set();
-  const { personOf } = S.boardIndex(board);
-  const savedFlags = r ? r.lineups.map((l) => keys.has(S.sdSetKey(l.slots, personOf))) : [];
-  return V.resultsHtml({ results: r, generating: showing(), saveError: opt.saveError, saveTone: opt.saveTone, busy: busy(), savedFlags, board, exp: opt.exp, mustHave: opt.mustHave, mustHaveNames: opt.mustHaveNames, confirm });
+  const newest = newestKept(opt.key, opt.ks.mode);
+  return V.openLineupsHtml({ results: opt.results, generating: showing(), built: newest ? newest.lineups.length : 0 });
+}
+
+/** Puts the GPP or Cash tab on screen (a Load from the Lineups tab goes to the lineup's own mode tab). */
+export function setOptimizerMode(mode) {
+  const next = mode === "cash" ? "cash" : "gpp";
+  if (next === opt.ks.mode) return;
+  opt.ks = { ...opt.ks, mode: next }; // as the GPP | Cash tabs' click: each tab keeps its own settings, lineup and messages
+  persist();
+  buildNotice.reset();
 }
 
 /** The generated lineup `uid` of the batch on screen (a result card's Load), or null. */
@@ -701,6 +712,7 @@ export function wireOptimizer(ctx) {
     jumpToResults(c);
   });
   c.querySelector("#sd-opt-stop-btn")?.addEventListener("click", () => doStop(ctx));
+  c.querySelector("[data-action='sd-open-lineups']")?.addEventListener("click", () => openLineupsRecent()); // the one button where the cards were: Lineups, on Recently generated
   c.querySelectorAll("[data-sd-opt-save]").forEach((btn) => btn.addEventListener("click", () => saveCards([btn.dataset.sdOptSave], ctx)));
   c.querySelectorAll("[data-sd-opt-load]").forEach((btn) => btn.addEventListener("click", () => ctx.loadResult?.(btn.dataset.sdOptLoad))); // A13: the card's six men into the builder's seats (lineup.js)
   c.querySelector("[data-sd-opt-save-all]")?.addEventListener("click", () => saveCards(shownUids(), ctx)); // the shown lineups only while filtered (D77)

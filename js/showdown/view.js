@@ -23,7 +23,9 @@ import { makeBoardFlow } from "../write-runner.js";
 import { makeFilterDebounce } from "../filter-debounce.js"; // the typed boxes wait out classic's 150 ms pause
 import { syncExpandUi } from "../expand.js";
 import { adjustScrollPanels } from "../scroll-panels.js";
-import { renderShowdownTabs, renderShowdownProjectionsPanel, renderShowdownOwnershipPanel, renderShowdownLineupPanel, renderShowdownEntriesPanel, shownShowdownTab } from "./tabs.js";
+import { renderShowdownTabs, renderShowdownProjectionsPanel, renderShowdownOwnershipPanel, renderShowdownLineupPanel, renderShowdownEntriesPanel, renderShowdownLineupsPanel, shownShowdownTab } from "./tabs.js";
+import { keptCount, onKeptChange } from "./lineups-store.js"; // the Lineups tab's count and its redraw when a build is kept
+import { setTabOpener } from "./lineups-nav.js";
 import { repaintShowdownPool } from "./lineup.js";
 import { lineupFigureRow } from "./lineup-meter.js";
 import { poolState, poolCountText } from "./pool.js";
@@ -99,6 +101,7 @@ const els = {
   lineupPanel: document.getElementById("sd-lineup-panel"),
   lineupMount: document.getElementById("sd-lineup-mount"), // the Optimizer's redrawn part inside #sd-lineup-panel; the game line and the filter bar around it are not
   entriesPanel: document.getElementById("sd-entries-panel"),
+  lineupsPanel: document.getElementById("sd-lineups-panel"), // the Lineups tab (lineups-screen.js)
   emptyState: document.getElementById("sd-empty-state"),
 };
 
@@ -150,7 +153,7 @@ function renderGameLine() {
 
 function renderEmpty() {
   els.emptyState.hidden = false;
-  for (const p of [els.sourcesPanel, els.projectionsPanel, els.ownershipPanel, els.lineupPanel, els.entriesPanel]) p.hidden = true;
+  for (const p of [els.sourcesPanel, els.projectionsPanel, els.ownershipPanel, els.lineupPanel, els.lineupsPanel, els.entriesPanel]) if (p) p.hidden = true;
   els.band.innerHTML = "";
   if (els.stamps) els.stamps.innerHTML = "";
   els.emptyState.textContent = state.loading ? "Loading the showdown board…" : state.error ?? "Could not load this showdown.";
@@ -317,15 +320,23 @@ async function loadBoard(key) {
   }
 }
 
+const tabScroll = {}; // each tab keeps its own scroll place (Adam 2026-11-05): where the window was when it was left
 function onTabClick(tab) {
+  if (tab !== state.activeTab) tabScroll[state.activeTab] = window.scrollY;
   state.activeTab = tab;
   render();
+  if (typeof window.scrollTo === "function") window.scrollTo(0, tabScroll[tab] ?? 0);
 }
+setTabOpener((tab) => { if (state.board) onTabClick(tab); }); // the Optimizer's "open Lineups" button and a Load come back through here (lineups-nav.js)
+onKeptChange(() => { // a build kept, discarded or removed: the tab's count follows (the tab's own redraw is lineups-screen.js's)
+  if (state.board) renderShowdownTabs(els.tabs, state.activeTab, onTabClick, tabCounts());
+});
+const tabCounts = () => ({ lineups: keptCount(state.boardKey) });
 
 function render() {
   state.activeTab = shownShowdownTab(state.activeTab); // a retired key ("rankings") or a tab not drawn here opens the Optimizer
   if (isSourcesTab(state.activeTab)) state.lastSourcesTab = state.activeTab;
-  renderShowdownTabs(els.tabs, state.activeTab, onTabClick);
+  renderShowdownTabs(els.tabs, state.activeTab, onTabClick, tabCounts());
   paintSourcesLink(els.sourcesBtn, isSourcesTab(state.activeTab));
   if (els.figuresPill) els.figuresPill.hidden = !(els.figuresPill.innerHTML = figuresPillHtml(state.board, modePillHtml)); // none for no board or one with no figures
   if (!state.board) {
@@ -338,6 +349,7 @@ function render() {
   els.projectionsPanel.hidden = state.activeTab !== "projections";
   els.ownershipPanel.hidden = state.activeTab !== "ownership";
   els.lineupPanel.hidden = state.activeTab !== "lineup";
+  if (els.lineupsPanel) els.lineupsPanel.hidden = state.activeTab !== "lineups";
   els.entriesPanel.hidden = state.activeTab !== "entries";
 
   // The gold band and stale/failed source pills show on both tabs and the Sources view (brief).
@@ -351,6 +363,11 @@ function render() {
     restoreView(state.boardKey, state.board); // A9: a game not drawn last gets its remembered filters and sort before the filter bar is drawn from them
     renderFilterBar();
     renderShowdownLineupPanel(els.lineupMount, state.board, state.boardKey, { onOpenSources: openSources, onBoardWrite: writeBoard, onPoolCount: setPoolCount, onDrawn: afterLineupDraw });
+  } else if (state.activeTab === "lineups") {
+    // The Optimizer's own part is brought up to this game and board first (its saved list, seats and settings are what the Lineups tab's Saved, Load and Save act through), drawn into its hidden panel.
+    restoreView(state.boardKey, state.board);
+    renderShowdownLineupPanel(els.lineupMount, state.board, state.boardKey, { onOpenSources: openSources, onBoardWrite: writeBoard, onPoolCount: setPoolCount, onDrawn: afterLineupDraw });
+    renderShowdownLineupsPanel(els.lineupsPanel, state.board, state.boardKey); // full width, no player list: Recently generated and Saved
   } else if (isSourcesTab(state.activeTab)) {
     renderSourcesView();
   } else if (state.activeTab === "entries") {

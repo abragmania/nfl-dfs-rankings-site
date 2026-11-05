@@ -6,16 +6,19 @@
 // locks and excludes and replaced the placed men, is folded into it). The Optimizer's band heads the left column, its Build row ends it, and its batch is
 // drawn full width below both columns, above the swaps and the saved lineups.
 import { escapeHtml } from "../format.js";
-import { getShowdownLineups, postShowdownLineup, deleteShowdownLineup, putShowdownLineupName, putShowdownLineupTag } from "./api.js";
+import { getShowdownLineups, postShowdownLineup, deleteShowdownLineup } from "./api.js";
 import { poolHtml, poolVisibleRows, paintPool, wirePool, wirePoolTabs, setPoolControls, POOL_PICK_SKIP } from "./pool.js"; // the one player pool, the Rankings table with both roles on each row (Adam 2026-10-26)
 import { wirePick, wirePickRows, SLOT_PICK_SKIP } from "../pick-rows.js"; // click-to-pick, the one wiring classic's Optimizer shares (D81)
 // The Showdown Optimizer (Adam 2026-10-19, sketch A): its band over the builder, its Make row under it, its batch full width below, its controls on the pool rows.
-import { syncOptimizer, optimizerState, optimizerLive, optimizerBandHeadHtml, optimizerBandBoxesHtml, optimizerGoRowHtml, optimizerResultsBlockHtml, optimizerExcludes, releaseAllLocks, releaseSeatLock, resultLineup, optimizerSavedFilter, poolControls, wirePoolControls, wireOptimizer, refreshBuildNotice } from "./optimizer.js";
+import { syncOptimizer, optimizerState, optimizerLive, optimizerBandHeadHtml, optimizerBandBoxesHtml, optimizerGoRowHtml, optimizerResultsBlockHtml, optimizerExcludes, releaseAllLocks, releaseSeatLock, setOptimizerMode, poolControls, wirePoolControls, wireOptimizer, refreshBuildNotice } from "./optimizer.js";
+import { findKept } from "./lineups-store.js"; // the Lineups tab's kept builds: a built card's Load reads its lineup from here
+import { openShowdownTabKey } from "./lineups-nav.js"; // a Load goes back to the Optimizer tab, where the working lineup is
+import { lineupModeOf } from "../lineup-cash.js";
+import { loadModeSwitch } from "./lineups-load-mode.js";
 import { wirePoolEdits, takePoolEdit, restorePoolEdit } from "./pool-edit.js"; // B2, B3, C23: the star, the typed Proj and Own, the note's pencil
 import { editCtxFor, rowErrorIn } from "./pool-edit-ctx.js"; // what those cells write through, and a row's red message
 import { takeOpenLimit, restoreOpenLimit, limitRefusals, dropOlderLimitRefusals, noteLimitPress } from "../limit-box.js"; // A3: the pool's Min % and Max % boxes survive a redraw; a refused text is held
 import { handBuild } from "../lineup-builds.js";
-import { filterLineups } from "../lineup-filter.js";
 import { statusBlockHtml, messageRowShown as messageRowShownIn, BUILD_STATUS_ID } from "./lineup-status.js"; // A14: the status block and the click's message beside its pool row
 import { requestFailureText } from "./read-json.js";
 import { controlsHtml as controlsMarkup } from "./lineup-look.js"; // the two-row controls (Adam 2026-10-18 9:09 PM)
@@ -23,7 +26,7 @@ import { slotsHtml as slotsMarkup, repaintSlots } from "./lineup-slots.js"; // t
 export { slotPlayerHtml } from "./lineup-slots.js"; // tests import it from here
 // The saved-lineups view lives in ./lineup-saved.js (state stays here); the two pure helpers keep their old exports from this module.
 import { lineupTotals, lineupTotalsHtml } from "../lineup-totals.js"; // A11
-import { findRow, SALARY_CAP, FLEX_COUNT, savedTotalsHtml, savedSlotsHtml, savedLineupCardHtml as savedCardHtml, savedLineupsSectionHtml as savedSectionHtml, wireSavedCards, cardPutGuard } from "./lineup-saved.js";
+import { findRow, SALARY_CAP, FLEX_COUNT, savedLineupCardHtml as savedCardHtml, cardPutGuard } from "./lineup-saved.js";
 import { onSitePage } from "../tabs.js"; // the public site marks the page is-site: its saved cards draw no letter select (it can only be refused there)
 export { savedLineupSlotHtml, savedProjTotal } from "./lineup-saved.js";
 import { syncSwaps, swapsPanelHtml, wireSwaps, seatsAfterSwap, holdSwapsHeight, setSwapsRefusal } from "./lineup-swaps.js"; // the uniqueness swaps, full width below both columns (Adam 2026-10-18); C22: a click on a swap makes it
@@ -38,7 +41,7 @@ import { openSeatSpend, repaintOpenSpend } from "./open-seat-spend.js"; // what 
 import { onConfirmDismiss } from "../confirm-inline.js"; // B13, C11: Esc and a click outside close an open confirm
 import { notDeletedText } from "../delete-words.js"; // A12: the one sentence a failed delete leaves, the classic Optimizer's words
 import { wireStaleMessages } from "../stale-messages.js"; // item 17: a one-shot message goes at the next click on any control
-import { wireDkDownload } from "../dk-lineup-ui.js"; // A12: Download DK CSV for the saved lineups ticked
+import { wireSavedActions } from "./lineups-saved-wire.js"; // A12: Download DK CSV for the saved lineups ticked, rename, the letter, Delete and Load: the saved cards' wiring, on the Lineups tab
 // The working lineup, its click rules, Lock/Unlock, Clear lineup and the saved-or-not question: ./seats.js (split out to keep this file under its cap).
 import { state, setSeatBoard, reseatStoredLocks, pickPoolRow, lineupPicks, listPlacement, lockSeat, unlockSeat, clearCaptain, clearFlex, clearAll, clearAllHasContent, workingUnsaved, rowIdOf, lockedSeatPositions, swapLockRefusal } from "./seats.js";
 export { pickPoolRow, lineupPicks };
@@ -78,8 +81,14 @@ function loadSavedLineups(key) {
     });
 }
 
+let lineupsRedraw = null; // the Lineups tab's redraw (lineups-screen.js registers it): the saved cards live there, so a change to them redraws it too
+export function setLineupsRedraw(fn) {
+  lineupsRedraw = typeof fn === "function" ? fn : null;
+}
+
 function commit() {
   if (lastContainer) renderShowdownLineupPanel(lastContainer, lastBoard, lastKey);
+  lineupsRedraw?.();
 }
 
 /**
@@ -199,8 +208,14 @@ async function doDeleteLineup(key, id) {
   commit();
 }
 
+const loadMode = loadModeSwitch((m) => { setOptimizerMode(m); const lost = showTabSeats(m); if (lost) state.addError = lost; }); // No or Esc on a Load's question puts the previous mode tab back (lineups-load-mode.js)
+
 /** A Load (a saved card's, or a generated card's: A13): over slots that are not saved it asks `Replace your working lineup?` first (C11); `kind` "saved" or "result". */
 function requestLoad(kind, id) {
+  const found = kind === "result" ? findKept(lastKey, id) : null;
+  const savedOne = kind === "saved" ? state.savedLineups.find((l) => l.id === id) : null;
+  const target = found ? found.build.mode : savedOne ? lineupModeOf(savedOne) : null;
+  loadMode.go(target, optimizerState().ks?.mode ?? "gpp"); // a Load goes to the working lineup of the lineup's own mode tab (Lineups tab, Adam 2026-11-05): that tab's seats come on screen first
   if (workingUnsaved()) {
     state.confirm = `load:${kind}:${id}`;
     commit();
@@ -212,7 +227,8 @@ function requestLoad(kind, id) {
 /** Puts a saved or generated lineup in the slots (a Load) and brings the slots into view (A12, round 3: a card can be far below them). The old men's locks go with them. */
 function doLoadLineup(kind, id) {
   state.confirm = null;
-  const lineup = kind === "result" ? resultLineup(id) : state.savedLineups.find((l) => l.id === id);
+  loadMode.done();
+  const lineup = kind === "result" ? findKept(lastKey, id)?.lineup : state.savedLineups.find((l) => l.id === id);
   if (!lineup) {
     commit();
     return;
@@ -225,6 +241,7 @@ function doLoadLineup(kind, id) {
   state.addError = null;
   releaseAllLocks(); // the whole lineup is replaced: every lock of the tab on screen goes (the other tab's are its own)
   commit();
+  openShowdownTabKey("lineup"); // the cards are on the Lineups tab: the Optimizer tab comes up so the working lineup is in view
   showBand(lastContainer, "sd-lineup-panel"); // the whole band under the sticky layers, and again after the meter has drawn (show-band.js)
 }
 
@@ -240,16 +257,9 @@ function repaintSlotFigures() {
   const totalsEl = lastContainer.querySelector("[data-working-totals]");
   if (totalsEl) totalsEl.outerHTML = workingTotalsHtml(lastBoard);
   repaintLineupRead(); // the Lineup read reads the same figures (a revive the lineup ignores), so it is redrawn with them
-  // The pool and the saved cards' rows and totals carry the same notes, repainted in place together, so a card's rows and totals never disagree.
+  // The pool and the saved cards' rows and totals carry the same notes, so a card's rows and totals never disagree: the pool is repainted in place, and the saved cards (on the Lineups tab now) are redrawn with the same figures when it is on screen.
   paintPool(lastContainer, poolCtx(lastBoard));
-  lastContainer.querySelectorAll(".saved-lineup-slots[data-lineup-id]").forEach((el) => {
-    const lineup = state.savedLineups.find((l) => l.id === el.dataset.lineupId);
-    if (lineup) el.innerHTML = savedSlotsHtml(lineup, lastBoard);
-  });
-  lastContainer.querySelectorAll("[data-lineup-totals][data-lineup-id]").forEach((el) => {
-    const lineup = state.savedLineups.find((l) => l.id === el.dataset.lineupId);
-    if (lineup) el.outerHTML = savedTotalsHtml(lineup, lastBoard);
-  });
+  lineupsRedraw?.();
 }
 
 export const lineupReadOf = (board) => lineupReadHtml({ ...board, rows: (board?.rows ?? []).map(lineupFigureRow) }, state); // the rows as the lineup reads them (a revive TwoGun-only ignores reads 0)
@@ -312,15 +322,19 @@ export function savedLineupCardHtml(lineup, board, figures = playerFigures, numb
   return savedCardHtml(lineup, board, figures, { renamingId: state.renamingId, deleteConfirmId: state.deleteConfirmId, numbers, busy: cardPuts.busy.has(lineup.id), error: cardPuts.errors[lineup.id] ?? null, deleteError: state.deleteErrors[lineup.id] ?? null, editableTag: !onSitePage(), ticked: state.dkSelected.has(lineup.id), confirm: state.confirm });
 }
 
-// The Optimizer's "only lineups with" list filters these cards too, live app only (D77; optimizer.js optimizerSavedFilter).
-function savedLineupsSectionHtml(board) {
-  return savedSectionHtml(board, { loaded: state.savedLoaded, error: state.savedError, lineups: state.savedLineups }, (l, numbers) => savedLineupCardHtml(l, board, undefined, numbers), optimizerSavedFilter(board), { selected: state.dkSelected, status: state.dkStatus });
-}
-
-/** The saved lineups on screen (A12): all of them, or only those the "only lineups with" list keeps; what Download DK CSV acts on. */
-function shownSavedLineups(board) {
-  const f = optimizerSavedFilter(board);
-  return f && f.mustHave.length ? filterLineups(state.savedLineups, f.mustHave, f.playersOf).map((e) => e.item) : state.savedLineups;
+// The saved cards are drawn on the Lineups tab now (lineups-screen.js); `lineupsHands` is what it reads and acts through, so their rename, Load, Download and Delete work as they did.
+export function lineupsHands(board, key) {
+  return {
+    saved: { loaded: state.savedLoaded, error: state.savedError, lineups: state.savedLineups },
+    setSaved: (list) => { state.savedLineups = list; },
+    cardOf: (l, numbers) => savedLineupCardHtml(l, board, undefined, numbers),
+    dk: { selected: state.dkSelected, status: state.dkStatus },
+    confirm: state.confirm,
+    busy: state.saving || optimizerState().generating,
+    requestLoad: (uid) => requestLoad("result", uid),
+    wireSaved: (root, shown) => wireLineupsSaved(root, board, key, shown),
+    focus: (root) => { focusOpenConfirm(root); focusOpenRename(root, state.renamingId); },
+  };
 }
 
 // `poolRows`: the pool's rows (pool.js poolVisibleRows), read once per draw so the filter bar's count is the same list.
@@ -347,8 +361,7 @@ function panelHtml(board, poolRows) {
     </div>
     <div id="sd-read-holder">${lineupReadOf(board)}</div>
     ${optimizerResultsBlockHtml(board, state.savedLineups, state.confirm)}
-    ${swapsPanelHtml()}
-    ${savedLineupsSectionHtml(board)}`;
+    ${swapsPanelHtml()}`;
 }
 
 // The Optimizer's hands into this panel: the redraw, the saved list (its Saved ✓ marks and its saves), and a repaint of the pool in place.
@@ -421,21 +434,7 @@ function wire(container, board, key) {
     state.confirm = "clear";
     commit();
   });
-  container.querySelectorAll("[data-confirm]").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      const which = btn.dataset.confirmFor ?? "";
-      if (btn.dataset.confirm !== "yes") {
-        state.confirm = null;
-        commit();
-      } else if (which === "clear") {
-        clearAll();
-        commit();
-      } else if (which.startsWith("load:")) {
-        const [, kind, ...rest] = which.split(":");
-        doLoadLineup(kind, rest.join(":"));
-      }
-    });
-  });
+  wireConfirms(container);
   // A click (or Enter / Space) on a filled slot card takes his man out (D39, Adam 4:45 PM 2026-10-29: no Clear buttons); his name keeps opening his card.
   const onSlot = (el, remove) => wirePick(el, SLOT_PICK_SKIP, () => { remove(); commit(); });
   const cptSlot = container.querySelector("[data-action='clear-cpt']");
@@ -456,42 +455,34 @@ function wire(container, board, key) {
   saveName?.addEventListener("keydown", (e) => {
     if (e.key === "Enter") doSaveLineup(key, saveName.value);
   });
-  wireDkDownload(container, {
-    selected: state.dkSelected,
-    shown: () => shownSavedLineups(board),
-    kind: "showdown",
-    board: () => board,
-    slateLabel: () => key ?? "",
-    setStatus: (text) => { state.dkStatus = text; },
-    redraw: commit,
-  });
-  wireSavedCards(container, {
-    renameStart: (id) => {
-      state.renamingId = id;
-      state.deleteConfirmId = null;
-      commit();
-    },
-    renameCancel: () => {
-      state.renamingId = null;
-      commit();
-    },
-    renameSave: (id, name) => { state.renamingId = null; putCard(key, id, () => putShowdownLineupName(key, id, name)); },
-    tag: (id, tag) => putCard(key, id, () => putShowdownLineupTag(key, id, tag)),
-    deleteStart: (id) => {
-      state.deleteConfirmId = id;
-      state.renamingId = null;
-      delete state.deleteErrors[id]; // a new try clears the last delete's failure sentence (A12)
-      commit();
-    },
-    deleteNo: () => {
-      state.deleteConfirmId = null;
-      commit();
-    },
-    deleteYes: (id) => doDeleteLineup(key, id),
-    load: (id) => requestLoad("saved", id),
-  });
   focusOpenConfirm(container);
   wireOptimizer(optCtx(board, key));
+}
+
+/** The inline confirms' Yes and No under `container` (Clear lineup, a Load over unsaved slots): the Optimizer tab's and the Lineups tab's alike. */
+function wireConfirms(container) {
+  container.querySelectorAll("[data-confirm]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const which = btn.dataset.confirmFor ?? "";
+      if (btn.dataset.confirm !== "yes") {
+        state.confirm = null;
+        loadMode.undo();
+        commit();
+      } else if (which === "clear") {
+        clearAll();
+        commit();
+      } else if (which.startsWith("load:")) {
+        const [, kind, ...rest] = which.split(":");
+        doLoadLineup(kind, rest.join(":"));
+      }
+    });
+  });
+}
+
+/** The saved cards' wiring and Download DK CSV, on the Lineups tab (lineups-screen.js; lineups-saved-wire.js): `shown()` is the saved lineups the tab shows after its filters. */
+function wireLineupsSaved(root, board, key, shown) {
+  wireConfirms(root);
+  wireSavedActions(root, board, key, shown, { state, commit, putCard, doDeleteLineup, requestLoad });
 }
 
 /** Esc and a click outside close every open confirm alike: Clear all, Load over unsaved slots and a saved card's Delete (confirm-inline.js onConfirmDismiss). */
@@ -503,6 +494,7 @@ function wireConfirmDismiss() {
     if (!state.confirm && !state.deleteConfirmId) return;
     state.confirm = null;
     state.deleteConfirmId = null;
+    loadMode.undo();
     commit();
   });
 }
@@ -511,8 +503,9 @@ let focusedConfirm = null; // the confirm that last took the keyboard, so a redr
 /** A confirm that has just opened takes the keyboard on its safe button (No); Yes and No are in the tab order right after the control. */
 function focusOpenConfirm(container) {
   const key = state.confirm ?? (state.deleteConfirmId ? `delete:${state.deleteConfirmId}` : null);
-  if (key && key !== focusedConfirm) container.querySelector(state.confirm ? "[data-confirm='no']" : "[data-action='sd-delete-no']")?.focus?.();
-  focusedConfirm = key;
+  const safe = key && key !== focusedConfirm ? container.querySelector(state.confirm ? "[data-confirm='no']" : "[data-action='sd-delete-no']") : null; // the confirm may hang in the Lineups tab's box, not this one: only a box that has the button takes it
+  safe?.focus?.();
+  if (safe || !key) focusedConfirm = key;
 }
 
 let lastValidatedKey = null;

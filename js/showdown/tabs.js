@@ -30,6 +30,7 @@ function fitScrollPanel(container) {
 // tab's now, pool.js; D81, as classic's step 4 did), so the Optimizer is first and the default.
 export const SHOWDOWN_TABS = Object.freeze([
   Object.freeze({ key: "lineup", label: "Optimizer" }),
+  Object.freeze({ key: "lineups", label: "Lineups" }), // Adam 2026-11-05: where built lineups go, Recently generated and Saved (lineups-screen.js); its count is the lineups kept across builds
   Object.freeze({ key: "entries", label: "Entries" }), // Showdown Entries plan 2026-10-20: Adam's private entries files, so the app only (visibleShowdownTabs)
 ]);
 
@@ -48,9 +49,15 @@ export function shownShowdownTab(key, tabs = visibleShowdownTabs()) {
   return tabs.some((t) => t.key === k) || isSourcesTab(k) ? k : "lineup";
 }
 
-export function renderShowdownTabs(container, activeTab, onTabClick) {
+/** A tab's label with its count when it has one above 0 (the Lineups tab: "Lineups <b>10</b>"); `counts` = {tabKey: n}. */
+export function tabLabelHtml(tab, counts = {}) {
+  const n = Number(counts[tab.key]);
+  return `${escapeHtml(tab.label)}${n > 0 ? ` <b class="tab-count">${n}</b>` : ""}`;
+}
+
+export function renderShowdownTabs(container, activeTab, onTabClick, counts = {}) {
   container.innerHTML = visibleShowdownTabs().map(
-    (t) => `<button type="button" class="tab-btn${t.key === activeTab ? " active" : ""}" data-tab="${t.key}">${escapeHtml(t.label)}</button>`
+    (t) => `<button type="button" class="tab-btn${t.key === activeTab ? " active" : ""}" data-tab="${t.key}">${tabLabelHtml(t, counts)}</button>`
   ).join("");
   container.querySelectorAll(".tab-btn").forEach((el) => {
     el.addEventListener("click", () => onTabClick(el.dataset.tab));
@@ -425,3 +432,4 @@ export function renderShowdownOwnershipPanel(container, board, opts = {}) {
 
 export { renderShowdownLineupPanel } from "./lineup.js";
 export { renderShowdownEntriesPanel } from "./entries.js";
+export { renderShowdownLineupsPanel } from "./lineups-screen.js";

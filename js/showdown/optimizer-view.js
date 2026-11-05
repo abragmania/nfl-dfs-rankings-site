@@ -343,6 +343,23 @@ export function resultsHtml(v) {
   return `<div class="opt-results sd-opt-results" id="sd-opt-results">${parts.join("")}</div>`;
 }
 
+/**
+ * What the Optimizer screen shows where the batch's cards were (Adam 2026-11-05: the cards are on the Lineups tab now; a Build does not move him): one button, `N lineups built: open Lineups`, N the lineups in the
+ * newest kept build of this tab's mode; and for a build that made nothing its sentence and the server's notes, since nothing was kept to open. `v` = {results (the tab's last answer), built (N, 0 for none)}.
+ */
+export function openLineupsHtml(v) {
+  const r = v.results;
+  const parts = [];
+  if (r && r.lineups.length === 0) {
+    parts.push(`<div class="opt-sub">No lineups were made.</div>`);
+    const prov = provenanceText(r);
+    if (prov) parts.push(`<div class="opt-note">${escapeHtml(prov)}</div>`);
+    parts.push(optNotesHtml(r.notes));
+  }
+  if (v.built > 0) parts.push(`<div><button type="button" class="saved-lineup-btn sd-open-lineups" data-action="sd-open-lineups">${v.built} lineup${v.built === 1 ? "" : "s"} built: open Lineups</button></div>`);
+  return parts.length ? `<div class="opt-results sd-opt-results" id="sd-opt-results">${parts.join("")}</div>` : "";
+}
+
 // ---------- the pool ----------
 
 /** The pool rows a list shows: the rows the lists show today (`shown`: Out men hidden unless Show all players), plus any man locked,

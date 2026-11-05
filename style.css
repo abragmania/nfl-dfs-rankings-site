@@ -2820,3 +2820,40 @@ td.opt-exp-opp { color: var(--text-muted); } /* the cells only: the Matchup head
   .lineup-layout.sd-pool-layout .lineup-slots .opt-p-big .opt-p-fig b { font-size: 16px; }
   .lineup-slot-big .sd-open-spend { font-size: 16px; } /* the size of a seat's Sal */
 }
+
+/* ---------- The Lineups tab (Adam 2026-11-05; public/js/showdown/lineups-screen.js, lineups-view.js) ----------
+   The NBA optimizer's Lineups screen look (Adam 2:37 PM, from its 2560 and 1920 renders): a flat control bar of small monospace buttons with the active one filled amber, a narrow exposure column
+   on the left and the cards in an auto-fill grid on the right, each build under a one-line header with Download and Remove build at its right. Every rule is scoped to #sd-lineups-panel. */
+#sd-lineups-panel { --sdl-mono: ui-monospace, "Cascadia Mono", Consolas, "Courier New", monospace; padding-top: var(--sp-3); }
+#sd-lineups-panel .sdl-bar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2) var(--sp-4); margin: 0 0 var(--sp-3); font-family: var(--sdl-mono); }
+#sd-lineups-panel .sdl-views, #sd-lineups-panel .sdl-group { display: inline-flex; align-items: center; gap: 0; }
+#sd-lineups-panel .sdl-group { gap: var(--sp-1); }
+#sd-lineups-panel .sdl-label { font-size: 11px; color: var(--text-dim); margin-right: var(--sp-1); }
+#sd-lineups-panel .sdl-btn { font: inherit; font-size: 12px; font-weight: 600; line-height: 16px; padding: 4px 12px; border: 1px solid var(--border); border-radius: 0; background: var(--bg-elevated); color: var(--text); cursor: pointer; }
+#sd-lineups-panel .sdl-views .sdl-btn + .sdl-btn { border-left: 0; }
+#sd-lineups-panel .sdl-btn:hover { border-color: var(--amber); }
+#sd-lineups-panel .sdl-btn.active { background: var(--amber); border-color: var(--amber); color: var(--bg); }
+#sd-lineups-panel .sdl-btn b { margin-left: 6px; }
+#sd-lineups-panel .sdl-filter { width: 180px; box-sizing: border-box; font: inherit; font-size: 12px; line-height: 16px; padding: 4px 10px; border: 1px solid var(--border); border-radius: 0; background: var(--bg-elevated); color: var(--text); }
+#sd-lineups-panel .sdl-filter::placeholder { color: var(--text-dim); }
+#sd-lineups-panel .sdl-grid { display: grid; grid-template-columns: fit-content(560px) minmax(0, 1fr); gap: var(--sp-4); align-items: start; }
+#sd-lineups-panel .sdl-exposure { min-width: 0; }
+#sd-lineups-panel .sdl-exposure .opt-exposure { margin: 0; }
+#sd-lineups-panel .sdl-main { min-width: 0; }
+#sd-lineups-panel .sdl-build + .sdl-build { margin-top: var(--sp-4); }
+#sd-lineups-panel .sdl-build-head { display: flex; align-items: center; gap: var(--sp-2); margin: 0 0 var(--sp-2); font-family: var(--sdl-mono); }
+#sd-lineups-panel .sdl-build-title { font-size: 12px; font-weight: 700; color: var(--text); }
+#sd-lineups-panel .sdl-build-head > :is(.sdl-mini:not(.sdl-exp-btn), .sdl-remove-ask) { margin-left: auto; }
+#sd-lineups-panel .sdl-mini.sdl-exp-btn { margin-left: var(--sp-2); }
+#sd-lineups-panel .sdl-mini.sdl-exp-btn.active { background: var(--amber); border-color: var(--amber); color: var(--bg); }
+#sd-lineups-panel .sdl-exp-title { font-family: var(--sdl-mono); font-size: 12px; font-weight: 700; color: var(--text); margin: 0 0 var(--sp-1); }
+#sd-lineups-panel .sdl-mini { font: inherit; font-size: 11px; font-weight: 700; line-height: 14px; padding: 3px 10px; border: 1px solid var(--amber); border-radius: 0; background: transparent; color: var(--amber); cursor: pointer; }
+#sd-lineups-panel .sdl-mini.danger { border-color: var(--danger); color: var(--danger); }
+#sd-lineups-panel .sdl-remove-ask { display: inline-flex; align-items: center; gap: var(--sp-2); font-size: 11px; color: var(--text-muted); }
+#sd-lineups-panel .sdl-build-note { margin: 0 0 var(--sp-2); }
+#sd-lineups-panel .sdl-cards { gap: var(--sp-2); }
+#sd-lineups-panel .saved-lineups-list.sdl-cards { grid-template-columns: repeat(auto-fill, minmax(min(400px, 100%), 1fr)); } /* the same card width as the built cards: the saved row's figures need it */
+#sd-lineups-panel .sdl-cards .opt-card { padding: var(--sp-2); }
+#sd-lineups-panel .sdl-empty { padding: var(--sp-4) 0; }
+#sd-lineups-panel #sd-saved-lineups .saved-lineup-card-head { min-height: 20px; }
+@media (max-width: 1100px) { #sd-lineups-panel .sdl-grid { grid-template-columns: minmax(0, 1fr); } }
