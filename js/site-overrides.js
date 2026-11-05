@@ -114,21 +114,25 @@ function reconcile(edits, published) {
 // rebuilt from the baked one and the effective overrides (`remerge(board, slate, overrides)`). The main slate's is the default of every function below.
 const CLASSIC = Object.freeze({ keyOf: (season, week) => storageKey(season, week), published: (board) => publishedOverrides(board), remerge: (board, slate, overrides) => remergeOverrides(board, slate, overrides) });
 
-/** The visitor's saved changes for the week; empty when storage is unavailable, empty or unreadable. */
+/** The visitor's saved changes for the week; empty when storage is unavailable, empty or unreadable. An adapter with `load` reads its own entries (the Showdown Cash tab's two). */
 function readEdits(storage, season, week, published, adapter = CLASSIC) {
   if (!storage) return emptyEdits();
   try {
-    const raw = storage.getItem(adapter.keyOf(season, week));
+    const raw = adapter.load ? adapter.load(storage, season, week) : storage.getItem(adapter.keyOf(season, week));
     return raw ? reconcile(cleanEdits(JSON.parse(raw)), published) : emptyEdits();
   } catch {
     return emptyEdits(); // unreadable or not JSON: ignored, the published board shows
   }
 }
 
-/** Writes the week's changes. Returns true, or false when storage is unavailable or the browser refused. */
+/** Writes the week's changes. Returns true, or false when storage is unavailable or the browser refused. An adapter with `save` writes its own entries. */
 function writeEdits(storage, season, week, edits, adapter = CLASSIC) {
   if (!storage) return false;
   try {
+    if (adapter.save) {
+      adapter.save(storage, season, week, edits);
+      return true;
+    }
     const key = adapter.keyOf(season, week);
     if (isEmpty(edits)) storage.removeItem(key);
     else storage.setItem(key, JSON.stringify(edits));
@@ -387,9 +391,61 @@ function figuresText(o, onBoard) {
 
 const SHOWDOWN = Object.freeze({ keyOf: (_season, gameKey) => `${SHOWDOWN_STORAGE_PREFIX}${gameKey}`, published: showdownPublishedOverrides, remerge: (board, _slate, overrides) => remergeShowdown(board, overrides) });
 
-/** The Showdown board the visitor sees: the baked one with this browser's changes for the game `key` laid over it (the baked board itself when there are none). */
-export function showdownBoardWithEdits(board, storage, key) {
-  return boardWithEdits(board, null, storage, null, key, SHOWDOWN);
+// The Cash tab (optimizer standard Part F, as the app's routes keep it: server/showdown/overrides-routes.js): its typed numbers, bumps and revives are an entry of their own, and its
+// stars and notes are the GPP entry's, so a star or a note typed on either tab shows on both and a number typed on one never moves the other. The baked board it lays them over is the
+// app's Cash board (board-cash.json), which carries Adam's Cash numbers and the shared stars and notes.
+export const SHOWDOWN_CASH_STORAGE_PREFIX = "nfldfs-site-showdown-cash-overrides:";
+const cashEntry = (gameKey) => `${SHOWDOWN_CASH_STORAGE_PREFIX}${gameKey}`;
+const SHARED_FIELDS = ["stars", "notes"];
+
+/** One entry's object, or null when there is none or it is not well formed (ignored, as readEdits ignores it). */
+function entryObject(storage, name) {
+  const raw = storage.getItem(name);
+  if (!raw) return null;
+  try {
+    const v = JSON.parse(raw);
+    return isObject(v) ? v : null;
+  } catch {
+    return null; // not JSON: no changes, as readEdits reads it
+  }
+}
+
+const SHOWDOWN_CASH = Object.freeze({
+  ...SHOWDOWN,
+  // Cash's own entry with the GPP entry's stars and notes, as one record the shared code reads.
+  load: (storage, season, gameKey) => {
+    const own = entryObject(storage, cashEntry(gameKey));
+    const shared = entryObject(storage, SHOWDOWN.keyOf(season, gameKey));
+    if (!own && !shared) return null;
+    const figures = Object.fromEntries(Object.entries(own ?? {}).filter(([k]) => !SHARED_FIELDS.includes(k)));
+    return JSON.stringify({ ...figures, stars: shared?.stars, notes: shared?.notes });
+  },
+  // The numbers to Cash's entry, the stars and notes to GPP's (its numbers untouched); the two move together or not at all.
+  save: (storage, season, gameKey, edits) => {
+    const { stars, notes, ...figures } = edits;
+    const own = cashEntry(gameKey);
+    const was = storage.getItem(own);
+    if (["proj", "own", "bump"].some((f) => Object.keys(figures[f]).length > 0)) storage.setItem(own, JSON.stringify(figures));
+    else storage.removeItem(own);
+    try {
+      const gppKey = SHOWDOWN.keyOf(season, gameKey);
+      const next = { ...(entryObject(storage, gppKey) ?? {}), stars, notes };
+      if (isEmpty(cleanEdits(next))) storage.removeItem(gppKey);
+      else storage.setItem(gppKey, JSON.stringify(next));
+    } catch (e) {
+      if (was === null) storage.removeItem(own);
+      else storage.setItem(own, was);
+      throw e;
+    }
+  },
+});
+
+const showdownAdapter = (tab) => (tab === "cash" ? SHOWDOWN_CASH : SHOWDOWN);
+
+/** The Showdown board the visitor sees: the baked one with this browser's changes for the game `key` laid over it (the baked board itself when there are none). `tab` "cash": the Cash tab's
+ *  changes over the baked Cash board; anything else is GPP's. */
+export function showdownBoardWithEdits(board, storage, key, tab) {
+  return boardWithEdits(board, null, storage, null, key, showdownAdapter(tab));
 }
 
 /**
@@ -423,18 +479,18 @@ export function modesWithEdits(modes, baked, edited) {
   return { ...modes, modes: { ...modes.modes, current: { ...modes.modes.current, players: next } } };
 }
 
-/** PUT /api/showdown/<key>/overrides on the site: {board} or {error: {code, message}}. */
-export function putShowdownEdits(storage, key, board, changes) {
+/** PUT /api/showdown/<key>/overrides on the site: {board} or {error: {code, message}}. `board`: the baked board of `tab` ("cash" or GPP's when absent). */
+export function putShowdownEdits(storage, key, board, changes, tab) {
   // The route's own id checks (merge.js assertShowdownWriteIds): a man or Captain id that is not on this game, and a star, note, typed projection or bump under a Captain id, are refused and nothing is kept.
   try {
     assertShowdownWriteIds(changes, (board?.rows ?? []).map((r) => ({ id: r.id, cptId: r.cptId })));
   } catch (e) {
     return { error: { code: e.code ?? "OVERRIDES_INVALID", message: e.message } };
   }
-  return putEdits(storage, null, key, board, null, changes, SHOWDOWN);
+  return putEdits(storage, null, key, board, null, changes, showdownAdapter(tab));
 }
 
-/** DELETE /api/showdown/<key>/overrides on the site (Reset all overrides). */
-export function resetAllShowdownEdits(storage, key, board) {
-  return resetAllEdits(storage, null, key, board, null, SHOWDOWN);
+/** DELETE /api/showdown/<key>/overrides on the site (Reset all overrides): the tab's numbers and bumps go; the other tab's, and the stars and notes, stay. */
+export function resetAllShowdownEdits(storage, key, board, tab) {
+  return resetAllEdits(storage, null, key, board, null, showdownAdapter(tab));
 }

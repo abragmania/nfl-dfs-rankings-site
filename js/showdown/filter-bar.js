@@ -60,7 +60,7 @@ export function filterBarHtml(f, game, showAll, reset = null, starred = null) {
  * Wires the drawn bar. A chip click sets its filter, redraws the bar (its active chip) and the pool; a typed box (search, salary, Min Proj) goes through the pause
  * (`deps.typed`: one waiting change per box, the last value wins), which writes the filters and redraws the pool, never the bar, so the
  * box keeps its caret; Clear filters cancels anything waiting, resets every filter, turns Show all players off (`deps.clearShowAll`) and
- * redraws both. deps = { typed, rebuild(), repaint(), clearShowAll() }.
+ * redraws both. deps = { typed, rebuild(), repaint(), clearShowAll(), onResetOverrides(), resetQuestion()? }.
  */
 export function wireFilterBar(bar, deps) {
   wireShowAllButtons(bar, sdShowAllFlag); // the Showdown's own switch (C24); it redraws the screen through show-all.js's listener (view.js)
@@ -92,11 +92,12 @@ export function wireFilterBar(bar, deps) {
     deps.rebuild();
     deps.repaint();
   });
-  // A6 (round 3): the same question as classic's Reset all overrides, asked beside the button; Yes clears this game's typed numbers and bumps.
+  // A6 (round 3): the same question as classic's Reset all overrides, asked beside the button; Yes clears this game's typed numbers and bumps. Part F: on the Optimizer's tabs
+  // `deps.resetQuestion()` names the tab it clears (only that tab's numbers go).
   const resetBtn = bar.querySelector("#sd-reset-overrides-btn");
   resetBtn?.addEventListener("click", () => {
     if (resetBtn.disabled) return;
-    askInline(resetBtn, RESET_ALL_QUESTION, async () => {
+    askInline(resetBtn, deps.resetQuestion?.() ?? RESET_ALL_QUESTION, async () => {
       const taken = await deps.onResetOverrides?.();
       if (!taken) showButtonError(resetBtn, "The reset was not saved. The message above says why.");
     });
@@ -143,6 +144,12 @@ export function boxValue(el) {
   if (text === "") return null;
   const n = Number(text);
   return Number.isFinite(n) ? n : null;
+}
+
+/** Reset all's question on the Optimizer's `tab` ("gpp" or "cash", Part F): it clears that tab's typed numbers and bumps only. Pure. */
+export function tabResetQuestion(tab) {
+  const [mine, other] = tab === "cash" ? ["Cash", "GPP"] : ["GPP", "Cash"];
+  return `Clear every typed projection, typed ownership and bump on the ${mine} tab? The ${other} tab's, and stars and notes, stay.`;
 }
 
 /** True when both ends of the salary range are set and the Min is above the Max. */

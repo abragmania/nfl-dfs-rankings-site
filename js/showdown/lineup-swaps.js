@@ -239,8 +239,8 @@ export function swapsRequestBody(board, cpt, flex, excludes = []) {
 
 /** POST /api/showdown/<key>/lineup/swaps; resolves to the parsed answer, never throws for a server-side refusal; a non-JSON
  *  answer throws read-json.js's NOT_JSON error. */
-export async function postLineupSwaps(key, body, fetchImpl = fetch) {
-  return postShowdownLineupSwaps(key, body, fetchImpl);
+export async function postLineupSwaps(key, body, fetchImpl = fetch, tab = undefined) {
+  return postShowdownLineupSwaps(key, body, fetchImpl, tab); // `tab` (Part F): the Cash tab's lineup on the Cash board
 }
 
 // ---------- state and trigger ----------
@@ -295,8 +295,8 @@ onMeterAnswer(() => {
  * an answer for a lineup that has since changed is dropped. `excludes`: the Optimizer's for the mode on screen, as the meter
  * gets them (optimizer.js optimizerExcludes); none by default.
  */
-export function syncSwaps({ board, key, cpt, flex, container = null, post = postLineupSwaps, delayMs = DELAY_MS, enabled = meterState().sig !== null, excludes = [], locked = new Set() }) {
-  last = { board, key, cpt, flex, container, post, delayMs, enabled, excludes, locked };
+export function syncSwaps({ board, key, cpt, flex, container = null, post = postLineupSwaps, delayMs = DELAY_MS, enabled = meterState().sig !== null, excludes = [], locked = new Set(), tab = undefined }) {
+  last = { board, key, cpt, flex, container, post, delayMs, enabled, excludes, locked, tab };
   st.locked = locked; // the seats whose man is locked, marked on the panel (C22)
   const body = enabled && key ? swapsRequestBody(board, cpt, flex, excludes) : null;
   if (!body) {
@@ -304,7 +304,7 @@ export function syncSwaps({ board, key, cpt, flex, container = null, post = post
     st.holdH = null; // no complete lineup, no swaps to wait for
     return;
   }
-  const sig = lineupSig(key, board, body, cpt, flex); // the meter's own signature: a typed number that changes a placed man's figures re-asks both
+  const sig = lineupSig(key, board, body, cpt, flex, tab); // the meter's own signature: a typed number that changes a placed man's figures re-asks both
   if (sig === st.sig) return;
   reset();
   st.sig = sig;
@@ -313,7 +313,7 @@ export function syncSwaps({ board, key, cpt, flex, container = null, post = post
     st.timer = null;
     let next;
     try {
-      const data = await post(key, body);
+      const data = await (tab === undefined ? post(key, body) : post(key, body, undefined, tab)); // `tab` (Part F): the Cash tab's lineup on the Cash board
       if (!data || typeof data !== "object") next = { status: "error", message: "The server's answer could not be read." };
       else if (data.error) next = { status: "error", message: data.error.message || "Could not work out the swaps." };
       else next = { status: "ok", data };

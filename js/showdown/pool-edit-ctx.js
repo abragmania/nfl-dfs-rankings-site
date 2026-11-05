@@ -29,9 +29,10 @@ export function rowNoticeIn(state, commit, id, text) {
  *  says a refusal in the status line; each answers whether the server took it. */
 export function editCtxFor({ board, state, commit, boardWrite }) {
   const rowError = (id, text) => rowErrorIn(state, commit, id, text);
-  const write = (patch, label) => {
+  // Part F: the write goes to the tab on screen (view.js passes it as `tab`); a star or a note is kept once for both tabs (`shared`), so the other tab's board is read again.
+  const write = (patch, label, shared = false) => {
     const writer = boardWrite();
-    return patch && writer ? writer((key) => putShowdownOverrides(key, patch), label) : Promise.resolve(false);
+    return patch && writer ? writer((key, tab) => putShowdownOverrides(key, patch, undefined, tab), label, { shared }) : Promise.resolve(false);
   };
   return {
     rowOf: (id) => findRow(board, id),
@@ -45,8 +46,8 @@ export function editCtxFor({ board, state, commit, boardWrite }) {
       if (taken && field === "proj" && value > 0 && rowIsOut(row) && board?.mode?.cashMode === "twogun") rowNoticeIn(state, commit, row.id, SET_ASIDE_NOTICE);
       return taken;
     },
-    saveNote: (row, text) => write(notePatch(row, text), "the note"),
-    toggleStar: (row) => write(starPatch(row), "the star"),
+    saveNote: (row, text) => write(notePatch(row, text), "the note", true),
+    toggleStar: (row) => write(starPatch(row), "the star", true),
     rowError,
   };
 }

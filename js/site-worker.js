@@ -20,9 +20,10 @@ export const PAGE_THREAD_NOTE = "This browser could not run the search in the ba
  * ({id, partial}). Nothing cuts a working build off in seconds: run.stop() (the Stop button, which also holds for a build still on its
  * way) or `ceilingMs` ends it, and the visitor gets `finish(args, snapshot or null, reason)`, the answer for the lineups finished so far
  * with a sentence, never nothing. `onPage(args, deadline)` (epoch ms, now plus the ten minute limit: the engine ends itself there) makes the answer on the page's thread when the worker cannot start, crashes or cannot
- * read a message, and it carries PAGE_THREAD_NOTE; run.canStop() is false there. `failed()` is the route's own failure answer; `label` heads the console line.
+ * read a message, and it carries PAGE_THREAD_NOTE; run.canStop() is false there. `failed()` is the route's own failure answer; `busy()` the answer while another build
+ * holds the one place (the route's 409 GENERATE_BUSY; `failed()` when none is given); `label` heads the console line.
  */
-export function createWorkerRunner({ kind, ceilingMs = BUILD_CEILING_MS, failed, finish, onPage, label = "lineup generate: failed" }) {
+export function createWorkerRunner({ kind, ceilingMs = BUILD_CEILING_MS, failed, busy = failed, finish, onPage, label = "lineup generate: failed" }) {
   let worker = null;
   let workerBroken = false;
   let workerSeq = 0;
@@ -75,7 +76,7 @@ export function createWorkerRunner({ kind, ceilingMs = BUILD_CEILING_MS, failed,
   };
 
   async function run(input) {
-    if (!control.reserve()) return failed();
+    if (!control.reserve()) return busy();
     try {
       const args = typeof input === "function" ? await input() : input;
       const w = optWorker();

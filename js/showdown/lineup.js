@@ -10,7 +10,7 @@ import { getShowdownLineups, postShowdownLineup, deleteShowdownLineup } from "./
 import { poolHtml, poolVisibleRows, paintPool, wirePool, wirePoolTabs, setPoolControls, POOL_PICK_SKIP } from "./pool.js"; // the one player pool, the Rankings table with both roles on each row (Adam 2026-10-26)
 import { wirePick, wirePickRows, SLOT_PICK_SKIP } from "../pick-rows.js"; // click-to-pick, the one wiring classic's Optimizer shares (D81)
 // The Showdown Optimizer (Adam 2026-10-19, sketch A): its band over the builder, its Make row under it, its batch full width below, its controls on the pool rows.
-import { syncOptimizer, optimizerState, optimizerLive, optimizerBandHeadHtml, optimizerBandBoxesHtml, optimizerGoRowHtml, optimizerResultsBlockHtml, optimizerExcludes, releaseAllLocks, releaseSeatLock, setOptimizerMode, poolControls, wirePoolControls, wireOptimizer, refreshBuildNotice } from "./optimizer.js";
+import { syncOptimizer, optimizerState, optimizerLive, optimizerBandHeadHtml, optimizerBandBoxesHtml, optimizerGoRowHtml, optimizerResultsBlockHtml, optimizerExcludes, releaseAllLocks, releaseSeatLock, setOptimizerMode, poolControls, wirePoolControls, wireOptimizer, refreshBuildNotice, optimizerTabFor } from "./optimizer.js";
 import { findKept } from "./lineups-store.js"; // the Lineups tab's kept builds: a built card's Load reads its lineup from here
 import { openShowdownTabKey } from "./lineups-nav.js"; // a Load goes back to the Optimizer tab, where the working lineup is
 import { lineupModeOf } from "../lineup-cash.js";
@@ -38,6 +38,7 @@ import { focusOpenRename } from "../rename-focus.js"; // the rename box: focused
 import { saveView } from "./view-memory.js"; // A9: the pool's filters and sort, per game
 import { loadTabSeats, showTabSeats, dropGoneFromTabs, saveTabSeats } from "./tab-seats.js"; // the GPP and Cash tabs' own lineups: the seats on screen are the tab on screen's
 import { openSeatSpend, repaintOpenSpend } from "./open-seat-spend.js"; // what each open seat can still spend
+import { leftOutPanelHtml, syncLeftOut } from "./left-out-panel.js"; // Part F: the Cash tab's Left out panel, under the two columns (the sticky lineup band must fit the window)
 import { onConfirmDismiss } from "../confirm-inline.js"; // B13, C11: Esc and a click outside close an open confirm
 import { notDeletedText } from "../delete-words.js"; // A12: the one sentence a failed delete leaves, the classic Optimizer's words
 import { wireStaleMessages } from "../stale-messages.js"; // item 17: a one-shot message goes at the next click on any control
@@ -359,7 +360,7 @@ function panelHtml(board, poolRows) {
       </div>
       <div class="lineup-right sd-pool-col">${poolHtml(board, listPlacement(), poolRows)}</div>
     </div>
-    <div id="sd-read-holder">${lineupReadOf(board)}</div>
+    ${leftOutPanelHtml(board)}<div id="sd-read-holder">${lineupReadOf(board)}</div>
     ${optimizerResultsBlockHtml(board, state.savedLineups, state.confirm)}
     ${swapsPanelHtml()}`;
 }
@@ -579,8 +580,9 @@ export function renderShowdownLineupPanel(container, board, key, { onOpenSources
     press: noteLimitPress,
     selector: ".dk-status, .row-msg-warn, .row-msg-notice, .lineup-status:not(.lineup-status-error):not(.lineup-status-warning)",
   });
-  syncMeter({ board, key, cpt: state.cpt, flex: state.flex, container, excludes: optimizerExcludes(), onSources: openSources, onModes: repaintSlotFigures }); // the meter repaints only its own strip and the slots' notes; the on-screen mode's excludes, as a batch card's meter has them (🔵 866b0ce B1)
-  syncSwaps({ board, key, cpt: state.cpt, flex: state.flex, container, excludes: optimizerExcludes(), locked: lockedSeatPositions() }); // after the meter: the swaps exist while it has a complete live lineup; the meter's excludes, so no excluded man is offered
+  syncMeter({ board, key, cpt: state.cpt, flex: state.flex, container, excludes: optimizerExcludes(), onSources: openSources, onModes: repaintSlotFigures, tab: optimizerTabFor(key) }); // the meter (Part F: on the tab's own board) repaints only its own strip and the slots' notes; the on-screen mode's excludes, as a batch card's meter has them (🔵 866b0ce B1)
+  syncSwaps({ board, key, cpt: state.cpt, flex: state.flex, container, excludes: optimizerExcludes(), locked: lockedSeatPositions(), tab: optimizerTabFor(key) }); // after the meter: the swaps exist while it has a complete live lineup; the meter's excludes, so no excluded man is offered
+  syncLeftOut({ key, board, container, commit }); // Part F: the quiet Cash build behind Left out (Cash tab only); Swap in is wired on the mount
   const poolRows = poolVisibleRows(board);
   const openEdit = takePoolEdit(container); // a typed-number or note box, or a Min % / Max % box, that he is typing in survives the redraw with its text and focus (A3)
   const openLimit = takeOpenLimit();

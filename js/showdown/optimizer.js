@@ -70,6 +70,18 @@ export function optimizerLive() {
 
 const modeState = () => opt.ks[opt.ks.mode];
 
+/** The tab ("gpp" or "cash") whose board showdown `key` shows (optimizer standard Part F: each tab its own typed numbers): the remembered mode; GPP off the live app. */
+export function optimizerTabFor(key) {
+  if (!optimizerLive()) return "gpp";
+  return tabName(key === opt.key ? opt.ks.mode : S.readKeyState(storage, key).mode);
+}
+
+// view.js's gate on a GPP | Cash click: `apply()` switches the mode (false when it already is that tab) and the gate redraws on that tab's board, once it has it.
+let tabSwitchGate = null;
+export function setTabSwitchGate(fn) {
+  tabSwitchGate = typeof fn === "function" ? fn : null;
+}
+
 /** The excludes of the mode on screen (candidate ids, as the generate body sends them), for the builder's meter (🔵 866b0ce B1:
  *  its gap to best is then measured as a batch card's is); none off the live app, where no exclude can be set. */
 export function optimizerExcludes() {
@@ -110,6 +122,13 @@ export function setSeatedSource(fn) {
   seatedSource = typeof fn === "function" ? fn : () => [];
 }
 const seatedNow = (board) => (optimizerLive() ? seatedSource(board) : []);
+
+// The Cash tab's quiet Left out build (left-out-panel.js registers it, as seats.js does setSeatedSource): its pending ask is cancelled and the promise of one in flight
+// is handed back (true once it has ended, false when none was out), so a Build waits for it rather than meeting "Lineups are already being made" (Part F).
+let quietBuild = async () => false;
+export function setQuietBuildHook(fn) {
+  quietBuild = typeof fn === "function" ? fn : async () => false;
+}
 
 function persist() {
   if (opt.key) S.writeKeyState(storage, opt.key, opt.ks);
@@ -211,7 +230,10 @@ async function doGenerate(ctx) {
   let stale = false;
   const tabNow = () => opt.tabs[tabName(mode)]; // the tab this build was made on, looked up after the await: leaving the game and coming back replaces opt.tabs, and the answer belongs to the tabs of the game on screen
   try {
-    const data = await (ctx.post ?? postShowdownGenerate)(madeFor, sent);
+    const post = () => (ctx.post ?? postShowdownGenerate)(madeFor, sent);
+    const waited = await quietBuild(); // the quiet Left out build ends first (its next ask waits for this Build: opt.generating)
+    let data = await post();
+    if (data?.error?.code === "GENERATE_BUSY" && (waited || (await quietBuild()))) data = await post(); // a quiet one still held the place: once more, after it
     // Another showdown on screen now: nothing of this answer is kept, but the screen is still redrawn below so its Make button
     // is live again and "Finding the best lineups" goes (🔵 866b0ce B2).
     stale = opt.key !== madeFor;
@@ -402,6 +424,7 @@ export function setOptimizerMode(mode) {
   opt.ks = { ...opt.ks, mode: next }; // as the GPP | Cash tabs' click: each tab keeps its own settings, lineup and messages
   persist();
   buildNotice.reset();
+  tabSwitchGate?.(next, () => true, true); // Part F: that tab's own board (its typed numbers) comes on screen with it; the mode has already switched (view.js)
 }
 
 /** The generated lineup `uid` of the batch on screen (a result card's Load), or null. */
@@ -521,13 +544,13 @@ function clearFormError(container) {
 export function wirePoolControls(listEl, ctx) {
   if (!optimizerLive()) return;
   const rowOf = (id) => (ctx.board?.rows ?? []).find((r) => String(r.id) === String(id));
-  wireBumpButtons(listEl, { rowOf, onBump: (id, steps) => ctx.boardWrite?.((key) => putShowdownOverrides(key, bumpPatch(id, steps)), "the projection bump") }); // true once taken, false when refused
+  wireBumpButtons(listEl, { rowOf, onBump: (id, steps) => ctx.boardWrite?.((key, tab) => putShowdownOverrides(key, bumpPatch(id, steps), undefined, tab), "the projection bump") }); // true once taken, false when refused; on the tab on screen (Part F)
   listEl.querySelectorAll("[data-action='row-reset']").forEach((btn) => { // B12: clears his typed numbers and bump; a refusal is said beside his row, in red
     btn.addEventListener("click", async () => {
       const row = rowOf(btn.dataset.id);
       if (!row || btn.disabled) return;
       btn.disabled = true;
-      const taken = await ctx.boardWrite?.((key) => putShowdownOverrides(key, rowResetPatch(row)), "the reset");
+      const taken = await ctx.boardWrite?.((key, tab) => putShowdownOverrides(key, rowResetPatch(row), undefined, tab), "the reset");
       if (!taken) ctx.rowError?.(row.id, "The reset was not saved. The message above says why.");
     });
   });
@@ -593,10 +616,15 @@ function wireBand(root, ctx) {
     btn.addEventListener("click", () => {
       const next = btn.dataset.optMode === "cash" ? "cash" : "gpp";
       if (next === opt.ks.mode) return;
-      opt.ks = { ...opt.ks, mode: next }; // each tab keeps its own settings, lineup, batch and messages (optimizer-tabs.js, tab-seats.js): nothing is cleared here
-      persist();
-      buildNotice.reset(); // the notice under the filter bar is the last build's, which may be the other tab's
-      ctx.commit();
+      const apply = () => {
+        if (next === opt.ks.mode) return false;
+        opt.ks = { ...opt.ks, mode: next }; // each tab keeps its own settings, lineup, batch and messages (optimizer-tabs.js, tab-seats.js): nothing is cleared here
+        persist();
+        buildNotice.reset(); // the notice under the filter bar is the last build's, which may be the other tab's
+        return true;
+      };
+      if (tabSwitchGate) tabSwitchGate(next, apply); // Part F: the tab shows its own board's typed numbers (view.js)
+      else if (apply()) ctx.commit();
     });
   });
   // The Variance switch and its percent box (GPP tab only; one setting for the showdown, kept with it): Off / On, and a typed percent from 0 to 100 (blank or 0 sends nothing).

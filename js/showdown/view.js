@@ -10,7 +10,8 @@
 import { getShowdownBoard, postShowdownRefresh, postShowdownProjectionsPaste, supports, isShowdownSampleMode } from "./api.js";
 import { resetAllEnabled } from "../row-reset.js";
 import { stickyHeights } from "../build-notice.js"; // A15: the sticky stack's heights, the notice a layer of it
-import { deleteShowdownOverrides } from "./optimizer.js";
+import { deleteShowdownOverrides, optimizerLive, optimizerTabFor, setTabSwitchGate } from "./optimizer.js";
+import { makeTabBoards, otherTab, tabWord } from "./tab-boards.js"; // Part F: the GPP and Cash tabs' own boards
 import { renderPills, kickoffDateAndClock, paintSourcesLink, wireSourcesLink, modePillHtml } from "../header.js";
 import { isSourcesTab, sourcesTabToOpen } from "../tabs.js";
 import { renderSourcesPage, sectionSources } from "../sources-page.js";
@@ -18,8 +19,6 @@ import { escapeHtml, dec1 } from "../format.js";
 import { store } from "../state.js";
 import { sdShowAll, setSdShowAll, onSdShowAllChange } from "./show-all.js"; // C24: the Showdown's own Show all players
 import { boardStamps, stampsLineHtml } from "../stamps.js"; // B11, C26: Board, Injuries, Pulled and Lock, with the Sources link
-import { makeWriteSeq } from "../write-seq.js"; // item 10: the writes' one numbered flow
-import { makeBoardFlow } from "../write-runner.js";
 import { makeFilterDebounce } from "../filter-debounce.js"; // the typed boxes wait out classic's 150 ms pause
 import { syncExpandUi } from "../expand.js";
 import { adjustScrollPanels } from "../scroll-panels.js";
@@ -30,7 +29,7 @@ import { repaintShowdownPool } from "./lineup.js";
 import { lineupFigureRow } from "./lineup-meter.js";
 import { poolState, poolCountText } from "./pool.js";
 import { restoreView } from "./view-memory.js"; // A9: the pool's filters and sort per game
-import { filterBarHtml, wireFilterBar, takeBarFocus, restoreBarFocus } from "./filter-bar.js"; // the filter bar above the builder (team and position chips, search, salary range, Min Proj)
+import { filterBarHtml, wireFilterBar, takeBarFocus, restoreBarFocus, tabResetQuestion } from "./filter-bar.js"; // the filter bar above the builder (team and position chips, search, salary range, Min Proj)
 import { figuresPillHtml } from "./figures-label.js"; // the header pill naming the sources this game's board reads (Adam 2026-10-20)
 import { normalizeBoard, teamFullName } from "./board-shape.js"; // the board's pure shaping (moved for the 600-line cap)
 
@@ -172,7 +171,8 @@ function renderFilterBar() {
     rebuild: renderFilterBar,
     repaint: repaintShowdownPool,
     clearShowAll: () => setSdShowAll(false), // the Showdown's own switch (C24), not classic's
-    onResetOverrides: () => writeBoard((key) => deleteShowdownOverrides(key), "the reset"),
+    onResetOverrides: () => writeBoard((key, tab) => deleteShowdownOverrides(key, undefined, tab), "the reset"), // Part F: the tab on screen's numbers only
+    resetQuestion: () => (optimizerLive() ? tabResetQuestion(shownTab()) : null),
   });
   restoreBarFocus(els.filterbar, focused);
 }
@@ -222,35 +222,33 @@ function afterLineupDraw() {
 // Applies an already-fetched, already-ok board response as the new current board, gated by the same
 // token/key check as a plain load (🔵 findings: use the board that refresh/paste already return instead
 // of a second GET; discard a response for a key that's no longer current).
-/** A refresh's or a paste's answer (write number `n`, from writeSeq.start() before it was sent): painted unless a newer write's answer is already on screen, in which case the board is read
+/** A refresh's or a paste's answer for `tab` (number `n`, from tabBoards.begin(tab) before it was sent): painted unless a newer write's answer is already on screen, in which case the board is read
  *  once more and that read painted (write-runner.js runWrite's rule), so a late Refresh answer can never put a typed Proj back. */
-function paintAnswer(raw, key, token, n) {
-  if (writeSeq.take(n)) return applyBoardResponse(raw, key, token);
-  writeFlow.loadBoard().catch((e) => { els.status.textContent = `The board could not be reread: ${e?.message ?? e}`; els.status.className = "status error"; });
+function paintAnswer(raw, key, token, n, tab) {
+  if (tabBoards.take(tab, n)) return applyBoardResponse(raw, key, token, tab);
+  tabBoards.reread(tab);
   return false;
 }
 
-function applyBoardResponse(raw, key, token) {
+/** A board answer for `tab` (absent: the tab on screen): kept for its tab, and painted only while that tab is on screen (tab-boards.js). */
+function applyBoardResponse(raw, key, token, tab = optimizerTabFor(key)) {
   if (!isCurrent(token, key)) return false;
-  state.board = normalizeBoard(raw);
-  state.boardKey = key;
-  state.error = null;
-  state.loading = false;
-  render();
-  return true;
+  return tabBoards.land(key, tab, raw);
 }
 
-// A write from the Lineup tab that answers this game's board (a star, a typed number, a note, the ± bump, a reset): `send(key)` makes the request. Since the round 4 fix batch
-// (item 10) every write goes through classic's one numbered flow (write-seq.js, write-runner.js makeBoardFlow): each is numbered as it starts and an answer older than one already
-// painted is not painted (a read of the board follows it instead), so a slow first answer can never put the screen back over a newer one. A refusal or a failure puts the
-// server's sentence in the status line, as a failed refresh does. Resolves true when the server took the write, false when it did not.
-const writeSeq = makeWriteSeq();
-const writeFlow = makeBoardFlow({
-  seq: writeSeq,
-  getBoard: () => getShowdownBoard(state.boardKey),
-  paint: (board) => {
-    if (board?.key && state.boardKey && board.key !== state.boardKey) return; // an answer for a game that is no longer on screen paints nothing
-    state.board = normalizeBoard(board);
+// Part F: the tab ("gpp" or "cash") whose board is on screen, for the game the boards are kept for.
+const shownTab = () => optimizerTabFor(tabBoards.key());
+
+// Each tab's board and its own numbered flow (tab-boards.js; write-seq.js and write-runner.js makeBoardFlow, the round 4 fix batch's item 10): a write, a read or a refresh is
+// numbered as it starts and an answer older than one already painted on that tab is not painted (a read of the board follows it instead), so a slow first answer can never put the
+// screen back over a newer one; an answer for the tab not on screen is kept for it, never painted. A refusal or a failure puts the sentence in the status line.
+const tabBoards = makeTabBoards({
+  read: (key, tab) => getShowdownBoard(key, tab),
+  shape: normalizeBoard,
+  shownTab,
+  show: (board, _tab, key) => {
+    state.board = board;
+    state.boardKey = key;
     state.error = null;
     state.loading = false;
     render();
@@ -260,9 +258,11 @@ const writeFlow = makeBoardFlow({
     els.status.className = "status error";
   },
 });
-async function writeBoard(send, label) {
-  const key = state.boardKey;
-  const data = await writeFlow.runWrite(() => send(key), { label });
+
+// A write from the Optimizer that answers this game's board (a star, a typed number, a note, the ± bump, a revive, a row reset, Reset all): `send(key, tab)` makes the request on the
+// tab on screen (Part F: each tab has its own typed numbers; `shared` for a star or a note, which both tabs show). Resolves true when the server took the write, false when it did not.
+async function writeBoard(send, label, opts = {}) {
+  const data = await tabBoards.write(shownTab(), send, label, opts);
   if (data !== null && els.status.textContent.startsWith(`Could not save ${label}: `)) { // this write's earlier refusal is over; any other line stays
     els.status.textContent = "";
     els.status.className = "status";
@@ -270,11 +270,47 @@ async function writeBoard(send, label) {
   return data !== null;
 }
 
+// Part F: a GPP | Cash click shows that tab's own board at once when it is kept; otherwise it is read first, and the switch waits for it (a failure says so and the tab stays).
+// `switched`: a Load's switch (optimizer.js setOptimizerMode), made already; a board not kept yet paints when its read lands (tab-boards.js), a failure is said there.
+setTabSwitchGate((next, apply, switched = false) => {
+  const key = state.boardKey;
+  if (!key || tabBoards.key() !== key) return; // another game is loading: the click waits for its board
+  const visit = tabBoards.visit();
+  const have = tabBoards.board(next);
+  const switchTo = (board) => {
+    if (!apply()) return;
+    state.board = board;
+    render();
+  };
+  if (have) return switchTo(have);
+  if (switched) return void tabBoards.reread(next);
+  const loading = `Loading the ${tabWord(next)} tab's board...`;
+  els.status.textContent = loading;
+  els.status.className = "status";
+  tabBoards.reread(next).then((raw) => {
+    if (state.boardKey !== key || tabBoards.visit() !== visit) { // another game, or another visit, is on screen now: its status line is not this click's
+      if (els.status.textContent === loading) els.status.textContent = "";
+      return;
+    }
+    const board = tabBoards.board(next);
+    if (!board) {
+      els.status.textContent = `Could not load the ${tabWord(next)} tab's board: ${raw?.error?.message ?? "the server did not return it"}. The ${tabWord(otherTab(next))} tab stays on screen.`;
+      els.status.className = "status error";
+      return;
+    }
+    if (els.status.textContent === loading) els.status.textContent = "";
+    switchTo(board);
+  });
+});
+
 // Never rejects. Returns null when the board was read (or a newer request took over), else the plain reason it could not be, which the
 // Sources page shows under the row it just saved (onChanged in renderSourcesView).
 async function loadBoard(key) {
   const token = beginRequest(key);
-  const n = writeSeq.start(); // numbered as classic's reads are (write-seq.js): a board read that started before a write's answer is not painted over it
+  tabBoards.setKey(key); // another game: both tabs' kept boards are the last game's and go
+  const tab = optimizerTabFor(key);
+  const n = tabBoards.begin(tab); // numbered as classic's reads are (write-seq.js): a board read that started before a write's answer is not painted over it
+  if (optimizerLive()) tabBoards.reread(otherTab(tab)); // Part F: the other tab's board is kept too, so a switch is instant
   // A good board for a DIFFERENT key is not shown while the new one loads (there is nothing honest to
   // show), but a good board for THIS SAME key (a Refresh, or navigating back to a key already loaded) is
   // never cleared just because a reload started (🔵 finding: never blank a good board).
@@ -285,7 +321,7 @@ async function loadBoard(key) {
   state.loading = true;
   render();
   try {
-    const raw = await getShowdownBoard(key);
+    const raw = await getShowdownBoard(key, tab);
     if (!isCurrent(token, key)) return null;
     if (!raw || !raw.ok) {
       state.loading = false;
@@ -302,8 +338,9 @@ async function loadBoard(key) {
       return raw?.error?.message ?? "the server did not return the board";
     }
     // The same game already on screen: an answer older than one a write painted is dropped (a later Proj, star or note is not put back). A game that is not on screen yet always applies.
-    if (state.boardKey === key && !writeSeq.take(n)) return null;
-    applyBoardResponse(raw, key, token);
+    const fresh = tabBoards.take(tab, n);
+    if (state.boardKey === key && !fresh) return null;
+    applyBoardResponse(raw, key, token, tab);
     return null;
   } catch (e) {
     if (!isCurrent(token, key)) return null;
@@ -396,9 +433,12 @@ function renderSourcesView() {
       onPaste: async (payload) => {
         const key = state.boardKey;
         const token = beginRequest(key);
-        const n = writeSeq.start();
+        const n = tabBoards.begin("gpp"); // the paste answers the GPP board (server/showdown/routes.js); Cash's is read again for the new figures
         const result = await postShowdownProjectionsPaste(key, payload);
-        if (result?.ok && result.board) paintAnswer(result.board, key, token, n);
+        if (result?.ok && result.board) {
+          paintAnswer(result.board, key, token, n, "gpp");
+          if (optimizerLive()) tabBoards.reread("cash");
+        }
         return result;
       },
     });
@@ -431,14 +471,16 @@ els.refreshBtn?.addEventListener("click", async () => {
   const key = state.boardKey ?? state.requestedKey;
   if (!key) return;
   const token = beginRequest(key);
-  const n = writeSeq.start(); // numbered as it starts, as a write is
+  const tab = optimizerTabFor(key);
+  const n = tabBoards.begin(tab); // numbered as it starts, as a write is
   els.status.textContent = "Refreshing sources...";
   els.status.className = "status";
   try {
-    const r = await postShowdownRefresh(key);
+    const r = await postShowdownRefresh(key, tab); // Part F: answers the tab on screen's rebuilt board
     if (!isCurrent(token, key)) return;
     if (!r || r.ok === false) throw new Error(r?.error?.message ?? "unknown error");
-    paintAnswer(r, key, token, n);
+    paintAnswer(r, key, token, n, tab);
+    if (optimizerLive()) tabBoards.reread(otherTab(tab)); // the other tab's board has the new figures too
     els.status.textContent = "Refreshed.";
   } catch (e) {
     if (!isCurrent(token, key)) return;

@@ -15,7 +15,7 @@
 import {
   pageStorage, showdownLineupsResponse, showdownOptimizeResponse, saveShowdownLineup, deleteShowdownDeviceLineup, renameShowdownDeviceLineup, envelope, errorBody,
   showdownMeterResponse, showdownSwapsResponse, runShowdownGenerate, readShowdownDeviceLineups, bakedCurvesRead, BAKED_CURVES_URL, SHOWDOWN_GENERATE_FAILED,
-  showdownBoardWithEdits, putShowdownEdits, resetAllShowdownEdits, modesWithEdits,
+  showdownBoardWithEdits, putShowdownEdits, resetAllShowdownEdits, modesWithEdits, readTab, tabOfMode, SHOWDOWN_TABS,
 } from "../site-showdown.js";
 
 export const READ_ONLY_MESSAGE = "Read-only on the live site. Do this in the app on your computer.";
@@ -53,35 +53,46 @@ export async function getShowdowns() {
   return getJson("baked/showdown/index.json");
 }
 
-// The baked board as published, before this device's edits.
-function getBakedBoard(key) {
-  return getJson(`baked/showdown/${encodeURIComponent(key)}/board.json`);
+// The baked board as published, before this device's edits. `tab` "cash": the app's Cash board (its own typed numbers, the shared stars and notes), baked beside GPP's.
+function getBakedBoard(key, tab = "gpp") {
+  return getJson(`baked/showdown/${encodeURIComponent(key)}/${tab === "cash" ? "board-cash.json" : "board.json"}`);
 }
 
+// A request's tab as the app's routes read it (server/showdown/override-tabs.js readTab): absent is GPP, a value other than gpp or cash is the routes' 400 sentence.
+const tabRefusal = (asked) => errorBody("VALIDATION_ERROR", asked.error);
+
 // The board the page shows, the meter, the swaps, Build and Save read: the baked one with this device's stars, notes, typed numbers and bumps for the game laid over it.
-export async function getShowdownBoard(key) {
-  return showdownBoardWithEdits(await getBakedBoard(key), pageStorage(), key);
+// `tab` (optimizer standard Part F): "cash" is the Cash tab's board and typed numbers; absent is GPP's, as before.
+export async function getShowdownBoard(key, tab) {
+  const asked = readTab(tab);
+  if (asked.error) return tabRefusal(asked);
+  return showdownBoardWithEdits(await getBakedBoard(key, asked.tab), pageStorage(), key, asked.tab);
 }
 
 // PUT and DELETE .../overrides answered in the browser: the change is recorded and checked as the app's route checks it, kept in this browser, and the answer is the board with it laid
-// over (as the route answers the rebuilt board). The board the meter and Build read is read again after one, so they see the new figures.
+// over (as the route answers the rebuilt board). The boards the meter, Build and Generate read are read again after one, so they see the new figures (a star from either tab shows on both).
 function overridesAnswer(result, key) {
-  fieldBoards.delete(key);
+  for (const tab of SHOWDOWN_TABS) fieldBoards.delete(fieldKey(key, tab));
   return result.error ? errorBody(result.error.code, result.error.message) : { ...result.board, ok: true };
 }
 
-export async function putShowdownOverrides(key, patch) {
+// `_fetchImpl` keeps the app's argument order (public/js/showdown/api.js); nothing is fetched from a server here.
+export async function putShowdownOverrides(key, patch, _fetchImpl, tab) {
+  const asked = readTab(tab);
+  if (asked.error) return tabRefusal(asked);
   try {
-    return overridesAnswer(putShowdownEdits(pageStorage(), key, await getBakedBoard(key), patch), key);
+    return overridesAnswer(putShowdownEdits(pageStorage(), key, await getBakedBoard(key, asked.tab), patch, asked.tab), key);
   } catch (e) {
     console.error("showdown overrides: failed", e);
     return errorBody("OVERRIDES_INVALID", "Could not save that change on this device.");
   }
 }
 
-export async function deleteShowdownOverrides(key) {
+export async function deleteShowdownOverrides(key, _fetchImpl, tab) {
+  const asked = readTab(tab);
+  if (asked.error) return tabRefusal(asked);
   try {
-    return overridesAnswer(resetAllShowdownEdits(pageStorage(), key, await getBakedBoard(key)), key);
+    return overridesAnswer(resetAllShowdownEdits(pageStorage(), key, await getBakedBoard(key, asked.tab), asked.tab), key);
   } catch (e) {
     console.error("showdown overrides: reset failed", e);
     return errorBody("OVERRIDES_INVALID", "Could not reset on this device.");
@@ -125,9 +136,12 @@ export function postShowdownEntriesExport() {
 
 // Body and answer as POST /api/showdown/<key>/lineup/optimize. Never throws: there is no server on the site, so a
 // failure is answered as the route's own LINEUP_OPTIMIZE_FAILED, never as an unreachable server.
-export async function postShowdownLineupOptimize(key, payload) {
+// `tab`: whose typed numbers Build reads, as the route's `?tab=` (absent: GPP).
+export async function postShowdownLineupOptimize(key, payload, tab) {
+  const asked = readTab(tab);
+  if (asked.error) return tabRefusal(asked);
   try {
-    const board = await getShowdownBoard(key);
+    const board = await getShowdownBoard(key, asked.tab);
     return showdownOptimizeResponse(board, payload);
   } catch (e) {
     console.error("showdown optimize: failed", e);
@@ -135,16 +149,19 @@ export async function postShowdownLineupOptimize(key, payload) {
   }
 }
 
-// The board the meter, the swaps and Generate measure on: fetched once per showdown per page, so the field table built on it
-// (server/showdown/meter-answer.js zFor, cached per board object) is built once and kept, never on every lineup change.
+// The board the meter, the swaps and Generate measure on: fetched once per showdown and tab per page, so the field table built on it
+// (server/showdown/meter-answer.js zFor, cached per board object) is built once and kept, never on every lineup change. Each reads
+// its tab's: the meter and its swaps the tab asked, a Generate its mode's, as the routes do.
 const fieldBoards = new Map();
-function fieldBoard(key) {
-  if (!fieldBoards.has(key)) {
-    const p = getShowdownBoard(key);
-    p.catch(() => fieldBoards.delete(key)); // a failed fetch is tried again next time
-    fieldBoards.set(key, p);
+const fieldKey = (key, tab) => `${tab}:${key}`;
+function fieldBoard(key, tab = "gpp") {
+  const k = fieldKey(key, tab);
+  if (!fieldBoards.has(k)) {
+    const p = getShowdownBoard(key, tab);
+    p.catch(() => fieldBoards.delete(k)); // a failed fetch is tried again next time
+    fieldBoards.set(k, p);
   }
-  return fieldBoards.get(key);
+  return fieldBoards.get(k);
 }
 
 // The baked field curves, read as the app reads its file (site-showdown.js bakedCurvesRead); a good read is kept for the
@@ -165,9 +182,12 @@ async function fieldCurves() {
 
 // Body and answer as POST /api/showdown/<key>/lineup/meter ({cpt, flex, excludes?, field?}). Never throws: a failure is the
 // route's own LINEUP_METER_FAILED.
-export async function postShowdownLineupMeter(key, payload) {
+// `tab` (Part F): the Cash tab's lineup is measured on the Cash board, as the route's `?tab=` (absent: GPP).
+export async function postShowdownLineupMeter(key, payload, _fetchImpl, tab) {
+  const asked = readTab(tab);
+  if (asked.error) return tabRefusal(asked);
   try {
-    const [board, curves] = await Promise.all([fieldBoard(key), fieldCurves()]);
+    const [board, curves] = await Promise.all([fieldBoard(key, asked.tab), fieldCurves()]);
     return showdownMeterResponse(board, payload, curves);
   } catch (e) {
     console.error("showdown meter: failed", e);
@@ -176,9 +196,11 @@ export async function postShowdownLineupMeter(key, payload) {
 }
 
 // Body and answer as POST /api/showdown/<key>/lineup/swaps (the meter's body). Never throws.
-export async function postShowdownLineupSwaps(key, payload) {
+export async function postShowdownLineupSwaps(key, payload, _fetchImpl, tab) {
+  const asked = readTab(tab);
+  if (asked.error) return tabRefusal(asked);
   try {
-    const [board, curves] = await Promise.all([fieldBoard(key), fieldCurves()]);
+    const [board, curves] = await Promise.all([fieldBoard(key, asked.tab), fieldCurves()]);
     return showdownSwapsResponse(board, payload, curves);
   } catch (e) {
     console.error("showdown swaps: failed", e);
@@ -188,11 +210,15 @@ export async function postShowdownLineupSwaps(key, payload) {
 
 // GET /api/showdown/<key>/modes: the app's answer, baked beside the board. Never throws: a file that cannot be read is the
 // route's own SHOWDOWN_MODES_FAILED, so the meter says the notes could not be read.
-export async function getShowdownModes(key) {
+// `tab`: whose typed numbers the figures carry, as the route's `?tab=` (absent: GPP). The baked answer is the app's GPP one, so the Cash tab's is it with every man whose
+// figures differ on the Cash board put in again (modesWithEdits against the baked GPP board).
+export async function getShowdownModes(key, _fetchImpl, tab) {
+  const asked = readTab(tab);
+  if (asked.error) return tabRefusal(asked);
   try {
     const baked = await getJson(`baked/showdown/${encodeURIComponent(key)}/modes.json`);
     // The baked answer knows none of this device's typed numbers: a man's edited projection is put in it (site-overrides.js modesWithEdits), so the pool and the lineup show it.
-    return modesWithEdits(baked, await getBakedBoard(key), await getShowdownBoard(key));
+    return modesWithEdits(baked, await getBakedBoard(key), await getShowdownBoard(key, asked.tab));
   } catch (e) {
     console.error("showdown modes: failed", e);
     return errorBody("SHOWDOWN_MODES_FAILED", "Could not read what each mode has posted.");
@@ -204,7 +230,8 @@ export async function getShowdownModes(key) {
 export async function postShowdownLineupGenerate(key, payload) {
   try {
     return await runShowdownGenerate(async () => {
-      const [board, curvesRead] = await Promise.all([fieldBoard(key), fieldCurves()]);
+      // A Cash build runs on the Cash tab's board, a GPP build (or one with no mode) on GPP's, as the route does.
+      const [board, curvesRead] = await Promise.all([fieldBoard(key, tabOfMode(payload?.settings?.mode)), fieldCurves()]);
       const saved = readShowdownDeviceLineups(pageStorage(), key);
       return { board, body: payload, saved, curvesRead };
     });
@@ -234,7 +261,8 @@ async function bakedLineups(key) {
 // Body and answer as POST /api/showdown/<key>/lineups, but the lineup is kept in this browser only.
 export async function postShowdownLineup(key, payload) {
   try {
-    const [board, app] = await Promise.all([getShowdownBoard(key), bakedLineups(key)]);
+    // Saved on its own mode's tab, as the route saves it: a Cash lineup against the Cash board's figures key.
+    const [board, app] = await Promise.all([getShowdownBoard(key, tabOfMode(payload?.mode)), bakedLineups(key)]);
     const storage = pageStorage();
     const result = saveShowdownLineup(storage, key, board, payload, app.lineups);
     return result.ok === false ? result : { ...result, lineups: showdownLineupsResponse(app, storage, key).lineups };

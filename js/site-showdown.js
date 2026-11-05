@@ -36,6 +36,8 @@ export const SHOWDOWN_STORAGE_PREFIX = "nfldfs-site-showdown-lineups:";
 export { pageStorage };
 // The visitor's stars, notes, typed Proj and Own and bumps for one game, kept in this browser and laid over the baked board (round 4, item 7; site-overrides.js).
 export { showdownBoardWithEdits, putShowdownEdits, resetAllShowdownEdits, modesWithEdits } from "./site-overrides.js";
+// The GPP and Cash tabs' own typed numbers (optimizer standard Part F): the routes' tab reading, handed on for site-src/showdown-api.js.
+export { readTab, tabOfMode, SHOWDOWN_TABS } from "../server/showdown/override-tabs.js";
 
 /** The storage key for one showdown (its key looks like 2026-w03-ATLGB). */
 export function showdownStorageKey(key) {
@@ -110,6 +112,8 @@ export const SITE_SAVED_NOTE = "Minimum-unique counted only the lineups saved in
 
 /** The route's own failure answer for a generate that could not run. */
 export const SHOWDOWN_GENERATE_FAILED = () => errorBody("LINEUP_GENERATE_FAILED", "Could not make showdown lineups.");
+// Another build holds the one place (the Cash tab's quiet Left out build, or a second click): the route's own 409 answer, so the page waits for it and asks once more.
+export const SHOWDOWN_GENERATE_BUSY = () => errorBody("GENERATE_BUSY", "Lineups are already being made; try again when that finishes.");
 
 /**
  * POST .../lineup/generate on the baked board: { board, body ({settings, field}), saved (this device's saved lineups of this
@@ -139,7 +143,7 @@ export function showdownGenerateResponse({ board, body: rawBody, saved = [], cur
 
 /** showdownGenerateResponse off the page's thread (site-worker.js, opt-worker.js), else on it; .stop() ends a build with what is finished. */
 export const runShowdownGenerate = createWorkerRunner({
-  kind: "showdown", failed: SHOWDOWN_GENERATE_FAILED, label: "showdown generate: failed",
+  kind: "showdown", failed: SHOWDOWN_GENERATE_FAILED, busy: SHOWDOWN_GENERATE_BUSY, label: "showdown generate: failed",
   finish: (args, partial, reason) => showdownGenerateResponse({ ...args, partial: endedSiteResult(partial, reason, args.body?.settings?.count ?? 1) }),
   onPage: (args, deadline) => showdownGenerateResponse({ ...args, deadline })
 });

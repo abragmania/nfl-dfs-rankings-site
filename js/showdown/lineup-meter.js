@@ -178,13 +178,13 @@ export function meterHtml(m, v = {}) {
 // ---------- the requests: ./api.js's, which the public site's stand-in answers in the browser (RULES.md D71) ----------
 
 /** POST /api/showdown/<key>/lineup/meter; resolves to the parsed answer, never throws for a server-side refusal. */
-export async function postLineupMeter(key, body, fetchImpl = fetch) {
-  return postShowdownLineupMeter(key, body, fetchImpl);
+export async function postLineupMeter(key, body, fetchImpl = fetch, tab = undefined) {
+  return postShowdownLineupMeter(key, body, fetchImpl, tab);
 }
 
-/** GET /api/showdown/<key>/modes: what the ticked sources have posted, and each man's notes. */
-export async function getLineupModes(key, fetchImpl = fetch) {
-  return getShowdownModes(key, fetchImpl);
+/** GET /api/showdown/<key>/modes: what the ticked sources have posted, and each man's notes; `tab` (Part F): whose typed numbers the figures carry (absent: GPP). */
+export async function getLineupModes(key, fetchImpl = fetch, tab = undefined) {
+  return getShowdownModes(key, fetchImpl, tab);
 }
 
 // ---------- state and trigger ----------
@@ -226,7 +226,7 @@ export function meterState() {
  *  yet in or failed) gives its notes but not its projections: the row's are newer (🔵 2026-10-22). */
 export function playerFigures(row, isCpt) {
   if (!isLive()) return figuresFor(row, isCpt, null);
-  return figuresFor(row, isCpt, modesInfo?.modes?.current?.players, { rowProj: modesReadFor !== modesAskedOf(last.key, last.board) });
+  return figuresFor(row, isCpt, modesInfo?.modes?.current?.players, { rowProj: modesReadFor !== modesAskedOf(last.key, last.board, last.tab) });
 }
 
 /** Whether the server reads this man as out although the board row carries a typed projection above 0: while TwoGun is the only projection source ticked a typed revive is set
@@ -244,7 +244,7 @@ export function lineupFigureRow(row) {
 }
 
 /** What a modes read is for: the showdown and its board's figures key (board-view.js figuresKeyOf). */
-const modesAskedOf = (key, board) => `${key}|${board?.figures?.key ?? ""}`;
+const modesAskedOf = (key, board, tab) => `${key}|${tab ?? "gpp"}|${board?.figures?.key ?? ""}`; // Part F: each tab's figures are its own
 
 /** The one line shown when the last modes read failed (instead of silently missing notes, or silently keeping an earlier answer); null otherwise. */
 function modesNoteText() {
@@ -337,17 +337,17 @@ export function resyncMeterExcludes(excludes) {
  * meter and the swaps panel both ask with this one signature over the same body (the Optimizer's excludes included), so
  * they re-ask together.
  */
-export function lineupSig(key, board, body, cpt, flex) {
+export function lineupSig(key, board, body, cpt, flex, tab = undefined) {
   const six = [findRow(board, cpt.id), ...flex.map((s) => findRow(board, s.id))];
   const figures = six.map((r, i) => [i === 0 ? r?.cptProj : r?.proj, r?.ownCpt ?? null, r?.ownFlex ?? null]);
-  return JSON.stringify([key, board?.generatedAt ?? null, body, figures]);
+  return JSON.stringify([key, board?.generatedAt ?? null, body, figures, ...(tab === "cash" ? ["cash"] : [])]); // Part F: the Cash tab measures on its own board (GPP's signature as it was)
 }
 
 /**
  * Reads GET .../modes for `key` (the "not posted yet" lines and each man's notes), as of `asked` (the showdown and its board's
  * figures key). A failed read leaves the last answer in place; with no answer yet for this showdown the strip says why.
  */
-function readModes(key, asked, getModes) {
+function readModes(key, asked, getModes, tab = undefined) {
   modesAsked = asked;
   const seq = ++modesSeq;
   const current = () => seq === modesSeq && last?.key === key; // an older read never overwrites a newer one
@@ -357,7 +357,7 @@ function readModes(key, asked, getModes) {
     repaint();
   };
   Promise.resolve()
-    .then(() => getModes(key))
+    .then(() => (tab === undefined ? getModes(key) : getModes(key, undefined, tab)))
     .then((info) => {
       if (!current()) return;
       if (!info || typeof info !== "object") return fail("the server's answer could not be read.");
@@ -382,8 +382,8 @@ function readModes(key, asked, getModes) {
  * `onSources`: what the label's Sources link does (view.js opens the Sources page); `onModes`: lineup.js's repaint of the
  * slots' figure lines when the modes answer lands.
  */
-export function syncMeter({ board, key, cpt, flex, container = null, post = postLineupMeter, getModes = getLineupModes, delayMs = DELAY_MS, enabled = liveMeterAllowed(), excludes = [], readModes: wantRead = true, onSources = null, onModes = null }) {
-  last = { board, key, cpt, flex, container, post, getModes, delayMs, enabled, excludes, onSources, onModes };
+export function syncMeter({ board, key, cpt, flex, container = null, post = postLineupMeter, getModes = getLineupModes, delayMs = DELAY_MS, enabled = liveMeterAllowed(), excludes = [], readModes: wantRead = true, onSources = null, onModes = null, tab = undefined }) {
+  last = { board, key, cpt, flex, container, post, getModes, delayMs, enabled, excludes, onSources, onModes, tab }; // `tab` (Part F): the Optimizer tab on screen, whose board the meter and the modes read
   const live = Boolean(enabled && key);
   if (live && key !== modesKey) {
     modesKey = key; // another showdown: the last one's notes and failure are not this one's
@@ -394,17 +394,17 @@ export function syncMeter({ board, key, cpt, flex, container = null, post = post
   }
   // Read as soon as a showdown is on show, again whenever its figures key moves (a Sources save, a typed number, TwoGun's files:
   // board-view.js figuresKeyOf), and for a new complete lineup.
-  const asked = modesAskedOf(key, board);
+  const asked = modesAskedOf(key, board, tab);
   const wantModes = live && modesAsked !== asked;
   const body = live ? meterRequestBody(board, cpt, flex, excludes) : null;
   if (!body) {
     if (m.sig !== null) reset();
-    if (wantModes) readModes(key, asked, getModes);
+    if (wantModes) readModes(key, asked, getModes, tab);
     return;
   }
-  const sig = lineupSig(key, board, body, cpt, flex);
+  const sig = lineupSig(key, board, body, cpt, flex, tab);
   if (sig === m.sig) {
-    if (wantModes && !m.timer) readModes(key, asked, getModes); // a pending timer reads them anyway
+    if (wantModes && !m.timer) readModes(key, asked, getModes, tab); // a pending timer reads them anyway
     return;
   }
   const modesDue = wantRead || wantModes || Boolean(m.timer && m.modesDue); // a read that is due, or a replaced wait's, still happens
@@ -416,10 +416,10 @@ export function syncMeter({ board, key, cpt, flex, container = null, post = post
     m.timer = null;
     // A new complete lineup reads the modes afresh too (a TwoGun file saved meanwhile), behind the same pause as the
     // POST, so quick swaps send one GET.
-    if (modesDue) readModes(key, asked, getModes);
+    if (modesDue) readModes(key, asked, getModes, tab);
     let next;
     try {
-      const data = await post(key, body);
+      const data = await (tab === undefined ? post(key, body) : post(key, body, undefined, tab));
       if (!data || typeof data !== "object") next = { status: "error", message: "The server's answer could not be read." };
       else if (data.error) next = { status: "error", message: data.error.message || "Could not measure this lineup." };
       else if (!data.ownership || typeof data.ownership !== "object") next = { status: "error", message: "The server's answer was missing its ownership section." };
