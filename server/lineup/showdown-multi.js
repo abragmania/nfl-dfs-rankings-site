@@ -15,6 +15,7 @@
 // men under a different Captain is a different lineup, for minimum unique and against saved lineups.
 // Bends (least change, the lineup marked bent): Min forcing first, then Max %, then minimum unique. Locks, includes,
 // excludes, the cap and the DraftKings rules never bend. Output is deterministic: a tie in points is settled by the search order, which never varies.
+// Variance (settings.variance, a percent; GPP only, sd-variance.js) varies each lineup's search, repeatably; every number shown stays real.
 // Lineup rules (settings.lineupRules, D81) are hard too: enforced inside the search, never bent (showdown-rules.js).
 // Max per team (settings.maxPerTeam, 3, 4 or 5; absent = 5, DraftKings' rule) is hard as well (Adam 2026-10-18). The
 // objective is "proj" (default) or "median": TwoGun's figure per man, the Captain's at 1.5x of it, scored as
@@ -29,6 +30,7 @@ import { outReason, rosterTest, buildPool } from "./showdown-pool.js"; // the se
 import { readIncludes, withIncludes, noIncludeFitSentence, roleMax, captainSteer, solveSteered } from "./showdown-includes.js"; // includes (Adam 2026-10-19)
 import { warn } from "../lib/log.js";
 import { BUILD_CEILING_MS, stopSentence } from "./build-control.js"; // pure leaf: the ten minute limit's sentence
+import { varianceError, variancePercent, varianceNote, VARIANCE_CASH_SENTENCE, lineupFactors, variedPool, realMen, byRealTotal } from "./sd-variance.js";
 
 export const SHOWDOWN_CAP = 50000;
 export const MAX_LINEUPS = 150;
@@ -36,7 +38,7 @@ export const MAX_UNIQUE = SHOWDOWN_SLOTS.length; // six slots
 // Least change first; locks, includes, excludes, the cap and the DraftKings rules never bend (Adam 2026-10-18; includes 2026-10-19).
 export const BEND_ORDER = Object.freeze(["minForce", "playerMax", "minUnique"]);
 // No step limit (Adam 2026-11-03): a build ends on finishing, the ten minute limit (server/lib/app-build.js, site-src/site-worker.js) or Stop,
-// and every lineup served is proven best.
+// and every lineup served is proven best (under variance only on its varied figures, so a varied batch claims nothing of the kind).
 
 const num = (v) => (typeof v === "number" && Number.isFinite(v) ? v : null);
 const round2 = (n) => Math.round(n * 100) / 100;
@@ -200,7 +202,8 @@ function projTotal(men) {
  *   either role, showdown-includes.js), excludes, cap, captainMaxExposure, captainMinExposure,
  *   flexMaxExposure, flexMinExposure (each {"<person id>": {pct}}), lineupRules (lineup-rules.js shape), notes (carried
  *   notes), maxPerTeam (3, 4 or 5; absent = 5), objective ("proj" or "median"; anything else builds on projection),
- *   mode ("gpp" or absent, or "cash": showdown-cash.js, which ignores minUnique, the exposures, lineupRules and objective) }
+ *   mode ("gpp" or absent, or "cash": showdown-cash.js, which ignores minUnique, the exposures, lineupRules and objective),
+ *   variance (a percent from 0 to 100; absent or 0 is off, cash ignores it; sd-variance.js) }
  * @param {object[]} [args.existing] saved lineups of this showdown ({slots:[{slot, playerId}]}); they count for minimum
  *   unique only, never for the exposure caps (D74); never in cash
  * @param {string}   [args.boardMode] "twogun" or "current": the board's mode, which picks a cash build's basis (cash.js cashBasis)
@@ -240,6 +243,7 @@ function runMode(args, notes) {
     return { ...none, mode: "cash", basis: null };
   }
   notes.push(...c.notes);
+  if (variancePercent(args.settings.variance) > 0) notes.push(VARIANCE_CASH_SENTENCE);
   const onLineup = args.onLineup && ((partial) => args.onLineup({ ...partial, mode: "cash", basis: c.settings.objective }));
   return { ...build({ ...args, settings: c.settings, existing: [], onLineup }, notes), mode: "cash", basis: c.settings.objective };
 }
@@ -351,6 +355,13 @@ function build({ rows, settings, existing, boardMode, onLineup, deadline: deadli
   const pool = buildPool(board, lockSet, objective, notes, boardMode, includeSet);
   const poolIds = new Set(pool.map((c) => c.id));
 
+  // Variance: `factors` is the lineup in hand's; the search sees varied scores and hands back the real candidates, so nothing
+  // past solve() ever reads a varied figure. Off, the pool goes to the search as it is.
+  if (varianceError(s.variance)) notes.push(`${varianceError(s.variance)} It was ignored.`); // the route refuses it first
+  const variance = s.mode === "cash" ? 0 : variancePercent(s.variance);
+  const poolById = variance > 0 ? new Map(pool.map((c) => [c.id, c])) : null;
+  let factors = null;
+
   // Saved lineups, as man-and-slot pairs.
   const priors = [];
   let unknown = 0;
@@ -395,6 +406,8 @@ function build({ rows, settings, existing, boardMode, onLineup, deadline: deadli
   const bends = [];
   const problems = [];
   const madeBefore = () => (lineups.length ? `The ${lineups.length} made before it are returned.` : "No lineups were made.");
+  // The answer's order: made order, or best real total first on a varied batch.
+  const shown = () => (variance > 0 ? byRealTotal(lineups, bends, problems, objective) : { lineups: [...lineups], bends: [...bends], problems: [...problems] });
 
   const named = (map) => [...map].map(([id, { pct }]) => ({ name: `${board.byCand.get(id).name} (${roleWord(board.byCand.get(id))})`, pct }));
   const shortNote = (made) => percentNote({}, named(maxes), named(mins), count, made);
@@ -405,7 +418,7 @@ function build({ rows, settings, existing, boardMode, onLineup, deadline: deadli
   const solve = ({ capsOff = new Set(), forced = [], uniq = minUnique, noRules = false, noIncludes = false, steer = new Set() }) => {
     const search = pool.filter((c) => (!capped(c) || capsOff.has(c.id)) && !steer.has(c.id)); // steer: captainSteer's look-ahead
     const stats = {};
-    const best = exactSearch(search, {
+    const best = exactSearch(factors ? variedPool(search, factors) : search, {
       lockIds: [...locks, ...forced],
       cap,
       maxFromTeam: maxPerTeam,
@@ -416,7 +429,7 @@ function build({ rows, settings, existing, boardMode, onLineup, deadline: deadli
       includePeople: noIncludes ? null : includeSet
     });
     if (stats.timedOut) ranOut = true;
-    return { best, timedOut: Boolean(stats.timedOut) }; // past the deadline `best` is null: a lineup not proven best is never served
+    return { best: factors ? realMen(best, poolById) : best, timedOut: Boolean(stats.timedOut) }; // past the deadline `best` is null: a lineup not proven best is never served
   };
   // The rules ran out: nothing keeps them with every Max, Min and uniqueness eased, though something would without them.
   const rulesExhausted = () => {
@@ -473,6 +486,7 @@ function build({ rows, settings, existing, boardMode, onLineup, deadline: deadli
   };
 
   for (let n = 0; n < count; n++) {
+    if (variance > 0) factors = lineupFactors(board.rowOfPerson.keys(), savedCount + n, variance); // saved lineups move the draws, so a build after a save is no near-clone
     const steer = captainSteer({ people: includeSet, board, pool, poolIds, maxes, counts, left: count - n, captainLocked: lockedCpt.length > 0 });
     const forced = dueFor(n, steer);
     for (const id of forced) bentKeys.delete(id);
@@ -553,16 +567,19 @@ function build({ rows, settings, existing, boardMode, onLineup, deadline: deadli
     priors.push(new Set(men.map(keyOf)));
     for (const c of men) counts.set(c.id, (counts.get(c.id) ?? 0) + 1);
     lineups.push(lineup);
+    if (variance > 0 && lineups.length === 1) notes.push(varianceNote(variance)); // on a batch with a lineup in it, so a snapshot says it too
     if (onLineup) {
       // A build ended early (site-src/site-worker.js, server/lib/app-build.js) is short of the lineups its percents were sized for, and says so.
       const short = lineups.length < count ? shortNote(lineups.length) : null;
-      onLineup({ lineups: [...lineups], exposure: exposureOf(lineups), notes: short ? [...notes, short] : [...notes], bends: [...bends], problems: [...problems], ruleWarnings });
+      const now = shown();
+      onLineup({ lineups: now.lineups, exposure: exposureOf(lineups), notes: short ? [...notes, short] : [...notes], bends: now.bends, problems: now.problems, ruleWarnings });
     }
   }
   notes.push(...unmetMinNotes(plan, counts, { complete: lineups.length === count, bentKeys, waits: new Map() }));
   const short = shortNote(lineups.length);
   if (short) notes.push(short);
-  return { lineups, exposure: exposureOf(lineups), notes, bends, problems, ruleWarnings };
+  const answer = shown();
+  return { lineups: answer.lineups, exposure: exposureOf(lineups), notes, bends: answer.bends, problems: answer.problems, ruleWarnings };
 }
 
 /** Per man, how many lineups of this batch held him as Captain and how many as FLEX: two figures, never summed (Adam
