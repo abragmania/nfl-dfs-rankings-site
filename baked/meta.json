@@ -1,14 +1,14 @@
 {
-  "publishedAt": "2026-11-08T09:15:24.327Z",
+  "publishedAt": "2026-11-08T11:15:23.294Z",
   "season": 2026,
   "week": 9,
-  "boardGeneratedAt": "2026-11-08T09:15:10.486Z",
-  "latestBoardAt": "2026-11-08T09:15:18.899Z",
+  "boardGeneratedAt": "2026-11-08T11:15:08.691Z",
+  "latestBoardAt": "2026-11-08T11:15:17.869Z",
   "defaultMode": "twogun",
   "showdowns": [
     "2026-w09-TBCHI"
   ],
-  "sourceCommit": "003e85685b14f77db9a1f66f4d3c3996d095ae22",
+  "sourceCommit": "aa2b56c62a4b55dd729dd8601773ff7d25df214e",
   "appCommit": "8fbe51c521cb02f874b42b555b7b2865db1d67cb",
   "machine": "desktop",
   "matchups": false
