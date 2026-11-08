@@ -1,5 +1,5 @@
 {
-  "publishedAt": "2026-11-08T23:15:16.577Z",
+  "publishedAt": "2026-11-08T23:19:22.303Z",
   "season": 2026,
   "week": 9,
   "boardGeneratedAt": "2026-11-08T23:15:04.302Z",
@@ -8,7 +8,7 @@
   "showdowns": [
     "2026-w09-TBCHI"
   ],
-  "sourceCommit": "c0863e5e9ac5a3beb9ef03c367d00319100f796e",
+  "sourceCommit": "baaf332f01de27fd342966b775b06768b3f34a0c",
   "appCommit": "8fbe51c521cb02f874b42b555b7b2865db1d67cb",
   "machine": "desktop",
   "matchups": false

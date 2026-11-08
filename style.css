@@ -2653,6 +2653,17 @@ td.opt-exp-opp { color: var(--text-muted); } /* the cells only: the Matchup head
   .sd-pool-table .nm-short { display: inline; }
   .sd-pool-table th.sd-own-total-label { white-space: normal; max-width: 190px; }
   .sd-pool-table .lineup-row-btn.sd-row-ico { min-height: 32px; }
+  /* A narrower phone's pool: the name is whole and wraps (never an ellipsis, a status badge included), the seat slot takes no
+     room until a seat tag is in it, the opponent under the logo reads "vs TB", the heading row wraps so the Captain | FLEX switch is whole. */
+  @media (max-width: 480px) {
+    .sd-pool-table .player-cell { max-width: 170px; gap: 4px; }
+    .sd-pool-table td.sd-name-cell { white-space: normal; }
+    .sd-pool-table .player-name { flex: 0 1 auto; min-width: min-content; overflow: visible; text-overflow: clip; white-space: normal; line-height: 1.15; }
+    .sd-pool-table .sd-seat-slot { min-width: 0; }
+    .sd-pool-table .meta-opp::before { content: "vs "; }
+    #sd-pool > .sd-pool-head { flex-wrap: wrap; row-gap: var(--sp-1); }
+    .sd-pool-tabs { flex-shrink: 0; }
+  }
   /* The builder's slots (classic and Showdown share them): a smaller logo and figures, so the name and position keep their letters. */
   .lineup-slots .opt-p-big :is(.opt-p-logo, .player-badge) { flex-basis: 32px; width: 32px; height: 32px; }
   .lineup-slots .opt-p-big .opt-p-name { font-size: 14px; }
