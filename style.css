@@ -384,6 +384,10 @@ html, body {
 .status.error { color: var(--danger); }
 
 /* ---------- Tabs ---------- */
+#classic-main > .tabs { position: sticky; top: 0; z-index: 20; background: var(--bg); padding-top: var(--sp-1); } /* Adam 2026-11-08: always on screen; app.js syncFilterbarHeight keeps --tabs-h for the layers under it */
+/* The Lineups tab: the Optimizer panel with only its results showing (same mount, same state). */
+#lineup-panel.lineups-only > :not(#lineup-mount):not(#build-notice) { display: none; }
+#lineup-panel.lineups-only #lineup-mount > :not(.opt-results) { display: none; }
 .tabs {
   display: flex;
   gap: var(--sp-2);
@@ -1108,7 +1112,7 @@ tr:last-child .cell-edit-hint, tr:last-child .cell-edit-error { top: auto; botto
    is not sticky. */
 #lineup-panel > .filterbar {
   position: sticky;
-  top: 0;
+  top: var(--tabs-h, 0px); /* under the sticky tab row */
   z-index: 10;
   background: var(--bg);
   padding: var(--sp-2) 0;

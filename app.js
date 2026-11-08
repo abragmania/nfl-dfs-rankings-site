@@ -248,6 +248,7 @@ const sourceCallbacks = {
 };
 
 function onTabClick(tabKey) {
+  if (tabKey !== store.get().activeTab) window.scrollTo(0, 0); // Adam 2026-11-08: a tab switch lands at the top, where the Lineups results start
   store.set({ activeTab: tabKey });
 }
 
@@ -391,11 +392,12 @@ function renderDynamic() {
   el.sourcesPanel.hidden = !isSourcesTab(activeTab);
   el.projectionsPanel.hidden = activeTab !== "projections";
   el.ownershipPanel.hidden = activeTab !== "ownership";
-  el.lineupPanel.hidden = activeTab !== "lineup";
+  el.lineupPanel.hidden = activeTab !== "lineup" && activeTab !== "lineups";
+  el.lineupPanel.classList.toggle("lineups-only", activeTab === "lineups"); // the Lineups tab is the Optimizer panel with only its results showing (style.css)
   el.showdownPanel.hidden = activeTab !== "showdown";
   el.entriesPanel.hidden = activeTab !== "entries";
 
-  if (activeTab === "lineup") {
+  if (activeTab === "lineup" || activeTab === "lineups") {
     // One screen (Optimizer-first step 4): the strip, banner and ranked list, then the Optimizer's own part in its mount between them.
     renderRankedParts(board, filters, slateRows);
     renderLineupPanel(el.lineupMount, tableCallbacks);
@@ -422,8 +424,11 @@ function syncFilterbarHeight() {
   const sticky = !el.lineupPanel.hidden && getComputedStyle(el.filterbar).position === "sticky";
   const notice = document.getElementById("build-notice");
   const { bar, total } = stickyHeights({ sticky, barHeight: el.filterbar.getBoundingClientRect().height, noticeShown: Boolean(notice) && !notice.hidden, noticeHeight: notice?.getBoundingClientRect().height }); // A15: the build notice is a layer of the stack, so the head and the band sit under it too
-  el.lineupPanel.style.setProperty("--filterbar-bar-h", `${bar}px`);
-  el.lineupPanel.style.setProperty("--filterbar-h", `${total}px`);
+  // The tab row (nav#tabs) is sticky at the top of the window, so every layer under it starts at its height (--tabs-h, style.css .tabs).
+  const tabsH = el.tabs.getBoundingClientRect().height;
+  document.documentElement.style.setProperty("--tabs-h", `${tabsH}px`);
+  el.lineupPanel.style.setProperty("--filterbar-bar-h", `${bar + tabsH}px`);
+  el.lineupPanel.style.setProperty("--filterbar-h", `${total + tabsH}px`);
 }
 window.addEventListener("resize", syncFilterbarHeight);
 // A15: the sticky layers under the filter bar (the pool's head, the lineup band, the build notice) sit at its height, which changes as its chips wrap or the count line appears; the notice's own height counts too.

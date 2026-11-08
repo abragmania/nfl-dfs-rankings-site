@@ -34,6 +34,7 @@ const TABS = [
   { key: "lineup", label: "Optimizer" }, // DECISIONS.md D70: "Optimizer" (was "Lineup Builder"); the first tab since Rankings folded into it (step 4)
   { key: "showdown", label: "Showdown" }, // ChatGPT wish t, Adam 2026-10-17: a second door to the Showdown boards, in the app and on the site
   { key: "entries", label: "Entries" }, // rules repo 2026-10-17: Entries is its own tab (was a section under the Optimizer); app-only, see visibleTabs
+  { key: "lineups", label: "Lineups" }, // Adam 2026-11-08: the Optimizer panel showing only its results (New and Saved lineups), app and site; app.js adds #lineup-panel.lineups-only
 ];
 
 // Tab keys that are no longer drawn, and the tab each one opens instead (Adam 2026-10-18, Optimizer-first step 3: the Favorites
