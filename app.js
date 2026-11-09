@@ -426,7 +426,7 @@ function syncFilterbarHeight() {
   const { bar, total } = stickyHeights({ sticky, barHeight: el.filterbar.getBoundingClientRect().height, noticeShown: Boolean(notice) && !notice.hidden, noticeHeight: notice?.getBoundingClientRect().height }); // A15: the build notice is a layer of the stack, so the head and the band sit under it too
   // The tab row (nav#tabs) is sticky at the top of the window, so every layer under it starts at its height (--tabs-h, style.css .tabs).
   const tabsH = el.tabs.getBoundingClientRect().height;
-  document.documentElement.style.setProperty("--tabs-h", `${tabsH}px`);
+  if (tabsH) document.documentElement.style.setProperty("--tabs-h", `${tabsH}px`); // 0 = this main is hidden (a Showdown is on screen, which keeps --tabs-h itself)
   el.lineupPanel.style.setProperty("--filterbar-bar-h", `${bar + tabsH}px`);
   el.lineupPanel.style.setProperty("--filterbar-h", `${total + tabsH}px`);
 }
@@ -435,6 +435,7 @@ window.addEventListener("resize", syncFilterbarHeight);
 if (typeof ResizeObserver !== "undefined") {
   const ro = new ResizeObserver(syncFilterbarHeight);
   ro.observe(el.filterbar);
+  ro.observe(el.tabs); // the tab row wraps on a narrow window: --tabs-h follows it
   const notice = document.getElementById("build-notice");
   if (notice) ro.observe(notice);
 }

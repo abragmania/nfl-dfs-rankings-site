@@ -202,13 +202,18 @@ function syncFilterbarHeight() {
   const sticky = !els.lineupPanel.hidden && getComputedStyle(els.filterbar).position === "sticky";
   const notice = document.getElementById("sd-build-notice");
   const { bar, total } = stickyHeights({ sticky, barHeight: els.filterbar.getBoundingClientRect().height, noticeShown: Boolean(notice) && !notice.hidden, noticeHeight: notice?.getBoundingClientRect().height }); // A15: the build notice is a layer of the stack, so the head and the band sit under it too
-  els.lineupPanel.style.setProperty("--filterbar-bar-h", `${bar}px`);
-  els.lineupPanel.style.setProperty("--filterbar-h", `${total}px`);
+  // The tab row (#sd-tabs) is sticky at the top of the window, so every layer under it starts at its height (--tabs-h, style.css #showdown-main > .tabs), as classic's.
+  const tabsH = els.tabs?.getBoundingClientRect().height ?? 0;
+  if (tabsH) document.documentElement.style.setProperty("--tabs-h", `${tabsH}px`); // 0 = this main is hidden (classic is on screen and keeps it)
+  els.lineupPanel.style.setProperty("--filterbar-bar-h", `${bar + tabsH}px`);
+  els.lineupPanel.style.setProperty("--filterbar-h", `${total + tabsH}px`);
 }
 window.addEventListener("resize", syncFilterbarHeight);
 if (typeof ResizeObserver !== "undefined") {
+  const ro = new ResizeObserver(syncFilterbarHeight);
   const notice = document.getElementById("sd-build-notice");
-  if (notice) new ResizeObserver(syncFilterbarHeight).observe(notice);
+  if (notice) ro.observe(notice);
+  if (els.tabs) ro.observe(els.tabs);
 }
 
 // After each draw of the Optimizer's part (lineup.js calls it on its own redraws too): the pool's Expand bar (expand.js), its height

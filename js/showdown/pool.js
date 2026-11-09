@@ -11,7 +11,6 @@ import { escapeHtml, pct1 } from "../format.js";
 import { rowMessageHtml, messageIsFor } from "../row-message.js";
 import { shortName, cardNameHtml, teamColours, teamColourStyle } from "../lineup-card.js"; // the cards' one name shortener (👁 V-N1: a tagged row's name; 👁 V1: every name on a phone)
 import { showdownPalette } from "./lineup-look.js";
-import { bareOppHtml } from "../player-row.js"; // D80 as amended: the second line of a pool row is the bare opponent code
 import { SHOWDOWN_COLUMNS, loadColumns, shownKeys, columnsButtonHtml, wireColumns } from "../columns.js"; // A17
 import { SD_COLUMNS, showdownHeadCellsHtml, showdownRowHtml, shownRows, sdLine, gradedValueHtml } from "./table.js";
 import { filterRows, sortRows, sortValue, defaultDirFor, joinWords } from "./board-shape.js";
@@ -357,7 +356,7 @@ export function poolBodyHtml(board, rows, placement, figures = playerFigures, ta
     // The Player cell names him in full and, for a phone, the cards' short name too (style.css shows one; 👁 V1: no name cut mid-word); then the seat tag of a man in
     // the lineup on either list (C21), a lock icon for a man locked in either seat (C20) and the note's pencil (C23, as classic's). A click's refusal (placement.message, lineup.js) is drawn under the name of the
     // row that was clicked (row-message.js, standard A14).
-    playerCell: (row) => `<div class="player-cell">${sdLine(row, { nameHtml: cardNameHtml(row) })}<span class="sd-seat-slot">${seatTagHtml(placedSeat(placement, row.id))}${controls?.lockIcon?.(row) ?? ""}</span>${controls?.noteSlot?.(row) ?? ""}</div><span class="lp-l2">${bareOppHtml(row)}</span>${messageIsFor(placement?.message, row.id) ? rowMessageHtml(placement.message.text, placement.message.tone) : ""}`,
+    playerCell: (row) => `<div class="player-cell">${sdLine(row, { nameHtml: cardNameHtml(row) })}<span class="sd-seat-slot">${seatTagHtml(placedSeat(placement, row.id))}${controls?.lockIcon?.(row) ?? ""}</span>${controls?.noteSlot?.(row) ?? ""}</div>${messageIsFor(placement?.message, row.id) ? rowMessageHtml(placement.message.text, placement.message.tone) : ""}`,
     valueCell: (row) => poolValueHtml(row, figures),
     // A man seated in the lineup, on either list, has his row tinted (the builder's), kept apart from a lock (the icon, C20), beside the Optimizer's own look (excluded), each class once.
     // A row that cannot be clicked is greyed instead of a pick row (A18); the lookup is made once per row and shared by the class and the attributes.

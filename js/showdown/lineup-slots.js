@@ -8,7 +8,6 @@ import { showdownPalette } from "./lineup-look.js";
 import { posPillHtml } from "./table.js";
 import { findRow } from "./lineup-saved.js";
 import { playerFigures, reasonHtml, NOT_ON_BOARD_WORDS } from "./lineup-meter.js";
-import { openSpendHtml } from "./open-seat-spend.js";
 import { poolValueHtml, valuePer1k } from "./pool.js"; // the pool's Val, so the slot and the pool read one figure
 import { gradedValueHtml } from "./table.js";
 
@@ -56,9 +55,9 @@ export function repaintSlots(container, board, { cpt, flex }) {
 // One slot, classic's shapes (lineup-view.js slotsHtml) without its Clear button (D39, Adam 4:45 PM 2026-10-29: "I don't want the tiny ... clear
 // buttons"): filled is the card row (it carries the slot name), and a click on a placed slot takes his man out (lineup.js wires `clearAttrs`);
 // Empty and "Not on this board" keep the label and the same 64px (style.css .lineup-slot-big).
-function slotHtml({ label, placed, row, palette, attrs, clearAttrs, spend }) {
+function slotHtml({ label, placed, row, palette, attrs, clearAttrs }) {
   const body = !placed
-    ? `<span class="lineup-slot-player lineup-slot-empty">Empty</span>${openSpendHtml(spend?.[label === "CPT" ? "cpt" : "flex"], label === "CPT" ? "cpt" : "flex", spend?.[label === "CPT" ? "cptMin" : "flexMin"])}` // an open seat says the most it can still spend (open-seat-spend.js)
+    ? `<span class="lineup-slot-player lineup-slot-empty">Empty</span>`
     : row
       ? slotPlayerHtml(row, label === "CPT", palette)
       : `<span class="lineup-slot-player lineup-slot-missing">Not on this board</span>`;
@@ -70,12 +69,11 @@ function slotHtml({ label, placed, row, palette, attrs, clearAttrs, spend }) {
     </div>`;
 }
 
-/** `spend`: openSeatSpend's answer ({cpt, flex, cptMin, flexMin}: each seat's figure and the cheapest man for it; null or missing draws none). */
-export function slotsHtml(board, { cpt, flex }, spend = null) {
+export function slotsHtml(board, { cpt, flex }) {
   const palette = showdownPalette(board);
-  const cptHtml = slotHtml({ label: "CPT", placed: cpt, row: cpt ? findRow(board, cpt.id) : null, palette, attrs: { cls: " sd-cpt-slot", data: "" }, clearAttrs: `data-action="clear-cpt"`, spend });
+  const cptHtml = slotHtml({ label: "CPT", placed: cpt, row: cpt ? findRow(board, cpt.id) : null, palette, attrs: { cls: " sd-cpt-slot", data: "" }, clearAttrs: `data-action="clear-cpt"` });
   const flexHtml = flex
-    .map((s, i) => slotHtml({ label: "FLEX", placed: s, row: s ? findRow(board, s.id) : null, palette, attrs: { cls: "", data: ` data-flex-index="${i}"` }, clearAttrs: `data-action="clear-flex" data-flex="${i}"`, spend }))
+    .map((s, i) => slotHtml({ label: "FLEX", placed: s, row: s ? findRow(board, s.id) : null, palette, attrs: { cls: "", data: ` data-flex-index="${i}"` }, clearAttrs: `data-action="clear-flex" data-flex="${i}"` }))
     .join("");
   return cptHtml + flexHtml;
 }

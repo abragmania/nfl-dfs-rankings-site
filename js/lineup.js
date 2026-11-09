@@ -748,6 +748,7 @@ function doLoadLineup(id) {
   state.addError = null;
   opt.cashUndo = null; // Cash 3b fix round 2, 2026-10-17: Undo never replaces a loaded lineup
   commit();
+  if (store.get().activeTab === "lineups") store.set({ activeTab: "lineup" }); // the working lineup is hidden on the Lineups tab: Load shows the Optimizer first, as Showdown does
   scrollToSlots();
 }
 

@@ -140,6 +140,17 @@ export function matchupText(row) {
   return row?.opp ? String(row.opp) : "";
 }
 
+/** The words the user reads for an opponent (Adam 2026-11-09): "v CHI" (his team is home), "@TB" (away); a raw opponent with a leading vs/@ is handled the same way, a bare code is shown as is; "" when unknown.
+ *  Display only: parsers keep reading matchupText's "vs X" / "@ X". */
+export function opponentLabel(row) {
+  const text = matchupText(row).trim();
+  const m = /^(vs|@)\s*(.*)$/i.exec(text);
+  const code = (m ? m[2] : text).trim();
+  if (!code) return "";
+  if (!m) return code;
+  return m[1] === "@" ? `@${code}` : `v ${code}`;
+}
+
 /** The pencil: a button that opens the note box (the pool's name cell draws it, the Showdown pool's too, showdown/pool-edit.js). */
 export function noteIconHtml(row) {
   const has = Boolean(row.note);

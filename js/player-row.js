@@ -1,7 +1,7 @@
 // The one player row (RULES.md D80): every list that names a player draws him with these functions and never builds its own cell.
 import { escapeHtml, textColourFor, logoFor } from "./format.js";
 import { TEAM_BY_ABBR } from "./teams-data.js";
-import { matchupText, outTagHtml, lineupOutTagHtml, statusTagsHtml } from "./table.js";
+import { opponentLabel, outTagHtml, lineupOutTagHtml, statusTagsHtml } from "./table.js";
 
 const SINGLE_POSITIONS = new Set(["QB", "RB", "WR", "TE", "DST", "K"]);
 
@@ -64,7 +64,7 @@ export function num1(n) {
 }
 
 export function matchupPillText(row) {
-  const opp = matchupText(row);
+  const opp = opponentLabel(row);
   const team = num1(row?.impliedTotal);
   const game = num1(row?.total);
   const nums = [];
@@ -76,12 +76,6 @@ export function matchupPillText(row) {
 export function matchupPillHtml(row) {
   const text = matchupPillText(row);
   return text ? `<span class="meta-pill">${escapeHtml(text)}</span>` : "";
-}
-
-/** D80 as amended (optimizer standard A1, A5): a Showdown row has no home/away and no totals, only the bare opponent code ("CAR"), in the pill's small type; "" with no opponent known. */
-export function bareOppHtml(row) {
-  const code = matchupText(row).replace(/^(vs|@)\s*/i, "").trim();
-  return code ? `<span class="meta-pill meta-opp">${escapeHtml(code)}</span>` : "";
 }
 
 export function playerLineHtml(row, opts = {}) {

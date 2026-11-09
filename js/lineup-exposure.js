@@ -148,6 +148,20 @@ export function sortExposureEntries(entries, state, kind) {
     .map((x) => x.e);
 }
 
+/** The rows the table draws: every man the only-lineups-with filter has chosen first (whatever the Pos / Seat chip says), then the rest the chip keeps, each group in the sort of `state`, nobody twice.
+ *  `isChosen(key)` is the pick's test (keys: classic = the id, seats = "cpt:<id>" / "flex:<id>" where that seat exists); none = nothing chosen. */
+export function shownExposureEntries(entries, state, kind, isChosen = null) {
+  const sorted = sortExposureEntries(entries ?? [], state, kind);
+  const chosen = (e) => {
+    if (typeof isChosen !== "function") return false;
+    if (kind === "seats") return (e.cpt?.key != null && isChosen(e.cpt.key)) || (e.flex?.key != null && isChosen(e.flex.key));
+    return e.id != null && isChosen(e.id);
+  };
+  const first = sorted.filter(chosen);
+  const kept = new Set(filterExposure(entries ?? [], state.filter, kind));
+  return [...first, ...sorted.filter((e) => kept.has(e) && !first.includes(e))];
+}
+
 /** Classic's entries: the per-position lists of exposureOfLineups, one flat list, each carrying his position. */
 export function classicEntries(exposure) {
   return OPT_POSITIONS.flatMap((pos) => (Array.isArray(exposure?.[pos]) ? exposure[pos] : []).map((e) => ({ ...e, pos })));
@@ -182,7 +196,7 @@ const pctText = (pct, count) => `${escapeHtml(String(Math.round(pct ?? 0)))}% <s
 export function optExposureHtml(entries, state, kind, pick = null, marks = null, opts = {}) {
   const st = cleanExpState(state, kind);
   const cols = expColumns(kind).filter((c) => !(opts.hideCols ?? []).includes(c.key));
-  const shown = sortExposureEntries(filterExposure(entries ?? [], st.filter, kind), st, kind);
+  const shown = shownExposureEntries(entries, st, kind, pick ? (key) => pick.isChosen(key) : null);
   const head = cols
     .map((c) => {
       const active = st.col === c.key;

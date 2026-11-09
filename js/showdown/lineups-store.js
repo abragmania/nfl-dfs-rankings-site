@@ -1,6 +1,7 @@
-// The Showdown Lineups section's kept builds (Adam 2026-11-05, copied from the NBA optimizer's Recently generated list): every Build that made lineups is kept, per game, newest first, ten per mode;
-// a GPP build never removes a Cash build, only the ten-per-mode cap removes old ones. Kept in the browser, each game under its own key (nfldfs.sdBuilds.v1.<game>), never in the shared settings memory
-// (../memory.js): 150 lineups a build times ten builds could fill the browser's limit and stop every setting saving. What is stored is slim (only what the card, its meter strip and the exposure table read, with the
+// The Showdown Lineups section's kept builds (Adam 2026-11-09: new lineups never pile up): a Build that made lineups replaces the previous build of the same mode for that game, so one newest GPP build and one
+// newest Cash build are kept, newest first; a GPP build never removes a Cash build, a build with no lineups removes nothing, and a list stored with more builds is cut to the newest per mode every time it is read.
+// Saved lineups are a separate server-backed list and are never touched here. Kept in the browser, each game under its own key (nfldfs.sdBuilds.v1.<game>), never in the shared settings memory
+// (../memory.js): 150 lineups a build could fill the browser's limit and stop every setting saving. What is stored is slim (only what the card, its meter strip and the exposure table read, with the
 // field model every lineup repeats written once per build), builds of an older week go when a game is kept, and a write the browser refuses drops the oldest build and tries again. The app and the public site keep them the same way; nothing is written to the
 // server (D71). Every read and write is wrapped: a blocked or damaged store gives an empty list and one sentence, never a throw. The pure rules come first (tests/showdown-lineups-store.test.mjs).
 import { browserStorage, weekOfKey } from "../memory.js";
@@ -9,7 +10,7 @@ import { saveBody } from "./optimizer-requests.js";
 import { lineupTotals } from "../lineup-totals.js";
 import { lineupModeOf } from "../lineup-cash.js";
 
-export const KEEP_BUILDS = 10; // per mode
+export const KEEP_BUILDS = 1; // per mode
 export const SORTS = Object.freeze(["proj", "salary", "own", "newest"]);
 export const KEY_PREFIX = "nfldfs.sdBuilds.v1.";
 export const NOTE_UNREADABLE = "The lineups kept for this game could not be read from this browser, so the list starts empty.";
@@ -108,7 +109,7 @@ export function makeBuild(results, nowMs = Date.now()) {
   return slimBuild({ ...results, id, at: new Date(nowMs).toISOString(), lineups, made: lineups.length });
 }
 
-/** The list with a new build first and the oldest of ITS mode past ten dropped (a GPP build never removes a Cash build); a build with no lineups adds nothing (the same list comes back). */
+/** The list with a new build first and the older build of ITS mode dropped (a GPP build never removes a Cash build); a build with no lineups adds nothing (the same list comes back). */
 export function addBuild(list, build) {
   if (!build || !Array.isArray(build.lineups) || build.lineups.length === 0) return list;
   return capPerMode([build, ...list.filter((b) => b.id !== build.id)]);

@@ -75,7 +75,7 @@ export const lockedInText = (name) => `${name} is locked into your lineup. Unloc
 const none = () => new Set();
 
 /**
- * Who could fill an open seat, the one rule for the greying below and for the open seats' spend (open-seat-spend.js). A FLEX seat needs his FLEX salary and projection and no exclude from every lineup; the
+ * Who could fill an open seat, the one rule for the greying below. A FLEX seat needs his FLEX salary and projection and no exclude from every lineup; the
  * Captain seat needs his Captain salary and projection and no Captain exclude. A man who can take only one of the two (a Captain-only man, a kicker with no FLEX projection, a man excluded as Captain) stays
  * in the fill for that seat (his other price is left out), so a man who fits is never greyed for want of a cheap Captain. `excluded(row, tab)`: the Optimizer's excludes.
  * Returns {fillable(row), asFiller(row) -> {id, salary, cptSalary}} (a price he cannot be filled at is null).

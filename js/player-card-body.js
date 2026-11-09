@@ -5,7 +5,7 @@
 // this app's board row or from NFLDepthCharts, and the source line says which and as of when (router, Data rules).
 import { escapeHtml, money, dec1, pct1, localStamp, textColourFor, logoFor } from "./format.js";
 import { TEAM_BY_ABBR } from "./teams-data.js";
-import { matchupText, statusTagsHtml, lineupOutTagHtml } from "./table.js";
+import { opponentLabel, statusTagsHtml, lineupOutTagHtml } from "./table.js";
 import { gameLogTableHtml } from "./player-card-log.js";
 import { bumpStepsOf, bumpPctText } from "./bump-control.js";
 
@@ -240,7 +240,7 @@ function headHtml(who, row, data) {
   const t = TEAM_BY_ABBR[who.team];
   const logo = logoFor(t);
   const number = player?.number ? `<span class="pc-num">#${escapeHtml(player.number)}</span>` : "";
-  const matchup = row ? matchupText(row) : "";
+  const matchup = row ? opponentLabel(row) : "";
   const tier = player?.matchTier === "B" ? `<span class="pc-tier" title="${escapeHtml(`NFLDepthCharts lists him as ${player.ndcName ?? "a similar name"}; matched on last name and a first-name nickname`)}">matched by last name</span>` : "";
   const subParts = [who.team ? `${logo ? `<img class="pc-logo" src="${escapeHtml(logo)}" alt="" width="18" height="18" />` : ""}${escapeHtml(who.team)}` : "", who.pos ? escapeHtml(who.pos) : "", matchup ? escapeHtml(matchup) : "", tier].filter(Boolean);
   return `<header class="pc-head">

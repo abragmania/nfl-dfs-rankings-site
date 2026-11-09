@@ -386,6 +386,7 @@ html, body {
 /* ---------- Tabs ---------- */
 #classic-main > .tabs { position: sticky; top: 0; z-index: 20; background: var(--bg); padding-top: var(--sp-1); } /* Adam 2026-11-08: always on screen; app.js syncFilterbarHeight keeps --tabs-h for the layers under it */
 /* The Lineups tab: the Optimizer panel with only its results showing (same mount, same state). */
+#showdown-main > .tabs { position: sticky; top: 0; z-index: 20; background: var(--bg); padding-top: var(--sp-1); } /* the Showdown tab row stays on screen as classic's; showdown/view.js syncFilterbarHeight keeps --tabs-h */
 #lineup-panel.lineups-only > :not(#lineup-mount):not(#build-notice) { display: none; }
 #lineup-panel.lineups-only #lineup-mount > :not(.opt-results) { display: none; }
 .tabs {
@@ -1371,7 +1372,6 @@ tr:last-child .cell-edit-hint, tr:last-child .cell-edit-error { top: auto; botto
 .player-cell .out-tag { font-size: 11px; }
 .player-cell .pos-mini { font-size: 12px; font-weight: 600; line-height: 16px; padding: 0 5px; border: 1px solid var(--border); border-radius: 4px; color: var(--text-muted); }
 .meta-pill { font-size: var(--fs-sm); font-weight: 400; color: var(--text-muted); background: var(--bg-elevated-2); border: 1px solid var(--border); border-radius: 10px; padding: 0 8px; line-height: 17px; font-variant-numeric: tabular-nums; white-space: nowrap; }
-.meta-opp { display: none; } /* a Showdown has one opponent: the code under the logo read as the player's own team */
 .lineup-pool-table tr.row-dimmed .meta-pill, .lineup-pool-table tr.row-dimmed .pos-mini { color: var(--row-dim-text); }
 .lineup-rows-table tbody tr.row-dimmed td, .lineup-rows-table tbody tr.lineup-row-excluded td { color: inherit; }
 .lineup-row.lineup-row-locked { background: rgba(var(--accent-rgb), 0.1); }
@@ -1721,7 +1721,7 @@ th.sd-cpt-col.sorted { color: var(--amber); }
    elements carry the margin, never the bar's own boxes (classic's 👁 step 4 finding). */
 #sd-lineup-panel > .sd-filterbar {
   position: sticky;
-  top: 0;
+  top: var(--tabs-h, 0px); /* under the sticky tab row */
   z-index: 10;
   background: var(--bg);
   padding: var(--sp-2) 0;
@@ -2659,8 +2659,8 @@ td.opt-exp-opp { color: var(--text-muted); } /* the cells only: the Matchup head
   @media (max-width: 480px) {
     .sd-pool-table .player-cell { max-width: 170px; gap: 4px; }
     .sd-pool-table td.sd-name-cell { white-space: normal; }
-    .sd-pool-table .player-name { flex: 0 1 auto; min-width: min-content; overflow: visible; text-overflow: clip; white-space: normal; line-height: 1.15; }
-    .sd-pool-table .sd-seat-slot { min-width: 0; }
+    .sd-pool-table .player-name, .sd-pool-table .player-cell:has(.out-tag) > .player-name { flex: 0 1 auto; min-width: min-content; overflow: visible; text-overflow: clip; white-space: normal; line-height: 1.15; }
+    .sd-pool-table .player-cell > .sd-seat-slot { min-width: 0; } /* higher specificity than the later `.sd-pool-table .sd-seat-slot { min-width: 56px }` */
     #sd-pool > .sd-pool-head { flex-wrap: wrap; row-gap: var(--sp-1); }
     .sd-pool-tabs { flex-shrink: 0; }
   }
@@ -2803,17 +2803,12 @@ td.opt-exp-opp { color: var(--text-muted); } /* the cells only: the Matchup head
 .sd-variance { margin-right: var(--sp-2); }
 #sd-opt-variance-pct { width: 4.5em; }
 #sd-opt-variance-pct:disabled { opacity: 0.5; }
-/* An open seat says the most it can still spend (open-seat-spend.js): at the right edge of the empty seat, the Captain's in the Captain's amber. */
-.lineup-slot-big .sd-open-spend { margin-left: auto; flex: 0 0 auto; font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; color: var(--text); }
-.lineup-slot-big .sd-open-spend.is-empty { display: none; }
-.sd-cpt-slot .sd-open-spend { color: var(--amber); }
 /* The working lineup is larger and clearer on a window 1760px wide or more, where it is a sticky band beside the pool (the compact rows above are the classic band's): the Captain first, then the five FLEX,
    each row 54px with its matchup line back and the figures stacked label over number; on the 2560x1307 desktop (tall as well as wide) the full 64px card row of the narrower layout. Showdown only (.sd-pool-layout). */
 @media (min-width: 1760px) {
   .lineup-layout.sd-pool-layout .lineup-slots { gap: 6px; }
   .lineup-layout.sd-pool-layout .lineup-slots .lineup-slot.lineup-slot-big { min-height: 54px; }
-  .lineup-layout.sd-pool-layout .lineup-slots .opt-p.opt-p-big { min-height: 54px; gap: 8px; padding: 3px 12px 3px 12px; } /* 12px at the right: Own ends where an open seat's "Up to $X" ends */
-  .lineup-layout.sd-pool-layout .lineup-slots .opt-p-big .opt-p-slot { width: 40px; flex-basis: 40px; font-size: 14px; }
+  .lineup-layout.sd-pool-layout .lineup-slots .opt-p.opt-p-big { min-height: 54px; gap: 8px; padding: 3px 12px 3px 12px; }  .lineup-layout.sd-pool-layout .lineup-slots .opt-p-big .opt-p-slot { width: 40px; flex-basis: 40px; font-size: 14px; }
   .lineup-layout.sd-pool-layout .lineup-slots .opt-p-big :is(.opt-p-logo, .player-badge) { flex-basis: 38px; width: 38px; height: 38px; }
   .lineup-layout.sd-pool-layout .lineup-slots .opt-p-big .opt-p-name { font-size: 16px; }
   .lineup-layout.sd-pool-layout .lineup-slots .opt-p-big .opt-p-line2 { display: flex; font-size: 12px; }
@@ -2833,7 +2828,6 @@ td.opt-exp-opp { color: var(--text-muted); } /* the cells only: the Matchup head
   .lineup-layout.sd-pool-layout .lineup-slots .opt-p-big .opt-p-line2 { font-size: 13px; }
   .lineup-layout.sd-pool-layout .lineup-slots .opt-p-big .opt-p-fig i { font-size: 12px; }
   .lineup-layout.sd-pool-layout .lineup-slots .opt-p-big .opt-p-fig b { font-size: 16px; }
-  .lineup-slot-big .sd-open-spend { font-size: 16px; } /* the size of a seat's Sal */
 }
 
 /* ---------- The Lineups tab (Adam 2026-11-05; public/js/showdown/lineups-screen.js, lineups-view.js) ----------

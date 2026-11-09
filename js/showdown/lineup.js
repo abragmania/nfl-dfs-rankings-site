@@ -37,7 +37,6 @@ import { showBand } from "../show-band.js"; // A12, A15: a Load brings the whole
 import { focusOpenRename } from "../rename-focus.js"; // the rename box: focused and selected on open
 import { saveView } from "./view-memory.js"; // A9: the pool's filters and sort, per game
 import { loadTabSeats, showTabSeats, dropGoneFromTabs, saveTabSeats } from "./tab-seats.js"; // the GPP and Cash tabs' own lineups: the seats on screen are the tab on screen's
-import { openSeatSpend, repaintOpenSpend } from "./open-seat-spend.js"; // what each open seat can still spend
 import { leftOutPanelHtml, syncLeftOut } from "./left-out-panel.js"; // Part F: the Cash tab's Left out panel, under the two columns (the sticky lineup band must fit the window)
 import { onConfirmDismiss } from "../confirm-inline.js"; // B13, C11: Esc and a click outside close an open confirm
 import { notDeletedText } from "../delete-words.js"; // A12: the one sentence a failed delete leaves, the classic Optimizer's words
@@ -270,8 +269,7 @@ function repaintLineupRead() {
   if (holder) holder.innerHTML = lineupReadOf(lastBoard);
 }
 
-const openSpend = (board) => openSeatSpend({ board, cap: SALARY_CAP, placed: state, excluded: (row, tab) => poolControls.excluded(row, tab) }); // the tab on screen's excludes; none off the live app
-const slotsHtml = (board) => slotsMarkup(board, state, openSpend(board)); // the placed slots go in as parameters (lineup-slots.js)
+const slotsHtml = (board) => slotsMarkup(board, state); // the placed slots go in as parameters (lineup-slots.js)
 
 function controlsHtml() {
   const hasAnySlot = Boolean(state.cpt) || state.flex.some(Boolean);
@@ -375,7 +373,6 @@ function optCtx(board, key) {
     getSaved: () => state.savedLineups,
     setSaved: (list) => { state.savedLineups = list; },
     repaintPool: () => { if (lastContainer) paintPool(lastContainer, poolCtx(board)); },
-    repaintOpenSpend: () => repaintOpenSpend(lastContainer, openSpend(board)), // an exclude changes who can fill the other seats
     onLock: (row, kind, on) => (on ? lockSeat(row, kind) : unlockSeat(row, kind)), // D3: Lock seats the man; Unlock takes him out
     loadResult: (uid) => requestLoad("result", uid), // A13: a generated card into the builder's seats
     boardWrite: (send, label) => (boardWrite ? boardWrite(send, label) : console.error("A Showdown board write was asked for, but view.js passed no board writer.")), // the ± bump (Adam 2026-10-22)

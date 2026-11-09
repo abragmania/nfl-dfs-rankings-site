@@ -768,6 +768,8 @@ export const resetBuildNotice = () => buildNotice.reset();
 /** Takes him to the Build row below the sticky bars (the failure notice's link, D16). */
 export function jumpToBuildRow() {
   try {
+    if (store.get().activeTab === "lineups") store.set({ activeTab: "lineup" }); // the Build row is hidden on the Lineups tab
+
     lastContainer?.querySelector(".opt-footer")?.scrollIntoView({ block: "center", behavior: "smooth" });
   } catch (e) {
     console.warn("Show Build row: the row could not be scrolled into view", e); // a convenience only; the row is on the page either way

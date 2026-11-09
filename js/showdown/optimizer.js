@@ -575,7 +575,6 @@ export function wirePoolControls(listEl, ctx) {
       if (next.excludes !== ms.excludes) {
         resyncMeterExcludes(optimizerExcludes()); // the builder's meter re-measures against the same best as the batch (B1)
         resyncSwapsExcludes(optimizerExcludes()); // after the meter: an excluded man is no longer offered as a swap
-        ctx.repaintOpenSpend?.(); // and an excluded man is no longer fill for the open seats' spend
       }
     });
   });

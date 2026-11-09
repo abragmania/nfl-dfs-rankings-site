@@ -2,7 +2,7 @@
 import { escapeHtml, money, dec1, pct1, textColourFor } from "./format.js";
 import { fillForDark, fillForLight, solidRow, barColour, liftForDark } from "./team-palette.js";
 import { TEAM_BY_ABBR } from "./teams-data.js";
-import { playerIdentityHtml, matchupPillHtml, bareOppHtml, teamLogoHtml } from "./player-row.js";
+import { playerIdentityHtml, matchupPillHtml, teamLogoHtml } from "./player-row.js";
 import { lineupRoles, roleTagsHtml, stackLabel } from "./lineup-marks.js";
 
 const NAME_SUFFIX = /^(jr\.?|sr\.?|ii|iii|iv|v)$/i;
@@ -102,7 +102,7 @@ export function cardPlayerRowHtml(p, slotName, decor, opts = null) {
         ${teamLogoHtml(p.team, "opt-p-logo", big ? 48 : 38) || badgeHtml(p.name, p.pos, p.team)}
         <span class="opt-p-body">
           <span class="opt-p-line1">${line1}${nameTags}</span>
-          <span class="opt-p-line2">${opts?.bareOpp ? bareOppHtml(row) : matchupPillHtml(row)}${decor ? decor.rolesFor(p) : ""}</span>
+          <span class="opt-p-line2">${opts?.bareOpp ? "" : matchupPillHtml(row)}${decor ? decor.rolesFor(p) : ""}</span>
         </span>
         <span class="opt-p-figs">${fig("opt-p-sal", "Sal", money(p.salary))}${fig("opt-p-proj", "Proj", p.proj == null ? "—" : dec1(p.proj))}${fig("opt-p-own", "Own", pct1(p.own) ?? "—")}</span>
       </div>`;
