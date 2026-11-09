@@ -13,12 +13,19 @@ export function poolNameCap(tableWidth, panelWidth, nameCellWidth, pad = 8) {
   return Math.max(NAME_CAP_FLOOR, Math.floor(nameCellWidth - pad - over));
 }
 
-/** Measures the pool in `root` with no cap and sets (or clears) the table's --lp-name-max. Safe with no pool on screen or a hidden one. */
-export function fitPoolNames(root = typeof document !== "undefined" ? document : null) {
+/** The phone width the CSS uses (style.css max-width 700px): there the table is wider than the screen by design, so a cap would only squeeze the name. */
+export const PHONE_MAX_WIDTH = 700;
+export function isPhoneWidth(win = typeof window !== "undefined" ? window : null) {
+  return Boolean(win?.matchMedia?.(`(max-width: ${PHONE_MAX_WIDTH}px)`)?.matches);
+}
+
+/** Measures the pool in `root` with no cap and sets (or clears) the table's --lp-name-max; at phone width it only clears it. Safe with no pool on screen or a hidden one. */
+export function fitPoolNames(root = typeof document !== "undefined" ? document : null, phone = isPhoneWidth()) {
   const table = root?.querySelector?.(".lineup-pool-table");
   const wrap = table?.parentElement;
   if (!table || !wrap) return;
   table.style.removeProperty("--lp-name-max");
+  if (phone) return;
   const panelWidth = wrap.clientWidth;
   const nameCell = table.querySelector("td.lp-name");
   if (!panelWidth || !nameCell) return;

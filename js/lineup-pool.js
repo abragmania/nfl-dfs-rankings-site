@@ -10,7 +10,7 @@ import { sortableHeadHtml } from "./tabs.js";
 import { gradedCellHtml, rowIsOut, STATUS_INFO, TG_COLUMNS, tgCellHtml, tagsCellHtml, tagsCellTitle, noteCellHtml, markerHtml, twoGunMarkerTexts, projFlagMarkerHtml, noteIconHtml } from "./table.js";
 import { playerLineHtml, matchupPillHtml, showPos } from "./player-row.js";
 import { rowsGradedForView } from "./grade.js";
-import { teamColours, teamColourStyle } from "./lineup-card.js";
+import { teamColours, teamColourStyle, cardNameHtml } from "./lineup-card.js"; // cardNameHtml: the short name Showdown's pool shows on a phone (style.css, max-width 700px)
 import { paletteForRows } from "./team-palette.js";
 import { bumpControlHtml, bumpFigureOnlyHtml } from "./bump-control.js"; // since A1 the thumbs are their own column, disabled like the star when no write is wired
 import { messageIsFor, rowMessageHtml, TONE_WARN } from "./row-message.js";
@@ -292,7 +292,7 @@ function rightRowHtml(row, picked, placedSet, posShown, maxMap = {}, minMap = {}
   // TwoGun dot for a status that changed after his board was made (the retired ranked list's Player cell).
   const cells = {
     star: () => `<td class="lineup-star-col"><button type="button" class="star-btn${row.starred ? " active" : ""}" title="${row.starred ? "Starred" : "Star"}" data-action="toggle-star" data-id="${idAttr(id)}"${poolCallbacks?.onToggleStar ? "" : " disabled"}>${row.starred ? "★" : "☆"}</button></td>`,
-    player: () => `<td class="lp-name"><span class="player-cell lp-l1">${playerLineHtml(row, { pos: posShown, pill: false, titled: true })}${markerHtml(twoGunMarkerTexts(row, "status"))}<span class="note-slot" data-id="${idAttr(id)}">${noteIconHtml(row)}</span></span><span class="lp-l2">${matchupPillHtml(row)}</span>${poolRowMessageHtml(id)}</td>`,
+    player: () => `<td class="lp-name"><span class="player-cell lp-l1">${playerLineHtml(row, { pos: posShown, pill: false, titled: true, nameHtml: cardNameHtml(row) })}${markerHtml(twoGunMarkerTexts(row, "status"))}<span class="note-slot" data-id="${idAttr(id)}">${noteIconHtml(row)}</span></span><span class="lp-l2">${matchupPillHtml(row)}</span>${poolRowMessageHtml(id)}</td>`,
     salary: () => `<td class="lp-num">${money(row.salary)}${markerHtml(twoGunMarkerTexts(row, "salary"))}</td>`,
     proj: () => `<td class="lp-num lp-proj"><div class="editable-cell" data-field="proj" data-id="${idAttr(id)}">${projCellInner(row, { canReset: !noWrite })}</div></td>`,
     own: () => `<td class="lp-num"><div class="editable-cell" data-field="own" data-id="${idAttr(id)}">${ownCellInner(row, { canReset: !noWrite })}</div></td>`,

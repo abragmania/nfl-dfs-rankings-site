@@ -2897,3 +2897,15 @@ td.opt-exp-opp { color: var(--text-muted); } /* the cells only: the Matchup head
   .sd-lo-line:first-child .sd-lo-figs { margin-left: auto; }
   .sd-lo-field { order: 3; flex: 1 0 100%; }
 }
+/* Phone, classic pool and both tab rows (👁 QA at 390): the pool shows the cards' short name as Showdown's does and pool-fit.js applies no cap; the matchup line stays one line;
+   the four tabs fit one line; the sticky tab row's background runs across the page margin (the main's 12px side padding) so no cell shows beside it. Placed last. */
+@media (max-width: 700px) {
+  .main { padding-left: var(--sp-3); padding-right: var(--sp-3); }
+  .lineup-pool-table .nm-full { display: none; }
+  .lineup-pool-table .nm-short { display: inline; }
+  .lineup-pool-table td.lp-name .lp-l1 { max-width: none; }
+  .lineup-pool-table td.lp-name .lp-l2, .lineup-pool-table td.lp-name .lp-l2 .meta-pill { white-space: nowrap; }
+  #classic-main > .tabs, #showdown-main > .tabs { flex-wrap: nowrap; overflow-x: auto; gap: 0; margin-left: calc(-1 * var(--sp-3)); margin-right: calc(-1 * var(--sp-3)); padding-left: var(--sp-3); padding-right: var(--sp-3); }
+  .is-site #classic-main > .tabs, .is-site #showdown-main > .tabs { flex-wrap: wrap; max-width: 100vw; }
+  .tabs .tab-btn { padding-left: var(--sp-2); padding-right: var(--sp-2); }
+}
