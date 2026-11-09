@@ -1371,6 +1371,7 @@ tr:last-child .cell-edit-hint, tr:last-child .cell-edit-error { top: auto; botto
 .player-cell .out-tag { font-size: 11px; }
 .player-cell .pos-mini { font-size: 12px; font-weight: 600; line-height: 16px; padding: 0 5px; border: 1px solid var(--border); border-radius: 4px; color: var(--text-muted); }
 .meta-pill { font-size: var(--fs-sm); font-weight: 400; color: var(--text-muted); background: var(--bg-elevated-2); border: 1px solid var(--border); border-radius: 10px; padding: 0 8px; line-height: 17px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.meta-opp { display: none; } /* a Showdown has one opponent: the code under the logo read as the player's own team */
 .lineup-pool-table tr.row-dimmed .meta-pill, .lineup-pool-table tr.row-dimmed .pos-mini { color: var(--row-dim-text); }
 .lineup-rows-table tbody tr.row-dimmed td, .lineup-rows-table tbody tr.lineup-row-excluded td { color: inherit; }
 .lineup-row.lineup-row-locked { background: rgba(var(--accent-rgb), 0.1); }
@@ -2654,13 +2655,12 @@ td.opt-exp-opp { color: var(--text-muted); } /* the cells only: the Matchup head
   .sd-pool-table th.sd-own-total-label { white-space: normal; max-width: 190px; }
   .sd-pool-table .lineup-row-btn.sd-row-ico { min-height: 32px; }
   /* A narrower phone's pool: the name is whole and wraps (never an ellipsis, a status badge included), the seat slot takes no
-     room until a seat tag is in it, the opponent under the logo reads "vs TB", the heading row wraps so the Captain | FLEX switch is whole. */
+     room until a seat tag is in it, the heading row wraps so the Captain | FLEX switch is whole. */
   @media (max-width: 480px) {
     .sd-pool-table .player-cell { max-width: 170px; gap: 4px; }
     .sd-pool-table td.sd-name-cell { white-space: normal; }
     .sd-pool-table .player-name { flex: 0 1 auto; min-width: min-content; overflow: visible; text-overflow: clip; white-space: normal; line-height: 1.15; }
     .sd-pool-table .sd-seat-slot { min-width: 0; }
-    .sd-pool-table .meta-opp::before { content: "vs "; }
     #sd-pool > .sd-pool-head { flex-wrap: wrap; row-gap: var(--sp-1); }
     .sd-pool-tabs { flex-shrink: 0; }
   }
