@@ -1,5 +1,5 @@
 {
-  "publishedAt": "2026-11-09T22:20:23.154Z",
+  "publishedAt": "2026-11-09T23:58:51.242Z",
   "season": 2026,
   "week": 9,
   "boardGeneratedAt": "2026-11-09T22:20:09.719Z",
@@ -8,7 +8,7 @@
   "showdowns": [
     "2026-w09-BUFMIN"
   ],
-  "sourceCommit": "47b86df56547e8980e03780ee6958ee44c944b25",
+  "sourceCommit": "be335c66037d052a07ce43e1cca4d1d78e1ef590",
   "appCommit": "3a76e31042ae1291e93c77d26e1212f29dec144e",
   "machine": "desktop",
   "matchups": false
