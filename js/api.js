@@ -11,6 +11,8 @@ import {
   STORAGE_UNAVAILABLE_MESSAGE,
 } from "./site-lineups.js";
 import { boardWithEdits, putEdits, resetPlayerEdits, resetAllEdits, classicAdapter } from "./site-overrides.js";
+import { findDuplicate } from "../server/lineups/duplicate.js";
+import { lineupModeOf } from "../server/lineups/validate.js";
 import { readTab, tabOfMode } from "../server/showdown/override-tabs.js"; // the app routes' tab reading, one copy (optimizer standard Part F)
 import { buildCard, precheck, identityOf } from "../server/playercard/build.js";
 import { ndcAbbr, teamFileUrl, gamelogUrl, teamFileProblem, gamelogProblem } from "../server/playercard/ndc-files.js";
@@ -204,11 +206,13 @@ async function overrideWrite(tab, change) {
   return result.error ? siteError(result.error.code, result.error.message) : result.board;
 }
 
-/** The app's saved lineups (baked, read-only) plus this device's, newest first, as GET /api/lineups answers. */
+/** The app's saved lineups (baked, read-only) plus this device's, newest first, as GET /api/lineups answers. A device lineup the app also holds (same men, mode and slate) is
+ *  left out of the list, so Saved shows and counts one set once; the device's copy stays in its storage. */
 async function lineupsWithDevice(appLineups) {
   const wk = await publishedWeek();
   const device = wk ? readDeviceLineups(pageStorage(), wk.season, wk.week) : [];
-  return sortedNewestFirst([...(appLineups ?? []), ...device]);
+  const app = appLineups ?? [];
+  return sortedNewestFirst([...app, ...device.filter((d) => !findDuplicate(d.slots, lineupModeOf(d), d.slate, app))]);
 }
 
 async function appLineups() {
@@ -364,7 +368,7 @@ export async function putLineup(id, payload) {
   const existing = device.find((l) => l.id === id);
   if (!existing) {
     return app.some((l) => l.id === id)
-      ? siteError("READ_ONLY", "App lineups cannot be changed here; Save lineup keeps a version on this device.")
+      ? siteError("READ_ONLY", "App lineups cannot be changed here; change a man and Save lineup keeps a version on this device.")
       : siteError("NOT_FOUND", "No saved lineup with that id.");
   }
   const built = buildDevicePatch(payload, board, existing, [...app, ...device]);

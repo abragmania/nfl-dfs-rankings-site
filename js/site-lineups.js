@@ -129,7 +129,7 @@ export function buildDeviceLineup(body, board, others = []) {
   const rowById = new Map((board?.rows ?? []).map((r) => [String(r.id), r]));
   const snapshot = buildLineupSnapshot(slotsResult.slots, rowById, lineupSecondSlate);
   if (snapshot.error) return { error: snapshot.error };
-  const dup = findDuplicate(snapshot.slots, modeResult.mode, lineupSlate, deviceOnly(others));
+  const dup = findDuplicate(snapshot.slots, modeResult.mode, lineupSlate, others);
   if (dup) return duplicateRefusal(dup);
   const trimmed = (nameResult.name ?? "").trim();
   const entry = {
@@ -188,7 +188,7 @@ export function buildDevicePatch(body, board, existing, others = []) {
   }
   if (typeof patchSlate === "string" && patchSlate !== "") patch.slate = patchSlate;
   if (tagResult.tag !== undefined) patch.tag = tagResult.tag; // null clears the letter
-  const dup = duplicateAfterEdit(existing, patch.slots, patch.slate, deviceOnly(others));
+  const dup = duplicateAfterEdit(existing, patch.slots, patch.slate, others);
   if (dup) return duplicateRefusal(dup);
   return { patch };
 }
@@ -229,8 +229,8 @@ export function updateDeviceLineup(storage, season, week, id, patch) {
   return { status: "missing" };
 }
 
-// The 409 of POST and PUT /api/lineups (Adam 2026-10-18: "One saved copy only") among this device's lineups, the store here.
-const deviceOnly = (list) => list.filter((l) => typeof l?.id === "string" && l.id.startsWith(DEVICE_ID_PREFIX));
+// The 409 of POST and PUT /api/lineups (Adam 2026-10-18: "One saved copy only"), among every lineup the visitor sees: the device's own
+// and the app's baked ones (a device copy of a baked lineup is refused too, 2026-11-09). Cash and GPP stay separate (findDuplicate).
 const duplicateRefusal = (dup) => ({ error: duplicateMessage(dup), code: DUPLICATE_CODE, duplicateOf: dup.id });
 
 /** Adds `entry` to its slate's list (its letter, if any, leaves any other device lineup there in the same write).

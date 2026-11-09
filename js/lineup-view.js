@@ -4,6 +4,7 @@
 // below (poolCallbacks, lastExposure), which only this file assigns. Wiring and actions stay in lineup.js and lineup-optimizer.js.
 import { buildingHtml, goLabelHtml, buildingRowClass } from "./lineup-stop.js";
 import { escapeHtml } from "./format.js";
+import { reseatClassic, kickoffLookup } from "./classic-seat.js";
 import { lineupTotals, lineupTotalsHtml } from "./lineup-totals.js"; // A11: the one totals block
 import { columnsButtonHtml } from "./columns.js"; // A17
 import { store, activeSlateRows, activeSlateGames, isTwoGunMode } from "./state.js";
@@ -171,7 +172,9 @@ function formatSavedAt(iso) {
  *  longer on the slate is reported (`row: null`, `snap` carries his saved-time fields) but contributes
  *  nothing to the live totals — there is no live number to add. */
 function computeLiveTotals(lineup, rowById) {
-  const placed = placeBySlotName((lineup.slots ?? []).map((s) => ({ slot: s.slot, id: s.playerId })));
+  const board = store.get().board;
+  const seated = reseatClassic(lineup.slots ?? [], rowById, kickoffLookup(board), slateKeyOf(board), board?.slates); // drawn in the DraftKings seating, the latest kickoff in FLEX, whatever order an older record holds (classic-seat.js)
+  const placed = placeBySlotName(seated.map((s) => ({ slot: s.slot, id: s.playerId })));
   let filled = 0;
   let salaryUsed = 0;
   const projs = [];

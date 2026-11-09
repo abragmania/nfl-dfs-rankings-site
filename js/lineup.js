@@ -35,6 +35,7 @@ import { cleanSortState } from "./lineup-sort.js"; // Adam 2026-10-17: sort opti
 import { optExposureHtml, exposureLimit, minLimit, exposureMark, zeroMinRows, defaultExpState } from "./lineup-exposure.js";
 import { newQbState, listedQbs, pruneEntries, qbStacksPayload } from "./lineup-qb-stacks.js";
 import { getLineups, postLineup, putLineup, deleteLineup } from "./api.js";
+import { reseatClassic, kickoffLookup } from "./classic-seat.js";
 import { renderEntriesSection, wireEntries } from "./entries-wire.js";
 import { phoneMinHeight } from "./expand.js";
 import { defaultCashState, cleanCashState, swapModeStash, COUNT_DEFAULTS_VERSION } from "./lineup-cash.js";
@@ -614,7 +615,16 @@ export function savePayload(slots) {
  *  one and load it (PROJECT.md Part 4 Lineups). Only a wholly empty lineup is refused here. */
 async function doSaveLineup(name, { asNew = false } = {}) {
   if (state.saving) return;
-  const slotsPayload = savePayload(state.slots);
+  let slotsPayload = savePayload(state.slots);
+  if (slotsPayload.length === LINEUP_SLOTS.length) {
+    // A complete hand-built lineup is seated as the DraftKings download seats it (the latest kickoff in FLEX), in the saved record and on the screen (classic-seat.js); a partly filled one is never moved.
+    const board = store.get().board;
+    const seated = reseatClassic(slotsPayload, boardRowMap(board), kickoffLookup(board), slateKeyOf(board), board?.slates);
+    if (seated !== slotsPayload) {
+      slotsPayload = seated.map((s) => ({ slot: s.slot, playerId: s.playerId }));
+      state.slots = placeBySlotName(seated.map((s) => ({ slot: s.slot, id: s.playerId })));
+    }
+  }
   if (slotsPayload.length === 0) {
     state.saveError = "Add at least one player to the lineup before saving.";
     state.saveTone = "warn"; // a refusal, not a failure: amber (row-message.js)
@@ -747,7 +757,9 @@ function doLoadLineup(id) {
   const lineup = state.savedLineups.find((l) => l.id === id);
   if (!lineup) return;
   state.confirm = null;
-  state.slots = placeBySlotName((lineup.slots ?? []).map((s) => ({ slot: s.slot, id: s.playerId })));
+  const board = store.get().board;
+  const seated = reseatClassic(lineup.slots ?? [], boardRowMap(board), kickoffLookup(board), slateKeyOf(board), board?.slates); // an older record is seated as DraftKings seats it, here and wherever it is drawn (classic-seat.js)
+  state.slots = placeBySlotName(seated.map((s) => ({ slot: s.slot, id: s.playerId })));
   state.locks = new Set();
   state.loadedId = lineup.id;
   state.saveName = lineup.name ?? "";

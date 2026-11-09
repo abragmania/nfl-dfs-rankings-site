@@ -8,7 +8,8 @@
 // its first kickoff, a man off the board, no id in that slate's file, a wrong shape, over the cap on the file's own prices, one game or one team, a sidelined man. The same
 // slot order (assignSlots: the latest-kickoff spare goes to FLEX). The same warnings are written as notes. Every man is read from the live board, never from the saved record.
 // Pure apart from downloadText.
-import { classicFileIds, showdownFileKeyOf } from "./entries-plan.js";
+import { showdownFileKeyOf } from "./entries-plan.js";
+import { classicFilePool, kickoffLookup } from "./classic-seat.js";
 import { assignSlots, validateLineup, earliestKickoffMs } from "../server/lineup/dk-entries.js";
 import { validateShowdownEntry } from "../server/lineup/dk-showdown-entries.js";
 import { entriesInjuryProblem, rowIsSidelined, isRevived } from "../server/rank/sidelined.js";
@@ -70,19 +71,13 @@ function classicCells(lineup, ctx) {
   const rows = slots.map((s) => ctx.rowById.get(String(s.playerId)));
   const off = slots.filter((s, i) => !rows[i]).map((s) => `${s.name ?? s.playerId} is not on the board`);
   if (off.length) return { why: off.join("; ") };
-  const ids = classicFileIds(slots, ctx.slateKey, ctx.slates);
-  if (!ids) {
+  const made = classicFilePool(slots, rows, ctx.slateKey, ctx.slates, ctx.kickoffOf); // the one copy the screen's seating reads too (classic-seat.js)
+  if (!made) {
     const map = ctx.record?.dkIds ?? {};
     const lacking = rows.filter((r) => !Object.prototype.hasOwnProperty.call(map, String(r.id))).map((r) => `${r.name} has no id in this slate's DraftKings file`);
     return { why: lacking.length ? lacking.join("; ") : "its DraftKings ids could not be read" };
   }
-  const pool = new Map();
-  const kickoffById = new Map();
-  rows.forEach((row, i) => {
-    const own = ctx.record?.prices ? ctx.record.prices[String(row.id)] : undefined;
-    pool.set(ids[i], { name: row.name, pos: row.pos, team: row.team, salary: Number.isFinite(own) ? own : row.salary, gameInfo: row.gameId });
-    kickoffById.set(ids[i], ctx.kickoffOf(row.gameId));
-  });
+  const { ids, pool, kickoffById } = made;
   const noSalary = rows.filter((r) => !Number.isFinite(pool.get(ids[rows.indexOf(r)]).salary)).map((r) => `${r.name} has no salary on the board`);
   if (noSalary.length) return { why: noSalary.join("; ") };
   let ordered;
@@ -175,8 +170,7 @@ export function dkLineupCsv({ kind, lineups, board, slateKey, nowMs = Date.now()
     }
   } else {
     ctx.rowById = new Map(boardRows.filter((r) => r?.id != null).map((r) => [String(r.id), r]));
-    const kickoffs = new Map((board?.slate?.games ?? []).map((g) => [String(g.id), g.kickoffUtc ?? null]));
-    ctx.kickoffOf = (gameId) => kickoffs.get(String(gameId)) ?? null;
+    ctx.kickoffOf = kickoffLookup(board);
     if (record && !record.prices) notes.push(`The salary check used the main slate's prices: ${record.label ?? record.key} was loaded before its own prices were kept, so upload its salary file again for the exact check.`);
   }
   const lines = [];
