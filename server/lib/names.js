@@ -1,7 +1,7 @@
 // Player-name matching keys, copied once from NFLDepthCharts server/refresh/clubparse.js (2026-09-13).
 // nameKey("Marvin Mims Jr.") -> "marvinmims"; lastKey("Marvin Mims Jr.") -> "mims". Accents and punctuation are
 // stripped and generational suffixes dropped so the same player matches across salary files and projections.
-const SUFFIX = new Set(["jr", "sr", "ii", "iii", "iv", "v"]);
+export const SUFFIX = new Set(["jr", "sr", "ii", "iii", "iv", "v"]);
 
 // The one table of a man whose sources spell his name differently: the folded name (lower case, single spaces, no
 // punctuation or suffix) a source writes -> DraftKings' spelling, which is the target (Adam 2026-11-02: TwoGun's board
