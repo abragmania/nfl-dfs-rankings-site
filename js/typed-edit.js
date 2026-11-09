@@ -1,11 +1,11 @@
-// The typed-number box and the note box (optimizer standard A3, round 3; moved out of table.js in round 4 so the Showdown pool uses the same two editors, B3).
+// The typed-number box (optimizer standard A3, round 3; moved out of table.js in round 4 so the Showdown pool uses the same editor, B3).
 // A click away saves, Enter saves, Esc cancels; the hint `Enter saves, Esc cancels` is under every box; a bad number on a click away says `Not saved` and saves
-// nothing, on Enter keeps the box open with the sentence; an emptied number box cancels; an emptied note removes the note. The boxes know nothing of the table they
+// nothing, on Enter keeps the box open with the sentence; an emptied number box cancels. The box knows nothing of the table they
 // sit in: the caller passes what to do on a save and how to put the cell back (lineup-pool-edit.js for the classic pool, showdown/pool-edit.js for the Showdown pool).
 // The one box that is open is kept here (openEditor) so a redraw of the table takes it out first and puts it back with its text and focus (takeOpenEditor), and
 // the removal never reads as a click away.
 
-// The hint under every open typed-number and note box (optimizer standard A3, round 3): Enter or a click away saves, Esc cancels.
+// The hint under every open typed-number box (optimizer standard A3, round 3): Enter or a click away saves, Esc cancels.
 export const EDIT_HINT = "Enter saves, Esc cancels";
 export const NOT_SAVED_TEXT = "Not saved";
 
@@ -20,8 +20,8 @@ export function readTypedNumber(raw, field) {
   return { value: parsed };
 }
 
-/** What closing a typed-number or note box does (A3), given how it was closed and what it holds. `how`: "enter" (Enter pressed), "away" (a click
- *  elsewhere) or "escape". `read`: readTypedNumber's answer (for a note: {value: text} or {empty: true}); `start`: the text the box opened with.
+/** What closing a typed-number box does (A3), given how it was closed and what it holds. `how`: "enter" (Enter pressed), "away" (a click
+ *  elsewhere) or "escape". `read`: readTypedNumber's answer; `start`: the text the box opened with.
  *  Returns "save", "cancel", "keep" (a bad number on Enter: the box stays open with the message) or "notSaved" (a bad number on a click away: the box
  *  closes, nothing is saved, and "Not saved" is said). A box closed with the text it opened with is a cancel on Enter or a click away alike (no write for a click in and out
  *  or an Enter on an untouched box, round 4 item 6). Pure. */
@@ -32,10 +32,10 @@ export function closeDecision(how, read, start) {
   return "save";
 }
 
-// The one typed-number or note box that is open (A3, round 3 fixes): a redraw of the table takes it out first and puts it
+// The one typed-number box that is open (A3, round 3 fixes): a redraw of the table takes it out first and puts it
 // back, text and focus kept, in the new cell, so replacing the old box never reads as a click away and never writes (a half-typed value saved by
 // the removal's blur was the bug). `released` makes the old box's handlers do nothing.
-let openEditor = null; // {kind: "field"|"note", id, field, input, wrap, start, released}
+let openEditor = null; // {kind: "field", id, field, input, wrap, start, released}
 
 /** Focuses a box. One a redraw took out and put back (`carry`) keeps the page where it is (preventScroll): the redraw must not move what he is looking at; a box he just opened may scroll into view as before. */
 export function focusBox(input, carry = null) {
@@ -164,68 +164,4 @@ export function carryNotSaved(cellFor, doc = globalThis.document, setTimer = set
 /** Forgets the `Not saved` on hold (a new box opened on the cell, or a number was saved). */
 export function dropHeldNotSaved() {
   heldNotSaved = null;
-}
-
-/** Whether closing a note box writes (A3): Enter saves, a click away saves only a changed note, Esc never; an emptied note is saved as a removal, but a box that
- *  was empty and still is has nothing to write. `text` and `start` are trimmed. Pure. */
-export function noteSaves(how, text, start) {
-  if (how === "escape") return false;
-  if (text === "" && start === "") return false;
-  return how === "enter" ? true : text !== start;
-}
-
-/**
- * Opens the note box in `slot` (the element that held the pencil). `note`: the text it opens with; `restoreHtml`: what goes back in the slot when nothing is saved
- * (the pencil); `onSave(text)`: called with the trimmed text, or null for an emptied note (which removes it); `onRestore()`: called after the pencil is put back, so a table that wires
- * each pencil itself can wire the new one. `carry`: the box a redraw took out.
- */
-export function startNoteBox(slot, { id, note, restoreHtml, onSave, onRestore = null, carry = null }) {
-  const wrap = document.createElement("span");
-  wrap.className = "cell-edit-wrap note-edit-wrap";
-  const input = document.createElement("input");
-  input.type = "text";
-  input.className = "note-edit-input";
-  input.maxLength = 300;
-  input.value = note ?? "";
-  const start = carry?.start ?? input.value.trim();
-  if (carry) input.value = carry.text; // a redraw took the box out: what he had typed comes back
-  const hintEl = document.createElement("div");
-  hintEl.className = "cell-edit-hint";
-  hintEl.textContent = EDIT_HINT;
-  wrap.appendChild(input);
-  wrap.appendChild(hintEl);
-  slot.innerHTML = "";
-  slot.appendChild(wrap);
-  focusBox(input, carry);
-  if (!carry) input.select();
-  const editor = { kind: "note", id, field: "note", input, wrap, start, released: false };
-  openEditor = editor;
-
-  let done = false;
-  // An emptied note removes the note (null); a click away that changes nothing, and Esc, put the icon back with no write.
-  const finish = (how) => {
-    if (done || editor.released) return; // a released box was taken out by a redraw: its removal writes nothing
-    done = true;
-    if (openEditor === editor) openEditor = null;
-    const text = input.value.trim();
-    const save = noteSaves(how, text, start);
-    if (save) onSave(text === "" ? null : text);
-    else {
-      slot.innerHTML = restoreHtml;
-      onRestore?.(); // the pencil is a new node: its owner wires it again (round 4, item 12)
-    }
-  };
-  input.addEventListener("keydown", (e) => {
-    if (e.key === "Enter") finish("enter");
-    if (e.key === "Escape") finish("escape");
-  });
-  input.addEventListener("blur", () => {
-    if (wrap.isConnected === false) { // removed from the page by something other than a redraw of this table: gone, nothing written
-      editor.released = true;
-      done = true;
-      if (openEditor === editor) openEditor = null;
-      return;
-    }
-    finish("away");
-  });
 }

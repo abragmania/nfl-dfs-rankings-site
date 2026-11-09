@@ -113,7 +113,7 @@ export function renderSlateLine(container, slate) {
   const line = `${slate.season ?? "?"} · Week ${weekLabel} · ${games} game${games === 1 ? "" : "s"}`;
   // A7: ?sample=1 shows the frozen dev fixture board; the page says so, and api.js refuses every write.
   container.innerHTML = isSampleMode()
-    ? `<span class="sample-tag" title="Sample data from the dev fixture board. Stars, notes, typed numbers and every other change are refused; nothing reaches the server.">SAMPLE DATA · nothing is saved</span> ${escapeHtml(line)}`
+    ? `<span class="sample-tag" title="Sample data from the dev fixture board. Stars, typed numbers and every other change are refused; nothing reaches the server.">SAMPLE DATA · nothing is saved</span> ${escapeHtml(line)}`
     : escapeHtml(line);
 }
 

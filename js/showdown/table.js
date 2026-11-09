@@ -2,7 +2,7 @@
 // data/showdown/2026-w03-ATLGB/build-sheet.mjs — same dark palette and type as the rest of the app, same
 // nine columns (no Lev, standard A2): Player (team chip, position, status pill), Sal, CPT Sal (gold), Proj, CPT Proj (gold),
 // Own, CPT Own (gold), Val (one column — Captain value is identical to FLEX value since Captain price and points are both
-// 1.5x); words per optimizer standard D1, 2026-11-03. Since round 4 there is no Notes column (C23: the note is a pencil in the name cell, as classic's) and the pool's
+// 1.5x); words per optimizer standard D1, 2026-11-03. The pool's
 // cells carry the star and the typed Proj and Own editors through `hooks` (B2, B3; showdown/pool-edit.js).
 import { escapeHtml, money, dec1, dec2, pct1 } from "../format.js";
 import { rowIsOut } from "../table.js";

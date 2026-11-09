@@ -1,13 +1,13 @@
-// The Optimizer's one player table, the pool (optimizer standard C9, C10, C17, round 5). It holds every control and every column the retired ranked list had: star, name (with the note's
-// pencil and TwoGun's status dot), Sal, Proj and Own (click to type, the small x puts the original back), Val, then the row controls (thumbs, Lock, Exclude, Min %, Max %; Cash: its chips), and after
-// them the rest, offered through the Columns list: Pos, TwoGun's Med, Nuke, 3x% and 4x% (a TwoGun board only), Tags and Note. One text size on every row. No inner scroll box: the page scrolls, the
+// The Optimizer's one player table, the pool (optimizer standard C9, C10, C17, round 5). It holds every control and every column the retired ranked list had: star, name (with
+// TwoGun's status dot), Sal, Proj and Own (click to type, the small x puts the original back), Val, then the row controls (thumbs, Lock, Exclude, Min %, Max %; Cash: its chips), and after
+// them the rest, offered through the Columns list: Pos, TwoGun's Med, Nuke, 3x% and 4x% (a TwoGun board only) and Tags. One text size on every row. No inner scroll box: the page scrolls, the
 // head sticks under the filter bar (style.css), and the results sit directly below. The first part (the pick rules, the greying, the click's message) moved here from lineup-view.js unchanged.
-// Typed numbers and notes are wired by lineup-pool-edit.js; the writes are app.js's tableCallbacks (setPoolCallbacks).
+// Typed numbers are wired by lineup-pool-edit.js; the writes are app.js's tableCallbacks (setPoolCallbacks).
 import { escapeHtml, money, pct1, dec1 } from "./format.js";
 import { CLASSIC_GPP_COLUMNS, CLASSIC_CASH_COLUMNS, CLASSIC_TG_KEYS, loadColumns, shownKeys } from "./columns.js"; // A17
 import { store, matchesPosition, filterRows, sortRows, passesProjFloor, activeSlateRows, isTwoGunMode, DEFAULT_SORT } from "./state.js";
 import { sortableHeadHtml } from "./tabs.js";
-import { gradedCellHtml, rowIsOut, STATUS_INFO, TG_COLUMNS, tgCellHtml, tagsCellHtml, tagsCellTitle, noteCellHtml, markerHtml, twoGunMarkerTexts, projFlagMarkerHtml, noteIconHtml } from "./table.js";
+import { gradedCellHtml, rowIsOut, STATUS_INFO, TG_COLUMNS, tgCellHtml, tagsCellHtml, tagsCellTitle, markerHtml, twoGunMarkerTexts, projFlagMarkerHtml } from "./table.js";
 import { playerLineHtml, matchupPillHtml, showPos } from "./player-row.js";
 import { rowsGradedForView } from "./grade.js";
 import { teamColours, teamColourStyle, cardNameHtml } from "./lineup-card.js"; // cardNameHtml: the short name Showdown's pool shows on a phone (style.css, max-width 700px)
@@ -35,7 +35,7 @@ function placedIdentities(rowById) {
   return set;
 }
 
-let poolCallbacks = null; // app.js's tableCallbacks: the pool's star, typed numbers, notes, bump and reset write the same overrides the retired Rankings list wrote (Adam 2026-10-17)
+let poolCallbacks = null; // app.js's tableCallbacks: the pool's star, typed numbers, bump and reset write the same overrides the retired Rankings list wrote (Adam 2026-10-17)
 
 export function setPoolCallbacks(callbacks) {
   poolCallbacks = callbacks;
@@ -149,7 +149,6 @@ function sortableHeads() {
     pos: { key: "pos", label: "Pos", cls: "pos-col" },
     ...Object.fromEntries(TG_COLUMNS.map((c) => [c.key, { key: c.key, label: c.label, cls: "lp-num tg-col", headTitle: c.title }])),
     tags: { key: "tags", label: "Tags", cls: "tags-cell" }, // the td's class on the head too, so a phone's column rule (style.css) takes both
-    note: { key: "note", label: "Note", cls: "note-col" },
   };
 }
 
@@ -210,9 +209,9 @@ export function rightColumnHtml(rows, rowById, opts = {}) {
 
 const POOL_PICK_TITLES = Object.freeze({ add: "Click to add to the lineup", remove: "Click to remove" });
 
-/** A click inside one of these is that control's own (the star, his name's card, the typed Proj and Own, the note's pencil, the ± bump, a Min % / Max % box, the Cash chips, Lock and
+/** A click inside one of these is that control's own (the star, his name's card, the typed Proj and Own, the ± bump, a Min % / Max % box, the Cash chips, Lock and
  *  Exclude) or the padding around it, never a pick (pick-rows.js wirePickRows; the Showdown pool's twin is pool.js POOL_PICK_SKIP). */
-export const CLASSIC_POOL_PICK_SKIP = "button, a, input, select, textarea, label, .player-name, .bump-ctl, .lineup-thumbs-cell, .lineup-star-col, .lineup-min-cell, .lineup-max-cell, .lineup-cash-cell, .lineup-row-actions, .editable-cell, .note-slot";
+export const CLASSIC_POOL_PICK_SKIP = "button, a, input, select, textarea, label, .player-name, .bump-ctl, .lineup-thumbs-cell, .lineup-star-col, .lineup-min-cell, .lineup-max-cell, .lineup-cash-cell, .lineup-row-actions, .editable-cell";
 
 /** What a click on his pool row does: "remove" when he is placed (by DraftKings identity, 🔵 finding 6), null when he is excluded (an
  *  excluded man cannot be picked; Exclude undoes it), else "add" (lineup.js pickPoolRow puts him in the first slot his position fills). Pure. */
@@ -288,11 +287,11 @@ function rightRowHtml(row, picked, placedSet, posShown, maxMap = {}, minMap = {}
   const rowClass = `${excluded ? " lineup-row-excluded" : locked ? " lineup-row-locked" : ""}${inLineup && !locked ? " lineup-row-in" : ""}${dimmed ? " row-dimmed" : ""}${pick ? " lineup-pool-pick" : ""}${greyed ? " lineup-row-greyed" : ""}`;
   const name = escapeHtml(row.name ?? "");
   const noWrite = !canWrite();
-  // A1: the name cell is the logo, name, position and injury letter on one line and the matchup in small type on a second; its width is its content's. The note's pencil follows the name, and so does the
-  // TwoGun dot for a status that changed after his board was made (the retired ranked list's Player cell).
+  // A1: the name cell is the logo, name, position and injury letter on one line and the matchup in small type on a second; its width is its content's. The
+  // TwoGun dot follows the name for a status that changed after his board was made (the retired ranked list's Player cell).
   const cells = {
     star: () => `<td class="lineup-star-col"><button type="button" class="star-btn${row.starred ? " active" : ""}" title="${row.starred ? "Starred" : "Star"}" data-action="toggle-star" data-id="${idAttr(id)}"${poolCallbacks?.onToggleStar ? "" : " disabled"}>${row.starred ? "★" : "☆"}</button></td>`,
-    player: () => `<td class="lp-name"><span class="player-cell lp-l1">${playerLineHtml(row, { pos: posShown, pill: false, titled: true, nameHtml: cardNameHtml(row) })}${markerHtml(twoGunMarkerTexts(row, "status"))}<span class="note-slot" data-id="${idAttr(id)}">${noteIconHtml(row)}</span></span><span class="lp-l2">${matchupPillHtml(row)}</span>${poolRowMessageHtml(id)}</td>`,
+    player: () => `<td class="lp-name"><span class="player-cell lp-l1">${playerLineHtml(row, { pos: posShown, pill: false, titled: true, nameHtml: cardNameHtml(row) })}${markerHtml(twoGunMarkerTexts(row, "status"))}</span><span class="lp-l2">${matchupPillHtml(row)}</span>${poolRowMessageHtml(id)}</td>`,
     salary: () => `<td class="lp-num">${money(row.salary)}${markerHtml(twoGunMarkerTexts(row, "salary"))}</td>`,
     proj: () => `<td class="lp-num lp-proj"><div class="editable-cell" data-field="proj" data-id="${idAttr(id)}">${projCellInner(row, { canReset: !noWrite })}</div></td>`,
     own: () => `<td class="lp-num"><div class="editable-cell" data-field="own" data-id="${idAttr(id)}">${ownCellInner(row, { canReset: !noWrite })}</div></td>`,
@@ -306,7 +305,6 @@ function rightRowHtml(row, picked, placedSet, posShown, maxMap = {}, minMap = {}
     max_pct: () => `<td class="lineup-max-cell"><input type="text" inputmode="decimal" maxlength="5" class="opt-input lineup-max-input${maxBad ? " invalid" : ""}" data-player-max="${idAttr(id)}" value="${escapeHtml(maxText)}" aria-label="Max % for ${name}" />${refusalNoteHtml(`[data-player-max="${id}"]`)}${crossedNoteHtml(minText, maxText, parsePct)}</td>`,
     pos: () => `<td class="pos-col">${escapeHtml(row.pos ?? "")}</td>`,
     tags: () => `<td class="tags-cell" title="${escapeHtml(tagsCellTitle(row))}">${tagsCellHtml(row)}</td>`,
-    note: () => `<td class="note-col"${row.note ? ` title="${escapeHtml(row.note)}"` : ""}>${noteCellHtml(row)}</td>`,
   };
   for (const key of CLASSIC_TG_KEYS) {
     cells[key] = () => {

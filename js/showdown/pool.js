@@ -1,7 +1,7 @@
 // The Showdown Optimizer's player pool (Adam 2026-10-26 3:22 PM: "make the optimizer LOOK LIKE THE RANKINGS SCREEN and we don't want the
 // rankings screen anymore"; 3:27 PM: integrate the Rankings format's good parts into the Optimizer; D81, the counterpart of classic's
 // Optimizer-first step 4, a58538d). ONE table drawn with the retired Rankings tab's columns and cells (table.js: the figures next to the
-// names, the hovers, the graded Val, the gold Captain columns and the note cell), with the Optimizer's per-man controls at the row's end.
+// names, the hovers, the graded Val, and the gold Captain columns), with the Optimizer's per-man controls at the row's end.
 // Since 4:45 PM 2026-10-29 it has a Captain tab and a FLEX tab (each draws its seat's figures), and a click on a row adds the man to the
 // lineup or takes him out (no Add buttons). Under the head, a totals row adds every man's Own FLEX and Own CPT (Adam 3:28 PM), so a bias
 // in the ownership figures shows.
@@ -40,7 +40,7 @@ export function resetPoolState() {
 
 // The Optimizer's additions (optimizer.js poolControls): {live(), mode(), available(tab), rows(all, shown), capCell(row, kind, which) (Min % or Max %),
 // button(row, kind, action) ("lock", "include" or "exclude"), lockIcon(row), thumbs(row, isCpt), rowClass(row, tab), projCell(row, proj, isCpt), ownCell(row, own, isCpt, text),
-// starCell(row), noteSlot(row), readTab(), writeTab(tab)}, each optional; none set (or not live) leaves the pool its own rows with no controls.
+// starCell(row), readTab(), writeTab(tab)}, each optional; none set (or not live) leaves the pool its own rows with no controls.
 let controls = null;
 export function setPoolControls(next) {
   controls = next && typeof next === "object" ? next : null;
@@ -102,7 +102,7 @@ const PICK_TITLES = Object.freeze({
 
 /** A click inside one of these is that control's own (the ± bump, a Min / Max box, lock, In, exclude, the name's card popup) or the padding
  *  around it, not a pick (lineup.js passes it to the shared pick-rows.js wirePickRows). */
-export const POOL_PICK_SKIP = "button, a, input, select, textarea, label, .player-name, .bump-ctl, .lineup-thumbs-cell, .sd-pool-btn, .sd-pool-in, .lineup-min-cell, .lineup-max-cell, .lineup-star-col, [data-sd-edit], .note-slot";
+export const POOL_PICK_SKIP = "button, a, input, select, textarea, label, .player-name, .bump-ctl, .lineup-thumbs-cell, .sd-pool-btn, .sd-pool-in, .lineup-min-cell, .lineup-max-cell, .lineup-star-col, [data-sd-edit]";
 
 const num = (v) => (typeof v === "number" && Number.isFinite(v) ? v : null);
 
@@ -354,9 +354,9 @@ export function poolBodyHtml(board, rows, placement, figures = playerFigures, ta
     ownCell: controls?.ownCell ? (row, own, isCpt, text) => controls.ownCell(row, own, isCpt, text) : null, // B3: the typed-Own editor
     starCell: controls?.starCell ? (row) => controls.starCell(row) : null, // B2
     // The Player cell names him in full and, for a phone, the cards' short name too (style.css shows one; 👁 V1: no name cut mid-word); then the seat tag of a man in
-    // the lineup on either list (C21), a lock icon for a man locked in either seat (C20) and the note's pencil (C23, as classic's). A click's refusal (placement.message, lineup.js) is drawn under the name of the
+    // the lineup on either list (C21), a lock icon for a man locked in either seat (C20). A click's refusal (placement.message, lineup.js) is drawn under the name of the
     // row that was clicked (row-message.js, standard A14).
-    playerCell: (row) => `<div class="player-cell">${sdLine(row, { nameHtml: cardNameHtml(row) })}<span class="sd-seat-slot">${seatTagHtml(placedSeat(placement, row.id))}${controls?.lockIcon?.(row) ?? ""}</span>${controls?.noteSlot?.(row) ?? ""}</div>${messageIsFor(placement?.message, row.id) ? rowMessageHtml(placement.message.text, placement.message.tone) : ""}`,
+    playerCell: (row) => `<div class="player-cell">${sdLine(row, { nameHtml: cardNameHtml(row) })}<span class="sd-seat-slot">${seatTagHtml(placedSeat(placement, row.id))}${controls?.lockIcon?.(row) ?? ""}</span></div>${messageIsFor(placement?.message, row.id) ? rowMessageHtml(placement.message.text, placement.message.tone) : ""}`,
     valueCell: (row) => poolValueHtml(row, figures),
     // A man seated in the lineup, on either list, has his row tinted (the builder's), kept apart from a lock (the icon, C20), beside the Optimizer's own look (excluded), each class once.
     // A row that cannot be clicked is greyed instead of a pick row (A18); the lookup is made once per row and shared by the class and the attributes.
@@ -500,8 +500,8 @@ export function wirePoolTabs(poolEl, ctx) {
 
 /**
  * Redraws the pool's head and body in place (a filter, a sort, a lock or the modes answer's notes), keeping its scroll box and its
- * place. ctx = { board, placement(), repaint(), onRepaint?(poolEl, rows), onCount?(shown, total), takeEdit?(poolEl), restoreEdit?(poolEl, carry) }: a typed-number or
- * note box that is open is taken out before the body is replaced and put back in the new one with its text and focus (A3), never read as a click away.
+ * place. ctx = { board, placement(), repaint(), onRepaint?(poolEl, rows), onCount?(shown, total), takeEdit?(poolEl), restoreEdit?(poolEl, carry) }: a
+ * typed-number box that is open is taken out before the body is replaced and put back in the new one with its text and focus (A3), never read as a click away.
  * Returns the rows shown, or null when no pool is drawn.
  */
 export function paintPool(container, ctx) {

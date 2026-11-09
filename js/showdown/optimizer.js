@@ -10,7 +10,7 @@ import { bumpControlHtml, bumpFigureOnlyHtml, wireBumpButtons, bumpPatch } from 
 import { rowResetHtml, rowResetPatch } from "../row-reset.js"; // B12 (round 3): the row's reset
 import { limitsCrossed } from "../limit-cross.js"; // item 18
 import { wireLimitBox, flushOpenLimit, limitRefusals } from "../limit-box.js"; // A3 (round 4): the pool's Min % and Max % boxes save when they close, as classic's do
-import { projEditHtml, ownEditHtml, isTyped, starHtml, noteSlotHtml } from "./pool-edit.js"; // B2, B3, C23: the star, the typed Proj and Own, the note's pencil
+import { projEditHtml, ownEditHtml, isTyped, starHtml } from "./pool-edit.js"; // B2, B3: the star, the typed Proj and Own
 import { onSitePage } from "../tabs.js"; // the one is-site check
 import { parsePct, uniqueSavedName, duplicateSaveStatus } from "../lineup.js";
 import { countBelowMin, syncCountNote, COUNT_MIN_SENTENCE, fullLineupText } from "../lineup-settings.js";
@@ -509,7 +509,6 @@ export const poolControls = {
   ownCell: (row, own, isCpt = false, text = "") => poolOwnHtml(row, own, isCpt, text), // B3: the Own figure as the typed-Own editor
   canType: () => optimizerLive() && supports("overrides"), // B3: a projection can be typed here (the app), so the greyed row's reason can offer it (seat-picker.js)
   starCell: (row) => (optimizerLive() ? starHtml(row, supports("overrides")) : ""), // B2: the star; on the site a published star shows, read only
-  noteSlot: (row) => (optimizerLive() ? noteSlotHtml(row, supports("overrides")) : ""), // C23: the pencil in the name cell
   readTab: () => S.readPoolTab(storage), // the pool's Captain | FLEX tab, kept in the browser on the site too (D71)
   writeTab: (tab) => S.writePoolTab(storage, tab),
 };

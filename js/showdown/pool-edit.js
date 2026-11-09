@@ -1,6 +1,6 @@
-// What a Showdown pool row can have typed into it (optimizer standard B2 and B3, round 4): a star, a typed Proj, a typed Own, and a note (the pencil in the name cell, C23).
-// The same boxes as classic's ranked list (../typed-edit.js: Enter saves, a click away saves, Esc cancels, the hint under the box, `Not saved` for a refused number), written
-// to the game's own overrides file (PUT /api/showdown/<key>/overrides; the server keeps stars, notes and typed Proj under the man's FLEX id).
+// What a Showdown pool row can have typed into it (optimizer standard B2 and B3, round 4): a star, a typed Proj and a typed Own.
+// The same box as classic's ranked list (../typed-edit.js: Enter saves, a click away saves, Esc cancels, the hint under the box, `Not saved` for a refused number), written
+// to the game's own overrides file (PUT /api/showdown/<key>/overrides; the server keeps stars and typed Proj under the man's FLEX id).
 //
 // One typed projection per man, as the board keeps it: the FLEX figure. The Captain's projection is 1.5x it (DraftKings), so a number typed in the Captain list's CPT Proj
 // cell is stored as that number over 1.5 under his FLEX id; the Captain cell then shows that number to the display's one decimal (the stored figure is not rounded, so the box
@@ -11,8 +11,7 @@
 // Markup and wiring only: showdown/optimizer.js poolControls supplies the cells to the pool and showdown/lineup.js the writes. The writes are the app's PUT, or on the public site
 // this device's own copy (site-src/showdown-api.js, site-overrides.js): `canWrite` is true where supports("overrides") is.
 import { escapeHtml } from "../format.js";
-import { startEdit, startNoteBox, takeOpenEditor, showNotSaved } from "../typed-edit.js";
-import { noteIconHtml } from "../table.js";
+import { startEdit, takeOpenEditor, showNotSaved } from "../typed-edit.js";
 import { CPT_MULT, BUMP_STEP_PCT, bumpStepsOf } from "../bump-control.js";
 import { isSetAside } from "./lineup-meter.js";
 
@@ -45,7 +44,6 @@ export function ownPatch(row, seat, value) {
 }
 
 export const starPatch = (row) => ({ stars: { [idOf(row)]: !row?.starred } });
-export const notePatch = (row, text) => ({ notes: { [idOf(row)]: text } });
 
 /** The number a box opens with: the cell's figure without his ± bump (the server scales a typed number by the bump again, so opening the bumped figure and pressing Enter would bump it twice). */
 export function prefillOf(row, shown) {
@@ -89,12 +87,6 @@ export function starHtml(row, canWrite) {
   return `<button type="button" class="star-btn${on ? " active" : ""}" title="${on ? "Starred" : "Star"}" aria-pressed="${on}" data-action="toggle-star" data-id="${attr(row.id)}">${on ? "★" : "☆"}</button>`;
 }
 
-/** The pencil in the name cell (C23): click to type or change his note; a note shows on hover. Site: a published note's pencil, read only. */
-export function noteSlotHtml(row, canWrite) {
-  if (!canWrite) return row?.note ? `<span class="note-slot" data-id="${attr(row.id)}"><span class="note-icon has-note note-static" title="${attr(row.note)}">&#9998;</span></span>` : "";
-  return `<span class="note-slot" data-id="${attr(row.id)}">${noteIconHtml(row)}</span>`;
-}
-
 // ---------- the boxes ----------
 
 let lastOpen = null; // {id, field, seat} of the number box that is open, so a redraw can put it back in the same cell
@@ -105,7 +97,7 @@ function cssId(id) {
 }
 
 /**
- * ctx = { rowOf(id), figureOf(row, field, isCpt) (the cell's figure), save(row, field, seat, value) -> Promise<boolean>, saveNote(row, text) -> Promise<boolean>,
+ * ctx = { rowOf(id), figureOf(row, field, isCpt) (the cell's figure), save(row, field, seat, value) -> Promise<boolean>,
  * toggleStar(row) -> Promise<boolean>, rowError(id, text) }. A save that was refused or lost is said beside the man's row, in red (the board write says why above).
  */
 function beginNumber(cell, ctx, carry = null) {
@@ -134,36 +126,9 @@ function beginNumber(cell, ctx, carry = null) {
   }, carry);
 }
 
-const PENDING = "is-pending"; // style.css: a dimmed, slowly pulsing figure, star or pencil while its write is out
+const PENDING = "is-pending"; // style.css: a dimmed, slowly pulsing figure or star while its write is out
 
-function beginNote(icon, ctx, carry = null) {
-  const id = icon.dataset.id;
-  const row = ctx.rowOf(id);
-  const slot = icon.closest?.(".note-slot");
-  if (!row || !slot || slot.querySelector?.("input")) return;
-  const rewire = () => slot.querySelectorAll?.("[data-action='edit-note']").forEach((again) => again.addEventListener("click", () => beginNote(again, ctx)));
-  startNoteBox(slot, {
-    id,
-    note: row.note ?? "",
-    restoreHtml: noteIconHtml(row),
-    carry,
-    onRestore: rewire, // Esc or a click away with nothing changed puts a new pencil in the slot: it is wired again, or it goes dead (item 12)
-    onSave: (text) => {
-      slot.classList?.add(PENDING);
-      Promise.resolve(ctx.saveNote(row, text)).then((taken) => {
-        if (taken) return;
-        slot.classList?.remove(PENDING);
-        if (slot.isConnected !== false) { // a refused note: the pencil comes back and the reason is beside his row
-          slot.innerHTML = noteIconHtml(row);
-          rewire();
-        }
-        ctx.rowError?.(row.id, "The note was not saved. The message above says why.");
-      });
-    },
-  });
-}
-
-/** Wires the stars, the number cells and the pencils under `root` (called after every draw of the pool's rows). */
+/** Wires the stars and the number cells under `root` (called after every draw of the pool's rows). */
 export function wirePoolEdits(root, ctx) {
   root.querySelectorAll("[data-action='toggle-star']").forEach((btn) => {
     btn.addEventListener("click", () => {
@@ -181,7 +146,6 @@ export function wirePoolEdits(root, ctx) {
     });
   });
   root.querySelectorAll("[data-sd-edit]").forEach((cell) => cell.addEventListener("click", () => beginNumber(cell, ctx)));
-  root.querySelectorAll("[data-action='edit-note']").forEach((icon) => icon.addEventListener("click", () => beginNote(icon, ctx)));
 }
 
 /** Before the pool's rows are redrawn: the open box, taken out (its removal is not a click away) and described for restorePoolEdit; null when none is open in `within`. */
@@ -193,11 +157,6 @@ export function takePoolEdit(within) {
 /** After the redraw: the box goes back in the new cell with its text and focus. A man no longer listed (a filter hid him) drops it with no write. */
 export function restorePoolEdit(root, carry, ctx) {
   if (!carry) return;
-  if (carry.kind === "note") {
-    const icon = root.querySelector?.(`.note-slot [data-action='edit-note'][data-id="${cssId(carry.id)}"]`);
-    if (icon) beginNote(icon, ctx, carry);
-    return;
-  }
   const cell = root.querySelector?.(`[data-sd-edit="${carry.field}"][data-seat="${carry.seat}"][data-id="${cssId(carry.id)}"]`);
   if (cell) beginNumber(cell, ctx, carry);
 }

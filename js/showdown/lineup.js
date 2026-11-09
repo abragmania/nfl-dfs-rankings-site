@@ -15,7 +15,7 @@ import { findKept } from "./lineups-store.js"; // the Lineups tab's kept builds:
 import { openShowdownTabKey } from "./lineups-nav.js"; // a Load goes back to the Optimizer tab, where the working lineup is
 import { lineupModeOf } from "../lineup-cash.js";
 import { loadModeSwitch } from "./lineups-load-mode.js";
-import { wirePoolEdits, takePoolEdit, restorePoolEdit } from "./pool-edit.js"; // B2, B3, C23: the star, the typed Proj and Own, the note's pencil
+import { wirePoolEdits, takePoolEdit, restorePoolEdit } from "./pool-edit.js"; // B2, B3: the star, the typed Proj and Own
 import { editCtxFor, rowErrorIn } from "./pool-edit-ctx.js"; // what those cells write through, and a row's red message
 import { takeOpenLimit, restoreOpenLimit, limitRefusals, dropOlderLimitRefusals, noteLimitPress } from "../limit-box.js"; // A3: the pool's Min % and Max % boxes survive a redraw; a refused text is held
 import { handBuild } from "../lineup-builds.js";
@@ -297,7 +297,7 @@ function poolCtx(board) {
       saveView(); // A9: a filter, a sort or a column change is remembered for this game
     },
     onCount: (shown, total) => poolCount?.(shown, total),
-    // A3: a typed-number or note box, and a Min % / Max % box, that is open when the rows are redrawn goes back into the new ones with its text and focus; the removal never reads as a click away.
+    // A3: a typed-number box, and a Min % / Max % box, that is open when the rows are redrawn goes back into the new ones with its text and focus; the removal never reads as a click away.
     takeEdit: (poolEl) => ({ edit: takePoolEdit(poolEl), limit: takeOpenLimit() }),
     restoreEdit: (poolEl, carry) => {
       if (!carry) return;
@@ -307,7 +307,7 @@ function poolCtx(board) {
   };
 }
 
-/** A failed write for a pool row is said beside that row, in red (B12, B3); the star, the typed numbers and the pencil: pool-edit-ctx.js. */
+/** A failed write for a pool row is said beside that row, in red (B12, B3); the star and the typed numbers: pool-edit-ctx.js. */
 const rowError = (id, text) => rowErrorIn(state, commit, id, text);
 const editCtx = (board) => editCtxFor({ board, state, commit, boardWrite: () => boardWrite });
 
@@ -383,7 +383,7 @@ function optCtx(board, key) {
 // `container`: the whole panel, or the pool's element when only the pool was repainted.
 function wireRowButtons(container, board) {
   wirePoolControls(container, optCtx(board, lastKey));
-  wirePoolEdits(container, editCtx(board)); // B2, B3, C23: the star, the typed Proj and Own, the pencil
+  wirePoolEdits(container, editCtx(board)); // B2, B3: the star, the typed Proj and Own
   wirePickRows(container, POOL_PICK_SKIP, (id, action) => { // a click on a pool row (D39): the man goes in or out, and the panel is redrawn
     pickPoolRow(findRow(board, id), action, board);
     commit();
@@ -581,7 +581,7 @@ export function renderShowdownLineupPanel(container, board, key, { onOpenSources
   syncSwaps({ board, key, cpt: state.cpt, flex: state.flex, container, excludes: optimizerExcludes(), locked: lockedSeatPositions(), tab: optimizerTabFor(key) }); // after the meter: the swaps exist while it has a complete live lineup; the meter's excludes, so no excluded man is offered
   syncLeftOut({ key, board, container, commit }); // Part F: the quiet Cash build behind Left out (Cash tab only); Swap in is wired on the mount
   const poolRows = poolVisibleRows(board);
-  const openEdit = takePoolEdit(container); // a typed-number or note box, or a Min % / Max % box, that he is typing in survives the redraw with its text and focus (A3)
+  const openEdit = takePoolEdit(container); // a typed-number box, or a Min % / Max % box, that he is typing in survives the redraw with its text and focus (A3)
   const openLimit = takeOpenLimit();
   container.innerHTML = panelHtml(board, poolRows);
   wire(container, board, key);

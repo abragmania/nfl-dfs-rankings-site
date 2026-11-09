@@ -1,5 +1,5 @@
-// The player-list cells every classic table shares: the status badges and the red OUT tag, TwoGun's markers and Med, Nuke, 3x% and 4x% cells, the Tags and Note cells, the graded number, the
-// matchup text, the note's pencil and the sort arrow. The ranked list that used to draw them (renderTableHead, renderTableBody, the click-to-type wiring) is retired: the Optimizer's pool
+// The player-list cells every classic table shares: the status badges and the red OUT tag, TwoGun's markers and Med, Nuke, 3x% and 4x% cells, the Tags cell, the graded number, the
+// matchup text and the sort arrow. The ranked list that used to draw them (renderTableHead, renderTableBody, the click-to-type wiring) is retired: the Optimizer's pool
 // (lineup-pool.js, optimizer standard C9, C10, C17, round 5) draws these cells and lineup-pool-edit.js wires the typed boxes. Rows with a null projection show "no proj" and stay visible
 // (D27); a player nobody published an ownership number for shows an em dash in Own (still click-to-type, D28); the app never estimates one. There is no Lev column (A2).
 import { escapeHtml, money, dec1, dec2 } from "./format.js";
@@ -151,13 +151,6 @@ export function opponentLabel(row) {
   return m[1] === "@" ? `@${code}` : `v ${code}`;
 }
 
-/** The pencil: a button that opens the note box (the pool's name cell draws it, the Showdown pool's too, showdown/pool-edit.js). */
-export function noteIconHtml(row) {
-  const has = Boolean(row.note);
-  const title = has ? row.note : "Add a note";
-  return `<button type="button" class="note-icon${has ? " has-note" : ""}" data-action="edit-note" data-id="${escapeHtml(String(row.id))}" title="${escapeHtml(title)}">&#9998;</button>`;
-}
-
 /**
  * A1: one sentence per blended source that failed for this player's position this run ("sourceFailed:<id>" flags,
  * server/rank/board.js), named by its label: "CBS Sports failed for TE this run and has no cached copy, so Proj is
@@ -240,13 +233,6 @@ export function rowHasStatus(row) {
   return Boolean((row?.status ?? "").trim() || (row?.injury?.status ?? "").trim());
 }
 
-/** The Note column's cell: the first 28 characters of his note, the whole note on hover. */
-export function noteCellHtml(row) {
-  if (!row.note) return "";
-  const preview = row.note.length > 28 ? `${row.note.slice(0, 28)}…` : row.note;
-  return `<span class="note-preview" title="${escapeHtml(row.note)}">${escapeHtml(preview)}</span>`;
-}
-
 // The one copy of the sort arrow (PROJECT.md D80). The space before it is an escaped no-break space (U+00A0) so the arrow stays on the last word's line.
 // `reserve` (the Projections and Ownership tables) draws it on every header, hidden when not sorted, so a sort click never moves a column.
 export function sortArrowText(dir) {
@@ -257,5 +243,5 @@ export function sortArrowHtml(active, dir, reserve = false) {
   return `<span class="sort-arrow${active ? "" : " is-idle"}"${active ? "" : ' aria-hidden="true"'}>${sortArrowText(active ? dir : "desc")}</span>`;
 }
 
-// The typed-number and note boxes are typed-edit.js's (moved there in round 4, so the Showdown pool and the classic pool use the same two); re-exported for the callers that still read them here.
-export { EDIT_HINT, NOT_SAVED_TEXT, readTypedNumber, closeDecision, startEdit, showNotSaved, noteSaves } from "./typed-edit.js";
+// The typed-number box is typed-edit.js's (moved there in round 4, so the Showdown pool and the classic pool use the same one); re-exported for the callers that still read it here.
+export { EDIT_HINT, NOT_SAVED_TEXT, readTypedNumber, closeDecision, startEdit, showNotSaved } from "./typed-edit.js";

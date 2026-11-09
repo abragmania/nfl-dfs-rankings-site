@@ -6,7 +6,7 @@
 import { escapeHtml } from "./format.js";
 
 /** Classic GPP, in the standard's order (A1): star, name, Sal, Proj, Own, Val, then the row controls, thumbs, lock, exclude, Min %, Max %, then the rest: the columns the retired ranked list had
- *  (C9, C10, C17): Pos (the name cell already carries the position chip, so it starts off), TwoGun's Med, Nuke, 3x% and 4x% (drawn only on a TwoGun board, on by default), Tags (on by default: the tags he researched stay on screen) and Note (wide, so it starts off). */
+ *  (C9, C10, C17): Pos (the name cell already carries the position chip, so it starts off), TwoGun's Med, Nuke, 3x% and 4x% (drawn only on a TwoGun board, on by default), Tags (on by default: the tags he researched stay on screen). */
 export const CLASSIC_GPP_COLUMNS = Object.freeze([
   { key: "star", label: "Star" },
   { key: "player", label: "Player", required: true },
@@ -25,7 +25,6 @@ export const CLASSIC_GPP_COLUMNS = Object.freeze([
   { key: "tgP3x", label: "3x%" },
   { key: "tgP4x", label: "4x%" },
   { key: "tags", label: "Tags" }, // on by default: the tags he researched stay on screen, as the retired ranked list showed them
-  { key: "note", label: "Note", off: true },
 ]);
 
 /** The TwoGun columns of the classic pool: on a TwoGun board only (lineup-pool.js poolAvailableKeys). */
@@ -34,7 +33,7 @@ export const CLASSIC_TG_KEYS = Object.freeze(["tgMed", "tgNuke", "tgP3x", "tgP4x
 /** Classic Cash: the Cash chips (Lock, Want, Fine) are one column in place of Lock, Min % and Max %. */
 export const CLASSIC_CASH_COLUMNS = Object.freeze(CLASSIC_GPP_COLUMNS.filter((c) => !["lock", "min_pct", "max_pct"].includes(c.key)).flatMap((c) => (c.key === "thumbs" ? [c, { key: "cash", label: "Cash" }] : [c])));
 
-/** Showdown: the same standard order (star first, B2); In sits beside Lock (D4, where a seat choice exists), Captain holds the Captain's lock and exclude on the FLEX list (C21). No Notes column since round 4 (C23: the note is a pencil in the name cell). */
+/** Showdown: the same standard order (star first, B2); In sits beside Lock (D4, where a seat choice exists), Captain holds the Captain's lock and exclude on the FLEX list (C21). */
 export const SHOWDOWN_COLUMNS = Object.freeze([
   { key: "star", label: "Star" },
   { key: "player", label: "Player", required: true },

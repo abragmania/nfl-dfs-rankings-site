@@ -259,7 +259,7 @@ export function resetAll(current) {
 /**
  * Merges overrides onto board rows without adding or dropping any row (PROJECT.md D27). Each returned
  * row keeps its original fields plus projBase, ownBase (the pre-override values), proj/own replaced by
- * the override when present, override: {proj, own} (null when not overridden), starred and note.
+ * the override when present, override: {proj, own} (null when not overridden), and starred; the stored notes are kept in the file but no longer sent on the rows.
  * Adam 2026-10-22, the ± bump: proj (typed or base, when a finite number) and row.tg's point figures (bumpFigures) are
  * scaled by the player's steps, and override.bump carries the steps, present only when he has a bump (as revive).
  */
@@ -267,7 +267,6 @@ export function mergeOverridesIntoRows(rows, overrides) {
   const proj = overrides?.proj ?? {};
   const own = overrides?.own ?? {};
   const stars = new Set(overrides?.stars ?? []);
-  const notes = overrides?.notes ?? {};
   const revive = new Set(overrides?.revive ?? []);
   const bump = overrides?.bump ?? {};
 
@@ -286,8 +285,7 @@ export function mergeOverridesIntoRows(rows, overrides) {
       override: {
         proj: hasProj ? proj[row.id] : null, own: hasOwn ? own[row.id] : null, ...(marked ? { revive: true } : {}), ...(steps ? { bump: steps } : {})
       },
-      starred: stars.has(row.id),
-      note: Object.prototype.hasOwnProperty.call(notes, row.id) ? notes[row.id] : null
+      starred: stars.has(row.id)
     };
     if (Object.prototype.hasOwnProperty.call(row, "tg")) out.tg = bumpFigures(row.tg, steps);
     return out;

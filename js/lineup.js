@@ -44,7 +44,7 @@ import { ruleOn } from "./lineup-settings.js";
 import { paintStarredQbChip } from "./filterbar.js";
 import { setPoolCallbacks, poolStarClick, panelHtml, savedOfActiveSlate, starredQbChipView, poolColumnSetup, CLASSIC_POOL_PICK_SKIP, shownSavedLineups, poolPickerNow } from "./lineup-view.js";
 import { wireColumns } from "./columns.js";
-import { wirePoolEdits, takePoolEdit, restorePoolEdit } from "./lineup-pool-edit.js"; // C9, C17: the pool's typed Proj and Own and its note pencil, taken over from the retired ranked list
+import { wirePoolEdits, takePoolEdit, restorePoolEdit } from "./lineup-pool-edit.js"; // C9, C17: the pool's typed Proj and Own, taken over from the retired ranked list
 import { clearLineupHasContent, clearedLineup } from "./lineup-clear.js"; // B6: Clear lineup empties the slots and their locks, never the excludes
 import { wireDkDownload } from "./dk-lineup-ui.js"; // A12: Download DK CSV for the saved lineups ticked
 import { takeOpenLimit, restoreOpenLimit, limitRefusals, dropOlderLimitRefusals, noteLimitPress } from "./limit-box.js"; // A3: the Min % and Max % boxes survive a redraw; a refused text is held
@@ -315,7 +315,7 @@ export function renderLineupPanel(container, callbacks) {
   pruneQbStacks(store.get().board);
   syncOptimizerSlate();
   syncLeftOut({ key: currentMemoryKey(), board: store.get().board, container, commit }); // Part F: the Cash tab's Left out panel asks again when its board or settings changed (its own draw comes with the panel's)
-  wirePoolEdits(container, { rowOf: (id) => store.get().board?.rows.find((r) => String(r.id) === String(id)) }); // C9, C17: the pool's typed Proj and Own and its note pencil (one listener on the mount)
+  wirePoolEdits(container, { rowOf: (id) => store.get().board?.rows.find((r) => String(r.id) === String(id)) }); // C9, C17: the pool's typed Proj and Own (one listener on the mount)
   wireStaleMessages(container, {
     hasAny: () => Boolean(state.dkStatus || state.saveConfirm || state.addError || state.memoryNote || limitRefusals().length),
     clear: () => { state.dkStatus = ""; state.saveConfirm = null; state.memoryNote = ""; clearAddMessage(); dropOlderLimitRefusals(container); }, // a refused Min % / Max % text made in this very press stays (limit-box.js)
@@ -323,7 +323,7 @@ export function renderLineupPanel(container, callbacks) {
     selector: ".dk-status, .row-msg-warn, .row-msg-notice, .lineup-status:not(.lineup-status-error):not(.lineup-status-warning)", // a notice such as `Saved "..."`, the DK status, an amber refusal
   });
   const openLimit = takeOpenLimit(); // a Min % or Max % box he is typing in survives the redraw with its text and focus (A3)
-  const openEdit = takePoolEdit(container); // so does a typed Proj, Own or note box
+  const openEdit = takePoolEdit(container); // so does a typed Proj or Own box
   container.innerHTML = panelHtml();
   wire(container);
   restoreOpenLimit(container, openLimit);

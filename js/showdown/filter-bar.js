@@ -149,7 +149,7 @@ export function boxValue(el) {
 /** Reset all's question on the Optimizer's `tab` ("gpp" or "cash", Part F): it clears that tab's typed numbers and bumps only. Pure. */
 export function tabResetQuestion(tab) {
   const [mine, other] = tab === "cash" ? ["Cash", "GPP"] : ["GPP", "Cash"];
-  return `Clear every typed projection, typed ownership and bump on the ${mine} tab? The ${other} tab's, and stars and notes, stay.`;
+  return `Clear every typed projection, typed ownership and bump on the ${mine} tab? The ${other} tab's, and stars, stay.`;
 }
 
 /** True when both ends of the salary range are set and the Min is above the Max. */

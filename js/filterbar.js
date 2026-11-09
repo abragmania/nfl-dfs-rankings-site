@@ -176,7 +176,7 @@ export function renderFilterBar(container, teamAbbrs, filters, callbacks, hasOve
   });
 
   // A6 (round 3): the one question, asked beside the button, the same on the app and on the site. D72: the reset clears typed numbers and bumps only;
-  // stars and notes stay. On the public site it puts back the published numbers (D71; site-src/site-overrides.js).
+  // stars stay. On the public site it puts back the published numbers (D71; site-src/site-overrides.js).
   const resetBtn = container.querySelector("#reset-overrides-btn");
   resetBtn.addEventListener("click", () => {
     if (resetBtn.disabled) return;
@@ -194,7 +194,7 @@ export function hasAnyOverride(rows, siteTypedNumbers) {
   return (rows ?? []).some((r) => r.override && (r.override.proj != null || r.override.own != null || bumpStepsOf(r) !== 0));
 }
 
-export const RESET_ALL_QUESTION ="Clear every typed projection, typed ownership and bump? Stars and notes stay.";
+export const RESET_ALL_QUESTION ="Clear every typed projection, typed ownership and bump? Stars stay.";
 
 /** A write that failed beside the button it came from (the project's rule: a failed write is shown beside what was clicked), in red; the next one replaces it. */
 export function showButtonError(btn, text) {

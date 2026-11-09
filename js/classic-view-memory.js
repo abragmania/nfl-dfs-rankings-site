@@ -5,7 +5,7 @@
 import { readMemory, updateMemory, slateEntry, classicMemoryKey, cleanClassicFilters, storableClassicFilters, cleanSort } from "./memory.js";
 
 /** The columns a remembered sort may name: the pool's (lineup-pool.js), which every classic list sorts by. */
-export const SORT_COLUMNS = ["star", "player", "pos", "salary", "proj", "own", "value", "tgMed", "tgNuke", "tgP3x", "tgP4x", "tags", "note"];
+export const SORT_COLUMNS = ["star", "player", "pos", "salary", "proj", "own", "value", "tgMed", "tgNuke", "tgP3x", "tgP4x", "tags"];
 
 /** The teams of a list of games, sorted. */
 export function uniqueTeams(games) {

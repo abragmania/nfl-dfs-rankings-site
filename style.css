@@ -797,35 +797,6 @@ body.table-expanded { overflow: hidden; }
   text-shadow: 0 1px 1px rgba(0, 0, 0, 0.45);
 }
 
-/* Monochrome pencil glyph (was a colour emoji, always visible): hidden until the row is hovered or a
-   note already exists, so an empty row reads clean (👁 visual-qa). */
-.note-icon {
-  cursor: pointer;
-  background: none;
-  border: none;
-  color: var(--text-dim);
-  opacity: 0;
-  font-size: var(--fs-base);
-  line-height: 1;
-  padding: 0;
-}
-.rank-row:hover .note-icon, .lineup-row:hover .note-icon, .note-icon.has-note { opacity: 1; }
-.note-icon:hover { color: var(--text); }
-.note-edit-input {
-  width: 160px;
-  background: var(--bg-elevated-2);
-  border: 1px solid var(--accent);
-  color: var(--text);
-  border-radius: 4px;
-  padding: 2px 4px;
-  font-size: var(--fs-sm);
-}
-.note-preview {
-  font-size: var(--fs-sm);
-  color: var(--text-muted);
-  cursor: default;
-}
-
 .star-btn {
   cursor: pointer;
   background: none;
@@ -931,14 +902,13 @@ tr:last-child .cell-edit-hint, tr:last-child .cell-edit-error { top: auto; botto
   cursor: default;
 }
 
-/* The classic pool's extra columns (round 5, C9 and C17: what the ranked list had, offered through the Columns list): TwoGun's Med, Nuke, 3x% and 4x% (table.js TG_COLUMNS) on a TwoGun board, Pos, Tags and Note.
-   Numbers right-align like every figure; a Tags cell holds a pill or two (the reasons are hover-only, .tag-reason below) and a Note cell the first words of his note, the rest on hover. */
+/* The classic pool's extra columns (round 5, C9 and C17: what the ranked list had, offered through the Columns list): TwoGun's Med, Nuke, 3x% and 4x% (table.js TG_COLUMNS) on a TwoGun board, Pos and Tags.
+   Numbers right-align like every figure; a Tags cell holds a pill or two (the reasons are hover-only, .tag-reason below). */
 .lineup-pool-table th.tg-col, .lineup-pool-table td.tg-col { padding-left: 6px; padding-right: 6px; }
 .lineup-pool-table th .sort-arrow { font-size: 9px; }
 .lineup-pool-table td.tags-cell { line-height: 1.6; }
-.lineup-pool-table td.note-col { max-width: 70px; overflow: hidden; text-overflow: ellipsis; }
-/* A15 (round 5): the table always fits its wrapper, whatever columns are ticked and however long a note or a tag is, so the page never scrolls sideways (1760px and wider, where the pool has no margin to spare). The
-   cells that can hold long text wrap instead of widening the column: the matchup line under a name, the tags (a pill wraps inside its own box and is never cut), and the note is already capped at 160px. The name
+/* A15 (round 5): the table always fits its wrapper, whatever columns are ticked and however long a tag is, so the page never scrolls sideways (1760px and wider, where the pool has no margin to spare). The
+   cells that can hold long text wrap instead of widening the column: the matchup line under a name, the tags (a pill wraps inside its own box and is never cut). The name
    line (logo, name, position, injury letter) never wraps: when the ticked columns still overflow the panel, pool-fit.js caps it (--lp-name-max) and the name alone ends in an ellipsis, its full name the hover. */
 .lineup-pool-table td.lp-name { white-space: normal; }
 .lineup-pool-table td.lp-name .lp-l1 { white-space: nowrap; flex-wrap: nowrap; max-width: var(--lp-name-max, 100%); } /* one line, never wrapped; pool-fit.js caps it only when the ticked columns would overflow the panel */
@@ -1334,7 +1304,7 @@ tr:last-child .cell-edit-hint, tr:last-child .cell-edit-error { top: auto; botto
 .lineup-pool-table .lp-l2 .meta-pill, .sd-pool-table .lp-l2 .meta-pill { padding: 0; border: 0; background: none; font-size: 11px; line-height: 13px; }
 .lineup-pool-table .lp-name .row-msg { max-width: 300px; }
 .lineup-pool-table th:not(.lp-fill), .lineup-pool-table td:not(.lp-fill) { padding-left: 4px; padding-right: 4px; }
-.lineup-pool-table :is(th, td):is(.tags-cell, .note-col) { padding-left: 3px; padding-right: 3px; }
+.lineup-pool-table :is(th, td):is(.tags-cell) { padding-left: 3px; padding-right: 3px; }
 .lineup-pool-table :is(th, td).tg-col { padding-left: 2px; padding-right: 2px; } /* the extra columns sit tight, so every column ticked still fits the pool's width beside the band (A15 round 5) */
 .lineup-pool-table .lineup-thumbs-cell { padding-left: 2px; padding-right: 2px; }
 .lineup-pool-table .lineup-row-btn:not(.row-ico) { padding: 2px 5px; }
@@ -1757,8 +1727,6 @@ th.sd-cpt-col.sorted { color: var(--amber); }
 .sd-pool-table :is(th, td) { text-align: right; font-variant-numeric: tabular-nums; }
 .sd-pool-table :is(th, td):first-child, .sd-pool-table th[data-col="player"], .sd-pool-table td.sd-name-cell { text-align: left; }
 .sd-pool-table td .editable-cell { display: flex; justify-content: flex-end; cursor: text; } /* B3: the Proj and Own cells are click-to-type; the figure stays right-aligned in its column */
-.sd-pool-table .note-slot { display: inline-block; margin-left: 4px; vertical-align: middle; } /* C23: the pencil sits beside the name, as classic's */
-.sd-pool-table .note-icon.note-static { cursor: help; }
 .sd-pool-table .star-btn.star-static { cursor: default; }
 .sd-pool-table .player-cell { max-width: none; } /* the name column grows with the tags beside the name (seat tag, padlock): no name is cut inside the panel (Round 2 fix 16) */
 .sd-pool-table :is(th, td).sd-fill { width: 100%; min-width: 0; padding: 0; }
@@ -2704,16 +2672,14 @@ td.opt-exp-opp { color: var(--text-muted); } /* the cells only: the Matchup head
 .lineup-pool-table td.lp-proj .row-reset.reset-icon { right: 0; width: 16px; height: 24px; font-size: 15px; display: inline-flex; align-items: center; justify-content: center; }
 /* Showdown's x: the same room beside the bumped figure's chip (it overlapped the green chip), kept in every row's projection cell (the cell of the figure), so the figures stay in line. */
 .sd-pool-table td:is(:has(.bump-fig), :has(.row-reset)) { padding-right: 18px; }
-/* A3, B3: the typed-number and note boxes, a Min % / Max % box's hint and any `Not saved` hang under their cell, so the pool's cells let them show (the table's cells clip their content). */
+/* A3, B3: the typed-number boxes, a Min % / Max % box's hint and any `Not saved` hang under their cell, so the pool's cells let them show (the table's cells clip their content). */
 .sd-pool-table td:is(:has(.cell-edit-wrap), :has(.cell-not-saved), :has(.limit-hint)) { overflow: visible; }
 .sd-pool-table td.lineup-min-cell, .sd-pool-table td.lineup-max-cell { position: relative; }
 .sd-pool-table td .row-reset.reset-icon { right: 0; width: 16px; height: 24px; font-size: 15px; display: inline-flex; align-items: center; justify-content: center; }
 .row-reset.reset-icon:disabled { opacity: 0.3; cursor: default; }
 
-/* A3: a refused number on a click away shows "Not saved" under the cell, as the editor's own message does (.cell-edit-error); the note box carries the same hint. */
+/* A3: a refused number on a click away shows "Not saved" under the cell, as the editor's own message does (.cell-edit-error). */
 .lineup-pool-table td:has(.cell-not-saved) { overflow: visible; }
-.note-edit-wrap { display: inline-block; }
-.note-edit-wrap .cell-edit-hint { right: auto; left: 0; }
 .lineup-pool-table td.lineup-min-cell, .lineup-pool-table td.lineup-max-cell { position: relative; } /* the Min % and Max % boxes' hint and "Not saved" hang under the cell (limit-box.js) */
 
 /* B13, A6, C11: the confirm beside the control that asked (confirm-inline.js). */
@@ -2732,17 +2698,15 @@ td.opt-exp-opp { color: var(--text-muted); } /* the cells only: the Matchup head
 .confirm-right > .inline-confirm { right: 0; }
 .confirm-left > .inline-confirm { left: 0; }
 /* Round 4 item 16: Clear lineup's question takes the button's own place (the button steps aside while it is open), so it covers neither the CPT slot's label nor Save working lineup. */
-/* Item 15: a write is out: the figure, star or pencil is dimmed and pulses until the answered board redraws it (a refusal puts it back with the red message). */
+/* Item 15: a write is out: the figure or star is dimmed and pulses until the answered board redraws it (a refusal puts it back with the red message). */
 .is-pending { opacity: 0.5; animation: sd-pending 1s ease-in-out infinite; }
 @keyframes sd-pending { 50% { opacity: 0.85; } }
 @media (prefers-reduced-motion: reduce) { .is-pending { animation: none; } }
-/* Item 14: nothing moves when a box opens or a man is seated. The note box floats over the name cell (absolute, no row height change; its pencil's place is kept), and the
+/* Item 14: nothing moves when a box opens or a man is seated. The
    seat tag and padlock have a place of their own that is held whether they are drawn or not, so seating a man shifts no column. */
 .sd-pool-table td .editable-cell .cell-edit-wrap { width: 100%; }
 .sd-pool-table td .editable-cell .cell-edit-input { width: 100%; min-width: 0; padding: 1px 2px; text-align: right; } /* the box takes the width its column already has: opening it moves no column */
 .sd-pool-table td .editable-cell .cell-edit-input::-webkit-inner-spin-button, .sd-pool-table td .editable-cell .cell-edit-input::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
-.sd-pool-table .note-slot { position: relative; min-width: 14px; min-height: 1em; vertical-align: middle; }
-.sd-pool-table .note-edit-wrap { position: absolute; left: 0; top: 50%; transform: translateY(-50%); z-index: 6; }
 .sd-pool-table .sd-seat-slot { display: inline-flex; align-items: center; gap: 4px; min-width: 56px; vertical-align: middle; }
 /* Item 19: the Captain columns are gold already, so a typed number there (amber everywhere else) would be gold on gold: it reads as bold body-colour text on a gold wash. */
 .sd-pool-table td.sd-cpt-col .cell-value.is-override { color: var(--text); font-weight: 700; background: rgba(var(--amber-rgb), 0.28); border-radius: 3px; padding: 0 4px; }
@@ -2907,7 +2871,7 @@ td.opt-exp-opp { color: var(--text-muted); } /* the cells only: the Matchup head
   .is-site #classic-main > .tabs, .is-site #showdown-main > .tabs { flex-wrap: wrap; max-width: 100vw; }
   .tabs .tab-btn { padding-left: var(--sp-2); padding-right: var(--sp-2); }
   /* Classic's pool on a phone (PROJECT.md Part 4, phone table columns): Player, Sal, Proj, Val, Own and nothing beside them; a tap on a row still puts the man in the lineup, and Columns still chooses the rest on a wider screen. */
-  .lineup-pool-table :is(th, td):is(.lineup-star-col, .lineup-thumbs-head, .lineup-thumbs-cell, .lineup-lock-head, .lineup-exclude-head, .lineup-row-actions, .lineup-min-head, .lineup-max-head, .lineup-min-cell, .lineup-max-cell, .lineup-cash-head, .lineup-cash-cell, .pos-col, .tags-cell, .note-col, .tg-col, .lp-fill) { display: none; }
+  .lineup-pool-table :is(th, td):is(.lineup-star-col, .lineup-thumbs-head, .lineup-thumbs-cell, .lineup-lock-head, .lineup-exclude-head, .lineup-row-actions, .lineup-min-head, .lineup-max-head, .lineup-min-cell, .lineup-max-cell, .lineup-cash-head, .lineup-cash-cell, .pos-col, .tags-cell, .tg-col, .lp-fill) { display: none; }
   .lineup-pool-table th:not(.lp-fill), .lineup-pool-table td:not(.lp-fill) { padding-left: 2px; padding-right: 2px; }
   .lineup-pool-table td.lp-num { font-size: 13px; }
   /* The Player cell is the one that gives: the figures keep their width and it takes what is left, its name and matchup cut at the end. */

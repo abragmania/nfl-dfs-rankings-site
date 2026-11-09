@@ -116,7 +116,7 @@ const tabBoards = makeTabBoards({
   fail: (text, rowId) => failWrite(text, rowId),
 });
 tabBoards.setKey(CLASSIC_KEY);
-/** A write that answers a board (`send(tab)` makes the request) on the tab on screen (a typed number, a bump, a reset); `shared` for a star or a note, kept once for both tabs, and for a change every board reads (`postMode`), which re-reads the other tab. */
+/** A write that answers a board (`send(tab)` makes the request) on the tab on screen (a typed number, a bump, a reset); `shared` for a star, kept once for both tabs, and for a change every board reads (`postMode`), which re-reads the other tab. */
 const writeOnTab = (send, label, { shared = false, rowId } = {}) => tabBoards.write(shownBoardTab(), (_key, tab) => send(tab), label, { shared, rowId });
 // A read through the shown tab's flow (it paints unless newer answers were painted meanwhile; `okOnly` keeps the last good board on a bad answer), the other tab's read alongside so a tab switch finds it kept.
 function loadBoard(opts) {
@@ -245,7 +245,7 @@ function onGameClick(gameId) {
 }
 
 const tableCallbacks = {
-  // Part F: stars and notes are kept once for both tabs (`shared` re-reads the other tab's board); a typed number, a bump and a row's reset are the tab on screen's own.
+  // Part F: stars are kept once for both tabs (`shared` re-reads the other tab's board); a typed number, a bump and a row's reset are the tab on screen's own.
   onToggleStar: async (id) => {
     const row = findRow(id);
     await writeOnTab((tab) => putOverrides({ stars: { [id]: !row?.starred } }, tab), undefined, { rowId: id, shared: true });
@@ -254,9 +254,6 @@ const tableCallbacks = {
   onResetRow: (id) => writeOnTab((tab) => deleteOverride(id, tab), "the reset", { rowId: id }), // the board it answers, null when refused
   onEditValue: async (id, field, value) => {
     await writeOnTab((tab) => putOverrides({ [field]: { [id]: value } }, tab), undefined, { rowId: id });
-  },
-  onEditNote: async (id, text) => {
-    await writeOnTab((tab) => putOverrides({ notes: { [id]: text } }, tab), undefined, { rowId: id, shared: true });
   },
   // Adam 2026-10-22: ± bump from an Optimizer pool row (bumpPatch: 0 steps is sent as null, which removes it). Applied as a star
   // toggle's answer is; the answer (null when refused) goes back so the pair is re-enabled only after a refusal.

@@ -1,9 +1,9 @@
-// What the Showdown pool's star, typed Proj and Own cells and note pencil need (pool-edit.js wirePoolEdits), and the two messages a pool row can carry beside itself:
+// What the Showdown pool's star, typed Proj and Own cells need (pool-edit.js wirePoolEdits), and the two messages a pool row can carry beside itself:
 // moved out of lineup.js (round 5, to keep that file under its cap) unchanged in behaviour. The panel's state, its redraw and view.js's board writer come in as arguments,
 // because lineup.js owns them and reassigns the writer when the view is drawn.
 import { rowIsOut } from "../table.js";
 import { putShowdownOverrides } from "./optimizer.js";
-import { projPatch, ownPatch, starPatch, notePatch } from "./pool-edit.js"; // B2, B3, C23
+import { projPatch, ownPatch, starPatch } from "./pool-edit.js"; // B2, B3
 import { playerFigures } from "./lineup-meter.js";
 import { findRow } from "./lineup-saved.js";
 
@@ -25,11 +25,11 @@ export function rowNoticeIn(state, commit, id, text) {
   commit();
 }
 
-/** What the star, the typed Proj and Own cells and the pencil need: the writes go through view.js's board writer (`boardWrite()` gives the current one, or null), which applies the answered board and
+/** What the star, the typed Proj and Own cells need: the writes go through view.js's board writer (`boardWrite()` gives the current one, or null), which applies the answered board and
  *  says a refusal in the status line; each answers whether the server took it. */
 export function editCtxFor({ board, state, commit, boardWrite }) {
   const rowError = (id, text) => rowErrorIn(state, commit, id, text);
-  // Part F: the write goes to the tab on screen (view.js passes it as `tab`); a star or a note is kept once for both tabs (`shared`), so the other tab's board is read again.
+  // Part F: the write goes to the tab on screen (view.js passes it as `tab`); a star is kept once for both tabs (`shared`), so the other tab's board is read again.
   const write = (patch, label, shared = false) => {
     const writer = boardWrite();
     return patch && writer ? writer((key, tab) => putShowdownOverrides(key, patch, undefined, tab), label, { shared }) : Promise.resolve(false);
@@ -46,7 +46,6 @@ export function editCtxFor({ board, state, commit, boardWrite }) {
       if (taken && field === "proj" && value > 0 && rowIsOut(row) && board?.mode?.cashMode === "twogun") rowNoticeIn(state, commit, row.id, SET_ASIDE_NOTICE);
       return taken;
     },
-    saveNote: (row, text) => write(notePatch(row, text), "the note", true),
     toggleStar: (row) => write(starPatch(row), "the star", true),
     rowError,
   };

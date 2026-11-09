@@ -153,7 +153,6 @@ export function publishedOverrides(board) {
     if (row.override?.revive === true) out.revive.push(id);
     if (row.override?.own != null) out.own[id] = row.override.own;
     if (row.starred === true && !out.stars.includes(id)) out.stars.push(id);
-    if (row.note != null) out.notes[id] = row.note;
   }
   return out;
 }

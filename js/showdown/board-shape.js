@@ -43,7 +43,6 @@ function normalizeRow(r) {
     levCpt: null,
     flags: r.flags ?? [],
     tags: r.tags ?? [],
-    note: r.note ?? "",
   };
 }
 
