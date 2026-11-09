@@ -2294,9 +2294,6 @@ td.opt-exp-opp { color: var(--text-muted); } /* the cells only: the Matchup head
 
 /* Cash mode job 3b (2026-10-17; plan: data/findings/cash-research/cashmode-plan-2026-10-17.md): the GPP | Cash switch, the $ chip,
    the Must | Want | Fine chip and its narrow pool column, the unused-cap chip and the swap decision on a cash card. --cash is the value green. */
-.opt-mode-switch .tg-mode-btn { display: inline-flex; align-items: center; gap: 5px; }
-.opt-mode-switch .tg-mode-btn.active[data-opt-mode="cash"] { background: var(--cash); }
-.opt-title .opt-mode-switch { font-weight: 400; margin-left: var(--sp-2); }
 .cash-chip { display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto; width: 16px; height: 16px; border-radius: 50%; background: var(--cash); color: #ffffff; font-size: 11px; font-weight: 800; line-height: 1; }
 .tg-mode-btn.active .cash-chip { box-shadow: 0 0 0 1.5px #ffffff; }
 .cash-pick { display: inline-flex; border: 1px solid var(--border); border-radius: 5px; overflow: hidden; }
@@ -2888,7 +2885,8 @@ td.opt-exp-opp { color: var(--text-muted); } /* the cells only: the Matchup head
 .sd-lo-fig { display: flex; align-items: baseline; gap: 3px; }
 .sd-lo-fig i { font-style: normal; font-size: 10px; letter-spacing: 0.04em; color: var(--text-dim); }
 .sd-lo-fig b { font-weight: 700; }
-.sd-lo-way { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.sd-lo-way { flex: 1 1 auto; min-width: 0; white-space: normal; overflow-wrap: anywhere; } /* wraps, never cut: it is the whole answer to "how does he get in" */
+#opt-panel .opt-lockinfo { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } /* classic's held line in the Build box, as .sd-opt-build's: one line, the hover has the full text (A15) */
 .sd-lo-noway { color: var(--text-dim); }
 .sd-lo-swap { flex: 0 0 auto; font-weight: 600; }
 /* A window too narrow for the panel's 900px: the field sentence takes a line of its own under the name, so no name or sentence is cut. */
@@ -2908,4 +2906,23 @@ td.opt-exp-opp { color: var(--text-muted); } /* the cells only: the Matchup head
   #classic-main > .tabs, #showdown-main > .tabs { flex-wrap: nowrap; overflow-x: auto; gap: 0; margin-left: calc(-1 * var(--sp-3)); margin-right: calc(-1 * var(--sp-3)); padding-left: var(--sp-3); padding-right: var(--sp-3); }
   .is-site #classic-main > .tabs, .is-site #showdown-main > .tabs { flex-wrap: wrap; max-width: 100vw; }
   .tabs .tab-btn { padding-left: var(--sp-2); padding-right: var(--sp-2); }
+  /* Classic's pool on a phone (PROJECT.md Part 4, phone table columns): Player, Sal, Proj, Val, Own and nothing beside them; a tap on a row still puts the man in the lineup, and Columns still chooses the rest on a wider screen. */
+  .lineup-pool-table :is(th, td):is(.lineup-star-col, .lineup-thumbs-head, .lineup-thumbs-cell, .lineup-lock-head, .lineup-exclude-head, .lineup-row-actions, .lineup-min-head, .lineup-max-head, .lineup-min-cell, .lineup-max-cell, .lineup-cash-head, .lineup-cash-cell, .pos-col, .tags-cell, .note-col, .tg-col, .lp-fill) { display: none; }
+  .lineup-pool-table th:not(.lp-fill), .lineup-pool-table td:not(.lp-fill) { padding-left: 2px; padding-right: 2px; }
+  .lineup-pool-table td.lp-num { font-size: 13px; }
+  /* The Player cell is the one that gives: the figures keep their width and it takes what is left, its name and matchup cut at the end. */
+  .lineup-pool-table td.lp-name { width: 100%; max-width: 0; overflow: hidden; }
+  .lineup-pool-table td.lp-name .lp-l1 { max-width: 100%; }
+  .lineup-pool-table td.lp-name .lp-l2 { overflow: hidden; text-overflow: ellipsis; }
+  /* Left out: the figures on their own line in every row, so the rows line up. */
+  .sd-lo-line:first-child .sd-lo-figs { order: 4; flex: 1 0 100%; margin-left: 0; }
+  /* The Build row: the summary reads whole on its own line beside nothing (the row has not been sticky since A15). */
+  .opt-footer > .opt-summary { flex: 1 1 100%; white-space: normal; overflow: visible; }
+  #opt-panel .opt-set-label { white-space: nowrap; flex: none; }
+  /* The Max % boxes: the placeholder fits with less side padding. */
+  .opt-settings .opt-cap .opt-input { padding-left: 2px; padding-right: 2px; }
+  .opt-settings .opt-cap .opt-input::placeholder { font-size: 11px; }
+  /* The exposure table keeps to the screen: the position and matchup go and anything still wide scrolls inside the box, never the page. */
+  .opt-exp-table :is(th, td):is(.opt-exp-opp, .opt-exp-pos) { display: none; }
+  .opt-exp-box { overflow-x: auto; }
 }

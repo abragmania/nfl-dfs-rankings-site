@@ -20,13 +20,15 @@ export function makeTabBoards({ read, shape = (b) => b, shownTab, show, fail }) 
   let boards = { gpp: null, cash: null };
   let seqs = null;
   let flows = null;
+  let drew = undefined; // what the last land()'s show() answered: a painter that waits (classic's, for the salary warnings) hands the flow its promise
 
   /** Keeps a board answer for `tab` of game `forKey` (asked in visit `asked`, the current one when absent); paints it when that tab is on screen. False (and nothing kept) for
-   *  another game's answer or an earlier visit's. */
-  function land(forKey, tab, raw, asked = gen) {
+   *  another game's answer or an earlier visit's. `n`, the flow's number, is handed to show() (absent for an answer taken by hand). */
+  function land(forKey, tab, raw, asked = gen, n) {
+    drew = undefined;
     if (asked !== gen || forKey !== key || (raw?.key && raw.key !== forKey)) return false;
     boards = { ...boards, [tab]: shape(raw) };
-    if (tab === shownTab()) show(boards[tab], tab, forKey);
+    if (tab === shownTab()) drew = show(boards[tab], tab, forKey, n);
     return true;
   }
 
@@ -35,7 +37,7 @@ export function makeTabBoards({ read, shape = (b) => b, shownTab, show, fail }) 
     const g = ++gen;
     boards = { gpp: null, cash: null };
     seqs = { gpp: makeWriteSeq(), cash: makeWriteSeq() };
-    flows = Object.fromEntries(BOARD_TABS.map((tab) => [tab, makeBoardFlow({ seq: seqs[tab], getBoard: () => read(k, tab), paint: (raw) => land(k, tab, raw, g), fail })]));
+    flows = Object.fromEntries(BOARD_TABS.map((tab) => [tab, makeBoardFlow({ seq: seqs[tab], getBoard: () => read(k, tab), paint: (raw, n) => (land(k, tab, raw, g, n) ? drew : false), fail })]));
   }
   start(null);
 
@@ -58,16 +60,21 @@ export function makeTabBoards({ read, shape = (b) => b, shownTab, show, fail }) 
     /** A read, a refresh or a paste for `tab` is starting: its number (take(tab, n) when it answers). */
     begin: (tab) => seqs[tab].start(),
     take: (tab, n) => seqs[tab].take(n),
+    /** True while no newer answer for `tab` has been painted (write-seq.js current): the check a painter that waits makes again. */
+    current: (tab, n) => seqs[tab].current(n),
     land,
     reread,
+    /** A read of `tab`'s board through its flow, which paints it unless newer ones were painted meanwhile; unlike reread it throws, and `okOnly` false paints a refused answer (the page's failure line). */
+    load: (tab, opts) => flows[tab].loadBoard(opts),
     /**
      * A write on `tab` (a typed number, a bump, a revive, a row reset, Reset all, a star, a note): `send(key, tab)` makes the request, which answers that tab's board.
-     * `shared` (a star or a note, kept once for both tabs): the other tab's board is read again once the write is taken. Resolves to the answer, or null when it was not taken.
+     * `shared` (a star or a note, kept once for both tabs): the other tab's board is read again once the write is taken. `rowId`: said beside that row on a refusal (classic's fail).
+     * Resolves to the answer, or null when it was not taken.
      */
-    async write(tab, send, label, { shared = false } = {}) {
+    async write(tab, send, label, { shared = false, rowId } = {}) {
       const k = key;
       const g = gen;
-      const data = await flows[tab].runWrite(() => send(k, tab), { label });
+      const data = await flows[tab].runWrite(() => send(k, tab), { label, rowId });
       if (data !== null && shared && g === gen) reread(otherTab(tab));
       return data;
     },

@@ -7,7 +7,7 @@ import { escapeHtml, dec1 } from "../format.js";
 import { buildingHtml, goLabelHtml, buildingRowClass, BUILDING_LABEL } from "../lineup-stop.js";
 import { statusLineHtml, statusToneClass } from "../row-message.js"; // A14: red only for an error
 import { settingRowHtml, settingGroupHtml, numberBoxHtml, countNote } from "../lineup-settings.js";
-import { cashChipHtml, cashMedianText, unusedCapText, builtInTextCash } from "../lineup-cash.js";
+import { cashChipHtml, cashMedianText, unusedCapText, builtInTextCash, modeTabsHtml } from "../lineup-cash.js";
 import { lineupTotals, lineupTotalsHtml } from "../lineup-totals.js"; // A11
 import { doneNoteHtml } from "../build-notice.js"; // A15: `Build finished.` beside the Build button
 import { cardPlayerRowHtml, teamColours } from "../lineup-card.js";
@@ -67,13 +67,6 @@ function teamSelectHtml(value) {
  */
 export function bandHtml(v) {
   return bandHeadHtml(v) + bandBoxesHtml(v);
-}
-
-/** The GPP and Cash tabs (optimizer standard Part F, Adam 5:12 PM 2026-11-04: separate tabs, each with its own settings, lineup and batch). The classic `.opt-tab` look; the buttons keep `data-opt-mode`, which wireBand reads. */
-export function modeTabsHtml(mode) {
-  const active = mode === "cash" ? "cash" : "gpp";
-  const tab = (value, inner, title) => `<button type="button" role="tab" class="opt-tab sd-opt-tab${active === value ? " active" : ""}" data-opt-mode="${value}" aria-selected="${active === value}" title="${escapeHtml(title)}">${inner}</button>`;
-  return `<div class="opt-tabs sd-opt-tabs" role="tablist" aria-label="Lineup type">${tab("gpp", "GPP", "Tournament lineups: this tab's own settings, lineup and lineups")}${tab("cash", `${cashChipHtml()} Cash`, "Cash-game lineups: this tab's own settings, lineup and lineups")}</div>`;
 }
 
 /** The head: one line with the tab pair at the top, the title beside it and a refused Make's sentence, then a blocked

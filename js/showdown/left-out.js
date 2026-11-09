@@ -18,8 +18,8 @@ import { playerFigures } from "./lineup-meter.js";
 import { SALARY_CAP, FLEX_COUNT } from "./lineup-saved.js";
 import { boardIndex, TEAM_OPTIONS, DEFAULT_MAX_PER_TEAM } from "./optimizer-state.js";
 
-/** The lead's setting for Adam's phrase "heavily owned", not a sourced figure. */
-export const HEAVILY_OWNED_PCT = 20;
+import { HEAVILY_OWNED_PCT } from "../left-out-rule.js"; // the lead's setting for "heavily owned", one copy for both Optimizers
+export { HEAVILY_OWNED_PCT };
 const MAX_LISTED = 3; // Part F, Adam's steer: one to three men only
 
 const CPT_INDEX = 0; // a seat's index: 0 the Captain, 1 to 5 the FLEX seats (seats.js lockedSeatPositions)

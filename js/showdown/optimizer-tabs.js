@@ -20,14 +20,14 @@ export const newTabs = () => ({ gpp: newTab(), cash: newTab() });
 /** The tab a mode name means ("cash", anything else GPP). */
 export const tabName = (mode) => (mode === "cash" ? "cash" : "gpp");
 
-/** Makes each per-tab field a property of `opt` that reads and writes the tab on screen (`opt.tabs[opt.ks.mode]`). */
-export function bindTabFields(opt) {
-  for (const field of Object.keys(newTab())) {
+/** Makes each per-tab field a property of `opt` that reads and writes the tab on screen (`opt.tabs[opt.ks.mode]`). The classic Optimizer's differ only by where its mode is kept (`modeOf`) and one more field (`blank`). */
+export function bindTabFields(opt, { modeOf = (o) => o.ks?.mode, blank = newTab } = {}) {
+  for (const field of Object.keys(blank())) {
     Object.defineProperty(opt, field, {
       enumerable: true,
       configurable: true,
-      get: () => opt.tabs[tabName(opt.ks?.mode)][field],
-      set: (value) => { opt.tabs[tabName(opt.ks?.mode)][field] = value; },
+      get: () => opt.tabs[tabName(modeOf(opt))][field],
+      set: (value) => { opt.tabs[tabName(modeOf(opt))][field] = value; },
     });
   }
 }

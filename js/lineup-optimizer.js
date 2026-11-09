@@ -25,6 +25,8 @@ import {
   savePersisted, seasonWeekKey, lastContainer, resetOptimizerResults, clearMustHave, qbStacksForRequest, qbGlobals, setMode, removeSlot,
 } from "./lineup.js";
 import { heldSplit, pickOptions, lastExposure, cardIsSaved, optSummaryText, stackDefaultsApply, STACK_INERT_TITLE, savedOfActiveSlate } from "./lineup-view.js";
+import { requestTab } from "./lineup-tabs.js"; // Part F: the GPP | Cash click's gate
+import { buildAfterQuiet } from "./lineup-left-out-panel.js"; // Part F: a Build goes before the quiet Left out build
 
 // ---- Cash mode job 3b, 2026-10-17 (PROJECT.md Part 4 "Cash mode"; the pure pieces are in lineup-cash.js) ----
 
@@ -678,15 +680,16 @@ async function doGenerate() {
     }
   }
   let built = false;
+  const tab = opt.tabs[opt.mode]; // Part F: a build that ends after a tab switch writes to the tab it was made on
   opt.generating = true;
   opt.stopping = false;
   opt.stopError = "";
   opt.canStop = canStopLineupGenerate();
-  opt.error = null;
-  opt.saveError = null;
-  opt.doneNote = false;
+  tab.error = null;
+  tab.saveError = null;
+  tab.doneNote = false;
   buildNotice.reset(); // the last build's notice goes when the next one starts
-  opt.resultsTab = "new"; // D74: a Go shows the New lineups tab
+  tab.resultsTab = "new"; // D74: a Go shows the New lineups tab
   commit();
   const cancelShow = afterBuildingDelay(() => {
     if (!opt.generating) return;
@@ -695,7 +698,7 @@ async function doGenerate() {
     commit();
   });
   try {
-    const data = await postLineupGenerate(sent);
+    const data = await buildAfterQuiet(() => postLineupGenerate(sent)); // the quiet Left out build ends first (its next ask waits for this Build)
     if (seasonWeekKey(store.get().board) !== madeForWeek || (store.get().activeSlateKey ?? null) !== madeForSlate) {
       opt.generating = false;
       commit();
@@ -703,8 +706,8 @@ async function doGenerate() {
     }
     if (!data || data.ok === false) {
       const busy = data?.error?.code === "GENERATE_BUSY";
-      opt.error = busy ? data.error.message || OPT_BUSY_TEXT : data?.error?.message ?? "Could not make lineups.";
-      opt.errorTone = answerTone(data?.error?.code); // a refusal (bad settings, a build already running) is amber; a build that failed outright is red
+      tab.error = busy ? data.error.message || OPT_BUSY_TEXT : data?.error?.message ?? "Could not make lineups.";
+      tab.errorTone = answerTone(data?.error?.code); // a refusal (bad settings, a build already running) is amber; a build that failed outright is red
     } else {
       const lineups = (Array.isArray(data.lineups) ? data.lineups : []).map((l) => ({ ...l, uid: `n${++optSeq}` }));
       const notes = [...slateNotes, ...(Array.isArray(data.notes) ? data.notes : [])];
@@ -720,18 +723,18 @@ async function doGenerate() {
       // batch records the board's Cash basis (board.mode.cashMode, the one the server built by; code review of a9455a0, MUST 1), so
       // its saved records name the basis used; GPP keeps the header's mode.
       const build = { buildId: newBuildId(Date.now(), Math.random()), boardMode: cash ? board.mode.cashMode : boardModeOf(board), objective: form.objective };
-      opt.results = { slateKey, lineups, notes, builtIn, bends, made: lineups.length, marks, ...build };
+      tab.results = { slateKey, lineups, notes, builtIn, bends, made: lineups.length, marks, ...build };
       // Cash mode job 3b: the batch keeps the mode and basis the answer names, and the limits its cards' swap search must respect.
       if (cash) {
-        opt.results.mode = "cash";
-        opt.results.basis = data.basis ?? null;
-        opt.results.cash = { lockedIds: sent.settings.locks, excludedIds: sent.settings.excludes, maxPerTeam: sent.settings.maxPerTeam, avoidGames: sent.settings.avoidGames };
+        tab.results.mode = "cash";
+        tab.results.basis = data.basis ?? null;
+        tab.results.cash = { lockedIds: sent.settings.locks, excludedIds: sent.settings.excludes, maxPerTeam: sent.settings.maxPerTeam, avoidGames: sent.settings.avoidGames };
       }
       built = true;
     }
   } catch (e) {
-    opt.error = `Could not reach the server: ${e.message}`;
-    opt.errorTone = "error";
+    tab.error = `Could not reach the server: ${e.message}`;
+    tab.errorTone = "error";
   } finally {
     cancelShow();
     opt.buildingShown = false;
@@ -741,9 +744,9 @@ async function doGenerate() {
   opt.stopError = "";
   // A15: the page does not move by itself (the results are far below the pool). The Build button's own row says `Build finished.` with a link; with the button off screen the notice under the
   // filter bar says it (or the failure) where he is looking (build-notice.js).
-  opt.doneNote = built;
+  tab.doneNote = built;
   commit();
-  buildNotice.finish({ built, error: opt.error ?? "", tone: opt.errorTone === "warn" ? "warn" : "error" });
+  buildNotice.finish({ built, error: tab.error ?? "", tone: tab.errorTone === "warn" ? "warn" : "error" });
   return built;
 }
 
@@ -954,7 +957,7 @@ export function wireOptimizer(container) {
   bind("#opt-min-unique", "minUnique");
   // Cash mode job 3b, 2026-10-17: the mode switch, cash's own boxes (kept on every keystroke, as the Min % boxes are) and the swap buttons.
   container.querySelectorAll("[data-opt-mode]").forEach((btn) => {
-    btn.addEventListener("click", () => setMode(btn.dataset.optMode));
+    btn.addEventListener("click", () => { if (!opt.saving && !state.saving) requestTab(btn.dataset.optMode, () => setMode(btn.dataset.optMode)); }); // Part F: through app.js's gate, so the tab's own board comes on screen with it; not while a Save (a card's or the working lineup's) is out, whose answer belongs to the tab it started on
   });
   for (const [sel, key, event] of [["#opt-cash-count", "count", "input"],["#opt-cash-max-team", "maxPerTeam", "change"]]) {
     const el = container.querySelector(sel);

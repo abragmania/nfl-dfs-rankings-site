@@ -148,8 +148,8 @@ function sortableHeads() {
     value: { key: "value", label: "Val", cls: "lp-num", headTitle: "Val: projection per $1,000 of salary" },
     pos: { key: "pos", label: "Pos", cls: "pos-col" },
     ...Object.fromEntries(TG_COLUMNS.map((c) => [c.key, { key: c.key, label: c.label, cls: "lp-num tg-col", headTitle: c.title }])),
-    tags: { key: "tags", label: "Tags" },
-    note: { key: "note", label: "Note" },
+    tags: { key: "tags", label: "Tags", cls: "tags-cell" }, // the td's class on the head too, so a phone's column rule (style.css) takes both
+    note: { key: "note", label: "Note", cls: "note-col" },
   };
 }
 

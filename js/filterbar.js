@@ -180,7 +180,7 @@ export function renderFilterBar(container, teamAbbrs, filters, callbacks, hasOve
   const resetBtn = container.querySelector("#reset-overrides-btn");
   resetBtn.addEventListener("click", () => {
     if (resetBtn.disabled) return;
-    askInline(resetBtn, RESET_ALL_QUESTION, () => callbacks.onResetOverrides()); // floats right-aligned under the button, so the bar does not grow
+    askInline(resetBtn, callbacks.resetQuestion?.() ?? RESET_ALL_QUESTION, () => callbacks.onResetOverrides()); // floats right-aligned under the button, so the bar does not grow; on the Optimizer's tabs the question names the tab it clears (Part F)
   });
 }
 

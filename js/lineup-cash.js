@@ -76,15 +76,15 @@ export function swapModeStash(persisted, fromMode, toMode) {
   return { ...src, ...next, mode: toMode, stash };
 }
 
-export function modeSwitchHtml(mode) {
-  const active = mode === "cash" ? "cash" : "gpp";
-  const btn = (value, inner, title) =>
-    `<button type="button" class="tg-mode-btn${active === value ? " active" : ""}" data-opt-mode="${value}" aria-pressed="${active === value}" title="${escapeHtml(title)}">${inner}</button>`;
-  return `<span class="tg-mode-switch opt-mode-switch" role="group" aria-label="Lineup type">${btn("gpp", "GPP", "Tournament lineups")}${btn("cash", `${cashChipHtml()} Cash`, "Cash-game lineups: the highest floor")}</span>`;
-}
-
 export function cashChipHtml() {
   return `<span class="cash-chip" aria-hidden="true">$</span>`;
+}
+
+/** The GPP and Cash tabs of both Optimizers (optimizer standard Part F, Adam 5:12 PM 2026-11-04: separate tabs, each with its own settings, lineup and batch; style.css .sd-opt-tabs). The classic `.opt-tab` look; the buttons keep `data-opt-mode`, which each Optimizer's band wiring reads. */
+export function modeTabsHtml(mode) {
+  const active = mode === "cash" ? "cash" : "gpp";
+  const tab = (value, inner, title) => `<button type="button" role="tab" class="opt-tab sd-opt-tab${active === value ? " active" : ""}" data-opt-mode="${value}" aria-selected="${active === value}" title="${escapeHtml(title)}">${inner}</button>`;
+  return `<div class="opt-tabs sd-opt-tabs" role="tablist" aria-label="Lineup type">${tab("gpp", "GPP", "Tournament lineups: this tab's own settings, lineup and lineups")}${tab("cash", `${cashChipHtml()} Cash`, "Cash-game lineups: this tab's own settings, lineup and lineups")}</div>`;
 }
 
 /** The Lock | Want | Fine chips. A man clicked into the lineup (`inLineup`, no padlock, not Want) has no chip active: he is held by the Build, so "Fine" (neither in nor

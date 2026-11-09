@@ -10,7 +10,8 @@ import {
   pageStorage, readDeviceLineups, buildDeviceLineup, saveDeviceLineup, deleteDeviceLineup, buildDevicePatch, updateDeviceLineup, weekKeys, sortedNewestFirst,
   STORAGE_UNAVAILABLE_MESSAGE,
 } from "./site-lineups.js";
-import { boardWithEdits, putEdits, resetPlayerEdits, resetAllEdits } from "./site-overrides.js";
+import { boardWithEdits, putEdits, resetPlayerEdits, resetAllEdits, classicAdapter } from "./site-overrides.js";
+import { readTab, tabOfMode } from "../server/showdown/override-tabs.js"; // the app routes' tab reading, one copy (optimizer standard Part F)
 import { buildCard, precheck, identityOf } from "../server/playercard/build.js";
 import { ndcAbbr, teamFileUrl, gamelogUrl, teamFileProblem, gamelogProblem } from "../server/playercard/ndc-files.js";
 import { boardWithWeights, readWeights, putWeights, weightsKey } from "./site-weights.js";
@@ -47,6 +48,8 @@ export function sampleRefusal() {
 // the mode the app was in when published (meta.defaultMode), else Current.
 const MODE_KEY = "nfldfs-site-mode";
 const BOARD_FILE = { current: "baked/board.json", twogun: "baked/board-twogun.json" };
+const BOARD_FILE_CASH = { current: "baked/board-cash.json", twogun: "baked/board-twogun-cash.json" }; // the Cash tab's own typed numbers, baked beside GPP's (optimizer standard Part F)
+const boardFile = (mode, tab) => (tab === "cash" ? BOARD_FILE_CASH : BOARD_FILE)[mode];
 let chosenMode = null;
 async function activeMode() {
   if (chosenMode) return chosenMode;
@@ -66,9 +69,11 @@ async function activeMode() {
 }
 
 // A fresh copy of the baked board (the app may adjust what it is handed) with this browser's override changes merged
-// in, so a reload keeps them.
-export async function getBoard() {
-  return visitorBoard(await getJson(BOARD_FILE[await activeMode()]));
+// in, so a reload keeps them. `tab` "cash": the Cash tab's board and typed numbers; absent is GPP's (optimizer standard Part F).
+export async function getBoard(tab) {
+  const asked = readTab(tab);
+  if (asked.error) return siteError("VALIDATION_ERROR", asked.error);
+  return visitorBoard(await getJson(boardFile(await activeMode(), asked.tab)), asked.tab);
 }
 
 export async function getSlate() {
@@ -139,9 +144,9 @@ async function publishedWeek() {
   return pub ? { season: pub.season, week: pub.week } : null;
 }
 
-/** The baked board with this browser's override changes, for the Optimizer and device saves (D55: a star made here counts). */
-async function bakedVisitorBoard() {
-  return visitorBoard(await baked(BOARD_FILE[await activeMode()]));
+/** The baked board of `tab` with this browser's override changes, for the Optimizer and device saves (D55: a star made here counts). */
+async function bakedVisitorBoard(tab = "gpp") {
+  return visitorBoard(await baked(boardFile(await activeMode(), tab)), tab);
 }
 
 /** The published week and the baked slate (its games, for the remerge), or null when the slate cannot say. */
@@ -159,8 +164,8 @@ function sameSlate(board, slate) {
   return b.season === slate.season && b.week === slate.week && (b.uploadedAt ?? null) === (slate.uploadedAt ?? null);
 }
 
-/** `board` with this browser's override changes for the published week merged in (site-overrides.js). */
-async function visitorBoard(board) {
+/** `board` with this browser's override changes for `tab` of the published week merged in (site-overrides.js). */
+async function visitorBoard(board, tab = "gpp") {
   if (!board || board.ok === false || !Array.isArray(board.rows)) return board;
   let pub;
   try {
@@ -171,7 +176,7 @@ async function visitorBoard(board) {
   }
   if (!pub) return board;
   if (!sameSlate(board, pub.slate)) return SITE_UPDATED();
-  return boardWithEdits(weightedBoard(board, pub), pub.slate, pageStorage(), pub.season, pub.week);
+  return boardWithEdits(weightedBoard(board, pub), pub.slate, pageStorage(), pub.season, pub.week, classicAdapter(tab));
 }
 
 /** `board` re-ranked under this browser's source weights (site-weights.js); as it was when there are none or they cannot be applied. */
@@ -184,16 +189,18 @@ function weightedBoard(board, pub) {
   }
 }
 
-// The override writes (PUT /api/overrides, DELETE /api/overrides/:id, DELETE /api/overrides) on a fresh copy of the
-// baked board. Answers as the routes do: the whole merged board, or {ok:false, error} (storage switched off, or a
+// The override writes (PUT /api/overrides, DELETE /api/overrides/:id, DELETE /api/overrides, each with a `tab`) on a fresh copy of the
+// baked board of that tab. Answers as the routes do: the whole merged board, or {ok:false, error} (storage switched off, or a
 // value the app would refuse), leaving the board and the saved changes as they were.
-async function overrideWrite(change) {
-  const [board, pub] = await Promise.all([getJson(BOARD_FILE[await activeMode()]), publishedSlate()]);
+async function overrideWrite(tab, change) {
+  const asked = readTab(tab);
+  if (asked.error) return siteError("VALIDATION_ERROR", asked.error);
+  const [board, pub] = await Promise.all([getJson(boardFile(await activeMode(), asked.tab)), publishedSlate()]);
   if (!board || board.ok === false || !Array.isArray(board.rows) || !pub) {
     return board?.ok === false ? board : siteError("NO_SLATE", "No slate has been uploaded yet.");
   }
   if (!sameSlate(board, pub.slate)) return SITE_UPDATED();
-  const result = change(pageStorage(), pub.season, pub.week, weightedBoard(board, pub), pub.slate);
+  const result = change(pageStorage(), pub.season, pub.week, weightedBoard(board, pub), pub.slate, classicAdapter(asked.tab));
   return result.error ? siteError(result.error.code, result.error.message) : result.board;
 }
 
@@ -249,16 +256,17 @@ export async function postMode(mode) {
   return board;
 }
 
-export function putOverrides(patch) {
-  return overrideWrite((storage, season, week, board, slate) => putEdits(storage, season, week, board, slate, patch));
+// Each takes the app's `tab` (absent: GPP); a star or a note is kept once for both tabs (site-overrides.js).
+export function putOverrides(patch, tab) {
+  return overrideWrite(tab, (storage, season, week, board, slate, adapter) => putEdits(storage, season, week, board, slate, patch, adapter));
 }
 
-export function deleteAllOverrides() {
-  return overrideWrite((storage, season, week, board, slate) => resetAllEdits(storage, season, week, board, slate));
+export function deleteAllOverrides(tab) {
+  return overrideWrite(tab, (storage, season, week, board, slate, adapter) => resetAllEdits(storage, season, week, board, slate, adapter));
 }
 
-export function deleteOverride(playerId) {
-  return overrideWrite((storage, season, week, board, slate) => resetPlayerEdits(storage, season, week, board, slate, String(playerId)));
+export function deleteOverride(playerId, tab) {
+  return overrideWrite(tab, (storage, season, week, board, slate, adapter) => resetPlayerEdits(storage, season, week, board, slate, String(playerId), adapter));
 }
 
 export async function postSources(patch) {
@@ -288,7 +296,7 @@ export function postLineupOptimize() {
 const GENERATE_FAILED = () => siteError("LINEUP_GENERATE_FAILED", "Could not make lineups.");
 
 const runGenerate = createWorkerRunner({
-  kind: "classic", failed: GENERATE_FAILED,
+  kind: "classic", failed: GENERATE_FAILED, busy: () => siteError("GENERATE_BUSY", "Lineups are already being made; try again when that finishes."), // the route's own 409, so a Build waits out the quiet Left out build (lineup-left-out-panel.js)
   finish: async (args, partial, reason) => (await import("./site-generate.js")).generateResponse({ ...args, partial: endedSiteResult(partial, reason, args.body?.settings?.count ?? 1) }),
   onPage: async (args, deadline) => (await import("./site-generate.js")).generateResponse({ ...args, deadline }),
 });
@@ -307,7 +315,7 @@ export const canStopLineupGenerate = () => runGenerate.canStop();
 export async function postLineupGenerate(payload) {
   try {
     return await runGenerate(async () => {
-      const [board, slate, wk] = await Promise.all([bakedVisitorBoard(), baked("baked/slate.json"), publishedWeek()]);
+      const [board, slate, wk] = await Promise.all([bakedVisitorBoard(tabOfMode(payload?.settings?.mode)), baked("baked/slate.json"), publishedWeek()]); // a Cash build on Cash's own typed numbers, as the route
       const saved = wk ? readDeviceLineups(pageStorage(), wk.season, wk.week) : [];
       return { board, slate, body: payload, saved };
     });
@@ -319,7 +327,7 @@ export async function postLineupGenerate(payload) {
 
 // Body and answer as POST /api/lineups, but the lineup is kept in this browser only (site-lineups.js).
 export async function postLineup(payload) {
-  const [board, wk, app] = await Promise.all([bakedVisitorBoard(), publishedWeek(), appLineups()]);
+  const [board, wk, app] = await Promise.all([bakedVisitorBoard(tabOfMode(payload?.mode)), publishedWeek(), appLineups()]); // saved on its own mode's tab, as the route
   if (!board || board.ok === false || !wk) return board?.ok === false ? board : siteError("NO_SLATE", "No slate has been uploaded yet.");
   const storage = pageStorage();
   const others = [...app, ...readDeviceLineups(storage, wk.season, wk.week)];
@@ -345,9 +353,11 @@ export async function deleteLineup(id) {
 
 // PUT /api/lineups/<id> for a device lineup (D69; PROJECT.md Part 4 Lineups); the app's own lineups are read-only.
 export async function putLineup(id, payload) {
-  const [board, wk, app] = await Promise.all([bakedVisitorBoard(), publishedWeek(), appLineups()]);
-  if (!board || board.ok === false || !wk) return board?.ok === false ? board : siteError("NO_SLATE", "No slate has been uploaded yet.");
+  const [wk, app] = await Promise.all([publishedWeek(), appLineups()]);
   const storage = pageStorage();
+  const stored = wk ? readDeviceLineups(storage, wk.season, wk.week).find((l) => l.id === id) : null;
+  const board = await bakedVisitorBoard(tabOfMode(stored?.mode)); // re-snapshotted on its own mode's board, as the route
+  if (!board || board.ok === false || !wk) return board?.ok === false ? board : siteError("NO_SLATE", "No slate has been uploaded yet.");
   const unavailable = () => siteError("DEVICE_STORAGE_UNAVAILABLE", "This browser is not letting the site change its saved lineups (storage is switched off).");
   if (!storage || !weekKeys(storage, wk.season, wk.week)) return unavailable(); // unlistable storage is not "no such lineup"
   const device = readDeviceLineups(storage, wk.season, wk.week);

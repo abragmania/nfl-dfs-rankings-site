@@ -38,7 +38,9 @@ export function splitTabChanges(changes) {
 // The board's notes when an overrides file cannot be read (missing is said, never silent). GPP_UNREADABLE_NOTE is server/showdown/board.js's build note, the one copy.
 export const GPP_UNREADABLE_NOTE = "This game's overrides file could not be read, so typed numbers, stars and notes are off until it is fixed.";
 const GPP_UNREADABLE_ON_CASH = "This game's overrides file could not be read, so stars and notes are off until it is fixed; the Cash tab's own typed numbers are still on.";
-export const CASH_UNREADABLE_NOTE = "The Cash tab's typed numbers file could not be read, so Cash's typed numbers and bumps are off until it is fixed.";
+/** The classic board's note for its week's file (server/rank/board.js), the one copy; server/overrides/tab-routes.js rewords it on a Cash board. */
+export const CLASSIC_GPP_UNREADABLE_NOTE = "This week's overrides file could not be read, so typed numbers, stars and notes are off until it is fixed.";
+export const CASH_UNREADABLE_NOTE ="The Cash tab's typed numbers file could not be read, so Cash's typed numbers and bumps are off until it is fixed.";
 
 /** A Cash board's notes: GPP's unreadable-file note says what it turns off on Cash (stars and notes only), and Cash's own unreadable file is said. Pure. */
 export function cashBoardNotes(notes, cashUnreadable) {

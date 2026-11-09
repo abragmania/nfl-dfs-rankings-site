@@ -395,7 +395,7 @@ const SHOWDOWN = Object.freeze({ keyOf: (_season, gameKey) => `${SHOWDOWN_STORAG
 // stars and notes are the GPP entry's, so a star or a note typed on either tab shows on both and a number typed on one never moves the other. The baked board it lays them over is the
 // app's Cash board (board-cash.json), which carries Adam's Cash numbers and the shared stars and notes.
 export const SHOWDOWN_CASH_STORAGE_PREFIX = "nfldfs-site-showdown-cash-overrides:";
-const cashEntry = (gameKey) => `${SHOWDOWN_CASH_STORAGE_PREFIX}${gameKey}`;
+export const CLASSIC_CASH_STORAGE_PREFIX = "nfldfs-site-cash-overrides:"; // the main slate's Cash tab, per week as its GPP entry
 const SHARED_FIELDS = ["stars", "notes"];
 
 /** One entry's object, or null when there is none or it is not well formed (ignored, as readEdits ignores it). */
@@ -410,37 +410,47 @@ function entryObject(storage, name) {
   }
 }
 
-const SHOWDOWN_CASH = Object.freeze({
-  ...SHOWDOWN,
-  // Cash's own entry with the GPP entry's stars and notes, as one record the shared code reads.
-  load: (storage, season, gameKey) => {
-    const own = entryObject(storage, cashEntry(gameKey));
-    const shared = entryObject(storage, SHOWDOWN.keyOf(season, gameKey));
-    if (!own && !shared) return null;
-    const figures = Object.fromEntries(Object.entries(own ?? {}).filter(([k]) => !SHARED_FIELDS.includes(k)));
-    return JSON.stringify({ ...figures, stars: shared?.stars, notes: shared?.notes });
-  },
-  // The numbers to Cash's entry, the stars and notes to GPP's (its numbers untouched); the two move together or not at all.
-  save: (storage, season, gameKey, edits) => {
-    const { stars, notes, ...figures } = edits;
-    const own = cashEntry(gameKey);
-    const was = storage.getItem(own);
-    if (["proj", "own", "bump"].some((f) => Object.keys(figures[f]).length > 0)) storage.setItem(own, JSON.stringify(figures));
-    else storage.removeItem(own);
-    try {
-      const gppKey = SHOWDOWN.keyOf(season, gameKey);
-      const next = { ...(entryObject(storage, gppKey) ?? {}), stars, notes };
-      if (isEmpty(cleanEdits(next))) storage.removeItem(gppKey);
-      else storage.setItem(gppKey, JSON.stringify(next));
-    } catch (e) {
-      if (was === null) storage.removeItem(own);
-      else storage.setItem(own, was);
-      throw e;
-    }
-  },
-});
+/** The Cash tab's adapter over `base` (the main slate's or a Showdown game's): `cashKeyOf(season, week)` names Cash's entry, `base.keyOf` the GPP entry. */
+function withCashTab(base, cashKeyOf) {
+  return Object.freeze({
+    ...base,
+    // Cash's own entry with the GPP entry's stars and notes, as one record the shared code reads.
+    load: (storage, season, week) => {
+      const own = entryObject(storage, cashKeyOf(season, week));
+      const shared = entryObject(storage, base.keyOf(season, week));
+      if (!own && !shared) return null;
+      const figures = Object.fromEntries(Object.entries(own ?? {}).filter(([k]) => !SHARED_FIELDS.includes(k)));
+      return JSON.stringify({ ...figures, stars: shared?.stars, notes: shared?.notes });
+    },
+    // The numbers to Cash's entry, the stars and notes to GPP's (its numbers untouched); the two move together or not at all.
+    save: (storage, season, week, edits) => {
+      const { stars, notes, ...figures } = edits;
+      const own = cashKeyOf(season, week);
+      const was = storage.getItem(own);
+      if (["proj", "own", "bump"].some((f) => Object.keys(figures[f]).length > 0)) storage.setItem(own, JSON.stringify(figures));
+      else storage.removeItem(own);
+      try {
+        const gppKey = base.keyOf(season, week);
+        const next = { ...(entryObject(storage, gppKey) ?? {}), stars, notes };
+        if (isEmpty(cleanEdits(next))) storage.removeItem(gppKey);
+        else storage.setItem(gppKey, JSON.stringify(next));
+      } catch (e) {
+        if (was === null) storage.removeItem(own);
+        else storage.setItem(own, was);
+        throw e;
+      }
+    },
+  });
+}
 
+const SHOWDOWN_CASH = withCashTab(SHOWDOWN, (_season, gameKey) => `${SHOWDOWN_CASH_STORAGE_PREFIX}${gameKey}`);
 const showdownAdapter = (tab) => (tab === "cash" ? SHOWDOWN_CASH : SHOWDOWN);
+
+// The main slate's Cash tab (optimizer standard Part F): its own week's entry, the baked Cash board under it, stars and notes kept in the GPP entry as above. The second slates read the main board's rows, so they read these too.
+const CLASSIC_CASH = withCashTab(CLASSIC, (season, week) => `${CLASSIC_CASH_STORAGE_PREFIX}${season}-w${String(week).padStart(2, "0")}`);
+
+/** The adapter a main-slate write or read of `tab` goes through ("cash", or GPP's for anything else). */
+export const classicAdapter = (tab) => (tab === "cash" ? CLASSIC_CASH : CLASSIC);
 
 /** The Showdown board the visitor sees: the baked one with this browser's changes for the game `key` laid over it (the baked board itself when there are none). `tab` "cash": the Cash tab's
  *  changes over the baked Cash board; anything else is GPP's. */

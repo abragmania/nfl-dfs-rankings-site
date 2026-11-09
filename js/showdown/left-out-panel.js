@@ -107,12 +107,12 @@ export function fieldText(e) {
   return `At least ${pct1(e.fieldOwn)} of the field has him (${seat} ownership not posted); you do not`;
 }
 
-/** One man's row: the field sentence, his Own, Proj and Sal at the seat the way in gives him, the way in and Swap in (none, with the reason, when there is no way). */
+/** One man's row: the field sentence, his Sal, Proj and Own at the seat the way in gives him, the way in and Swap in (none, with the reason, when there is no way). */
 function rowHtml(e, i, rows) {
   const seat = e.wayIn?.in.find((m) => String(m.id) === String(e.id))?.seat ?? "FLEX";
   const cpt = seat === "CPT";
   const fig = (label, text) => `<span class="sd-lo-fig"><i>${cpt ? "CPT " : ""}${label}</i><b>${text ?? "—"}</b></span>`;
-  const figs = fig("Own", pct1(cpt ? e.ownCpt : e.ownFlex)) + fig("Proj", dec1(cpt ? e.cptProj : e.proj)) + fig("Sal", money(cpt ? e.cptSalary : e.salary));
+  const figs = fig("Sal", money(cpt ? e.cptSalary : e.salary)) + fig("Proj", dec1(cpt ? e.cptProj : e.proj)) + fig("Own", pct1(cpt ? e.ownCpt : e.ownFlex)); // the standard order: Sal, Proj, Own
   const wayText = e.wayIn ? escapeHtml(wayInText(e.wayIn, salaryLeftOf(rows, e.wayIn.seats), e.id)) : "";
   const way = e.wayIn
     ? `<span class="sd-lo-way" title="${wayText}">${wayText}</span><button type="button" class="link-btn sd-lo-swap" data-left-out-swap="${i}">Swap in</button>`

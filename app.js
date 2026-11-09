@@ -30,7 +30,10 @@ import { adjustScrollPanels } from "./js/scroll-panels.js";
 import { normalizeBoard } from "./js/normalize.js";
 import { applyGrades, rowsGradedForView } from "./js/grade.js";
 import { favoriteRows } from "./js/favorites.js";
-import { toggleStarredQbOnly, starredQbViewNow, setPoolRowError } from "./js/lineup.js";
+import { toggleStarredQbOnly, starredQbViewNow, setPoolRowError, hydrateOptimizer, opt as optimizerState } from "./js/lineup.js";
+import { setTabSwitchGate } from "./js/lineup-tabs.js"; // Part F: a GPP | Cash click waits for that tab's board
+import { makeTabBoards, otherTab, tabWord } from "./js/showdown/tab-boards.js"; // Part F: the Showdown's per-tab boards and numbered flows
+import { tabResetQuestion } from "./js/showdown/filter-bar.js"; // Part F: Reset all's question names the tab it clears, the same words as Showdown's
 import { renderGameStrip, getGamestripCollapsed, setGamestripCollapsed } from "./js/gamestrip.js";
 import { renderFilterBar, updateFilterSummary, showButtonError, hasAnyOverride } from "./js/filterbar.js";
 import { renderTabs, isSourcesTab, sourcesTabToOpen, shownTab, renderProjectionsPanel, renderOwnershipPanel, renderLineupPanel, renderEntriesPanel } from "./js/tabs.js";
@@ -41,8 +44,6 @@ import { initPlayerCard } from "./js/player-card.js";
 import { delegateBumpClicks, bumpPatch } from "./js/bump-control.js"; // Adam 2026-10-22: ± bump
 import { delegateRowReset } from "./js/row-reset.js"; // B12: the pool's row reset (typed numbers and bump)
 import { stickyHeights } from "./js/build-notice.js"; // A15: the sticky stack's heights, the notice a layer of it
-import { makeWriteSeq } from "./js/write-seq.js"; // A3: an older write's answer never paints over a newer one's
-import { makeBoardFlow } from "./js/write-runner.js"; // A3: every board write and read goes through the one numbered flow
 import { boardStamps, stampsLineHtml } from "./js/stamps.js"; // B11: Board, Injuries, Pulled and Lock, `missing` when the board carries no time
 
 const el = {
@@ -89,6 +90,15 @@ function setStatusMessage(text, isError) {
 
 const setUploadStatus = uploadStatusSetter({ statusEl: el.status, sdStatusEl: () => document.getElementById("sd-status"), showdownOn: () => Boolean(showdownKeyFromHash()) });
 
+// Part F: the tab whose board is on screen: Cash only while the Optimizer or Lineups tab is up with the Cash tab chosen; every other screen (Sources, Projections, Ownership, Entries) reads GPP's, the board published and ranked.
+const shownBoardTab = () => ((store.get().activeTab === "lineup" || store.get().activeTab === "lineups") && optimizerState.mode === "cash" ? "cash" : "gpp");
+// A board's page shape (normalize.js, grade.js), once as it lands.
+function shapeBoard(raw) {
+  if (!raw?.ok) return raw;
+  const data = normalizeBoard(raw);
+  data.rows = applyGrades(data.rows ?? []);
+  return data;
+}
 // Every write path (star, reset, edit, reset-all, source change, paste, refresh) shares this: on
 // success the whole board is reloaded as usual; on failure (a thrown network error, or a response that
 // came back but isn't ok) a plain message goes into #status and, when a row id is given, exactly that
@@ -96,8 +106,24 @@ const setUploadStatus = uploadStatusSetter({ statusEl: el.status, sdStatusEl: ()
 // A3 (round 3 fixes): writes are numbered as they start; an answer older than one already painted is not painted (its board is the older one),
 // so a slow first answer can never put the screen back over a newer one. A refusal is still said.
 // Every board read is numbered too (write-runner.js): a read that began before a write cannot paint over it, and a dropped older write answer is followed by one fresh read.
-const writeSeq = makeWriteSeq();
-const { runWrite, loadBoard } = makeBoardFlow({ seq: writeSeq, getBoard, paint: (board, n) => handleBoardLoaded(board, n), fail: (text, rowId) => failWrite(text, rowId) });
+// Part F: each tab (GPP, Cash) keeps its own board and numbered flow (showdown/tab-boards.js): a board answer is kept for the tab it was asked for and painted only while that tab is on screen, so a late Cash answer never paints over GPP's.
+const CLASSIC_KEY = "main-slate"; // tab-boards.js is keyed by game; the classic slate is one key
+const tabBoards = makeTabBoards({
+  read: (_key, tab) => getBoard(tab),
+  shape: shapeBoard,
+  shownTab: shownBoardTab,
+  show: (board, tab, _key, n) => handleBoardLoaded(board, tab, n),
+  fail: (text, rowId) => failWrite(text, rowId),
+});
+tabBoards.setKey(CLASSIC_KEY);
+/** A write that answers a board (`send(tab)` makes the request) on the tab on screen (a typed number, a bump, a reset); `shared` for a star or a note, kept once for both tabs, and for a change every board reads (`postMode`), which re-reads the other tab. */
+const writeOnTab = (send, label, { shared = false, rowId } = {}) => tabBoards.write(shownBoardTab(), (_key, tab) => send(tab), label, { shared, rowId });
+// A read through the shown tab's flow (it paints unless newer answers were painted meanwhile; `okOnly` keeps the last good board on a bad answer), the other tab's read alongside so a tab switch finds it kept.
+function loadBoard(opts) {
+  const tab = shownBoardTab();
+  tabBoards.reread(otherTab(tab));
+  return tabBoards.load(tab, opts);
+}
 
 // A refused or lost write is said in the status line and, when it was for a row, beside that row (the project's rule), in red. The pool redraws from the board already in the store (as it stood before
 // the failed edit), so a box left open is never left dangling (lineup.js setPoolRowError).
@@ -124,13 +150,12 @@ function handleBoardFailure(raw) {
     });
 }
 
-async function handleBoardLoaded(raw, seq = null) {
-  if (!raw || !raw.ok) {
-    handleBoardFailure(raw);
+/** The board `tab` on screen (kept by tabBoards, shaped by shapeBoard). `n`: its flow number, the newer-answer check after the wait for the slate's warnings. */
+async function handleBoardLoaded(data, tab = "gpp", n = null) {
+  if (!data || !data.ok) {
+    handleBoardFailure(data);
     return;
   }
-  const data = normalizeBoard(raw);
-  data.rows = applyGrades(data.rows ?? []);
   // Board responses don't carry warnings (only GET /api/slate does, PROJECT.md Part 4); fetch them
   // best-effort so a failure here never blocks the board itself from rendering.
   try {
@@ -139,12 +164,43 @@ async function handleBoardLoaded(raw, seq = null) {
   } catch (e) {
     data.warnings = [];
   }
-  if (seq !== null && !writeSeq.current(seq)) return; // a newer write's answer was taken while this one waited for the slate: the newer board stands
+  if (n !== null && !tabBoards.current(tab, n)) return; // a newer write's answer was taken while this one waited for the slate: the newer board stands
+  if (tab !== shownBoardTab()) return; // the other tab was chosen meanwhile; this board is kept for it (tabBoards)
   setStatusMessage("", false);
   // A sort on a TwoGun column falls back to Proj high to low once the board is not in TwoGun mode (state.js).
   store.set({ board: data, boardError: null, loading: false, sort: sortForBoard(store.get().sort, data) });
   renderStatic(data);
 }
+
+// Part F: the board on screen follows the tab: a kept board comes on screen at once (the filter bar's Reset all follows its typed numbers); a tab not read yet is read and painted when it lands (tab-boards.js).
+function syncShownBoard() {
+  const tab = shownBoardTab();
+  const kept = tabBoards.board(tab);
+  if (kept?.ok) {
+    if (kept === store.get().board) return;
+    kept.warnings ??= store.get().board?.warnings ?? []; // the salary file's warnings are the same on both tabs
+    store.set({ board: kept, boardError: null, sort: sortForBoard(store.get().sort, kept) });
+    renderStatic(kept);
+  } else {
+    tabBoards.reread(tab);
+  }
+}
+
+// A GPP | Cash click (optimizer standard Part F; the Showdown's gate): a tab whose board is kept shows at once; otherwise it is read first, the switch waits for it and a failure says so, the old tab staying.
+setTabSwitchGate((next, apply) => {
+  const switchTo = () => {
+    apply();
+    syncShownBoard();
+  };
+  if (tabBoards.board(next)?.ok) return switchTo();
+  const loading = `Loading the ${tabWord(next)} tab's board...`;
+  setStatusMessage(loading, false);
+  tabBoards.reread(next).then((raw) => {
+    if (el.status.textContent === loading) setStatusMessage("", false);
+    if (tabBoards.board(next)?.ok) return switchTo();
+    setStatusMessage(`Could not load the ${tabWord(next)} tab's board: ${raw?.error?.message ?? "the server did not return it"}. The ${tabWord(otherTab(next))} tab stays on screen.`, true);
+  });
+});
 
 // Optimizer-first step 4: the typed boxes (search, salary min and max) reach the store once typing pauses (public/js/filter-debounce.js,
 // 150 ms): a keystroke redraws both 525-row lists, about 300 ms. renderFilterBarNow flushes first, so a rebuild never loses typed letters.
@@ -176,8 +232,9 @@ const filterCallbacks = {
       renderDynamic();
     }
   },
+  resetQuestion: () => (el.lineupPanel.hidden ? null : tabResetQuestion(shownBoardTab())),
   onResetOverrides: async () => {
-    const data = await runWrite(() => deleteAllOverrides(), { label: "the reset" });
+    const data = await writeOnTab((tab) => deleteAllOverrides(tab), "the reset"); // Part F: the tab on screen's numbers only
     if (data === null) showButtonError(document.getElementById("reset-overrides-btn"), el.status.textContent); // A refusal is said beside the button too
   },
 };
@@ -188,21 +245,22 @@ function onGameClick(gameId) {
 }
 
 const tableCallbacks = {
+  // Part F: stars and notes are kept once for both tabs (`shared` re-reads the other tab's board); a typed number, a bump and a row's reset are the tab on screen's own.
   onToggleStar: async (id) => {
     const row = findRow(id);
-    await runWrite(() => putOverrides({ stars: { [id]: !row?.starred } }), { rowId: id });
+    await writeOnTab((tab) => putOverrides({ stars: { [id]: !row?.starred } }, tab), undefined, { rowId: id, shared: true });
   },
   // B12 (round 3): a row's reset clears his typed numbers and his bump together (DELETE /api/overrides/<id>; the site's stand-in does the same in the browser).
-  onResetRow: (id) => runWrite(() => deleteOverride(id), { rowId: id, label: "the reset" }), // the board it answers, null when refused
+  onResetRow: (id) => writeOnTab((tab) => deleteOverride(id, tab), "the reset", { rowId: id }), // the board it answers, null when refused
   onEditValue: async (id, field, value) => {
-    await runWrite(() => putOverrides({ [field]: { [id]: value } }), { rowId: id });
+    await writeOnTab((tab) => putOverrides({ [field]: { [id]: value } }, tab), undefined, { rowId: id });
   },
   onEditNote: async (id, text) => {
-    await runWrite(() => putOverrides({ notes: { [id]: text } }), { rowId: id });
+    await writeOnTab((tab) => putOverrides({ notes: { [id]: text } }, tab), undefined, { rowId: id, shared: true });
   },
   // Adam 2026-10-22: ± bump from an Optimizer pool row (bumpPatch: 0 steps is sent as null, which removes it). Applied as a star
   // toggle's answer is; the answer (null when refused) goes back so the pair is re-enabled only after a refusal.
-  onBump: (id, steps) => runWrite(() => putOverrides(bumpPatch(id, steps)), { label: "the projection bump" }),
+  onBump: (id, steps) => writeOnTab((tab) => putOverrides(bumpPatch(id, steps), tab), "the projection bump"),
 };
 // The pool's ± pairs are redrawn with the Optimizer's mount, so one listener on the mount serves them all (bump-control.js).
 delegateBumpClicks(el.lineupMount, { rowOf: findRow, onBump: tableCallbacks.onBump });
@@ -250,12 +308,14 @@ const sourceCallbacks = {
 function onTabClick(tabKey) {
   if (tabKey !== store.get().activeTab) window.scrollTo(0, 0); // Adam 2026-11-08: a tab switch lands at the top, where the Lineups results start
   store.set({ activeTab: tabKey });
+  syncShownBoard(); // Part F: the Optimizer on Cash shows Cash's board, every other screen GPP's
 }
 
 // The header's Sources link opens the Sources page with the table last shown under it (Projections the first time).
 let lastSourcesTab = null;
 function onSourcesOpen() {
   store.set({ activeTab: sourcesTabToOpen(store.get().activeTab, lastSourcesTab) });
+  syncShownBoard();
 }
 
 function onToggleGamestripCollapse() {
@@ -270,7 +330,7 @@ function renderStatic(board) {
   // Each source's state is on the Sources page. The branch header-rows-wip holds their replacement and stays unmerged. The Showdown header (showdown/view.js) is unchanged.
   renderPills(el.pillsRow, { warnings: board.warnings });
   // TwoGun mode switch and board-stamp pill (merge plan 2026-10-15): a flip answers the recomputed board.
-  renderModeBox(el.classicHeader, board.mode, { onSwitch: (mode) => runWrite(() => postMode(mode), { label: "the mode" }) });
+  renderModeBox(el.classicHeader, board.mode, { onSwitch: (mode) => tabBoards.write("gpp", () => postMode(mode), "the mode", { shared: true }) }); // answers GPP's board; Cash's is read again with it
   renderFilterBarNow(board);
   renderSlateChrome(); // the header label and the one-line note follow the slate on screen
   renderModeRowNow(); // the "Main slate" tile's game count depends on this board
@@ -497,6 +557,7 @@ wireRefresh({ refreshBtn: el.refreshBtn, statusEl: el.status }, {
 
 async function init() {
   store.set({ loading: true, boardError: null });
+  hydrateOptimizer(); // a page opened on the Cash tab asks for that tab's board first (Part F)
   try {
     await loadBoard();
   } catch (e) {

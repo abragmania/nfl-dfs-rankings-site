@@ -23,9 +23,10 @@ import { listedQbs, qbStacksPayload, qbListHtml, qbPanelsHtml, defaultsApply, SP
 import { slateLineups } from "./entries.js";
 import { TAG_OPTIONS, numberLineups, lineupPrefix, byAge } from "./lineup-tags.js";
 import {
-  cashChipHtml, cashHeadLine, modeSwitchHtml, boardHasMedians,
+  cashHeadLine, modeTabsHtml, boardHasMedians,
   cashMedianText, unusedCapText, modeBadgeHtml, builtInTextCash, scoreOfRow,
 } from "./lineup-cash.js";
+import { leftOutPanelHtml } from "./lineup-left-out-panel.js"; // Part F: the Cash tab's Left out panel, under the two columns
 import { rightColumnHtml, poolMessageShown } from "./lineup-pool.js"; // the pool: the Optimizer's one player table (C9, C10, C17)
 import { doneNoteHtml } from "./build-notice.js"; // A15: `Build finished.` and its link to the results
 import { confirmHtml, anchorHtml, CLEAR_QUESTION, DELETE_QUESTION, REPLACE_QUESTION } from "./confirm-inline.js"; // B13, C11, A12: the confirms beside their buttons
@@ -79,6 +80,7 @@ export function panelHtml() {
         ${poolHtml}
       </div>
     </div>
+    ${leftOutPanelHtml(board)}
     ${optimizerResultsHtml(rowById)}`;
 }
 
@@ -609,7 +611,7 @@ function optimizerControlsHtml(rowById) {
   const games = activeSlateGames(board);
   const heldNames = (rs) => escapeHtml(rs.map((r) => r.name).join(", "));
   const heldParts = [inLineup.length ? `${inLineup.length} in the lineup: ${heldNames(inLineup)}` : "", padlocked.length ? `${padlocked.length} locked: ${heldNames(padlocked)}` : ""].filter(Boolean);
-  const info = heldParts.length ? `<span class="opt-lockinfo">${heldParts.join(" &middot; ")}</span>` : ""; // Adam 2026-10-18 (Q8): no amber rules line when nothing is held
+  const heldLine = heldLineHtml(heldParts.join(" &middot; ")); // Adam 2026-10-18 (Q8): no amber rules line when nothing is held
   // 🔵 2026-10-17 (👁 render): the five position caps are one row of five small boxes, not five rows.
   const expRows = `<div class="opt-cap-row">${OPT_POSITIONS.map((pos) =>
     `<label class="opt-cap"><span class="opt-cap-pos">${pos}</span>${numberBoxHtml(`type="text" inputmode="decimal" class="opt-input opt-input-pct" data-opt-exp="${pos}" value="${escapeHtml(opt.maxExp[pos])}" placeholder="no cap" aria-label="${pos} maximum exposure percent"`, "%")}</label>`
@@ -629,6 +631,7 @@ function optimizerControlsHtml(rowById) {
     settingSubtitleHtml("Max %"),
     expRows,
     ruleRowsHtml(opt.rules, RULE_GROUPS.build),
+    heldLine,
   ].join("");
   // Adam 2026-10-18 1:35 AM ("does this override them or what?"), then no explanatory sentence: the structure says it, group "Default stack", then the sub-heading "Per-QB overrides" over the QB list (D73).
   // Adam 2026-10-18 1:50 AM: when every QB in play has his own numbers the two rows are greyed (still editable), with a tooltip saying why.
@@ -650,7 +653,7 @@ function optimizerControlsHtml(rowById) {
   ].join("");
   return `
     <div class="opt-panel opt-settings" id="opt-panel">
-      ${optHeadHtml(info)}
+      ${optHeadHtml()}
       ${formError}
       <div class="opt-groups">
         ${settingGroupHtml("Pool", pool)}
@@ -662,12 +665,14 @@ function optimizerControlsHtml(rowById) {
     </div>`;
 }
 
-/** The Optimizer band's head: the title with the GPP | Cash switch beside it (a green $ chip on the title in cash), the
- *  Must / lock line and a refused Build's sentence (cash mode job 3b, 2026-10-17). */
-function optHeadHtml(infoHtml) {
-  return `<div class="opt-settings-head">
-        <h3 class="opt-title">Settings${opt.mode === "cash" ? ` ${cashChipHtml()}` : ""}${modeSwitchHtml(opt.mode)}</h3>
-        ${infoHtml}
+/** The held line at the foot of the Build box, as the Showdown's (Part G): one line, a long list cut and its full text the hover, its room kept when empty. `html` is escaped markup. */
+const heldLineHtml = (html) => `<div class="opt-set-hint opt-lockinfo${html ? "" : " is-empty"}" id="opt-lockinfo" title="${html}">${html}</div>`;
+
+/** The Optimizer band's head: the GPP and Cash tabs, the title and a refused Build's sentence. */
+function optHeadHtml() {
+  return `<div class="opt-settings-head sd-opt-tabline">
+        ${modeTabsHtml(opt.mode)}
+        <h3 class="opt-title">Settings</h3>
         ${opt.error ? `<span class="${statusToneClass(opt.errorTone).trim()} opt-go-error">${escapeHtml(opt.error)}</span>` : ""}
       </div>`;
 }
@@ -679,7 +684,7 @@ function cashControlsHtml(rowById) {
   const basis = cashBasisInfo(board);
   const games = activeSlateGames(board);
   const held = heldSplit(rowById);
-  const info = `<span class="opt-lockinfo">${cashHeadLine(held.padlocked, wantRowsFor(slateKeyOf(board), rowById), held.inLineup)}</span>`;
+  const heldLine = heldLineHtml(cashHeadLine(held.padlocked, wantRowsFor(slateKeyOf(board), rowById), held.inLineup));
   const formError = opt.formError ? statusLineHtml(opt.formError, TONE_WARN, "opt-form-error") : "";
   const teamOptions = MAX_TEAM_OPTIONS.map((v) => `<option value="${v}"${String(opt.cash.maxPerTeam) === v ? " selected" : ""}>${v === "" ? "No limit" : v}</option>`).join("");
   const pool = [
@@ -690,10 +695,11 @@ function cashControlsHtml(rowById) {
     settingRowHtml("Lineups to make", numberBoxHtml(`type="number" min="1" max="${OPT_MAX_COUNT}" class="opt-input opt-input-num" id="opt-cash-count" value="${escapeHtml(opt.cash.count)}" aria-label="How many lineups"`, countNote(opt.cash.count, OPT_MAX_COUNT), "opt-unit-note"), "The best first, then the next best"),
     // A13 (round 3): no Build by line while Projection is the only way a build is made; it shows when the basis is TwoGun's median or the build is blocked (the reason).
     basis.blocked ? settingRowHtml("Build by", "", basis.text, "opt-warn") : basis.basis === "proj" ? "" : settingRowHtml("Build by", `<span class="cash-basis">${escapeHtml(basis.text)}</span>`),
+    heldLine,
   ].join("");
   return `
     <div class="opt-panel opt-settings" id="opt-panel">
-      ${optHeadHtml(info)}
+      ${optHeadHtml()}
       ${formError}
       <div class="opt-groups opt-groups-cash">
         ${settingGroupHtml("Pool", pool)}

@@ -38,6 +38,8 @@ import { getLineups, postLineup, putLineup, deleteLineup } from "./api.js";
 import { renderEntriesSection, wireEntries } from "./entries-wire.js";
 import { phoneMinHeight } from "./expand.js";
 import { defaultCashState, cleanCashState, swapModeStash, COUNT_DEFAULTS_VERSION } from "./lineup-cash.js";
+import { newClassicTabs, bindClassicTabFields, clearTabBuilds, clearTabFilters } from "./lineup-tabs.js"; // Part F: GPP and Cash each keep their own batch, messages and filter
+import { syncLeftOut } from "./lineup-left-out-panel.js"; // Part F: the Cash tab's Left out panel
 import { ruleOn } from "./lineup-settings.js";
 import { paintStarredQbChip } from "./filterbar.js";
 import { setPoolCallbacks, poolStarClick, panelHtml, savedOfActiveSlate, starredQbChipView, poolColumnSetup, CLASSIC_POOL_PICK_SKIP, shownSavedLineups, poolPickerNow } from "./lineup-view.js";
@@ -197,6 +199,10 @@ export function savePersisted() {
 }
 
 let hydrated = false;
+/** The Optimizer's remembered state read before the first board is asked for, so a page opened on the Cash tab asks for that tab's board first (app.js). */
+export function hydrateOptimizer() {
+  hydrateFromStorage();
+}
 
 // Cash mode job 3b, 2026-10-17: hydrate's slot normalising, also run on the slots a mode switch restores; null when `raw` is no nine-slot list.
 const normalSlots = (raw) =>
@@ -308,6 +314,7 @@ export function renderLineupPanel(container, callbacks) {
   if (state.loadedId && state.savedLoaded && !state.savedLineups.some((l) => l.id === state.loadedId)) clearLoaded();
   pruneQbStacks(store.get().board);
   syncOptimizerSlate();
+  syncLeftOut({ key: currentMemoryKey(), board: store.get().board, container, commit }); // Part F: the Cash tab's Left out panel asks again when its board or settings changed (its own draw comes with the panel's)
   wirePoolEdits(container, { rowOf: (id) => store.get().board?.rows.find((r) => String(r.id) === String(id)) }); // C9, C17: the pool's typed Proj and Own and its note pencil (one listener on the mount)
   wireStaleMessages(container, {
     hasAny: () => Boolean(state.dkStatus || state.saveConfirm || state.addError || state.memoryNote || limitRefusals().length),
@@ -624,6 +631,7 @@ async function doSaveLineup(name, { asNew = false } = {}) {
   const keyAtStart = lastSavedKey;
   const slateAtStart = currentMemoryKey();
   const loadedAtStart = state.loadedId;
+  const modeAtStart = opt.mode;
   const slate = slateKeyOf(store.get().board);
   // A cash hand save records the board's Cash basis (board.mode.cashMode), as a cash batch does (code review of a9455a0, MUST 1
   // follow-up); a board naming none records no boardMode. A GPP hand save keeps the header's mode.
@@ -637,7 +645,7 @@ async function doSaveLineup(name, { asNew = false } = {}) {
   } catch (e) {
     failure = `Could not reach the server: ${e.message}`;
   }
-  const after = afterSave({ data, name, editId, weekChanged: lastSavedKey !== keyAtStart, loadedAtStart, loadedNow: state.loadedId, slateChanged: currentMemoryKey() !== slateAtStart });
+  const after = afterSave({ data, name, editId, weekChanged: lastSavedKey !== keyAtStart, loadedAtStart, loadedNow: state.loadedId, slateChanged: currentMemoryKey() !== slateAtStart, modeChanged: opt.mode !== modeAtStart });
   if (!after.discard) {
     if (Array.isArray(data?.lineups)) state.savedLineups = data.lineups;
     if (after.dropId) state.savedLineups = state.savedLineups.filter((l) => l.id !== after.dropId);
@@ -653,9 +661,9 @@ async function doSaveLineup(name, { asNew = false } = {}) {
 
 /** What a finished save changes (PROJECT.md Part 4 Lineups): {discard} for a week changed under the request; a Load or
  *  Clear lineup made during the save keeps its loadedId and name; NOT_FOUND and READ_ONLY unload the edited lineup. */
-export function afterSave({ data, name, editId, weekChanged, loadedAtStart, loadedNow, slateChanged = false }) {
+export function afterSave({ data, name, editId, weekChanged, loadedAtStart, loadedNow, slateChanged = false, modeChanged = false }) {
   if (weekChanged) return { discard: true };
-  const moved = slateChanged || loadedNow !== loadedAtStart; // a slate switched under the request: the list is updated, but the new lineup is not loaded (nor its name put in the box) on a slate it was not made on
+  const moved = slateChanged || modeChanged || loadedNow !== loadedAtStart; // a slate or a tab switched under the request: the list is updated, but the new lineup is not loaded (nor its name put in the box) on a slate or tab it was not made on (Part F)
   if (!data || data.ok === false) {
     const code = data?.error?.code;
     const unload = editId && (code === "NOT_FOUND" || code === "READ_ONLY");
@@ -1030,37 +1038,26 @@ export const opt = {
   playerMin: {}, // the Min % boxes, shaped like playerMax (PROJECT.md Part 4 Optimizer (Min % and soft rules, Adam 2026-10-17))
   qb: newQbState(), // per-QB stack settings (lineup-qb-stacks.js), keyed by player id, persisted with the locks
   spreadDst: false, // "Spread defenses", per slate in the browser memory
-  resultsTab: null, // D74: "new" or "saved" once Go or a tab click picks one this page load; null = the default
-  // Adam 2026-10-11: "only lineups with" these players (identity keys, in the order chosen), shared by the New and
-  // Saved tabs, page-only, kept across Go, cleared when the slate or week changes. mustHaveNames: key -> name for the chips.
-  mustHave: [],
-  mustHaveNames: {},
   exp: defaultExpState("classic"), // the one exposure table's sort and Pos filter {col, dir, filter} (lineup-exposure.js, A10), kept in the browser
   sort: cleanSortState(null), // the card lists' sort, per tab: {new: {key, dir}, saved: {key, dir}}, persisted (lineup-sort.js)
   generating: false,
-  doneNote: false, // a build has ended and its results are on screen: `Build finished.` and its link sit beside the Build button (build-notice.js)
   stopping: false, // Stop was pressed and the build is ending: the button reads "Stopping..." (lineup-stop.js)
   stopError: "", // the sentence under Stop when the server did not hear it (optimizer standard D18)
   saving: false,
-  error: null, // the server's sentence for a refused or failed request
-  errorTone: "error", // "warn" for a refusal that is no failure (a build already running), else "error" (row-message.js)
-  saveError: null,
-  saveTone: "error", // "warn" when saveError is only "N saved, M already saved", else "error"
-  formError: null, // a sentence naming a maximum-exposure box (position or player) that is not a percent; blocks Go
-  results: null, // {slateKey, lineups: [{uid, ids, salary, proj, players, saved?}], notes, builtIn} or null
+  // Part F: each tab's own batch, messages and filter (lineup-tabs.js): resultsTab, mustHave, mustHaveNames, doneNote, error, errorTone, saveError, saveTone, formError and results (results: {slateKey,
+  // lineups: [{uid, ids, salary, proj, players, saved?}], notes, builtIn} or null; mustHave: Adam 2026-10-11, "only lineups with" these players, page-only, cleared when the slate or week changes) are properties
+  // of `opt` that read and write the tab on screen.
+  tabs: newClassicTabs(),
 };
+bindClassicTabFields(opt);
 
 export function resetOptimizerResults() {
-  opt.results = null;
-  opt.doneNote = false;
-  opt.error = null;
-  opt.saveError = null;
+  clearTabBuilds(opt);
   resetBuildNotice(); // what the last build left under the filter bar belongs to the slate it was made for
 }
 
 export function clearMustHave() {
-  opt.mustHave = [];
-  opt.mustHaveNames = {};
+  clearTabFilters(opt);
 }
 
 export const boardRowMap = (board) => new Map((board?.rows ?? []).map((r) => [String(r.id), r]));
@@ -1090,10 +1087,10 @@ export function setMode(next) {
   opt.mode = next;
   state.memoryNote = restoreForMode(store.get().board, next, wrote); // A9: the build the new mode remembered for this slate (the page-only copy above when nothing is remembered, or when the write was refused: the memory is then behind this page); a man off the slate on screen never passes
   opt.cashUndo = null;
-  opt.formError = null;
   state.addError = null;
   lastValidatedBoard = null; // validateAgainstBoard runs again on the restored build
   validateAgainstBoard(store.get().board);
+  resetBuildNotice(); // the notice under the filter bar is the last build's, which may be the other tab's
   commit();
 }
 
