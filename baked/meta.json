@@ -1,13 +1,11 @@
 {
-  "publishedAt": "2026-11-10T04:20:22.201Z",
+  "publishedAt": "2026-11-10T05:15:16.338Z",
   "season": 2026,
   "week": 9,
-  "boardGeneratedAt": "2026-11-10T04:20:10.398Z",
-  "latestBoardAt": "2026-11-10T04:20:10.398Z",
+  "boardGeneratedAt": "2026-11-10T05:15:07.815Z",
+  "latestBoardAt": "2026-11-10T05:15:07.815Z",
   "defaultMode": "twogun",
-  "showdowns": [
-    "2026-w09-BUFMIN"
-  ],
+  "showdowns": [],
   "sourceCommit": "c84d99f0aa0cbeec05d70a9f6832020d1552b95a",
   "appCommit": "3a76e31042ae1291e93c77d26e1212f29dec144e",
   "machine": "desktop",
