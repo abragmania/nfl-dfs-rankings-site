@@ -11,7 +11,8 @@ import { buildCashSettings } from "./lineup-cash.js";
 import { leftOutReport, wayInText, fieldText, salaryLeftOf } from "./lineup-left-out.js";
 import { slateKeyOf } from "./lineup-optimizer.js";
 import { postLineupGenerate } from "./api.js";
-import { posPillHtml } from "./showdown/table.js";
+import { teamLogoHtml } from "./player-row.js";
+import { teamVars } from "./look-row.js";
 
 export const LEFT_OUT_COUNT = 10; // the quiet build's lineups: the optimal set the panel reads
 const DELAY_MS = 600; // a run of padlock, exclude or typed-number clicks asks once
@@ -77,38 +78,33 @@ export async function buildAfterQuiet(post) {
   return data;
 }
 
-/** One man's row: the field sentence (with its hover), his Sal, Proj and Own (the standard order), the way in and Swap in (none, with the reason, when there is no way). */
+/** One man's row (the approved look: the slot-first row, the position in the slot box): logo, name, the field sentence (with its hover), his Sal, Proj and Own, Swap in, the way in on a line under it (none, with the reason, when there is no way). */
 function rowHtml(e, i, rows, secondSlate) {
-  const fig = (label, text) => `<span class="sd-lo-fig"><i>${label}</i><b>${text ?? "—"}</b></span>`;
-  const figs = fig("Sal", money(e.salary)) + fig("Proj", dec1(e.proj)) + fig("Own", pct1(e.fieldOwn));
-  const wayText = e.wayIn ? escapeHtml(wayInText(e.wayIn, salaryLeftOf(rows, e.wayIn.seats), e.id)) : "";
-  const way = e.wayIn
-    ? `<span class="sd-lo-way" title="${wayText}">${wayText}</span><button type="button" class="link-btn sd-lo-swap" data-left-out-swap="${i}">Swap in</button>`
-    : `<span class="sd-lo-way sd-lo-noway" title="${escapeHtml(e.reason ?? "")}">${escapeHtml(e.reason ?? "")}</span>`;
+  const wayText = e.wayIn ? wayInText(e.wayIn, salaryLeftOf(rows, e.wayIn.seats), e.id) : "";
   const field = fieldText(e, secondSlate);
-  return `<li class="sd-lo-row" data-card-id="${escapeHtml(e.id)}">
-      <div class="sd-lo-line">${posPillHtml(e.pos)}<b class="sd-lo-name player-name">${escapeHtml(e.name)}</b><span class="sd-lo-field" title="${escapeHtml(`${field} (in ${e.inOptimal} of the ${e.optimalTotal} optimal lineups)`)}">${escapeHtml(field)}</span><span class="sd-lo-figs">${figs}</span></div>
-      <div class="sd-lo-line sd-lo-line2">${way}</div>
-    </li>`;
+  const swapBtn = e.wayIn ? `<button type="button" class="xf" style="grid-column:7" data-left-out-swap="${i}">Swap in</button>` : "";
+  const way = e.wayIn ? `<div class="way" title="${escapeHtml(wayText)}">${escapeHtml(wayText)}</div>` : `<div class="way lo-noway" title="${escapeHtml(e.reason ?? "")}">${escapeHtml(e.reason ?? "")}</div>`;
+  const fig = (cls, label, text) => `<span class="${cls}"><i>${label}</i>${text ?? "—"}</span>`;
+  return `<div class="crow noctl" data-card-id="${escapeHtml(e.id)}" style="${teamVars(e.team)}"><span class="sl">${escapeHtml(e.pos ?? "")}</span>${teamLogoHtml(e.team, "logo sm", 20)}<div class="sn"><div class="sn1"><button type="button" class="pn player-name">${escapeHtml(e.name)}</button></div><small title="${escapeHtml(`${field} (in ${e.inOptimal} of the ${e.optimalTotal} optimal lineups)`)}">${escapeHtml(field)}</small></div>${fig("ss", "Sal", money(e.salary))}${fig("sp", "Proj", dec1(e.proj))}${fig("so", "Own", pct1(e.fieldOwn))}${swapBtn}</div>${way}`;
 }
 
 /** The panel's body for a view {status, error, older, lineups, entries, unjudged, rows, secondSlate}. Pure. */
 export function leftOutHtml(v) {
-  const quiet = (text, cls = "") => `<div class="sd-lo-quiet${cls}">${escapeHtml(text)}</div>`;
+  const quiet = (text, cls = "") => `<div class="lonote${cls}">${escapeHtml(text)}</div>`;
   let body;
-  if (v.lineups === null) body = v.status === "error" ? quiet(`Could not work out who is left out: ${v.error}`, " sd-lo-error") : quiet("Finding the optimal Cash lineups...");
+  if (v.lineups === null) body = v.status === "error" ? quiet(`Could not work out who is left out: ${v.error}`, " lo-err") : quiet("Finding the optimal Cash lineups...");
   else {
-    const note = v.status === "error" ? quiet(`Could not re-read the optimal Cash lineups: ${v.error} The list is from the earlier read.`, " sd-lo-error") : "";
+    const note = v.status === "error" ? quiet(`Could not re-read the optimal Cash lineups: ${v.error} The list is from the earlier read.`, " lo-err") : "";
     const unjudged = v.unjudged ?? [];
     const notJudged = unjudged.length ? quiet(`Not judged, ownership is not posted for ${unjudged.length} ${unjudged.length === 1 ? "man" : "men"} in the optimal lineups.`) : ""; // a count: before ownership posts this would be the whole optimal set
     let list;
     if (!v.lineups.length) list = quiet("No optimal Cash lineup could be made with these padlocks and excludes, so nobody is listed.");
-    else if (v.entries.length) list = `<ol class="sd-lo-list${v.older ? " is-older" : ""}">${v.entries.map((e, i) => rowHtml(e, i, v.rows, v.secondSlate)).join("")}</ol>`;
+    else if (v.entries.length) list = `<div class="lo${v.older ? " is-older" : ""}">${v.entries.map((e, i) => rowHtml(e, i, v.rows, v.secondSlate)).join("")}</div>`;
     else list = unjudged.length ? "" : quiet(NOBODY_TEXT); // "nobody" only when every optimal man off the lineup could be judged
     body = note + list + notJudged;
   }
-  const sub = v.status === "loading" && v.lineups !== null ? `<span class="sd-lo-sub">updating...</span>` : v.older ? `<span class="sd-lo-sub">older</span>` : "";
-  return `<section class="sd-left-out" id="sd-left-out" aria-live="polite"><div class="sd-lo-head"><span class="sd-lo-title">Left out</span>${sub}</div>${body}</section>`;
+  const sub = v.status === "loading" && v.lineups !== null ? `<span class="lo-sub">updating...</span>` : v.older ? `<span class="lo-sub">older</span>` : "";
+  return `<section class="lobox" id="sd-left-out" aria-live="polite"><div class="sec">Left out${sub}</div>${v.lineups?.length ? `<div class="lonote">Heavily owned men in the optimal Cash lineups who are not in yours.</div>` : ""}${body}</section>`;
 }
 
 /** The panel for the Cash tab on screen ("" on GPP): the last optimal lineups read against the slots on screen. */

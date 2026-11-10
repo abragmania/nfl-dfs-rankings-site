@@ -1,0 +1,393 @@
+/* NFL's own additions to the copied NBA look (PROJECT.md Part 4 item 5): the approved mock-up's page-local rules, and the seating of NFL's controls the NBA stylesheets have no rule for. board.css, lineups.css and theme-light.css are the pinned copies; this file loads after them. */
+.nl{color:var(--tx);font:13.5px/1.35 "JetBrains Mono",monospace}
+.nl input,.nl select{font:inherit;color:inherit}
+body.nl-page{margin:0;background-color:#050506;color:#ececec;font:13.5px/1.35 "JetBrains Mono",monospace;padding:0 clamp(20px,2.2vw,60px) 40px;background-image:linear-gradient(#ffffff04 1px,transparent 1px),linear-gradient(90deg,#ffffff04 1px,transparent 1px);background-size:48px 48px}
+html[data-theme="light"] body.nl-page{background-color:#f4f4f1;background-image:none;color:#17171a}
+html:has(body.nl-page){background:#050506}
+html[data-theme="light"]:has(body.nl-page){background:#f4f4f1}
+body.nl-page #classic-main{max-width:none;padding:0;width:auto}
+/* The top bar: sticky at the top of the page, the same on every tab of the classic page. */
+#classic-header{position:sticky;top:0;z-index:30;background:var(--bg)}
+body:not(.nl-page) #classic-header{padding:0 var(--sp-5)}
+.nl .top .tab-btn{margin:0;background:none;border:0;border-right:1px solid var(--ln);border-radius:0;padding:4px 12px;font-weight:700;font-size:12px;color:var(--mu);box-shadow:none}
+.nl .vtabs nav{display:contents}
+.nl .vtabs button:last-child{border-right:0}
+.nl .vtabs nav .tab-btn:last-child{border-right:1px solid var(--ln)}
+.nl .vtabs button.active,.nl .vtabs button.on{background:var(--am);color:#000}
+.nl .vtabs .site-matchups-tab{padding:4px 12px;font-size:12px;font-weight:700;color:var(--mu);text-decoration:none;border:0;border-left:1px solid var(--ln);border-radius:0;margin:0}
+.nl #top-slates{display:flex;align-items:center}
+.nl #mode-row{padding:0;background:none;border:0;margin:0;position:static}
+.nl .mode-row-inner{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.nl .mode-tile{margin:0;background:var(--p2);border:1px solid var(--ln);border-radius:0;padding:4px 10px;font:700 13px "JetBrains Mono",monospace;color:var(--mu);white-space:nowrap}
+.nl .mode-tile.active{color:var(--tx);border-color:var(--ln)}
+.nl .mode-upload-tile{font-weight:600;font-size:11.5px;cursor:pointer}
+.nl .tg-mode{display:flex}
+.nl .tg-mode:empty{display:none}
+.nl .tg-mode-switch{display:flex;border:1px solid var(--ln)}
+.nl .tg-mode-btn{border:0;background:none;padding:4px 10px;font-weight:700;font-size:11.5px;color:var(--mu);border-radius:0}
+.nl .tg-mode-btn.active{background:var(--p2);color:var(--tx)}
+.nl .header-actions{display:flex;align-items:center;gap:8px;margin:0}
+.nl .upload-info{font-size:11px;color:var(--mu)}
+.nl .chip.upload-btn{cursor:pointer}
+.nl .brand .mode-tag{background:none;border:0;padding:0;margin:0;font:500 12px "JetBrains Mono",monospace;color:var(--mu);letter-spacing:0}
+.nl #tg-pill,.nl #pills-row{margin:0}
+.nl .header-sub{display:flex;flex-wrap:wrap;align-items:center;gap:4px 12px;padding:0 0 2px}
+.nl .tg-pill .pill,.nl .tg-pill .mode-pill,.nl .tg-pill > *{background:none!important;border:0!important;padding:0!important;font-size:11px!important;color:var(--dim)!important}
+.nl .tg-pill .pill-warning{color:var(--am)!important}
+.nl .header-sub:has(> [hidden]:first-child):has(> [hidden]:last-child){display:none}
+#status:empty{display:none}
+/* The two quiet lines under the game strip: the ownership and injury notes on the left, the board's as-of times on the right. */
+.nl .updline{display:flex;justify-content:space-between;gap:16px;align-items:baseline;margin:0 0 6px;padding-right:150px;font-size:11px;color:var(--dim)}
+.nl .updline .own-banner{margin:0;padding:0;border:0;background:none;color:var(--dim);font-size:11px}
+.nl .stamps-line{font-size:11px;color:var(--dim);margin:0}
+.nl .stamps-line .stamp{margin-left:12px;white-space:nowrap}
+.nl .stamps-line i{font-style:normal;color:var(--dim)}
+.nl #gamestrip{position:relative}
+.nl .gs-toggle{position:absolute;right:0;bottom:-20px;background:none;border:0;color:var(--dim);font-size:10.5px;cursor:pointer;padding:0}
+.nl .gs-toggle:hover{color:var(--mu)}
+.nl .game.game-box{display:block;width:100%;text-align:left;color:inherit;font:inherit}
+.nl .tot.line-unknown{color:var(--dim)}
+.nl .games{grid-template-columns:repeat(auto-fill,minmax(205px,1fr));margin:8px 0 6px}
+@media (min-width:2000px){.nl .games{grid-template-columns:repeat(11,minmax(0,1fr))}}
+/* The approved mock-up's own rules (look-copy/look.css). */
+.nl .popbar{display:block;height:3px;background:#ffffff0d;margin-top:4px}
+.nl .gh2{justify-content:space-between;margin:3px 0 0;font-size:11px}
+.nl .popbar i{display:block;height:100%;background:var(--bl)}
+.nl .gh .pop{color:var(--mu)}
+.nl .gh .wx{color:var(--dim)}
+.nl .lt-btns{display:flex;gap:8px;flex-shrink:0;align-items:center}
+.nl .opt .setop em{font-style:normal;font-weight:500;color:var(--tx);margin-left:10px}
+.nl .opt .setop span{float:right;color:var(--dim)}
+.nl .opt .lonote{padding:0 16px 3px;font-size:11.5px;color:var(--mu)}
+.nl .opt .lonote.lo-err{color:var(--rd)}
+.nl .opt .lo{padding:2px 16px 4px}
+.nl .opt .lo .crow{grid-template-columns:44px 24px minmax(0,1fr) 80px 62px 66px 84px}
+.nl .opt .lo .way{padding:0 0 3px 76px;font-size:11.5px;color:var(--mu);text-align:left}
+.nl .opt .lobox .sec{padding:8px 16px 2px;font-size:11px;color:var(--mu);border:0;letter-spacing:0;text-transform:none}
+.nl .opt .lobox{padding-bottom:6px;border-top:1px solid var(--ln)}
+.nl .opt .lo-sub{margin-left:8px;color:var(--dim);font-size:11px}
+.nl .hint2{padding:0 16px 8px;font-size:11.5px;color:var(--dim)}
+.nl .hint2:empty,.nl .opt-lockinfo:empty{display:none}
+.nl .work{grid-template-columns:minmax(0,1fr) 700px}
+.nl .opt{align-self:start;position:sticky;top:var(--tabs-h,0px);max-height:calc(100vh - var(--tabs-h,0px) - 8px);overflow-y:auto}
+.nl #lineups.opt{position:static;max-height:none;overflow:visible}
+.nl .opt .lu.wk{position:static;padding:0 16px 6px;border-bottom:0}
+.nl .opt .lu.wk .luh{padding:8px 0 6px;display:flex;justify-content:space-between;align-items:center;gap:8px}
+.nl .opt .lu.wk .luh>span:first-child{font-size:16px}
+.nl .opt .lu.wk .luhr{display:flex;align-items:center;gap:10px;position:relative}
+.nl .opt .lu.wk .clr{min-height:24px;padding:2px 12px;background:none;border:1px solid var(--ln);color:var(--mu);font-size:12px}
+.nl .opt .lu.wk .wkh,.nl .opt .lu.wk .wkr{grid-template-columns:34px 20px minmax(0,1fr) 92px 62px 70px 28px;column-gap:6px;padding-left:0;padding-right:6px}
+.nl .opt .lu.wk .wkh{height:24px;font-size:10.5px}
+.nl .opt .lu.wk .wkh .wkhp{grid-column:2 / span 2}
+.nl .opt .lu.wk .wkh span{text-align:right}
+.nl .opt .lu.wk .wkh span:first-child,.nl .opt .lu.wk .wkh .wkhp{text-align:left}
+.nl .opt .lu.wk .wkh span:first-child{text-align:center}
+.nl .opt .lu.wk .wkr{height:30px;font-size:13px}
+.nl .opt .lu.wk .wkr>.sl{align-self:stretch;display:flex;align-items:center;justify-content:center;border:0;background:var(--am);color:#000;font-size:11px;font-weight:900;letter-spacing:.3px;padding:0}
+.nl .opt .lu.wk .wkr.locked>.sl{background:var(--gr)}
+.nl .opt .lu.wk .wkr .logo.sm{width:20px;height:20px}
+.nl .opt .lu.wk .wkr .sn1{gap:4px;display:flex;align-items:baseline;min-width:0}
+.nl .opt .lu.wk .wkr .pn{font:700 13px "Space Grotesk",sans-serif;letter-spacing:0}
+.nl .opt .lu.wk .wkr .slt{flex-shrink:0;font-size:11px;font-weight:500;color:var(--mu);margin-left:4px}
+.nl .opt .lu.wk .wkr .ss,.nl .opt .lu.wk .wkr .sp,.nl .opt .lu.wk .wkr .so{font:700 14px "Space Grotesk",sans-serif;text-align:right}
+.nl .opt .lu.wk .wkr .sp{color:var(--am)}
+.nl .opt .lu.wk .wkr .lkb,.nl .opt .lu.wk .wkr .lkd{width:22px;height:22px;display:inline-grid;place-items:center;padding:0}
+.nl .opt .lu.wk .wkr.empty .sn{grid-column:2 / -1}
+.nl .opt .lu.wk .wkr.empty .sn b{font:500 13px "Space Grotesk",sans-serif}
+.nl .opt .lu.wk .wkr.tm{box-shadow:none}
+.nl .opt .lu.wk .wkr.hand{cursor:pointer}
+.nl .opt .lu.wk .cap{margin-top:6px}
+.nl .opt .lu.wk .capbar{height:3px}
+.nl .opt .lu.wk .cap .capt{display:flex;justify-content:space-between;gap:8px;padding:6px 0 0;font-size:11.5px;font-weight:400;letter-spacing:0;text-transform:none;color:var(--mu)}
+.nl .opt .lu.wk .cap .capt span{display:inline-flex;flex-direction:row;align-items:baseline;gap:4px;width:auto;position:static;justify-self:auto;max-width:none;white-space:nowrap}
+.nl .opt .lu.wk .cap .capt b{font:700 11.5px "Space Grotesk",sans-serif;letter-spacing:0}
+.nl .opt .lu.wk .cap .capt .of{position:static;margin:0;font-size:11.5px}
+.nl .opt .lu.wk .cap .capt span:nth-child(2){order:1}.nl .opt .lu.wk .cap .capt .perop{order:2;margin:0}.nl .opt .lu.wk .cap .capt span:nth-child(1){order:3}.nl .opt .lu.wk .cap .capt span:nth-child(3){order:4}.nl .opt .lu.wk .cap .capt .tval{order:5}.nl .opt .lu.wk .cap .capt span:nth-child(4){order:6}
+.nl .opt .lu.wk .lt-read{padding:6px 0 0}
+.nl .opt .cntrow{padding:4px 16px}
+.nl .set4{display:grid;grid-template-columns:1.25fr 1fr 1fr 1fr;border-bottom:1px solid var(--ln)}
+.nl .set4 label{padding:4px 10px;font-size:11px;color:var(--mu);border-right:1px solid var(--ln);white-space:nowrap}
+.nl .set4 label:last-child{border-right:0}
+.nl .set4 input,.nl .set4 select{display:block;width:100%;height:22px;margin-top:2px;background:var(--p2);border:1px solid var(--ln);padding:0 8px;font-size:13px;text-align:right;border-radius:0;color:var(--tx);box-sizing:border-box}
+.nl .set4 select{text-align-last:right}
+.nl .set4 input::placeholder{color:var(--dim);opacity:.8}
+.nl .set4 input[readonly]{color:var(--tx);outline:0}
+.nl .set4 .opt-numbox{display:flex;align-items:center;gap:6px;margin-top:2px}
+.nl .set4 .opt-numbox input{flex:0 0 58px;width:58px;margin-top:0}
+.nl .set4 .opt-unit-note{font-size:10px;color:var(--dim);white-space:nowrap}
+.nl .cntrow .opt-numbox{display:inline-flex;align-items:center;gap:8px}
+.nl .cntrow .opt-unit-note{font-size:10px;color:var(--dim)}
+.nl .set2{display:grid;grid-template-columns:1fr 1fr}
+.nl .set2 .setop:first-child{border-right:1px solid var(--ln)}
+.nl .opt .setop{padding:3px 16px}
+.nl .opt .setopb{padding:8px 16px;border-bottom:1px solid var(--ln);font-size:12px}
+.nl .opt .setopb[hidden]{display:none}
+.nl .opt .setopb .opt-set{padding:3px 0}
+.nl .opt .setopb .opt-set-main{display:flex;justify-content:space-between;align-items:center;gap:12px}
+.nl .opt .setopb .opt-set-label{color:var(--tx)}
+.nl .opt .setopb .opt-set-hint{color:var(--dim);font-size:11px}
+.nl .opt .setopb .opt-input{background:var(--p2);border:1px solid var(--ln);color:var(--tx);padding:1px 6px;font:inherit;font-size:12px}
+.nl .opt .setopb .opt-cap-row{display:grid;grid-template-columns:repeat(5,1fr);gap:8px}
+.nl .opt .setopb .opt-cap{display:flex;flex-direction:column;gap:2px;font-size:11px;color:var(--mu)}
+.nl .opt .setopb .opt-cap .opt-numbox{display:flex;align-items:center;gap:3px}
+.nl .opt .setopb .opt-cap input{width:100%;min-width:0}
+.nl .opt .setopb .opt-chips{display:flex;flex-wrap:wrap;gap:4px;padding-top:3px}
+.nl .opt .setopb .chip{border-radius:0;padding:2px 8px;font-size:11px;background:none;border:1px solid var(--ln);color:var(--mu);font-weight:700}
+.nl .opt .setopb .chip.active{border-color:var(--am);color:var(--am)}
+.nl .opt .setopb .opt-subtitle{margin:8px 0 2px;font-size:10.5px;color:var(--dim);text-transform:uppercase;letter-spacing:.6px}
+.nl .opt .act{margin:6px 16px 8px}
+.nl .opt .act .two{margin-top:6px;display:flex;gap:6px;align-items:stretch}
+.nl .opt .act .two .ol{flex:1 1 0;background:none;border:1px solid #34343c;color:#b9b9c2;font-weight:700;font-size:12px;padding:5px 8px;cursor:pointer}
+.nl .opt .act .two .ol:disabled{opacity:.45;cursor:default}
+.nl .opt .act .savebox{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--mu);white-space:nowrap}
+.nl .opt .act .savebox input{width:130px;height:28px;background:var(--p2);border:1px solid var(--ln);padding:0 6px;color:var(--tx);font-size:12px}
+.nl .opt .act .gorun{display:flex;flex-wrap:wrap;align-items:center;gap:6px 12px}
+.nl .opt .act .gorun .gomsg{flex:1 1 100%;color:var(--mu);font-size:11.5px;min-height:1em}
+.nl .opt .act .go{width:100%;background:var(--am);color:#000;border:0;font-weight:800;padding:8px 10px;font-size:13px;cursor:pointer}
+.nl .opt .act .go:disabled{opacity:.5;cursor:not-allowed}
+.nl .opt .act .gorun .opt-building{flex:1 1 100%;color:var(--mu);font-size:12px;display:flex;gap:10px;align-items:center}
+.nl .opt .act .gorun .opt-done{flex:1 1 100%;color:var(--mu);font-size:12px;display:block}
+.nl .cash-basis{font-size:11.5px}
+.nl .opt .act .gorun .opt-stop{background:none;border:1px solid var(--ln);color:var(--mu);padding:2px 12px;font-weight:700}
+.nl .opt .act-status{padding:0 16px 8px;font-size:12px}
+.nl .opt .act .link-btn,.nl .opt .link-btn{background:none;border:0;color:var(--am);padding:0;font:inherit;cursor:pointer;text-decoration:underline}
+.nl .lt-read{font-size:11px;color:var(--mu)}
+.nl .lt-med{margin-right:8px;color:var(--mu)}
+.nl .cv{font-size:10.5px}
+/* The pool table: fixed columns, Player the widest; controls centred under their headings. */
+.nl .tbl table{width:100%;table-layout:fixed}
+.nl .tbl th.pl,.nl .tbl td.pl{overflow:hidden}
+.nl .tbl td.num{min-width:0}
+.nl #thead th:last-child,.nl #tbody td:last-child{width:auto}
+.nl #thead th.k-star{width:40px}.nl #thead th.k-sal{width:84px}.nl #thead th.k-proj{width:78px}.nl #thead th.k-own{width:116px}.nl #thead th.k-val{width:62px}.nl #thead th.k-pos{width:52px}.nl #thead th.k-thumbs{width:76px}.nl #thead th.k-lock{width:52px}.nl #thead th.k-excl{width:66px}.nl #thead th.k-lim{width:56px}.nl #thead th.k-cash{width:178px}.nl #thead th.k-tg{width:58px}.nl #thead th.k-tags{width:190px}
+.nl .tbl th.ctl,.nl .tbl td.ctl,.nl .tbl th.bmp,.nl .tbl td.bmp,.nl .tbl th.lim,.nl .tbl td.lim,.nl .tbl th.cs,.nl .tbl td.cs{text-align:center;padding-left:0;padding-right:0}
+.nl .tbl td.bmp .bump-ctl,.nl .tbl td.cs .tabs{display:inline-flex;vertical-align:middle}
+.nl .tbl td.ctl:first-child,.nl .tbl th.ctl:first-child{padding-left:10px}
+.nl .tbl td.lim input{width:44px;height:22px;background:var(--p2);border:1px solid #2a2a30;color:var(--am);text-align:center;font:inherit;font-size:12.5px;padding:0;border-radius:0}
+.nl .tbl td.lim input:focus{outline:none;border-color:var(--am)}
+.nl .tbl td.lim input.invalid{border-color:var(--rd)}
+.nl #thead th{top:calc(var(--filterbar-h,0px) - 1px)}
+.nl .fbar{top:var(--tabs-h,0px)}
+.nl .who{display:flex;align-items:center;gap:8px;min-width:0}
+.nl .who .whot{min-width:0}
+.nl .l1{display:flex;align-items:center;gap:6px;white-space:nowrap}
+.nl .l1 .name{overflow:hidden;text-overflow:ellipsis;min-width:0;cursor:pointer}
+.nl .l2{color:var(--dim);font-size:11px}
+.nl .who .logo{width:24px;height:24px;flex-shrink:0}
+.nl td .editable-cell{justify-content:flex-end;display:inline-flex;align-items:center}
+.nl td.proj .cell-value.is-override{outline:1px solid var(--am);padding:0 3px}
+.nl td.proj .row-reset,.nl td.own .row-reset{color:var(--mu);font-size:10px;background:none;border:0;cursor:pointer;padding:0 0 0 2px}
+.nl td.val .grade-cell{background:none;padding:0;color:inherit;font-weight:700}
+.nl td.val .grade-v1{color:var(--gr)}
+.nl td.val .grade-v2{color:color-mix(in srgb,var(--gr) 70%,var(--tx))}
+.nl td.val .grade-v3{color:var(--tx)}
+.nl td.val .grade-v4{color:color-mix(in srgb,var(--rd) 70%,var(--tx))}
+.nl td.val .grade-v5{color:var(--rd)}
+.nl .row-dimmed td{opacity:.55}
+.nl .tbl .row-msg{font-size:11px}
+.nl .table-legend{margin:4px 0;font-size:11px;color:var(--dim)}
+.nl .lineup-pool-empty{padding:14px;color:var(--dim);text-align:left;white-space:normal}
+.nl .lineup-pool-empty .link-btn{background:none;border:0;color:var(--am);cursor:pointer;text-decoration:underline;padding:0}
+/* The filter bar: the app's chips in the look's outline. */
+.nl .fil{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-bottom:6px}
+.nl .fil label{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;color:var(--mu);white-space:nowrap}
+.nl .salb{width:76px}
+.nl .chip{border-radius:0}
+.nl .chip.active,.nl .chip.on{background:var(--am);border-color:var(--am);color:#000}
+.nl .chip.locked.on,.nl .chip.locked.active{background:var(--gr);border-color:var(--gr)}
+.nl .chip.excluded.on{background:var(--rd);border-color:var(--rd);color:#000}
+.nl .chip.starred{}
+.nl #starred-toggle::before{content:"★ "}
+.nl .chip b{margin-left:6px}
+.nl .chip.ovr{color:var(--mu)}
+.nl .chip.ovr:disabled,.nl .chip:disabled{opacity:.45;cursor:default}
+.nl .tchips{display:flex;flex-wrap:wrap;gap:3px;flex-basis:100%}
+.nl .tchip{display:inline-flex;align-items:center;gap:4px;padding:2px 6px;font-size:11px}
+.nl .tchip .logo{width:14px;height:14px}
+.nl .tabs{margin:0;gap:0;border-bottom:1px solid var(--ln);flex-wrap:nowrap}
+.nl .tabs button.active{background:var(--am);color:#000}
+.nl .tchip.active{background:none;border-color:var(--am);color:var(--am)}
+.nl .colslot{margin-left:auto}
+.nl .colsw{position:relative}
+.nl .filter-qb-note{font-size:11px;color:var(--mu)}
+.nl .filter-qb-note.opt-warn{color:var(--am)}
+.nl .build-notice{margin:2px 0;font-size:12px;color:var(--am)}
+/* The lineups: slot-first rows, one row design everywhere. */
+.nl #lineups .lt-cards{grid-template-columns:repeat(auto-fill,minmax(440px,1fr))}
+.nl #lineups .crow.lead.lr{grid-template-columns:34px 20px minmax(0,1fr) 46px 32px 40px;padding:0 4px 0 0;min-height:28px;align-items:stretch;gap:4px}
+.nl #lineups .crow.lead.lr.hasswap{grid-template-columns:34px 20px minmax(0,1fr) 22px 46px 32px 40px}
+.nl #lineups .crow.lr>*{align-self:center}
+.nl #lineups .crow.lr>.sl{align-self:stretch;display:flex;align-items:center;justify-content:center;border:0;background:var(--am);color:#000;font-size:11px;font-weight:900;letter-spacing:.3px;padding:0}
+.nl #lineups .crow.lr.locked>.sl{background:var(--gr)}
+.nl #lineups .crow.lr{box-shadow:none}
+.nl #lineups .crow.lead .slt{margin-left:4px;min-width:0;text-align:left;font-weight:500;color:var(--mu)}
+.nl #lineups .crow .slnote{font-size:9.5px;font-weight:800;color:var(--am);margin-left:6px}
+.nl #lineups .crow.stale{opacity:.6}
+.nl #lineups .lt-at{gap:6px}
+.nl .lt-badge{font-size:10px;color:var(--mu);border:1px solid var(--ln);padding:0 5px}
+.nl .lt-badge.bad{color:var(--rd);border-color:var(--rd)}
+.nl .lt-badge.warn{color:var(--am)}
+.nl .lt-pre{color:var(--dim);margin-right:4px}
+.nl .lt-confirm{display:inline-flex;gap:4px;align-items:center;font-size:10.5px;color:var(--rd)}
+.nl .lt-tag{background:var(--p2);border:1px solid var(--ln);color:var(--mu);font-size:10.5px;height:18px;padding:0 2px}
+.nl .dk-pick{display:inline-flex;align-items:center;margin-right:6px}
+.nl .dk-pick input{width:12px;height:12px;margin:0;accent-color:#6b7a8c}
+.nl .lt-bdl{margin-left:auto}
+.nl .lt-bn{margin-left:14px;color:var(--mu);font-size:12px;font-weight:500}
+.nl .lt-bq{color:var(--dim)}
+.nl #lineups .lt-bh button.sm{padding:3px 10px;font-size:10.5px;font-weight:800}
+.nl #lineups .lt-bh button.lt-bdl{margin-left:auto}
+.nl #lineups .lt-bh button.sm.x{margin-left:8px}
+.nl .lt-bnote,.nl #lineups .opt-note,.nl #lineups .opt-bends{grid-column:1/-1;font-size:11px;color:var(--mu);padding:0 2px 4px}
+.nl .lt-empty{color:var(--dim);padding:16px}
+.nl .lt-ticked{font-size:11px;color:var(--mu)}
+.nl .dk-status{font-size:11px;color:var(--mu);max-width:560px;white-space:normal}
+.nl .dk-status-line{display:block}
+.nl .dk-status-bad{color:var(--rd)}
+.nl #lineups .lt-ex .ext th:nth-child(4),.nl #lineups .lt-ex .ext td:nth-child(4){display:table-cell}
+.nl #lineups .lt-ex .ext td.ex-name{white-space:nowrap}
+.nl #lineups .lt-ex .ext td.ex-name>*{display:inline;max-width:none}
+.nl #lineups .lt-ex .ext .ex-opp{color:var(--mu);font-size:10.5px;margin-left:5px}
+html[data-theme="light"] .nl .opt .xb{background:#dfdfd8}
+.nl .ext tr.exp-off td{color:var(--am)}
+/* Calm look: bright amber only on the selected tab or segment, the Build button, the sort arrow, projections and stars. */
+.nl #lineups .crow.lr>.sl,.nl .opt .lu.wk .wkr>.sl,.nl .opt .lu.wk .wkr.empty>.sl,.nl .opt .lu.wk .wkr.hand>.sl,.nl .opt .lo .crow .sl{background:#1d1d23;border:1px solid #2e2e36;color:#b9b9c2;font-weight:900;box-shadow:none}
+.nl #lineups .crow.lr.locked>.sl,.nl .opt .lu.wk .wkr.locked>.sl{background:#1d1d23;border:1px solid #2f5f47;color:#5fb98a}
+.nl .opt .lu.wk .wkr.locked .lkd{color:#5fb98a;border:1px solid #2f5f47;background:none}
+html[data-theme="light"] .nl #lineups .crow.lr>.sl,html[data-theme="light"] .nl .opt .lu.wk .wkr>.sl,html[data-theme="light"] .nl .opt .lu.wk .wkr.empty>.sl,html[data-theme="light"] .nl .opt .lo .crow .sl{background:#ececea;border:1px solid #c8c8c1;color:#3c3c42}
+html[data-theme="light"] .nl #lineups .crow.lr.locked>.sl,html[data-theme="light"] .nl .opt .lu.wk .wkr.locked>.sl{background:#ececea;border:1px solid #6fb191;color:#2e7a58}
+.nl .capbar i,.nl .lu.wk .capbar i{background:#5a6f86;box-shadow:none}
+.nl .capbar{height:3px}.nl .lu.wk .capbar{height:3px}
+.nl .opt .xb i{background:#5a6f86}
+.nl .opt .ext td.ex-pct{color:var(--tx);font-weight:600}
+.nl .opt .ext .ex-n{color:var(--mu)}
+.nl .opt .lch button.sm,.nl #lineups .lt-bh button.lt-bdl,.nl #lineups .lt-dl,.nl .opt .act button.ol,.nl #lineups .lt-clear{background:none;border:1px solid #34343c;color:#b9b9c2}
+.nl .opt .lch button.sm.on{border-color:#2f5f47;color:#5fb98a}
+.nl .opt .lch button.sm.x,.nl #lineups .lt-bh button.sm.x{background:none;border:1px solid #34343c;color:#c46a74}
+.nl #lineups .lt-tabs{border-color:var(--ln)}
+.nl #lineups .lt-tabs button{color:var(--mu)}
+.nl #lineups .lt-tabs button.on{background:var(--am);color:#000}
+.nl .opt .act .gorun .gomsg,.nl #lineups .lt-sw{color:var(--mu)}
+.nl .opt .lch{align-items:center}
+.nl .opt .lcb{display:flex;gap:4px;align-items:center;position:relative}
+.nl .lt-title{align-items:center}
+.nl .rn{cursor:pointer}
+html[data-theme="light"] .nl .opt .lch button.sm,html[data-theme="light"] .nl #lineups .lt-bh button.lt-bdl,html[data-theme="light"] .nl #lineups .lt-dl,html[data-theme="light"] .nl .opt .act button.ol{border-color:#c0c0b8;color:#55555c}
+/* The Lineups tab shows only the lineups screen; the Optimizer tab shows only the work area (both are in the one mount). */
+.lineups-only #gamestrip,.lineups-only .work,.lineups-only #pool-top #filterbar{display:none}
+.lineups-only #pool-top{position:static}
+.lineups-only #pool-top:has(#build-notice[hidden]){display:none}
+.lineups-only #build-notice.is-error{display:none} /* a refused or failed Build's sentence is the screen's own line (look-lineups.js): once, not twice */
+.nl:not(.lineups-only) #lineups{display:none}
+.nl .opt-phone-toggle,.nl #lineups .lt-extog{display:none}
+.nl .seelu{display:block;width:100%;margin:6px 0 2px;padding:9px 12px;background:transparent;border:2px solid var(--am);color:var(--am);font:800 14px "Space Grotesk",sans-serif;cursor:pointer}
+.nl .seelu:hover{background:color-mix(in srgb,var(--am) 16%,transparent)}
+.nl .lt-readnote{margin-top:2px;font-size:11px;color:var(--mu)}
+.nl #lineups .lt-legend{grid-column:1/-1;margin:0 0 8px;font-size:12px;line-height:1.45;color:var(--mu)}
+.nl #lineups .lt-tagl{display:inline-flex;align-items:center;gap:4px;font-size:11px;color:var(--mu)}
+.nl .capt .lt-med{color:inherit;margin:0}
+.nl .opt .hint2{margin-top:6px}
+.nl .cs .tabs button.on.fine{background:color-mix(in srgb,var(--tx) 18%,transparent);border-color:var(--mu);color:var(--tx)}
+/* One bar at any wide screen: the slate stamps give way first. */
+@media (min-width:1900px){.nl .top{flex-wrap:nowrap}.nl .top .stamps{flex:0 1 auto;min-width:0;overflow:hidden;white-space:nowrap}.nl .top .stamps span{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis}.nl .top .grow{flex:0 1 8px;min-width:0}.nl .top .mode-tag{display:none}}
+html[data-theme="light"] .nl .vtabs button.on,html[data-theme="light"] .nl .vtabs button.active,html[data-theme="light"] .nl .opt .act .go,html[data-theme="light"] .nl .go,html[data-theme="light"] .nl #lineups .lt-tabs .on,html[data-theme="light"] .nl #lineups .lt-sort button.on,html[data-theme="light"] .nl .opt .xf.on{color:#fff}
+/* Phone: no sideways scroll; the pool keeps Lock, Exclude and Cash chips. */
+@media (max-width:1830px){.nl .work{grid-template-columns:minmax(0,1fr) minmax(420px,520px)}}
+@media (max-width:900px){
+  body.nl-page{padding:0 8px 40px;overflow-x:clip}
+  html:has(body.nl-page){overflow-x:clip}
+  .nl .top{white-space:normal}
+  #classic-header{position:static}
+  .nl .top{display:flex;flex-wrap:wrap;align-items:center;gap:4px 6px}
+  .nl .top .brand{order:0}
+  .nl .top .themes{order:1;margin-left:auto}
+  .nl .top .vtabs{order:2;flex:1 1 100%}
+  .nl .top .grow{display:none}
+  .nl .top #top-slates{order:3;flex:1 1 100%;display:flex;flex-wrap:wrap;gap:4px}
+  .nl .top #tg-mode{order:4}
+  .nl .top .header-actions{order:5;display:flex;flex-wrap:wrap;gap:4px;flex:1 1 auto}
+  .nl .top .header-actions .chip{min-height:32px}
+  .nl .top .stamps{order:6;flex:1 1 100%}
+  .nl .vtabs{max-width:100%;flex-wrap:wrap}
+  .nl .vtabs nav{display:contents}
+  .nl .vtabs button{flex:1 1 auto;padding:4px 5px;font-size:11px}
+  .nl .vtabs button:last-child{min-width:0}
+  .nl .work{grid-template-columns:minmax(0,1fr)}
+  .nl .opt{position:static;max-height:none;overflow:visible}
+  /* Phone: no sideways scroll. Each pool row is a grid: star, the man, salary, projection, ownership, then Lock and Exclude, or (Cash) Exclude with the Lock, Want and Fine chips on a line of their own; the other columns are for a wider screen. */
+  .nl .tbl{position:static;overflow:visible;max-height:none}
+  .nl .tbl table,.nl .tbl thead,.nl .tbl tbody{display:block;width:100%;min-width:0}
+  .nl #thead th.k-val,.nl #thead th.k-pos,.nl #thead th.k-tg,.nl #thead th.k-tags,.nl #thead th.k-thumbs,.nl #thead th.k-lim,.nl #tbody td.val,.nl #tbody td.k-pos,.nl #tbody td.tg-col,.nl #tbody td.tags-cell,.nl #tbody td.bmp,.nl #tbody td.lim{display:none}
+  .nl #thead tr,.nl #tbody tr[data-id]{display:grid;grid-template-columns:34px minmax(0,1fr) 56px 42px 46px 34px 34px;align-items:center;column-gap:2px}
+  .nl #thead tr:has(.k-cash),.nl #tbody tr[data-id]:has(td.cs){grid-template-columns:34px minmax(0,1fr) 56px 42px 46px 34px}
+  .nl #thead th.k-cash{display:none}
+  .nl #thead th,.nl #tbody td{display:block;width:auto!important;min-width:0;padding-left:0;padding-right:0;position:static;background-color:var(--p);box-sizing:border-box}
+  .nl #thead th.k-val,.nl #thead th.k-pos,.nl #thead th.k-tg,.nl #thead th.k-tags,.nl #thead th.k-thumbs,.nl #thead th.k-lim,.nl #tbody td.val,.nl #tbody td.k-pos,.nl #tbody td.tg-col,.nl #tbody td.tags-cell,.nl #tbody td.bmp,.nl #tbody td.lim{display:none!important}
+  .nl #tbody td.own .b{display:none}
+  .nl #tbody td.own{text-align:right}
+  .nl #tbody td.ctl button{width:32px;height:32px}
+  .nl #tbody td.cs{grid-column:1/-1;grid-row:2;padding:0 0 4px 34px}
+  .nl #tbody td.cs .tabs button{min-height:32px;padding:0 10px;font-size:12px}
+  .nl #tbody tr[data-id]{border-bottom:1px solid var(--ln);padding:2px 0}
+  .nl #tbody td.pl .logo{display:none}
+  .nl #tbody td.pl .who{gap:0}
+  .nl .tbl #thead th{box-shadow:none}
+  .nl .tbl .lineup-pool-empty{display:block}
+  /* The panel is one closed line above the player list until it is opened. */
+  .nl .opt-phone-toggle{display:flex;justify-content:space-between;align-items:center;width:100%;min-height:40px;padding:8px 12px;background:var(--p2);border:1px solid var(--am);color:var(--tx);font-weight:700;font-size:13px;text-align:left;cursor:pointer}
+  .nl .opt:not(.phone-open)>:not(.opt-phone-toggle){display:none}
+  .nl .work{gap:8px}
+  /* Lineups: the cards first, the exposure table behind its switch; buttons and the build line wrap. */
+  .nl #lineups .lt-body{display:flex;flex-direction:column;gap:8px}
+  .nl #lineups .lt-cards{order:1}
+  .nl #lineups .lt-extog{display:block;order:2;width:100%;min-height:36px;background:var(--p2);border:1px solid var(--ln);color:var(--tx);font-weight:700;cursor:pointer}
+  .nl #lineups .lt-ex{order:3;display:none;max-width:100%}
+  .nl #lineups .lt-body.exopen .lt-ex{display:block}
+  .nl #lineups .ext{width:100%;table-layout:auto}
+  .nl #lineups .ext th.ex-bar,.nl #lineups .ext td.ex-bar,.nl #lineups .ext th.ex-diff,.nl #lineups .ext td.ex-diff,.nl #lineups .ext .ex-opp,.nl #lineups .ext td.ex-f,.nl #lineups .ext thead th:last-child{display:none}
+  .nl #lineups .ext td.ex-name{white-space:normal}
+  .nl #lineups .ext td.ex-name .pn{white-space:normal;max-width:none;overflow:visible}
+  .nl #lineups .lt-top{flex-direction:column;align-items:stretch;gap:6px}
+  .nl #lineups .lt-btns{display:flex;flex-direction:column;align-items:stretch;gap:4px}
+  .nl #lineups .lt-btns .lt-dl{width:100%;white-space:normal}
+  .nl #lineups .lt-bh{flex-wrap:wrap;gap:4px 8px}
+  .nl #lineups .lt-bn{white-space:normal}
+  .nl #lineups .lt-bar{flex-wrap:wrap;gap:6px}
+  .nl #lineups .lt-sort{flex-wrap:wrap}
+  .nl .updline,.nl .own-banner,.nl .stamps-host{text-align:left;align-items:flex-start;margin:0;padding-left:0;width:100%}
+  .nl .stamps-host>*{justify-content:flex-start;margin-left:0;padding-left:0}
+  .nl #lineups .lt-sum{display:grid;grid-template-columns:repeat(3,minmax(0,1fr))}
+  .nl #lineups .lt-sum div{padding:3px 6px;border-right:0}
+  .nl #lineups .lt-sum b{font-size:13px}
+  /* Left out: name line and figures fit one row; the working lineup's head stays on one line. */
+  .nl .opt .lo .crow i{display:none}
+  .nl .opt .lo .crow .sn{min-width:0}
+  .nl .opt .lu.wk .luh{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:baseline;gap:2px 8px}
+  .nl .opt .lu.wk .luh>span:first-child{font-size:13px;white-space:nowrap}
+  .nl #lineups .capt{flex-wrap:wrap;gap:2px 10px}
+  .nl #thead th.ctl{font-size:9px}
+  .nl .opt .lu.wk .luh .luhr{display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+  .nl #lineups .lt-cards{grid-template-columns:minmax(0,1fr)}
+  .nl #lineups .lt-body{grid-template-columns:minmax(0,1fr)}
+  .nl #lineups .crow.lead.lr{grid-template-columns:34px 20px minmax(0,1fr) 46px 32px 40px}
+  .nl .games{display:flex;flex-wrap:nowrap;overflow-x:auto;gap:6px;padding-bottom:4px;-webkit-overflow-scrolling:touch} /* phone: one sideways row inside its own box, Adam 2026-10-10 */
+  .nl .game{flex:0 0 200px}
+  .nl .tchips{flex-wrap:wrap;min-width:0;width:100%}
+  .nl .updline{flex-direction:column;gap:2px}
+  .nl .gs-toggle{position:static;display:block;margin-top:2px}
+  .nl .tchips{gap:2px}
+  .nl .tools{flex-wrap:wrap}
+  .nl .opt .lu.wk .wkh,.nl .opt .lu.wk .wkr{grid-template-columns:30px 20px minmax(0,1fr) 62px 44px 48px 26px;column-gap:4px}
+  .nl .opt .lu.wk .wkr .ss,.nl .opt .lu.wk .wkr .sp,.nl .opt .lu.wk .wkr .so{font-size:12px}
+  .nl .opt .lu.wk .wkr .slt{display:none}
+  .nl .opt .lu.wk .cap .capt{flex-wrap:wrap;justify-content:flex-start;gap:4px 12px}
+  .nl #lineups .lt-sum b{white-space:normal}
+  .nl .opt .lo .crow{grid-template-columns:30px 20px minmax(0,1fr) 54px 40px 46px}
+  .nl .opt .lo .way{padding-left:0}
+  .nl .lo .xf{grid-column:1/-1!important;justify-self:end;margin-top:2px}
+  .nl .set4{grid-template-columns:1fr 1fr}
+  .nl .set4 label:nth-child(2){border-right:0}
+  .nl .opt .act .two{flex-wrap:wrap}
+  .nl .opt .act .savebox{flex:1 1 100%}
+  .nl .opt .act .savebox input{flex:1}
+}

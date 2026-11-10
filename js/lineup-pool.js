@@ -7,16 +7,15 @@ import { escapeHtml, money, pct1, dec1 } from "./format.js";
 import { CLASSIC_GPP_COLUMNS, CLASSIC_CASH_COLUMNS, CLASSIC_TG_KEYS, loadColumns, shownKeys } from "./columns.js"; // A17
 import { store, matchesPosition, filterRows, sortRows, passesProjFloor, activeSlateRows, isTwoGunMode, DEFAULT_SORT } from "./state.js";
 import { sortableHeadHtml } from "./tabs.js";
-import { gradedCellHtml, rowIsOut, STATUS_INFO, TG_COLUMNS, tgCellHtml, tagsCellHtml, tagsCellTitle, markerHtml, twoGunMarkerTexts, projFlagMarkerHtml } from "./table.js";
-import { playerLineHtml, matchupPillHtml, showPos } from "./player-row.js";
+import { gradedCellHtml, rowIsOut, STATUS_INFO, TG_COLUMNS, tgCellHtml, tagsCellHtml, tagsCellTitle, markerHtml, twoGunMarkerTexts, projFlagMarkerHtml, opponentLabel } from "./table.js";
+import { playerTagHtml, teamLogoHtml, showPos } from "./player-row.js";
 import { rowsGradedForView } from "./grade.js";
-import { teamColours, teamColourStyle, cardNameHtml } from "./lineup-card.js"; // cardNameHtml: the short name Showdown's pool shows on a phone (style.css, max-width 700px)
+import { cardNameHtml } from "./lineup-card.js"; // cardNameHtml: the short name a phone shows (style.css, max-width 700px)
 import { paletteForRows } from "./team-palette.js";
+import { teamVars, LOCK_ICON, EXCLUDE_ICON } from "./look-row.js";
 import { bumpControlHtml, bumpFigureOnlyHtml } from "./bump-control.js"; // since A1 the thumbs are their own column, disabled like the star when no write is wired
 import { messageIsFor, rowMessageHtml, TONE_WARN } from "./row-message.js";
-import { convictionChipsHtml } from "./lineup-cash.js";
 import { poolPicker } from "./lineup-pool-fit.js"; // A18, D3: what a click on each pool row may do, and why a row is greyed
-import { rowIconButtonHtml } from "./row-controls.js"; // round 3: Lock and Exclude are the same small buttons in both Optimizers
 import { rowResetHtml } from "./row-reset.js"; // B12: the x beside a figure that clears his typed numbers and bump
 import { crossedNoteHtml } from "./limit-cross.js"; // item 18: Min % above Max % is said under the Max box
 import { refusalNoteHtml } from "./limit-box.js"; // item 7: a refused Min % / Max % text is drawn beside its row until the next press
@@ -140,32 +139,37 @@ const LEGEND = "coloured number = your own (&times; puts the original back) &mid
 /** The sortable heads of the columns that sort, by Columns key (state.js sortRows reads these keys); every other column's head is plain text. */
 function sortableHeads() {
   return {
-    star: { key: "star", label: "★", cls: "lineup-star-col", headTitle: "Star" },
-    player: { key: "player", label: "Player" },
-    salary: { key: "salary", label: "Sal", cls: "lp-num" },
-    proj: { key: "proj", label: "Proj", cls: "lp-num" },
-    own: { key: "own", label: "Own", cls: "lp-num" },
-    value: { key: "value", label: "Val", cls: "lp-num", headTitle: "Val: projection per $1,000 of salary" },
-    pos: { key: "pos", label: "Pos", cls: "pos-col" },
-    ...Object.fromEntries(TG_COLUMNS.map((c) => [c.key, { key: c.key, label: c.label, cls: "lp-num tg-col", headTitle: c.title }])),
-    tags: { key: "tags", label: "Tags", cls: "tags-cell" }, // the td's class on the head too, so a phone's column rule (style.css) takes both
+    star: { key: "star", label: "★", cls: "ctl k-star", headTitle: "Star" },
+    player: { key: "player", label: "Player", cls: "pl" },
+    salary: { key: "salary", label: "Sal", cls: "num k-sal" },
+    proj: { key: "proj", label: "Proj", cls: "num k-proj" },
+    own: { key: "own", label: "Own", cls: "num k-own" },
+    value: { key: "value", label: "Val", cls: "num k-val", headTitle: "Val: projection per $1,000 of salary" },
+    pos: { key: "pos", label: "Pos", cls: "num k-pos" },
+    ...Object.fromEntries(TG_COLUMNS.map((c) => [c.key, { key: c.key, label: c.label, cls: "num k-tg tg-col", headTitle: c.title }])),
+    tags: { key: "tags", label: "Tags", cls: "k-tags tags-cell" },
   };
 }
 
 const PLAIN_HEADS = {
-  thumbs: `<th class="lineup-thumbs-head" title="Thumbs: raise or lower his projection 5% a press">Thumbs</th>`, // the Columns list's words (A1, A17)
-  lock: `<th class="lineup-lock-head" title="Lock puts a player in the lineup">Lock</th>`,
-  exclude: `<th class="lineup-exclude-head" title="Exclude keeps a player out of every lineup">Exclude</th>`,
-  min_pct: `<th class="lineup-min-head" title="Fewest of the new lineups this player must be in; blank = none">Min %</th>`,
-  max_pct: `<th class="lineup-max-head" title="Most of the new lineups this player may be in; blank = no cap">Max %</th>`,
-  cash: `<th class="lineup-cash-head" title="Lock puts a player in every lineup; Want puts him on your list, and each lineup shows whether he made it; Fine leaves him to the numbers">Cash</th>`,
+  thumbs: `<th class="bmp k-thumbs" title="Thumbs: raise or lower his projection 5% a press">Thumbs</th>`, // the Columns list's words (A1, A17)
+  lock: `<th class="ctl k-lock" title="Lock puts a player in the lineup">Lock</th>`,
+  exclude: `<th class="ctl k-excl" title="Exclude keeps a player out of every lineup">Exclude</th>`,
+  min_pct: `<th class="lim k-lim" title="Fewest of the new lineups this player must be in; blank = none">Min %</th>`,
+  max_pct: `<th class="lim k-lim" title="Most of the new lineups this player may be in; blank = no cap">Max %</th>`,
+  cash: `<th class="cs k-cash" title="Lock puts a player in every lineup; Want puts him on your list, and each lineup shows whether he made it; Fine leaves him to the numbers">Cash</th>`,
 };
 
 /** The pool's head row for `keys`, sorted by `sort`. */
 export function poolHeadHtml(keys, sort) {
   const sortable = sortableHeads();
-  return `<tr>${keys.map((k) => (sortable[k] ? sortableHeadHtml([sortable[k]], sort).replace(/^<tr>|<\/tr>$/g, "") : PLAIN_HEADS[k] ?? "")).join("")}<th class="lp-fill"></th></tr>`;
+  return `<tr>${keys.map((k) => (sortable[k] ? sortableHeadHtml([sortable[k]], sort).replace(/^<tr>|<\/tr>$/g, "") : PLAIN_HEADS[k] ?? "")).join("")}</tr>`;
 }
+
+// The Locked and Excluded chips of the filter bar: the table shows only those men (and stars, salary filters and the floor no longer apply to them, as a pick is never hidden by a filter). Page-only.
+let poolOnly = null;
+export const poolOnlyView = () => poolOnly;
+export function setPoolOnly(next) { poolOnly = next === "locked" || next === "excluded" ? next : null; }
 
 /** The pool's markup for `rows` (the slate on screen's rows) and `rowById` (the whole board's, for the placed men). `opts.keys`: the columns to draw instead of Adam's own ticks (the tests draw every column through the real row). */
 export function rightColumnHtml(rows, rowById, opts = {}) {
@@ -186,7 +190,12 @@ export function rightColumnHtml(rows, rowById, opts = {}) {
   // store's one sort (sort.col / sort.dir; state.js sortRows reads the keys); a sort on a column that is not drawn (it was unticked) falls back to Proj, high to low, with its arrow.
   const keys = opts.keys ?? poolColumnKeys();
   const sortNow = poolSortFor(keys, sort);
-  const sorted = sortRows(filtered, sortNow.col, sortNow.dir);
+  const shownRows = poolOnly === "locked"
+    ? graded.filter((row) => state.locks.has(String(row.id)))
+    : poolOnly === "excluded"
+      ? graded.filter((row) => state.excludes.has(String(row.id)))
+      : filtered;
+  const sorted = sortRows(shownRows, sortNow.col, sortNow.dir);
   const placed = placedIdentities(rowById);
   const pickOf = poolPickerFor(rows, rowById);
   const slateKey = slateKeyOf(store.get().board);
@@ -194,12 +203,12 @@ export function rightColumnHtml(rows, rowById, opts = {}) {
   const minMap = playerMinFor(slateKey);
   const palette = paletteForRows(rowById);
   const bodyRows = sorted.map((row) => rightRowHtml(row, pickOf(row), placed, showPos(filters.pos) && !keys.includes("pos"), maxMap, minMap, cash ? wantSet : null, keys, palette)).join("");
-  const emptyRow = sorted.length > 0 ? "" : filters.starredOnly ? poolEmptyRowHtml(graded, filters.pos, keys.length + 1) : rows.length ? poolNoMatchRowHtml(keys.length + 1) : "";
+  const emptyRow = sorted.length > 0 ? "" : poolOnly ? poolNoMatchRowHtml(keys.length) : filters.starredOnly ? poolEmptyRowHtml(graded, filters.pos, keys.length) : rows.length ? poolNoMatchRowHtml(keys.length) : "";
   return `
-    <div class="lineup-rows-wrap" id="lineup-pool">
-      <table class="lineup-rows-table lineup-pool-table">
-        <thead>${poolHeadHtml(keys, sortNow)}</thead>
-        <tbody>${bodyRows}${emptyRow}</tbody>
+    <div class="tbl" id="lineup-pool">
+      <table class="lineup-pool-table">
+        <thead id="thead">${poolHeadHtml(keys, sortNow)}</thead>
+        <tbody id="tbody">${bodyRows}${emptyRow}</tbody>
       </table>
     </div>
     <div class="table-legend">${LEGEND}</div>`;
@@ -211,7 +220,7 @@ const POOL_PICK_TITLES = Object.freeze({ add: "Click to add to the lineup", remo
 
 /** A click inside one of these is that control's own (the star, his name's card, the typed Proj and Own, the ± bump, a Min % / Max % box, the Cash chips, Lock and
  *  Exclude) or the padding around it, never a pick (pick-rows.js wirePickRows; the Showdown pool's twin is pool.js POOL_PICK_SKIP). */
-export const CLASSIC_POOL_PICK_SKIP = "button, a, input, select, textarea, label, .player-name, .bump-ctl, .lineup-thumbs-cell, .lineup-star-col, .lineup-min-cell, .lineup-max-cell, .lineup-cash-cell, .lineup-row-actions, .editable-cell";
+export const CLASSIC_POOL_PICK_SKIP = "button, a, input, select, textarea, label, .player-name, .bump-ctl, .ctl, .bmp, .lim, .cs, .editable-cell";
 
 /** What a click on his pool row does: "remove" when he is placed (by DraftKings identity, 🔵 finding 6), null when he is excluded (an
  *  excluded man cannot be picked; Exclude undoes it), else "add" (lineup.js pickPoolRow puts him in the first slot his position fills). Pure. */
@@ -284,39 +293,45 @@ function rightRowHtml(row, picked, placedSet, posShown, maxMap = {}, minMap = {}
   // 🔵 finding 8: same dimming rule as the Rankings table.
   const dimmed = rowIsOut(row);
   const greyed = !pick && !excluded; // an excluded row keeps its own look; every other row that cannot be clicked is greyed (A18)
-  const rowClass = `${excluded ? " lineup-row-excluded" : locked ? " lineup-row-locked" : ""}${inLineup && !locked ? " lineup-row-in" : ""}${dimmed ? " row-dimmed" : ""}${pick ? " lineup-pool-pick" : ""}${greyed ? " lineup-row-greyed" : ""}`;
+  const rowClass = `team${excluded ? " excl" : locked ? " locked" : ""}${inLineup && !locked ? " inl" : ""}${dimmed ? " row-dimmed" : ""}${pick ? " pk" : ""}${greyed && !locked ? " blk" : ""}`;
   const name = escapeHtml(row.name ?? "");
   const noWrite = !canWrite();
-  // A1: the name cell is the logo, name, position and injury letter on one line and the matchup in small type on a second; its width is its content's. The
-  // TwoGun dot follows the name for a status that changed after his board was made (the retired ranked list's Player cell).
+  const ownNum = typeof row.own === "number" && Number.isFinite(row.own) ? row.own : null;
+  const ownBar = ownNum === null ? `<span class="b off"></span>` : `<span class="b"><i style="width:${Math.min(100, (ownNum / 30) * 100).toFixed(0)}%"></i></span>`;
+  // The name cell (A1): logo, name, position and injury letter on the first line, team and matchup (D43) on the second, the click's message under them. The TwoGun dot follows the name for a status that changed after his board was made.
   const cells = {
-    star: () => `<td class="lineup-star-col"><button type="button" class="star-btn${row.starred ? " active" : ""}" title="${row.starred ? "Starred" : "Star"}" data-action="toggle-star" data-id="${idAttr(id)}"${poolCallbacks?.onToggleStar ? "" : " disabled"}>${row.starred ? "★" : "☆"}</button></td>`,
-    player: () => `<td class="lp-name"><span class="player-cell lp-l1">${playerLineHtml(row, { pos: posShown, pill: false, titled: true, nameHtml: cardNameHtml(row) })}${markerHtml(twoGunMarkerTexts(row, "status"))}</span><span class="lp-l2">${matchupPillHtml(row)}</span>${poolRowMessageHtml(id)}</td>`,
-    salary: () => `<td class="lp-num">${money(row.salary)}${markerHtml(twoGunMarkerTexts(row, "salary"))}</td>`,
-    proj: () => `<td class="lp-num lp-proj"><div class="editable-cell" data-field="proj" data-id="${idAttr(id)}">${projCellInner(row, { canReset: !noWrite })}</div></td>`,
-    own: () => `<td class="lp-num"><div class="editable-cell" data-field="own" data-id="${idAttr(id)}">${ownCellInner(row, { canReset: !noWrite })}</div></td>`,
-    value: () => `<td class="lp-num lp-val">${gradedCellHtml(row.value, row.valueGrade)}</td>`,
-    thumbs: () => `<td class="lineup-thumbs-cell">${bumpControlHtml(row, { enabled: Boolean(poolCallbacks?.onBump) })}</td>`,
-    cash: () => `<td class="lineup-cash-cell">${convictionChipsHtml(row, { locked, wanted: Boolean(cashWant?.has(id)), excluded, inLineup })}</td>`,
-    // Round 3: Lock and Exclude are the same small buttons the Showdown pool draws (row-controls.js); the heads say the words.
-    lock: () => `<td class="lineup-row-actions">${rowIconButtonHtml({ kind: "lock", on: locked, title: locked ? "Locked in every lineup. Click to unlock" : "Lock him into your lineup and every build", attrs: `data-action="row-lock" data-id="${idAttr(id)}"`, disabled: excluded })}</td>`,
-    exclude: () => `<td class="lineup-row-actions">${rowIconButtonHtml({ kind: "exclude", on: excluded, title: excluded ? "Excluded from every lineup. Click to include again" : "Exclude from every lineup", attrs: `data-action="row-exclude" data-id="${idAttr(id)}"` })}</td>`,
-    min_pct: () => `<td class="lineup-min-cell"><input type="text" inputmode="decimal" maxlength="5" class="opt-input lineup-min-input${minBad ? " invalid" : ""}" data-player-min="${idAttr(id)}" value="${escapeHtml(minText)}" aria-label="Min % for ${name}" />${refusalNoteHtml(`[data-player-min="${id}"]`)}</td>`,
-    max_pct: () => `<td class="lineup-max-cell"><input type="text" inputmode="decimal" maxlength="5" class="opt-input lineup-max-input${maxBad ? " invalid" : ""}" data-player-max="${idAttr(id)}" value="${escapeHtml(maxText)}" aria-label="Max % for ${name}" />${refusalNoteHtml(`[data-player-max="${id}"]`)}${crossedNoteHtml(minText, maxText, parsePct)}</td>`,
-    pos: () => `<td class="pos-col">${escapeHtml(row.pos ?? "")}</td>`,
-    tags: () => `<td class="tags-cell" title="${escapeHtml(tagsCellTitle(row))}">${tagsCellHtml(row)}</td>`,
+    star: () => `<td class="ctl"><button type="button" class="fav${row.starred ? " on" : ""}" title="${row.starred ? "Starred" : "Star"}" data-action="toggle-star" data-id="${idAttr(id)}"${poolCallbacks?.onToggleStar ? "" : " disabled"}>${row.starred ? "★" : "☆"}</button></td>`,
+    player: () => `<td class="pl"><div class="who">${teamLogoHtml(row.team, "logo", 24)}<div class="whot"><div class="l1"><span class="name player-name" title="${name}">${cardNameHtml(row)}</span>${playerTagHtml(row)}${posShown && row.pos ? `<span class="pos">${escapeHtml(row.pos)}</span>` : ""}${markerHtml(twoGunMarkerTexts(row, "status"))}</div><div class="l2">${escapeHtml(row.team ?? "")}${opponentLabel(row) ? ` · ${escapeHtml(opponentLabel(row))}` : ""}</div></div></div>${poolRowMessageHtml(id)}</td>`,
+    salary: () => `<td class="num sal">${money(row.salary)}${markerHtml(twoGunMarkerTexts(row, "salary"))}</td>`,
+    proj: () => `<td class="num proj"><div class="editable-cell" data-field="proj" data-id="${idAttr(id)}">${projCellInner(row, { canReset: !noWrite })}</div></td>`,
+    own: () => `<td class="num bar own">${ownBar}<span class="v"><div class="editable-cell" data-field="own" data-id="${idAttr(id)}">${ownCellInner(row, { canReset: !noWrite })}</div></span></td>`,
+    value: () => `<td class="num bar val"><span class="v">${gradedCellHtml(row.value, row.valueGrade)}</span></td>`,
+    thumbs: () => `<td class="bmp">${bumpControlHtml(row, { enabled: Boolean(poolCallbacks?.onBump) })}</td>`,
+    cash: () => `<td class="cs">${cashChipsHtml(row, { locked, wanted: Boolean(cashWant?.has(id)), excluded, inLineup })}</td>`,
+    lock: () => `<td class="ctl"><button type="button" class="lk${locked ? " on" : ""}" data-action="row-lock" data-id="${idAttr(id)}" aria-pressed="${locked}" title="${locked ? "Locked in every lineup. Click to unlock" : "Lock him into your lineup and every build"}"${excluded ? " disabled" : ""}>${LOCK_ICON}</button></td>`,
+    exclude: () => `<td class="ctl"><button type="button" class="ex${excluded ? " on" : ""}" data-action="row-exclude" data-id="${idAttr(id)}" aria-pressed="${excluded}" title="${excluded ? "Excluded from every lineup. Click to include again" : "Exclude from every lineup"}">${EXCLUDE_ICON}</button></td>`,
+    min_pct: () => `<td class="lim"><input type="text" inputmode="decimal" maxlength="5" class="limb lineup-min-input${minBad ? " invalid" : ""}" data-player-min="${idAttr(id)}" value="${escapeHtml(minText)}" aria-label="Min % for ${name}" />${refusalNoteHtml(`[data-player-min="${id}"]`)}</td>`,
+    max_pct: () => `<td class="lim"><input type="text" inputmode="decimal" maxlength="5" class="limb lineup-max-input${maxBad ? " invalid" : ""}" data-player-max="${idAttr(id)}" value="${escapeHtml(maxText)}" aria-label="Max % for ${name}" />${refusalNoteHtml(`[data-player-max="${id}"]`)}${crossedNoteHtml(minText, maxText, parsePct)}</td>`,
+    pos: () => `<td class="num k-pos">${escapeHtml(row.pos ?? "")}</td>`,
+    tags: () => `<td class="k-tags tags-cell" title="${escapeHtml(tagsCellTitle(row))}">${tagsCellHtml(row)}</td>`,
   };
   for (const key of CLASSIC_TG_KEYS) {
     cells[key] = () => {
       const col = TG_BY_KEY.get(key);
       const tip = twoGunMarkerTexts(row, col.field).join(" ");
-      return `<td class="lp-num tg-col"${tip ? ` title="${escapeHtml(tip)}"` : ""}>${tgCellHtml(row, col)}</td>`;
+      return `<td class="num tg-col"${tip ? ` title="${escapeHtml(tip)}"` : ""}>${tgCellHtml(row, col)}</td>`;
     };
   }
-  // A20: the list wears a much lighter version of the lineup's team tint and stripe (style.css .lineup-row), from the same slate palette.
-  const c = teamColours(palette, row.team);
   return `
-    <tr class="lineup-row${rowClass}" data-id="${idAttr(id)}"${poolPickAttrs(pick, picked.reason)} style="${teamColourStyle(c)}">
-      ${keys.map((k) => cells[k]?.() ?? "").join("")}<td class="lp-fill"></td>
+    <tr class="${rowClass}" data-id="${idAttr(id)}"${poolPickAttrs(pick, picked.reason)} style="${teamVars(row.team, palette)}">
+      ${keys.map((k) => cells[k]?.() ?? "").join("")}
     </tr>`;
+}
+
+/** The Cash chips on a pool row (Lock, Want, Fine: the approved look's small tabs, lineup-cash.js's words): `data-cash-pick` is wired by lineup.js. A man clicked into the lineup with no padlock has no chip on (he is held, so "Fine" would be false; a click on Fine takes him out). */
+function cashChipsHtml(row, { locked = false, wanted = false, excluded = false, inLineup = false } = {}) {
+  const id = idAttr(row.id);
+  const active = locked ? "must" : wanted ? "want" : inLineup ? null : "fine";
+  const part = (key, label) => `<button type="button" class="${active === key ? (key === "fine" ? "on fine" : "on") : ""}" data-cash-pick="${key}" data-id="${id}" aria-pressed="${active === key}"${key === "fine" && inLineup && !locked ? ` title="Take him out of your lineup"` : ""}${excluded ? " disabled" : ""}>${label}</button>`;
+  return `<span class="tabs${excluded ? " is-disabled" : ""}" role="group" aria-label="Conviction for ${escapeHtml(row?.name ?? "")}">${part("must", "Lock")}${part("want", "Want")}${part("fine", "Fine")}</span>`;
 }

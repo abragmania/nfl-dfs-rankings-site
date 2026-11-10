@@ -2,8 +2,7 @@
 // salary range, search, the Starred only toggle, reset-all-overrides. Rendered once per board load; after
 // that only class names are toggled (never innerHTML) so the salary/search inputs never lose focus
 // or cursor position while Adam is typing. The "Starred only" chip carries the starred count of the slate on screen (Adam, 2026-10-21; D53).
-import { escapeHtml } from "./format.js";
-import { textColourFor } from "./format.js";
+import { escapeHtml, logoFor } from "./format.js";
 import { TEAM_BY_ABBR } from "./teams-data.js";
 import { POSITION_CHIPS, CLASSIC_PROJ_FLOOR, store } from "./state.js";
 import { askInline, anchorHtml } from "./confirm-inline.js";
@@ -32,6 +31,18 @@ export function paintStarredQbChip(container, view) {
   if (!note) return;
   note.textContent = view.hidden || !view.on || !view.note ? "" : view.note.text;
   note.classList.toggle("opt-warn", Boolean(view.note?.warn));
+}
+
+/** The Locked and Excluded chips' numbers and on look (the approved look's filter row): called after each draw of the pool. */
+export function paintPoolOnlyChips(container, { locked = 0, excluded = 0, only = null } = {}) {
+  const set = (id, n, on) => {
+    const chip = container?.querySelector?.(id);
+    if (!chip) return;
+    chip.classList.toggle("on", Boolean(on));
+    chip.querySelector("b").textContent = String(n);
+  };
+  set("#locked-only-toggle", locked, only === "locked");
+  set("#excluded-only-toggle", excluded, only === "excluded");
 }
 
 export function updateFilterSummary(container, { filteredCount, totalCount, activeGameLabel, onClearGame, starredCount }) {
@@ -90,38 +101,35 @@ export function renderFilterBar(container, teamAbbrs, filters, callbacks, hasOve
   const teamChipsHtml = teamAbbrs
     .map((abbr) => {
       const t = TEAM_BY_ABBR[abbr];
-      const primary = t?.colourPrimary ?? "#333333";
-      const secondary = t?.colourSecondary ?? "#ffffff";
-      const textColour = textColourFor(primary, secondary);
+      const logo = logoFor(t);
       const active = filters.teams.has(abbr) ? " active" : "";
-      return `<button type="button" class="chip team-chip${active}" data-team="${abbr}" style="background:${primary};color:${textColour}">${escapeHtml(abbr)}</button>`;
+      return `<button type="button" class="chip tchip team-chip${active}" data-team="${abbr}" title="Only ${escapeHtml(t?.name ?? abbr)}">${logo ? `<img class="logo xs" src="${escapeHtml(logo)}" alt="" />` : ""}${escapeHtml(abbr)}</button>`;
     })
     .join("");
 
+  // The approved look's row order (PROJECT.md Part 4 item 5): positions, Locked / Excluded / Starred, search, the count, Columns (#columns-slot, filled at each draw by lineup.js); then salary, Clear filters, Starred QBs only, Show all, Reset all; then the team chips.
   container.innerHTML = `
-    <div class="filter-row">
-      <div class="chip-group" id="pos-chips">${chipsHtml}</div>
-      <div class="filter-search">
-        <input id="search-input" type="search" placeholder="Search players" value="${escapeHtml(filters.search ?? "")}" />
+    <div class="tools">
+      <div class="tabs" id="pos-chips">${chipsHtml}</div>
+      <div class="chips">
+        <button type="button" id="locked-only-toggle" class="chip locked" title="Show only the locked men">Locked<b id="locked-count">0</b></button>
+        <button type="button" id="excluded-only-toggle" class="chip excluded" title="Show only the excluded men">Excluded<b id="excluded-count">0</b></button>
+        <button type="button" id="starred-toggle" class="chip starred toggle-chip${filters.starredOnly ? " active" : ""}">${favoritesChipLabel()}</button>
       </div>
-      <div class="filter-salary">
-        <label>Salary <input id="salary-min" type="number" step="100" placeholder="min" value="${filters.salaryMin ?? ""}" /></label>
-        <span>-</span>
-        <label><input id="salary-max" type="number" step="100" placeholder="max" value="${filters.salaryMax ?? ""}" /></label>
-      </div>
-      <button type="button" id="starred-toggle" class="chip toggle-chip${filters.starredOnly ? " active" : ""}">${favoritesChipLabel()}</button>
-      <button type="button" id="starred-qb-toggle" class="chip toggle-chip" aria-pressed="false">Starred QBs only</button>
-      ${showAllToggleHtml(filters.showAllPlayers, `id="show-all-toggle"`)}
-      ${anchorHtml(`<button type="button" id="reset-overrides-btn" class="reset-btn"${hasOverrides ? "" : " disabled"}>Reset all overrides</button>`)}
+      <input id="search-input" class="search" type="search" placeholder="Search players" value="${escapeHtml(filters.search ?? "")}" />
+      <span id="filter-count" class="cnt filter-count"></span>
+      <span id="columns-slot" class="colslot"></span>
     </div>
-    <div class="filter-row">
-      <div class="chip-group" id="team-chips">${teamChipsHtml}</div>
-    </div>
-    <div class="filter-row filter-summary-row">
-      <span id="filter-count" class="filter-count"></span>
+    <div class="fil">
+      <label>Min salary<input id="salary-min" class="search salb" type="number" step="100" placeholder="min" value="${filters.salaryMin ?? ""}" /></label>
+      <label>Max salary<input id="salary-max" class="search salb" type="number" step="100" placeholder="max" value="${filters.salaryMax ?? ""}" /></label>
+      <button type="button" id="clear-filters-btn" class="chip">Clear filters</button>
+      <button type="button" id="starred-qb-toggle" class="chip starred toggle-chip" aria-pressed="false">Starred QBs only</button>
       <span id="starred-qb-note" class="filter-qb-note"></span>
-      <button type="button" id="clear-filters-btn" class="link-btn">Clear filters</button>
+      ${showAllToggleHtml(filters.showAllPlayers, `id="show-all-toggle"`)}
+      ${anchorHtml(`<button type="button" id="reset-overrides-btn" class="chip ovr reset-btn"${hasOverrides ? "" : " disabled"}>Reset all overrides</button>`)}
       <span id="active-game-chip-slot"></span>
+      <div class="tchips" id="team-chips">${teamChipsHtml}</div>
     </div>
   `;
 
@@ -160,6 +168,10 @@ export function renderFilterBar(container, teamAbbrs, filters, callbacks, hasOve
     starredToggle.classList.toggle("active");
     callbacks.onStarredToggle(starredToggle.classList.contains("active"));
   });
+
+  // Locked and Excluded narrow the table to those men (lineup-pool.js); their numbers and look follow each draw of the pool (paintPoolOnlyChips).
+  container.querySelector("#locked-only-toggle").addEventListener("click", () => callbacks.onPoolOnlyToggle?.("locked"));
+  container.querySelector("#excluded-only-toggle").addEventListener("click", () => callbacks.onPoolOnlyToggle?.("excluded"));
 
   // Starred QBs only is an Optimizer rule (lineup.js owns it): a click flips it there, and the panel's redraw repaints this chip.
   container.querySelector("#starred-qb-toggle").addEventListener("click", () => callbacks.onStarredQbToggle?.());

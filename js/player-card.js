@@ -20,7 +20,7 @@ export function cardTargetOf(el) {
   const hit = el?.closest?.(NAME_SELECTOR);
   if (!hit) return null;
   const inner = el.closest(INTERACTIVE);
-  if (inner && hit.contains(inner)) return null; // a button or link inside a name keeps its own job
+  if (inner && inner !== hit && hit.contains(inner)) return null; // a button or link inside a name keeps its own job; a name that is itself a button (the look's row) opens the card
   const holder = hit.closest("[data-card-id]");
   const id = holder ? holder.dataset.cardId : hit.closest("tr[data-id]")?.dataset?.id;
   if (id == null || id === "") return null;

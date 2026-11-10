@@ -7,6 +7,12 @@
   <link rel="stylesheet" href="style.css" />
   <link rel="stylesheet" href="site/site.css">
   <link rel="stylesheet" href="player-card.css" />
+  <!-- The approved classic look: the app's own copy of NBA's stylesheets at commit a39b37e, scoped under .nl (never a live link), and NFL's additions. -->
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="look/board.css" />
+  <link rel="stylesheet" href="look/lineups.css" />
+  <link rel="stylesheet" href="look/theme-light.css" />
+  <link rel="stylesheet" href="look/look.css" />
   <script>
     // Dark mode is the default (2026-09-27 brief): set <html data-theme> before first paint so the
     // page never flashes light-then-dark. A saved choice in localStorage ("nfldfs-theme": "light" or
@@ -38,24 +44,27 @@
        public/js/header.js's renderModeRow, called from app.js. -->
   <div id="mode-row" class="mode-row"></div>
 
-  <header class="header" id="classic-header">
-    <div class="header-top">
-      <h1 class="title">NFLDFSRankings</h1>
-      <span class="mode-tag">MAIN SLATE</span>
-      <div id="slate-line" class="slate-line">Loading...</div>
+  <!-- The classic top bar (the approved look, PROJECT.md Part 4 item 5): brand, slate stamps, the tabs, then the slate tiles (#mode-row, moved in here while the main slate is on screen), the TwoGun switch, Upload, Tracked, Refresh and Dark | Light. -->
+  <header class="nl" id="classic-header">
+    <div class="top">
+      <div class="brand"><span class="mk"></span>NFL DFS<small class="mode-tag">DraftKings classic</small></div>
+      <div id="slate-line" class="stamps slate-line">Loading...</div>
+      <div class="vtabs"><nav id="tabs"></nav><button id="sources-btn" class="tab-btn" type="button" title="Which sources feed the projections and ownership, their weights, and when each was last pulled">Sources</button></div>
+      <span class="grow"></span>
+      <div id="top-slates"></div>
+      <div id="tg-mode" class="tg-mode" hidden></div>
       <div class="header-actions">
-        <label class="upload-btn">
+        <label class="chip upload-btn">
           Upload DraftKings CSV
           <input id="csv-input" type="file" accept=".csv,text/csv" hidden />
         </label>
         <span id="upload-info" class="upload-info"></span>
-        <button id="tracked-btn" class="sources-btn" type="button" title="The DFS players you track: contest entrants, the RotoGrinders top 100 and your marks">Tracked</button>
-        <button id="sources-btn" class="sources-btn" type="button" title="Which sources feed the projections and ownership, their weights, and when each was last pulled">Sources</button>
-        <button id="refresh-btn" class="refresh-btn" type="button">Refresh</button>
-        <button id="theme-toggle-btn" class="theme-toggle-btn" type="button" title="Switch theme"></button>
+        <button id="tracked-btn" class="chip" type="button" title="The DFS players you track: contest entrants, the RotoGrinders top 100 and your marks">Tracked</button>
+        <button id="refresh-btn" class="chip" type="button">Refresh</button>
       </div>
+      <div class="themes" id="theme-switch" role="group" aria-label="Theme"><button type="button" data-theme-set="dark">Dark</button><button type="button" data-theme-set="light">Light</button></div>
     </div>
-    <!-- The row under the title: the source pills and, beside them, the TwoGun status pill (header.js renderModeBox puts it in #tg-pill). -->
+    <!-- The row under the bar: the source pills and, beside them, the TwoGun status pill (header.js renderModeBox puts it in #tg-pill). Hidden when empty. -->
     <div class="header-sub">
       <div id="pills-row" class="pills-row"></div>
       <div id="tg-pill" class="tg-pill" hidden></div>
@@ -85,22 +94,16 @@
 
   <main class="main" id="classic-main">
     <div id="status" class="status"></div>
-
-    <nav id="tabs" class="tabs"></nav>
     <!-- Second slates (D57): one plain line while a second slate (the afternoon-only slate, say) is on screen;
          hidden on the main slate. Filled by app.js's renderSlateChrome. -->
     <p id="slate-note" class="tab-note" hidden></p>
 
-    <!-- The Optimizer tab, the main screen (PROJECT.md Part 4 "Optimizer first", step 4; Rankings folded in here). The game strip
-         and the filter bar (sticky) with its banner are static markup drawn by app.js; #lineup-mount is the only part
-         public/js/lineup.js's renderLineupPanel redraws (the settings, the lineup, the one player table, the pool, and the results below it), so a redraw never
-         replaces the search box (its caret and value survive a keystroke). #build-notice is the `Build finished.` line (build-notice.js), sticky under the filter bar. -->
-    <div id="lineup-panel" class="panel">
-      <section id="gamestrip" class="gamestrip"></section>
-      <section id="filterbar" class="filterbar"></section>
-      <div id="build-notice" class="build-notice" hidden></div>
-      <p id="own-banner" class="tab-note own-banner"></p>
-      <div id="stamps-line" class="stamps-host"></div>
+    <!-- The Optimizer and Lineups tabs in the approved look (.nl: public/look/). The game strip and the two lines under it are static markup drawn by app.js; #lineup-mount is the part lineup.js's renderLineupPanel redraws.
+         #pool-top (the sticky filter bar and the `Build finished.` notice) sits outside the redraw and is moved into the pool column after each one, so typing in its boxes keeps its caret. -->
+    <div id="lineup-panel" class="panel nl">
+      <section id="gamestrip"></section>
+      <div class="updline" id="updline"><p id="own-banner" class="own-banner"></p><div id="stamps-line" class="stamps-host"></div></div>
+      <div id="pool-top" class="fbar"><section id="filterbar"></section><div id="build-notice" class="build-notice" hidden></div></div>
       <div id="lineup-mount" class="lineup-mount"></div>
     </div>
 
@@ -190,7 +193,7 @@
         var scrolled = !scrollToId;
         if (tabClicked && scrollToId) {
           var el = document.getElementById(scrollToId);
-          var ready = el && el.querySelector(".saved-lineup-card, .saved-lineups-empty");
+          var ready = el && el.querySelector(".lc, .saved-lineups-empty");
           if (ready) {
             el.scrollIntoView({ block: "start" });
             scrolled = true;

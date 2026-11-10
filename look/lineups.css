@@ -1,0 +1,193 @@
+/* The NFL app's own copy of NBA's server/board/lineups.css, pinned at NBA commit a39b37e (never a live link); every rule scoped under .nl, the look's root. Generated once; NFL's own additions are in look.css. */
+/* The Lineups tab (lineups-tab.js) and the player list's slimmer optimizer panel (panel.js). The tab is the .opt panel's own look, full width. */
+/* Exposure table's you-vs-field bar and diff; the swap button and its panel on a built lineup's slot (swap-list.js). */
+.nl .opt .ext .ex-bar{width:90px;padding-right:8px}.nl .opt .xb{position:relative;display:block;height:8px;background:#1b1b20}.nl .opt .xb i{display:block;height:100%;background:var(--am)}.nl .opt .xb u{position:absolute;top:-2px;bottom:-2px;width:2px;background:var(--bl);text-decoration:none}
+.nl .opt .ext td.ex-diff{text-align:right;color:var(--tx);font-variant-numeric:tabular-nums}
+.nl .opt .swb{width:24px;height:24px;padding:0;background:none;border:1px solid #2a2a30;color:var(--mu);font-size:13px;line-height:1}.nl .opt .swb:hover:not(:disabled),.nl .opt .swb.on{color:var(--am);border-color:var(--am)}.nl .opt .swb:disabled{opacity:.35;cursor:not-allowed}
+.nl .opt .swp{border:1px solid var(--am);background:var(--p);padding:6px 10px 8px;margin:2px 0 6px;font-size:12px}
+.nl .opt .swh{display:flex;justify-content:space-between;color:var(--mu);font-size:11.5px;padding-bottom:4px}.nl .opt .swh span{color:var(--dim)}.nl .opt .swh b{color:var(--tx)}
+.nl .opt .swt{width:100%;border-collapse:collapse;white-space:nowrap}.nl .opt .swt th{background:none;color:var(--dim);font-size:10.5px;text-align:right;padding:2px 6px 3px 0;cursor:default}.nl .opt .swt td{text-align:right;padding:3px 6px 3px 0;color:var(--mu);border-bottom:1px solid #18181c;font-variant-numeric:tabular-nums}
+.nl .opt .swt th.swl,.nl .opt .swt td.swl{text-align:left;width:99%;color:var(--tx)}.nl .opt .swt .swpj{color:var(--am);font-weight:700}.nl .opt .swt .swo{color:var(--bl)}.nl .opt .swt b.neg{color:var(--rd)}.nl .opt .swt b.pos0{color:var(--gr)}
+.nl .opt .swn{color:var(--rd);font-size:11.5px;padding:4px 0}
+
+
+.nl #lineups.opt{border:0;box-shadow:none;background:none;padding:0}
+ /* the tab ends at its scrolling boxes, sized to the screen (lineups-panel.js sizeBoxes): no band under them */
+.nl #lineups[hidden]{display:none}
+.nl .top{gap:10px 12px} /* the Player list / Lineups switch joins the first header line at the wide size */
+.nl .vtabs{display:flex;border:1px solid var(--ln)}
+.nl .vtabs button:last-child{min-width:104px;text-align:center} /* the count appearing or not never moves the header */
+.nl .vtabs button{background:none;border:0;border-right:1px solid var(--ln);padding:4px 12px;font-weight:700;font-size:12px;color:var(--mu)}
+.nl .vtabs button:last-child{border-right:0}
+.nl .vtabs button.on{background:var(--am);color:#000}
+.nl .vtabs b{font-weight:800}
+/* The player list's panel: count beside Build, the other settings one click away. */
+.nl .opt .cntrow{padding:5px 16px;border-bottom:1px solid var(--ln)}
+.nl .opt .cntrow label{display:flex;align-items:center;gap:12px;font-size:11px;color:var(--mu)}
+.nl .opt .cntrow input{width:64px;height:24px;background:var(--p2);border:1px solid var(--ln);padding:0 8px;font-size:14px;text-align:right}
+.nl .opt .cntrow input.bad{border-color:var(--rd)}
+.nl .opt .setop{display:block;width:100%;text-align:left;background:none;border:0;border-bottom:1px solid var(--ln);padding:5px 16px;font-size:11px;font-weight:700;color:var(--mu)}
+.nl .opt .setop:hover{color:var(--tx)}
+.nl .set.two{grid-template-columns:repeat(2,1fr)}
+/* The summary strip, the switch / filter / sort row, the body. */
+.nl #lineups .lt-top{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:8px 0 8px}
+.nl #lineups .lt-sum{display:inline-flex;flex-wrap:wrap;border:1px solid var(--ln);background:var(--p)}
+.nl #lineups .lt-sum div{padding:4px 18px 4px 12px;border-right:1px solid var(--ln)}
+.nl #lineups .lt-sum div:last-child{border-right:0}
+.nl #lineups .lt-sum small{display:block;font-size:10px;color:var(--dim);letter-spacing:.4px;margin-bottom:2px}
+.nl #lineups .lt-sum b{font:700 15px "Space Grotesk",sans-serif;color:var(--tx);white-space:nowrap}
+.nl #lineups .lt-bar{display:flex;flex-wrap:wrap;align-items:center;gap:8px 14px;margin-bottom:8px}
+.nl #lineups .lt-tabs{display:flex;border:1px solid var(--am)}
+.nl #lineups .lt-tabs button{background:none;border:0;padding:4px 12px;font-weight:800;font-size:12px;color:var(--am)}
+.nl #lineups .lt-tabs button.on{background:var(--am);color:#000}
+.nl #lineups .lt-q{width:230px;height:28px}
+.nl #lineups .lt-sort{display:flex;flex-wrap:wrap;align-items:center;gap:4px}
+.nl #lineups .lt-sort em{font-style:normal;font-size:10.5px;color:var(--dim);margin-right:4px}
+.nl #lineups .lt-sort button{background:none;border:1px solid var(--ln);padding:3px 10px;font-weight:700;font-size:11.5px;color:var(--mu)}
+.nl #lineups .lt-sort button:hover{color:var(--tx)}
+.nl #lineups .lt-sort button.on{background:var(--am);border-color:var(--am);color:#000}
+.nl #lineups .lt-dl{flex-shrink:0;width:auto;padding:4px 12px;background:none;border:1px solid var(--am);color:var(--am);font-weight:800;font-size:12px}
+.nl #lineups .lt-dl:disabled{opacity:.4;cursor:not-allowed}
+.nl #lineups .lt-run{display:flex;align-items:center;gap:12px;margin:12px 0;padding:8px 12px;border:1px solid var(--am);font-size:12px;color:var(--am)}
+.nl #lineups .lt-empty{padding:30px;color:var(--dim);font-size:13px}
+.nl #lineups .lt-body{display:grid;grid-template-columns:minmax(480px,500px) minmax(0,1fr);gap:14px;align-items:start}
+.nl #lineups .lt-ex{border:1px solid var(--ln);background:var(--p);padding:8px 0}
+.nl #lineups .lt-exh{padding:2px 16px 8px;font-size:10.5px;letter-spacing:.8px;text-transform:uppercase;color:var(--dim)}
+.nl #lineups .lt-ex .sec{display:none}
+.nl #lineups .lt-ex .exl{padding:0 12px 4px}
+.nl #lineups .lt-ex .ext th:nth-child(4),.nl #lineups .lt-ex .ext td:nth-child(4){display:none}
+.nl #lineups .lt-ex .ext .ex-bar{width:40px}
+.nl #lineups .lt-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(350px,1fr));gap:10px;align-items:start}
+.nl #lineups .lt-ex .ext td,.nl #lineups .lt-ex .ext th{padding-right:4px}
+.nl #lineups .lt-ex .ext .xf{padding:0 6px}
+.nl #lineups .crow.lead .pn{font-size:13px}
+.nl #lineups .crow.lead .sn1{gap:4px}
+.nl #lineups .lc{padding:6px 8px 8px}
+.nl #lineups .lt-at{font-size:10.5px;color:var(--dim);padding:0 0 4px}
+.nl #lineups .lt-sw{font-size:10.5px;color:var(--am);padding:0 0 4px}
+.nl #lineups .lt-sw.ill{color:var(--rd)}
+.nl #lineups .lc.swapped{border-color:#ffb00099}
+.nl #lineups .lch .md{margin-left:6px}
+.nl #lineups .lt-title{display:inline-flex;align-items:center;gap:6px;min-width:0}
+.nl #lineups .lt-title .rn{background:none;border:0;color:var(--dim);font-size:11px;padding:0 2px}
+.nl #lineups .lt-title .rn:hover{color:var(--am)}
+.nl #lineups .lt-name{width:150px;background:var(--p);border:1px solid var(--am);color:var(--tx);padding:2px 6px;font-size:12.5px}
+.nl #lineups .lt-at{display:flex;align-items:center;gap:6px;height:24px;overflow:visible;white-space:nowrap}
+.nl #lineups .lt-at .md{margin-right:0;flex-shrink:0}
+.nl #lineups .lt-time{min-width:0;flex:0 1 auto;overflow:hidden;text-overflow:ellipsis} /* the time gives way before the spots do */
+/* Spots (Adam's contest entries): the chip on a saved card and its one-click menu. */
+.nl #lineups .spw{margin-left:auto;position:relative;flex-shrink:0}
+.nl #lineups .spchip{display:flex;align-items:center;gap:4px;background:none;border:1px solid var(--ln);padding:1px 5px;color:var(--mu)}
+.nl #lineups .spchip:hover,.nl #lineups .spchip.on{border-color:var(--am)}
+.nl #lineups .spchip i{font-style:normal;font-size:11px;color:var(--mu)}
+.nl #lineups .spt{color:var(--sc);border:1px solid var(--sc);padding:0 5px;font-size:10px;font-weight:800;line-height:1.5;white-space:nowrap}
+.nl #lineups .spt.none{color:var(--mu);border-color:transparent;font-weight:600}
+.nl #lineups .spmenu{position:absolute;right:0;top:calc(100% + 2px);z-index:6;width:270px;background:var(--p);border:1px solid var(--am);box-shadow:0 8px 24px #000a;padding:4px}
+.nl #lineups .spm{display:grid;grid-template-columns:14px 1fr auto;align-items:center;gap:6px;width:100%;text-align:left;background:none;border:0;padding:5px 6px;font-size:11.5px;color:var(--tx)}
+.nl #lineups .spm:hover{background:#ffffff12}
+.nl #lineups .spm i{font-style:normal;font-size:11px}
+.nl #lineups .spm em{font-style:normal;font-size:10.5px;color:var(--mu)}
+.nl #lineups .spm.mine em{color:var(--gr)}
+.nl #lineups .spm.new{display:block;color:var(--mu)}
+.nl #lineups .lt-bad{margin:0 0 4px;padding:2px 6px;background:#ff4d5e22;border:1px solid var(--rd);color:var(--rd);font-size:11px;font-weight:700}
+.nl #lineups .spwarn{margin:2px 2px 6px;padding:6px 8px;background:#ff4d5e22;border:1px solid var(--rd);color:var(--rd);font-size:11.5px;font-weight:700}
+.nl #lineups .spwarn b{color:var(--tx)}
+.nl #lineups .spwarn span{display:flex;gap:6px;margin-top:6px}
+.nl #lineups .spwarn button{background:none;border:1px solid var(--rd);color:var(--rd);font-size:11px;font-weight:800;padding:2px 8px}
+.nl #lineups .lt-order{margin-left:6px;gap:10px}
+.nl #lineups .lt-order .on-order{background:none;border:1px solid var(--am);color:var(--am);font-weight:800;font-size:11.5px;padding:5px 12px}
+.nl #lineups .lt-order .on-order:hover{background:#ffb00022}
+.nl #lineups .lt-order label{display:flex;align-items:center;gap:5px;font-size:11px;color:var(--mu);white-space:nowrap}
+/* A build's header over its cards (Recently generated), and the filtered men as chips. */
+.nl #lineups .lt-bh{grid-column:1/-1;display:flex;align-items:center;gap:14px;padding:8px 2px 4px;margin-top:6px;border-bottom:1px solid var(--ln)}
+.nl #lineups .lt-bh:first-child{margin-top:0}
+.nl #lineups .lt-bh b{font:700 13px "Space Grotesk",sans-serif;color:var(--tx)}
+.nl #lineups .lt-bh button{margin-left:auto;background:none;border:1px solid #ff4d5e66;color:var(--rd);font-size:10.5px;font-weight:800;padding:3px 10px}
+.nl #lineups .lt-chips{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:0 0 10px;padding:8px 12px;border:1px solid var(--am);background:#ffb00010}
+.nl #lineups .lt-chips em{font-style:normal;font-size:11px;color:var(--mu)}
+.nl #lineups .lt-chip{display:inline-flex;align-items:center;gap:6px;padding:2px 4px 2px 10px;border:1px solid var(--am);background:var(--p)}
+.nl #lineups .lt-chip b{font-size:12.5px;color:var(--tx)}
+.nl #lineups .lt-chip button{background:none;border:0;color:var(--am);font-size:16px;font-weight:800;line-height:1;padding:0 6px;cursor:pointer}
+.nl #lineups .lt-chip button:hover{color:var(--rd)}
+.nl #lineups .lt-count{margin-left:6px;font-size:12px;font-weight:800;color:var(--am)}
+.nl #lineups .lt-clear{margin-left:auto;background:none;border:1px solid var(--am);color:var(--am);font-weight:800;font-size:11.5px;padding:4px 12px;width:auto}
+.nl #lineups .lt-empty .lt-clear{margin-left:10px}
+/* The banner's buttons are live buttons: Undo the primary, Keep beside it. */
+.nl #lineups .lt-run button{padding:6px 16px;font-weight:800;font-size:12px;width:auto;cursor:pointer;opacity:1}
+.nl #lineups .lt-run button[data-op="orderundo"]{background:var(--am);border:1px solid var(--am);color:#000}
+.nl #lineups .lt-run button[data-op="orderundo"]:hover{filter:brightness(1.12)}
+.nl #lineups .lt-run button[data-op="orderokay"],.nl #lineups .lt-run button[data-op="spotmove"],.nl #lineups .lt-run button[data-op="spotmovex"]{background:none;border:1px solid var(--am);color:var(--am)}
+.nl #lineups .lt-run button[data-op="spotmove"]{background:var(--am);color:#000}
+.nl #lineups .lt-run button:not([data-op="orderundo"]):hover{background:#ffb00022}
+.nl #lineups .lt-ordwarn{margin:0 0 10px}
+.nl #lineups .lt-ordwarn ul{margin:4px 0 0 16px;padding:0;font-weight:600;color:var(--tx)}
+.nl #lineups .spr{display:flex;align-items:center}
+.nl #lineups .spr .spm{flex:1}
+.nl #lineups .spx{background:none;border:0;color:var(--dim);font-size:14px;padding:0 6px}
+.nl #lineups .spx:hover{color:var(--rd)}
+.nl #lineups .spchip.locked{cursor:default;border-color:var(--ln)}
+.nl #lineups .spnone{padding:5px 6px;font-size:11px;color:var(--mu)}
+.nl #lineups .spadd{display:flex;gap:4px;padding:4px 2px 2px}
+.nl #lineups .spadd input{flex:1;min-width:0;background:var(--p2);border:1px solid var(--ln);color:var(--tx);padding:3px 6px;font-size:11.5px}
+.nl #lineups .spadd button{background:none;border:1px solid var(--am);color:var(--am);font-size:11px;font-weight:800;padding:2px 10px}
+.nl #lineups .lch button.sm{padding:2px 7px}
+/* A card row: team logo first, the team's tint (.crow.tm), the slot as small muted text, a CORR chip on a game stack. */
+.nl #lineups .crow.lead{grid-template-columns:20px minmax(0,1fr) 22px 46px 32px 40px;gap:4px;padding:1px 4px 1px 6px;min-height:28px}
+.nl #lineups .crow.lead .logo.sm,.nl #lineups .crow.lead .chipx.sm{width:20px;height:20px}
+.nl #lineups .crow.lead.tm{background-image:linear-gradient(90deg,color-mix(in srgb,var(--t1) 24%,transparent) 0,color-mix(in srgb,var(--t1) 10%,transparent) 45%,color-mix(in srgb,var(--t2) 6%,transparent) 100%)}
+.nl #lineups .swb{width:22px;height:22px}
+.nl #lineups .capt{flex-wrap:nowrap;justify-content:space-between;gap:8px;font-size:11px;white-space:nowrap}
+.nl #lineups .lch{flex-wrap:wrap;gap:4px 8px}
+.nl #lineups .lch button.sm{white-space:nowrap;font-size:10px;padding:2px 6px}
+.nl #lineups .lt-ex .ext .ex-bar{width:32px;padding-right:4px}
+.nl #lineups .lt-ex .ext .ex-n{font-size:10px}
+.nl #lineups .lt-ex .ext td.ex-f{padding-right:4px}
+.nl #lineups .lt-ex .ext .xf{padding:0 4px;font-size:10px}
+.nl #lineups .lt-ex{overflow:hidden}
+.nl #lineups .swt .pos,.nl #lineups .swt small{display:none}
+.nl #lineups .swt td.swl{white-space:normal}
+.nl #lineups .crow.lead .sn small,.nl #lineups .crow.lead i,.nl #lineups .crow.lead .pos{display:none}
+.nl #lineups .crow .slt{flex-shrink:0;font-size:10px;font-weight:600;color:var(--mu);margin-left:auto;min-width:34px;text-align:right}
+.nl #lineups .crow .corr{margin-left:auto}.nl #lineups .crow .corr + .slt{margin-left:0}
+.nl #lineups .crow .corr{flex-shrink:0;font-size:9px;font-weight:800;letter-spacing:.5px;padding:1px 4px;background:var(--cc);color:#000;line-height:1.2}
+.nl #lineups .crow .so{font-size:11.5px}
+.nl #lineups .crow .ss{font-size:12px}
+.nl #lineups .swp{overflow-x:auto;margin:2px 0 6px;font-size:11px}
+.nl #lineups .swt td,.nl #lineups .swt th{padding-right:5px}
+.nl #lineups .swh{display:block}
+.nl #lineups .swh span{display:block}
+/* A build of up to 150 lineups (Adam, 2026-11-07): the exposure table, the cards and Compare's tables each scroll in their own box,
+   sized by lineups-panel.js (sizeBoxes) to the room left below its top, so at the top of the page the whole box is on screen and
+   the page never stretches to the last card. The max-height here is only the fallback before that runs. Each box keeps its title
+   and its table head in view. */
+@media (min-width:600px){
+  .nl #lineups .lt-ex,.nl #lineups .lt-cards,.nl #lineups .cp-scroll{max-height:calc(100dvh - 12px);overflow-y:auto;overscroll-behavior:contain}
+  .nl #lineups .lt-ex{padding-top:0}
+  .nl #lineups .lt-exh{position:sticky;top:0;z-index:3;height:26px;box-sizing:border-box;padding:8px 16px 0;background:var(--p)}
+  .nl #lineups .lt-ex .ext thead th{position:sticky;top:26px;z-index:2;background:var(--p);box-shadow:inset 0 -1px var(--ln)}
+  .nl #lineups .cp-scroll thead tr:not(.cp-cap) th{position:sticky;top:0;z-index:2;box-shadow:inset 0 -1px var(--ln)}
+}
+/* The exposure table fits its column: a long name ends in an ellipsis, so the Filter buttons are never cut off. */
+.nl #lineups .lt-ex .ext td.ex-name{max-width:0;overflow:hidden;text-overflow:ellipsis}
+.nl #lineups .lt-ex .ext td.ex-name>*{display:block;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* The spot filter: each button on one line; the row wraps between buttons. */
+.nl #lineups .lt-sort button{white-space:nowrap}
+/* With many spots the buttons stay within two lines and scroll inside their own box, so the cards below never move far. */
+.nl #lineups .lt-spotf{flex:0 1 auto;flex-wrap:nowrap;min-width:0;max-width:100%}
+.nl #lineups .lt-spotbtns{flex:1 1 auto;min-width:0;display:flex;flex-wrap:wrap;gap:4px;max-height:52px;overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin}
+.nl #lineups .lt-spotn{flex:none;font-size:10.5px;color:var(--mu);white-space:nowrap;margin-left:4px}
+/* The spot menu: its list scrolls inside it and the ways to add a spot stay under the list; it opens upward when the room below is
+   short (lineups-panel.js placeSpotMenu, which also sets its height). */
+.nl #lineups .spmenu{display:flex;flex-direction:column;max-height:420px}
+.nl #lineups .spmenu.up{top:auto;bottom:calc(100% + 2px)}
+.nl #lineups .spmenu .spwarn,.nl #lineups .spfoot{flex:none}
+.nl #lineups .splist{flex:1 1 auto;min-height:0;overflow-y:auto;overscroll-behavior:contain}
+.nl #lineups .spfoot{border-top:1px solid var(--ln);margin-top:2px;padding-top:2px}
+.nl #lineups .spfull{white-space:normal}
+/* Phone: the summary tiles wrap two or three to a row and the download button takes its own row. */
+@media (max-width:599px){
+  .nl #lineups .lt-top{flex-direction:column;align-items:stretch}
+  .nl #lineups .lt-sum{display:grid;grid-template-columns:repeat(3,minmax(0,1fr))}
+  .nl #lineups .lt-sum div{border-bottom:1px solid var(--ln)}
+  .nl #lineups .lt-dl{width:100%;min-height:36px}
+}

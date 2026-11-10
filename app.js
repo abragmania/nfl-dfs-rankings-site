@@ -22,7 +22,7 @@ import {
   postProjectionsPaste,
   postMode,
 } from "./js/api.js";
-import { renderPills, renderSlateLine, wireUpload, wireRefresh, wireThemeToggle, secondSlateSavedText, renderModeBox, uploadStatusSetter, entriesUploadedHandler, paintSourcesLink, wireSourcesLink, wireTrackedLink } from "./js/header.js";
+import { renderPills, renderSlateLine, wireUpload, wireRefresh, wireThemeToggle, wireThemeSwitch, secondSlateSavedText, renderModeBox, uploadStatusSetter, entriesUploadedHandler, paintSourcesLink, wireSourcesLink, wireTrackedLink } from "./js/header.js";
 import { uploadEntriesText, setUploadRouter } from "./js/entries-wire.js"; // Adam 2026-10-18: one upload for every DraftKings export
 import { showdownKeyFromHash, showdownRowById, showdownBoardAsOf, showdownBoardNow } from "./js/showdown/view.js";
 import { configureShowdown, setRouteDkFile, uploadShowdownText, uploadShowdownEntriesText, renderModeRowNow, renderShowdownTabNow, loadShowdownList, applyMode } from "./js/app-showdown.js";
@@ -30,7 +30,7 @@ import { adjustScrollPanels } from "./js/scroll-panels.js";
 import { normalizeBoard } from "./js/normalize.js";
 import { applyGrades, rowsGradedForView } from "./js/grade.js";
 import { favoriteRows } from "./js/favorites.js";
-import { toggleStarredQbOnly, starredQbViewNow, setPoolRowError, hydrateOptimizer, opt as optimizerState } from "./js/lineup.js";
+import { toggleStarredQbOnly, starredQbViewNow, togglePoolOnly, clearPoolOnly, setPoolRowError, hydrateOptimizer, lineupsCountNow as optimizerLineupsCount, opt as optimizerState } from "./js/lineup.js";
 import { setTabSwitchGate } from "./js/lineup-tabs.js"; // Part F: a GPP | Cash click waits for that tab's board
 import { makeTabBoards, otherTab, tabWord } from "./js/showdown/tab-boards.js"; // Part F: the Showdown's per-tab boards and numbered flows
 import { tabResetQuestion } from "./js/showdown/filter-bar.js"; // Part F: Reset all's question names the tab it clears, the same words as Showdown's
@@ -57,7 +57,6 @@ const el = {
   uploadInfo: document.getElementById("upload-info"),
   csvInput: document.getElementById("csv-input"),
   refreshBtn: document.getElementById("refresh-btn"),
-  themeToggleBtn: document.getElementById("theme-toggle-btn"),
   status: document.getElementById("status"),
   tabs: document.getElementById("tabs"),
   sourcesBtn: document.getElementById("sources-btn"), // Adam 2026-10-18: the header link to the Sources view
@@ -77,7 +76,7 @@ const el = {
 };
 
 // The Showdown module (public/js/app-showdown.js) reaches back for the element map and these three functions.
-configureShowdown({ el, renderFilterBarNow, renderDynamic, renderSlateChrome });
+configureShowdown({ el, renderFilterBarNow, renderDynamic, renderSlateChrome, syncPageLook });
 
 function findRow(id) {
   return store.get().board?.rows.find((r) => String(r.id) === String(id));
@@ -219,9 +218,11 @@ const filterCallbacks = {
   onStarredToggle: (bool) => store.setFilters({ starredOnly: bool }),
   onStarredQbToggle: toggleStarredQbOnly, // the Optimizer's Starred QBs only rule, drawn as a chip in this bar (standard C12)
   starredQbView: starredQbViewNow,
+  onPoolOnlyToggle: togglePoolOnly, // the Locked and Excluded chips narrow the table to those men (lineup-pool.js)
   onShowAllToggle: (bool) => store.setFilters({ showAllPlayers: bool }),
   onClearFilters: () => {
     typedFilters.cancelAll(); // a search or salary typed just before Clear filters never comes back after it
+    clearPoolOnly();
     store.setFilters(defaultFilters());
     const board = store.get().board;
     if (board) {
@@ -322,7 +323,7 @@ function onToggleGamestripCollapse() {
 }
 
 function renderStatic(board) {
-  renderSlateLine(el.slateLine, board.slate);
+  renderSlateLine(el.slateLine, board.slate, { slateKey: store.get().activeSlateKey ?? null });
   // Optimizer standard C30 (2026-11-03): the per-source chips (cached, failed, findings, Stokastic) are off the classic header; the salary file's warning chips stay.
   // Each source's state is on the Sources page. The branch header-rows-wip holds their replacement and stays unmerged. The Showdown header (showdown/view.js) is unchanged.
   renderPills(el.pillsRow, { warnings: board.warnings });
@@ -348,7 +349,7 @@ function renderSlateChrome() {
   const board = store.get().board;
   const slate = activeSlate(board);
   const tag = el.classicHeader?.querySelector(".mode-tag");
-  if (tag) tag.textContent = slate ? slateDisplayName(slate).toUpperCase() : "MAIN SLATE";
+  if (tag) tag.textContent = slate ? slateDisplayName(slate) : "DraftKings classic";
   if (!el.slateNote) return;
   el.slateNote.hidden = !slate;
   if (!slate) {
@@ -368,6 +369,13 @@ function ownBannerText(rows) {
     return "No published DraftKings ownership numbers yet for this week. Own is blank until real numbers are added.";
   }
   return `Own shows published DraftKings numbers only (${published} player${published === 1 ? "" : "s"}). Everyone else is blank.`;
+}
+
+/** The approved look's page (dark background, full width) belongs to the classic Optimizer and Lineups tabs; Entries, Sources and the Showdown screens keep the app's own page (style.css). */
+function syncPageLook() {
+  const tab = shownTab(store.get().activeTab);
+  document.body.classList.toggle("nl-page", !showdownKeyFromHash() && (tab === "lineup" || tab === "lineups"));
+  paintThemeSwitch(); // the Showdown header's button sets the same choice
 }
 
 function renderEmptyState({ loading, boardError }) {
@@ -419,9 +427,10 @@ function renderDynamic() {
 
   // Every list below reads the slate on screen's rows (D57): the whole board, or the active second slate's.
   const slateRows = activeSlateRows(board);
-  renderTabs(el.tabs, activeTab, onTabClick);
+  renderTabs(el.tabs, activeTab, onTabClick, { lineupsCount: optimizerLineupsCount() });
   if (isSourcesTab(activeTab)) lastSourcesTab = activeTab;
   paintSourcesLink(el.sourcesBtn, isSourcesTab(activeTab));
+  syncPageLook();
 
   if (!board) {
     // #empty-state lives as a sibling of the tab panels (not nested inside #lineup-panel), so a
@@ -478,12 +487,14 @@ function renderDynamic() {
 // ?scrollTo= dev link) must land below it: style.css gives every element with an id in #lineup-panel a scroll-margin-top of
 // --filterbar-h, kept here to the bar's height while it sticks (0 where it does not: another tab, or a phone, where it is static).
 function syncFilterbarHeight() {
-  const sticky = !el.lineupPanel.hidden && getComputedStyle(el.filterbar).position === "sticky";
+  const poolTop = document.getElementById("pool-top");
+  const sticky = !el.lineupPanel.hidden && poolTop.isConnected && getComputedStyle(poolTop).position === "sticky";
   const notice = document.getElementById("build-notice");
   const { bar, total } = stickyHeights({ sticky, barHeight: el.filterbar.getBoundingClientRect().height, noticeShown: Boolean(notice) && !notice.hidden, noticeHeight: notice?.getBoundingClientRect().height }); // A15: the build notice is a layer of the stack, so the head and the band sit under it too
-  // The tab row (nav#tabs) is sticky at the top of the window, so every layer under it starts at its height (--tabs-h, style.css .tabs).
-  const tabsH = el.tabs.getBoundingClientRect().height;
-  if (tabsH) document.documentElement.style.setProperty("--tabs-h", `${tabsH}px`); // 0 = this main is hidden (a Showdown is on screen, which keeps --tabs-h itself)
+  // The top bar is sticky at the top of the window, so every layer under it starts at its height (--tabs-h).
+  const sticks = getComputedStyle(el.classicHeader).position === "sticky";
+  const tabsH = sticks ? el.classicHeader.getBoundingClientRect().height : 0;
+  if (tabsH || !sticks) document.documentElement.style.setProperty("--tabs-h", `${tabsH}px`); // 0 and sticking = this header is hidden (a Showdown is on screen, which keeps --tabs-h itself)
   el.lineupPanel.style.setProperty("--filterbar-bar-h", `${bar + tabsH}px`);
   el.lineupPanel.style.setProperty("--filterbar-h", `${total + tabsH}px`);
 }
@@ -492,7 +503,7 @@ window.addEventListener("resize", syncFilterbarHeight);
 if (typeof ResizeObserver !== "undefined") {
   const ro = new ResizeObserver(syncFilterbarHeight);
   ro.observe(el.filterbar);
-  ro.observe(el.tabs); // the tab row wraps on a narrow window: --tabs-h follows it
+  ro.observe(el.classicHeader); // the top bar wraps on a narrow window: --tabs-h follows it
   const notice = document.getElementById("build-notice");
   if (notice) ro.observe(notice);
 }
@@ -533,8 +544,8 @@ const { handleFile } = wireUpload(
 setRouteDkFile(handleFile);
 setUploadRouter(handleFile);
 
-wireThemeToggle(el.themeToggleBtn, { onChange: () => store.set({}) }); // C15: the team logos come in the theme's variant, so every list is drawn again on a switch
-wireThemeToggle(document.getElementById("sd-theme-toggle-btn"), { onChange: () => store.set({}) }); // B9: the Showdown header's switch is the same one; the Showdown screen draws again through the same store signal (showdown/view.js)
+const paintThemeSwitch = wireThemeSwitch(document.getElementById("theme-switch"), { onChange: () => store.set({}) }); // C15: the team logos come in the theme's variant, so every list is drawn again on a switch
+wireThemeToggle(document.getElementById("sd-theme-toggle-btn"), { onChange: () => store.set({}) }); // B9: the Showdown header's switch is the same choice; the Showdown screen draws again through the same store signal (showdown/view.js)
 wireSourcesLink(el.sourcesBtn, { onOpen: onSourcesOpen });
 // The Tracked button sits on both headers (main slate and Showdown); both are in index.html, so both are wired here.
 wireTrackedLink(document.getElementById("tracked-btn"));

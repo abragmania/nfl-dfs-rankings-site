@@ -5,9 +5,9 @@
 import { store, FLEX_POS, activeSlate, activeSlateRows, activeSlateGames, slateDisplayName, isTwoGunMode } from "./state.js";
 import { rowIsOut } from "./table.js"; // D43: the one copy of "vs DAL" / "@ DET"; the red OUT tag (Adam 2026-10-15)
 import { newBuildId, batchBuild } from "./lineup-builds.js";
-import { nextSort } from "./lineup-sort.js"; // Adam 2026-10-17: sort options; the `Own vs field` key is stored as "geo"
-import { toggleMustHave, bulkUids } from "./lineup-filter.js";
-import { OPT_POSITIONS, optExposureHtml, exposureLimit, minLimit, nextExpSort, classicEntries } from "./lineup-exposure.js"; // A10: the one exposure table
+import { nextSort, LOOK_SORT_KEYS } from "./lineup-sort.js"; // Adam 2026-10-17: sort options; the `Own vs field` key is stored as "geo"
+import { toggleMustHave } from "./lineup-filter.js";
+import { OPT_POSITIONS, exposureLimit, minLimit, nextExpSort } from "./lineup-exposure.js"; // A10: the one exposure table
 import { wireQbStacks } from "./lineup-qb-stacks.js";
 import { postLineupGenerate, postLineup, stopLineupGenerate, canStopLineupGenerate } from "./api.js";
 import { afterBuildingDelay, goSitsBelow, stopFailure } from "./lineup-stop.js";
@@ -24,7 +24,7 @@ import {
   OPT_STACK_OWN_MAX, OPT_STACK_OPP_MAX, OPT_DEFAULT_STACK, OPT_BUSY_TEXT, OPT_RULES, builtInText, effectiveObjective, dkIdentity, commit, lockPool, unlockPool,
   savePersisted, seasonWeekKey, lastContainer, resetOptimizerResults, clearMustHave, qbStacksForRequest, qbGlobals, setMode, removeSlot,
 } from "./lineup.js";
-import { heldSplit, pickOptions, lastExposure, cardIsSaved, optSummaryText, stackDefaultsApply, STACK_INERT_TITLE, savedOfActiveSlate } from "./lineup-view.js";
+import { heldSplit, cardIsSaved, optSummaryText, stackDefaultsApply, STACK_INERT_TITLE, savedOfActiveSlate, openSetops } from "./lineup-view.js";
 import { requestTab } from "./lineup-tabs.js"; // Part F: the GPP | Cash click's gate
 import { buildAfterQuiet } from "./lineup-left-out-panel.js"; // Part F: a Build goes before the quiet Left out build
 
@@ -590,6 +590,7 @@ async function doGenerate() {
     buildNotice.finish({ error: opt.formError, tone: "warn" });
     return false;
   }
+  const padlockedIds = [...state.locks]; // C6: the men padlocked, apart from those only clicked in
   const board = store.get().board;
   const slate = activeSlate(board);
   const slateKey = slate ? slate.key : "main";
@@ -723,7 +724,7 @@ async function doGenerate() {
       // batch records the board's Cash basis (board.mode.cashMode, the one the server built by; code review of a9455a0, MUST 1), so
       // its saved records name the basis used; GPP keeps the header's mode.
       const build = { buildId: newBuildId(Date.now(), Math.random()), boardMode: cash ? board.mode.cashMode : boardModeOf(board), objective: form.objective };
-      tab.results = { slateKey, lineups, notes, builtIn, bends, made: lineups.length, marks, ...build };
+      tab.results = { slateKey, lineups, notes, builtIn, bends, made: lineups.length, marks, builtAt: new Date().toISOString(), lockedIds: sent.settings.locks ?? [], padlockedIds, ...build };
       // Cash mode job 3b: the batch keeps the mode and basis the answer names, and the limits its cards' swap search must respect.
       if (cash) {
         tab.results.mode = "cash";
@@ -757,12 +758,13 @@ const buildNotice = createNoticeController({
   noticeEl: () => (typeof document === "undefined" ? null : document.getElementById?.("build-notice") ?? null),
   barBottom: filterBarBottom,
   buildButton: () => lastContainer?.querySelector("#opt-go-btn"),
-  resultsEl: () => lastContainer?.querySelector("#opt-results"),
+  resultsEl: () => lastContainer?.querySelector("#lineups"),
   building: () => (opt.generating && opt.buildingShown ? { canStop: opt.canStop, stopping: opt.stopping, stopError: opt.stopError } : null),
   jumpResults: () => jumpToResults(),
   jumpBuild: () => jumpToBuildRow(),
   stop: () => doStop(),
 });
+
 
 /** After every draw of the panel: the notice follows the state and where the Build row is (called by lineup.js renderLineupPanel); and what the last build left goes when the slate changes (resetOptimizerResults). */
 export const refreshBuildNotice = () => buildNotice.refresh();
@@ -771,9 +773,9 @@ export const resetBuildNotice = () => buildNotice.reset();
 /** Takes him to the Build row below the sticky bars (the failure notice's link, D16). */
 export function jumpToBuildRow() {
   try {
-    if (store.get().activeTab === "lineups") store.set({ activeTab: "lineup" }); // the Build row is hidden on the Lineups tab
+    if (store.get().activeTab === "lineups") store.set({ activeTab: "lineup" }); // the Build row is on the Optimizer tab
 
-    lastContainer?.querySelector(".opt-footer")?.scrollIntoView({ block: "center", behavior: "smooth" });
+    lastContainer?.querySelector(".act")?.scrollIntoView({ block: "center", behavior: "smooth" });
   } catch (e) {
     console.warn("Show Build row: the row could not be scrolled into view", e); // a convenience only; the row is on the page either way
   }
@@ -799,24 +801,43 @@ async function doStop() {
   }
 }
 
-/** Brings the results into view below the sticky filter bar (the notice's link, and the link beside the Build button). */
+/** Opens the Lineups tab, where the results are (the notice's link, and the link beside the Build button). */
 export function jumpToResults() {
-  try {
-    lastContainer?.querySelector("#opt-results")?.scrollIntoView({ block: "start", behavior: "smooth" });
-  } catch (e) {
-    console.warn("Show results: the results could not be scrolled into view", e); // a convenience only; the results are on the page either way
-  }
+  store.set({ activeTab: "lineups" });
 }
+
+/** The tab (gpp, cash) whose batch holds card `uid`: the Lineups screen shows both tabs' builds. */
+export function tabOfUid(uid) {
+  for (const key of Object.keys(opt.tabs)) if (opt.tabs[key].results?.lineups.some((l) => l.uid === uid)) return key;
+  return opt.mode;
+}
+
+/** Removes the shown lineups of a build from the Lineups screen, `uids` exactly (saved lineups stay); nothing left of it, the build goes. */
+export function removeBuild(tabKey, uids) {
+  const tab = opt.tabs[tabKey];
+  if (!tab?.results) return;
+  const gone = new Set(uids);
+  tab.results.lineups = tab.results.lineups.filter((l) => !gone.has(l.uid));
+  if (!tab.results.lineups.length) tab.results = null;
+  tab.doneNote = false;
+  commit();
+}
+
+/** Saves the given new lineups through the existing save-lineup route (D57: with the active slate key), for `saveGenerated` and the Lineups screen's Save all unsaved. */
+export const saveGeneratedUids = (uids) => saveGenerated(uids);
 
 /** Saves the given new lineups one after another through the existing save-lineup route (D57: with the active slate
  *  key). A saved card stays where it is and shows a disabled "Saved ✓" (Adam 2026-10-11), and it lands in the Saved
  *  tab; a card already saved, or matching a saved lineup, is skipped; the first failure stops the run and stays. */
 async function saveGenerated(uids) {
-  if (opt.saving || opt.generating || !opt.results) return;
+  if (opt.saving || opt.generating || !uids.length) return;
+  const tabKey = tabOfUid(uids[0]);
+  const tab = opt.tabs[tabKey];
+  const results = tab?.results;
+  if (!results) return;
   opt.saving = true;
-  opt.saveError = null;
+  tab.saveError = null;
   commit();
-  const results = opt.results;
   const slateKey = results.slateKey ?? "main"; // the slate these lineups were made for, not the one on screen now
   const rowById = new Map((store.get().board?.rows ?? []).map((r) => [String(r.id), r]));
   const mode = results.mode === "cash" ? "cash" : "gpp"; // Cash mode job 3b, 2026-10-17: a card saves in the mode it was built in
@@ -838,7 +859,7 @@ async function saveGenerated(uids) {
         continue;
       }
       if (!data || data.ok === false) {
-        opt.saveError = data?.error?.message ?? "Could not save the lineup.";
+        tab.saveError = data?.error?.message ?? "Could not save the lineup.";
         break;
       }
       // The saved list decides "Saved ✓" (so a later Delete shows Save again); the card's own flag is only for a
@@ -847,15 +868,15 @@ async function saveGenerated(uids) {
       else lineup.saved = true;
       savedCount++;
     } catch (e) {
-      opt.saveError = `Could not reach the server: ${e.message}`;
+      tab.saveError = `Could not reach the server: ${e.message}`;
       break;
     }
   }
-  opt.saveTone = "error";
+  tab.saveTone = "error";
   if (skipped.length) {
     const status = duplicateSaveStatus(uids.length, savedCount, skipped);
-    if (!opt.saveError) opt.saveTone = "warn"; // only "already saved": a notice, amber; a real failure alongside keeps it red
-    opt.saveError = opt.saveError ? `${status}. ${opt.saveError}` : status;
+    if (!tab.saveError) tab.saveTone = "warn"; // only "already saved": a notice, amber; a real failure alongside keeps it red
+    tab.saveError = tab.saveError ? `${status}. ${tab.saveError}` : status;
   }
   opt.saving = false;
   commit();
@@ -868,36 +889,26 @@ export function duplicateSaveStatus(asked, savedCount, skipped) {
 }
 
 function discardGenerated(uid) {
-  if (!opt.results) return;
-  opt.results.lineups = opt.results.lineups.filter((l) => l.uid !== uid);
+  const tab = opt.tabs[tabOfUid(uid)];
+  if (!tab?.results) return;
+  tab.results.lineups = tab.results.lineups.filter((l) => l.uid !== uid);
   commit();
 }
 
-/** A10: a header of the one exposure table sorts it (the same column flips, another starts in its own direction) and a `Pos` chip filters it; only the exposure section on screen is redrawn (never the whole
- *  panel), then its headers and chips are wired again. The sort and the filter are kept in the browser. */
+/** A10: a header of the exposure panel sorts it (the same column flips, another starts in its own direction) and a `Pos` chip filters it. The sort and the filter are kept in the browser; the whole panel redraws (commit), so the numbers stay with the cards. */
 function wireExposureSort(container) {
-  const redraw = () => {
-    const section = container.querySelector(".opt-exposure");
-    if (!section) return;
-    const holder = document.createElement("div");
-    holder.innerHTML = optExposureHtml(classicEntries(lastExposure.exposure), opt.exp, "classic", pickOptions(currentRowById()), lastExposure.marks ?? null, { subtitle: lastExposure.subtitle });
-    const fresh = holder.querySelector(".opt-exposure");
-    if (!fresh) return;
-    section.replaceWith(fresh);
-    savePersisted();
-    wireExposureSort(container);
-    wirePickButtons(fresh); // only the new section; the rest keep their handlers
-  };
-  container.querySelectorAll(".opt-exposure [data-action='opt-exp-sort']").forEach((th) => {
+  container.querySelectorAll("[data-action='opt-exp-sort']").forEach((th) => {
     th.addEventListener("click", () => {
       opt.exp = nextExpSort(opt.exp, th.dataset.col, "classic");
-      redraw();
+      savePersisted();
+      commit();
     });
   });
-  container.querySelectorAll(".opt-exposure [data-action='opt-exp-filter']").forEach((btn) => {
+  container.querySelectorAll("[data-action='opt-exp-filter']").forEach((btn) => {
     btn.addEventListener("click", () => {
       opt.exp = { ...opt.exp, filter: btn.dataset.filter };
-      redraw();
+      savePersisted();
+      commit();
     });
   });
 }
@@ -969,7 +980,7 @@ export function wireOptimizer(container) {
     });
   }
   container.querySelectorAll("[data-cash-swap]").forEach((btn) => {
-    btn.addEventListener("click", () => cashMakeMust(btn.closest(".opt-card")?.dataset.uid, Number(btn.dataset.cashSwap)));
+    btn.addEventListener("click", () => cashMakeMust(btn.closest("[data-uid]")?.dataset.uid, Number(btn.dataset.cashSwap)));
   });
   container.querySelector("[data-cash-undo]")?.addEventListener("click", () => cashUndo());
   container.querySelectorAll("[data-opt-exp]").forEach((el) => {
@@ -1005,11 +1016,6 @@ export function wireOptimizer(container) {
   wireExposureSort(container);
   wirePickButtons(container);
   container.querySelector("#opt-go-btn")?.addEventListener("click", () => doGenerate());
-  container.querySelector("[data-action='opt-show-results']")?.addEventListener("click", () => { // A15: the link beside the Build button
-    opt.doneNote = false;
-    commit();
-    jumpToResults();
-  });
   container.querySelector("#opt-stop-btn")?.addEventListener("click", () => doStop());
   container.querySelectorAll("[data-action='opt-rule']").forEach((btn) => {
     btn.addEventListener("click", () => {
@@ -1054,9 +1060,6 @@ export function wireOptimizer(container) {
   container.querySelectorAll("[data-action='opt-discard']").forEach((btn) => {
     btn.addEventListener("click", () => discardGenerated(btn.dataset.uid));
   });
-  container.querySelector("[data-action='opt-save-all']")?.addEventListener("click", () => {
-    saveGenerated(shownNewUids()); // only the shown lineups while filtered; saved cards are skipped inside
-  });
   // D74: the New / Saved tabs; the pick is remembered for this page load.
   container.querySelectorAll("[data-action='opt-tab']").forEach((btn) => {
     btn.addEventListener("click", () => {
@@ -1068,10 +1071,20 @@ export function wireOptimizer(container) {
   container.querySelectorAll("[data-action='opt-sort']").forEach((btn) => {
     btn.addEventListener("click", () => {
       const tab = btn.dataset.tab === "saved" ? "saved" : "new";
-      opt.sort = { ...opt.sort, [tab]: nextSort(opt.sort[tab], btn.dataset.key) };
+      opt.sort = { ...opt.sort, [tab]: nextSort(opt.sort[tab], btn.dataset.key, LOOK_SORT_KEYS) };
       commit();
     });
   });
+  // The panel's collapsed settings groups (Stack, Rules, caps and QB stacks, Cash's Max per team and Avoid games): open or close one and redraw.
+  container.querySelectorAll("[data-setop]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const key = btn.dataset.setop;
+      if (openSetops.has(key)) openSetops.delete(key);
+      else openSetops.add(key);
+      commit();
+    });
+  });
+  container.querySelectorAll("[data-action='opt-open-lineups']").forEach((btn) => btn.addEventListener("click", () => { opt.doneNote = false; store.set({ activeTab: "lineups" }); }));
   // The pool's Min % and Max % boxes (A3, round 3 fixes; limit-box.js): kept per slate and saved to localStorage when the box closes (Enter or a click
   // away; Esc puts the old text back; an emptied box removes the limit). Typing alone changes nothing; a Build started while one is open reads it (doGenerate).
   for (const [field, attr, forSlate] of [["playerMax", "data-player-max", playerMaxFor], ["playerMin", "data-player-min", playerMinFor]]) {
@@ -1106,20 +1119,4 @@ export function wireOptimizer(container) {
       });
     });
   }
-  container.querySelector("[data-action='opt-discard-all']")?.addEventListener("click", () => {
-    if (opt.mustHave.length && opt.results) {
-      // Filtered: discard only the lineups shown; the hidden ones stay untouched (Adam 2026-10-11).
-      const gone = new Set(shownNewUids());
-      opt.results.lineups = opt.results.lineups.filter((l) => !gone.has(l.uid));
-    } else {
-      resetOptimizerResults();
-    }
-    commit();
-  });
-}
-
-/** The uids of the new lineups on screen: all of them, or only those holding every chosen player. */
-function shownNewUids() {
-  const rowById = currentRowById();
-  return bulkUids(opt.results?.lineups ?? [], opt.mustHave, (l) => (l.players ?? []).map((p) => ({ ...p, identity: identityOf(p.id, rowById) })));
 }

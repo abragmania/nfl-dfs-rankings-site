@@ -23,7 +23,7 @@ export function dkDownloadHtml({ count, total, status = "" }) {
 }
 
 /** The status, one line each (what was written, then the `Left out:` line in the error colour). */
-function dkStatusLinesHtml(status) {
+export function dkStatusLinesHtml(status) {
   return String(status).split("\n").filter(Boolean).map((line) => `<span class="dk-status-line${/^Left out:|^Nothing was downloaded|^Tick at least/.test(line) ? " dk-status-bad" : /^Check:/.test(line) ? " dk-status-note" : ""}">${escapeHtml(line)}</span>`).join("");
 }
 

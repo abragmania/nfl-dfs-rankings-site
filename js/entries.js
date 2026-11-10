@@ -358,6 +358,7 @@ export function entriesInnerHtml(m) {
   const upErr = m.uploadError ? `<div class="lineup-status lineup-status-error entries-error">${escapeHtml(m.uploadError)}</div>` : "";
   return `
       <h3 class="entries-title">Entries <span class="opt-sub">saved lineups are proposed for the entries, you confirm, then download the file to upload to DraftKings</span></h3>${storage}
+      <div class="entries-quiet">Projections here are as saved, from the moment each lineup was saved. The Saved list on the Lineups tab shows today's live figures, so the two can differ.</div>
       <div class="entries-upload-row">
         <button type="button" class="saved-lineup-btn" data-action="entries-upload"${m.uploading ? " disabled" : ""}>${m.uploading ? "Uploading…" : "Upload DraftKings entries file"}</button>
         <input type="file" id="${escapeHtml(m.fileInputId ?? ENTRIES_TAB_DEFAULTS.fileInputId)}" accept=".csv,text/csv" hidden />

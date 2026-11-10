@@ -13,9 +13,10 @@ let el;
 let renderFilterBarNow;
 let renderDynamic;
 let renderSlateChrome;
+let syncPageLook;
 
 export function configureShowdown(ctx) {
-  ({ el, renderFilterBarNow, renderDynamic, renderSlateChrome } = ctx);
+  ({ el, renderFilterBarNow, renderDynamic, renderSlateChrome, syncPageLook } = ctx);
 }
 
 // ---------------------------------------------------------------------------------------------------
@@ -144,6 +145,12 @@ export function applyMode() {
   el.classicMain.hidden = isShowdown;
   el.showdownHeader.hidden = !isShowdown;
   el.showdownMain.hidden = !isShowdown;
+  // The classic top bar holds the slate tiles (the approved look); a Showdown shows them above its own header, as before.
+  const slates = document.getElementById("top-slates");
+  if (slates && el.modeRow) {
+    if (isShowdown && el.modeRow.parentElement === slates) el.classicHeader.parentElement.insertBefore(el.modeRow, el.classicHeader);
+    else if (!isShowdown && el.modeRow.parentElement !== slates) slates.append(el.modeRow);
+  }
   // Second slates (D57): "#slate=<key>" keeps the classic app on screen and picks which slate's players it
   // lists; any other hash (none, or a showdown's) is the main slate. A team or game filter names main-slate
   // games, so both are cleared on a switch rather than left hiding every player of the new slate.
@@ -158,6 +165,7 @@ export function applyMode() {
   }
   renderSlateChrome();
   renderModeRowNow();
+  syncPageLook();
   if (isShowdown) renderShowdownView(key);
   syncExpandUi(); // a showdown hides the classic page: a table expanded there must close, never leave the page locked
 }

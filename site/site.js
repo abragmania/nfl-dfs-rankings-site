@@ -38,7 +38,7 @@ export function matchupsTabLink(meta) {
 // The app redraws the tab buttons (it replaces the whole nav's contents) on every tab change, which would wipe a
 // link added once; so each tab nav is watched and the link put back at its end whenever it is missing.
 function addMatchupsTab(link) {
-  document.querySelectorAll("nav.tabs").forEach((nav) => {
+  document.querySelectorAll("#tabs, #sd-tabs").forEach((nav) => {
     const ensure = () => {
       if (nav.querySelector(".site-matchups-tab")) return;
       const el = document.createElement("a");

@@ -26,7 +26,7 @@ import { store, FLEX_POS, defaultDirFor, activeSlateRows } from "./state.js";
 import { storableClassicFilters } from "./memory.js";
 import { showBand } from "./show-band.js"; // A12, A15: a Load brings the whole band into view
 import { focusOpenRename, wireRenameEnter } from "./rename-focus.js"; // the rename box: focused and selected on open, Enter saves
-import { keepPoolHeadInView, poolAvailableKeys } from "./lineup-pool.js"; // A15: a filter from far down puts the table back in view
+import { keepPoolHeadInView, poolAvailableKeys, setPoolOnly, poolOnlyView } from "./lineup-pool.js"; // A15: a filter from far down puts the table back in view
 import { saveClassicMemory, syncLineupMemory, restoreForMode, migrateLegacyLineups, droppedMenSentence, currentMemoryKey } from "./lineup-memory-sync.js"; // A9: the browser's memory of the settings and the working lineups, per slate
 import { rowIsOut, twoGunOutReason, STATUS_INFO } from "./table.js"; // D43: the one copy of "vs DAL" / "@ DET"
 import { shownTotal } from "./totals.js";
@@ -38,20 +38,22 @@ import { getLineups, postLineup, putLineup, deleteLineup } from "./api.js";
 import { reseatClassic, kickoffLookup } from "./classic-seat.js";
 import { renderEntriesSection, wireEntries } from "./entries-wire.js";
 import { phoneMinHeight } from "./expand.js";
-import { defaultCashState, cleanCashState, swapModeStash, COUNT_DEFAULTS_VERSION } from "./lineup-cash.js";
-import { newClassicTabs, bindClassicTabFields, clearTabBuilds, clearTabFilters } from "./lineup-tabs.js"; // Part F: GPP and Cash each keep their own batch, messages and filter
+import { defaultCashState, cleanCashState, swapModeStash, COUNT_DEFAULTS_VERSION, lineupModeOf } from "./lineup-cash.js";
+import { newClassicTabs, bindClassicTabFields, clearTabBuilds, clearTabFilters, requestTab } from "./lineup-tabs.js"; // Part F: GPP and Cash each keep their own batch, messages and filter
 import { syncLeftOut } from "./lineup-left-out-panel.js"; // Part F: the Cash tab's Left out panel
 import { ruleOn } from "./lineup-settings.js";
-import { paintStarredQbChip } from "./filterbar.js";
+import { paintStarredQbChip, paintPoolOnlyChips } from "./filterbar.js";
 import { setPoolCallbacks, poolStarClick, panelHtml, savedOfActiveSlate, starredQbChipView, poolColumnSetup, CLASSIC_POOL_PICK_SKIP, shownSavedLineups, poolPickerNow } from "./lineup-view.js";
-import { wireColumns } from "./columns.js";
+import { wireColumns, columnsButtonHtml } from "./columns.js";
+import { fitNames } from "./look-row.js"; // a row shows the short name only where the whole name does not fit
+import { wireLineupsScreen } from "./look-lineups.js";
+import { LOOK_SORT_KEYS } from "./lineup-sort.js";
 import { wirePoolEdits, takePoolEdit, restorePoolEdit } from "./lineup-pool-edit.js"; // C9, C17: the pool's typed Proj and Own, taken over from the retired ranked list
 import { clearLineupHasContent, clearedLineup } from "./lineup-clear.js"; // B6: Clear lineup empties the slots and their locks, never the excludes
 import { wireDkDownload } from "./dk-lineup-ui.js"; // A12: Download DK CSV for the saved lineups ticked
 import { takeOpenLimit, restoreOpenLimit, limitRefusals, dropOlderLimitRefusals, noteLimitPress } from "./limit-box.js"; // A3: the Min % and Max % boxes survive a redraw; a refused text is held
 import { onConfirmDismiss } from "./confirm-inline.js"; // B13: Esc and a click outside close an open confirm
 import { notDeletedText } from "./delete-words.js"; // A12: the one sentence a failed delete leaves
-import { fitPoolNames, wirePoolFit } from "./pool-fit.js"; // Round 5 last batch: the pool's name column is the one that gives when the ticked columns overflow
 import { wireStaleMessages } from "./stale-messages.js"; // item 17: a one-shot message goes at the next click on any control
 import { wirePick, wirePickRows, SLOT_PICK_SKIP } from "./pick-rows.js"; // click-to-pick, the one wiring the Showdown Optimizer shares (D81)
 import { cleanPlayerMax, boardModeOf, slateKeyOf, uniqueSavedName, lockedIds, cashPick, wireOptimizer, savedSetKeys, lineupSetKey, refreshBuildNotice, resetBuildNotice } from "./lineup-optimizer.js";
@@ -220,7 +222,7 @@ function hydrateFromStorage() {
   migrateLegacyLineups(persisted);
   opt.mode = persisted.mode === "cash" ? "cash" : "gpp"; // Cash mode job 3b
   opt.cash = cleanCashState(persisted.cash, persisted.countsV ?? null); // null: a state saved before the count defaults changed (D9)
-  opt.sort = cleanSortState(persisted.sort);
+  opt.sort = cleanSortState(persisted.sort, LOOK_SORT_KEYS);
   opt.playerMax = cleanPlayerMax(persisted.playerMax);
   opt.playerMin = cleanPlayerMax(persisted.playerMin);
   // The per-QB panels, Spread defenses and Cash's count, Max per team and avoided games an older browser kept here are carried by migrateLegacyLineups to the first main slate; later saves of this key leave them out.
@@ -325,23 +327,65 @@ export function renderLineupPanel(container, callbacks) {
   });
   const openLimit = takeOpenLimit(); // a Min % or Max % box he is typing in survives the redraw with its text and focus (A3)
   const openEdit = takePoolEdit(container); // so does a typed Proj or Own box
+  const parkedTop = parkPoolTop(container); // the sticky filter bar stays one element across redraws
   container.innerHTML = panelHtml();
+  seatPoolTop(container, parkedTop);
   wire(container);
   restoreOpenLimit(container, openLimit);
   restorePoolEdit(container, openEdit, { rowOf: (id) => store.get().board?.rows.find((r) => String(r.id) === String(id)) });
   focusOpenConfirm(container);
   focusOpenRename(container, state.renamingId); // the rename box takes the keyboard when it opens, its name selected
   syncStarredQbChip();
-  fitPoolNames(container); // the name line gives way (an ellipsis, the full name on hover) only when the ticked columns would overflow the panel
-  wirePoolFit();
+  fitNames(container);
   if (filtersChanged) keepPoolHeadInView(); // a filter from far down that shrank the table leaves him at the table, not past it
   refreshBuildNotice(); // A15: the notice under the filter bar follows the build's state and where the Build row is
+  const tabCount = typeof document !== "undefined" ? document.querySelector?.("[data-tab='lineups']") : null;
+  if (tabCount) tabCount.innerHTML = `Lineups${lineupsCountNow() ? ` <b id="lineups-tab-count">${lineupsCountNow()}</b>` : ""}`; // the count beside the Lineups tab follows a build without a whole-page redraw
+}
+
+/** The Lineups count beside its tab: every built lineup on the page, both modes (each mode's newest build, Adam's Monday orders item 1). */
+export const lineupsCountNow = () => (opt.tabs.gpp.results?.lineups.length ?? 0) + (opt.tabs.cash.results?.lineups.length ?? 0);
+
+// The sticky filter bar (#pool-top, app.js and renderFilterBar's element) is moved into the pool column after each redraw, so it is one live element and typing keeps its caret. Before a redraw it is taken out of the mount.
+function parkPoolTop(container) {
+  if (typeof document === "undefined" || typeof document.getElementById !== "function") return null;
+  const top = document.getElementById("pool-top");
+  if (!top) return null;
+  const active = document.activeElement;
+  const parked = { top, focus: top.contains(active) ? { el: active, start: "selectionStart" in active ? active.selectionStart : null, end: "selectionEnd" in active ? active.selectionEnd : null } : null };
+  if (container.contains?.(top)) container.parentElement?.append?.(top);
+  return parked;
+}
+
+function seatPoolTop(container, parked) {
+  if (!parked) return;
+  // On the Lineups tab the work area is hidden, so the bar goes to the screen's own slot: look.css hides its filters there and the build notice stays in view (A15).
+  const slot = container.querySelector?.(store.get().activeTab === "lineups" ? "[data-notice-slot]" : "[data-fbar-slot]");
+  if (slot) slot.replaceWith(parked.top);
+  const f = parked.focus;
+  if (f) {
+    f.el.focus?.({ preventScroll: true });
+    try {
+      if (f.start !== null) f.el.setSelectionRange?.(f.start, f.end);
+    } catch { /* a number box has no caret to put back */ }
+  }
+}
+
+/** The Locked and Excluded chips: a click narrows the table to those men (or back, on the same chip), and Clear filters takes them off. */
+export function togglePoolOnly(kind) {
+  setPoolOnly(poolOnlyView() === kind ? null : kind);
+  commit();
+}
+export function clearPoolOnly() {
+  setPoolOnly(null);
 }
 
 /** The Starred QBs only chip lives in the filter bar (standard C12); its look follows the rule, the mode and the board, so each draw repaints it. */
 export function syncStarredQbChip() {
   const bar = typeof document !== "undefined" ? document.querySelector?.("#filterbar") : null;
-  if (bar) paintStarredQbChip(bar, starredQbChipView(store.get().board));
+  if (!bar) return;
+  paintStarredQbChip(bar, starredQbChipView(store.get().board));
+  paintPoolOnlyChips(bar, { locked: state.locks.size, excluded: state.excludes.size, only: poolOnlyView() });
 }
 
 /** The chip's view for the board on screen (renderFilterBar paints it as the bar is built). */
@@ -753,10 +797,19 @@ async function doDeleteLineup(id) {
  *  placeBySlotName() — so an off-slate player (dropped by validateAgainstBoard on the next render) and
  *  totals/locks behave exactly as they do after any other slot change. C11 (round 3): the old locks go with the old lineup, and the slots come into
  *  view (A12), since a saved card can be far below them. */
-function doLoadLineup(id) {
+export function doLoadLineup(id) {
   const lineup = state.savedLineups.find((l) => l.id === id);
   if (!lineup) return;
   state.confirm = null;
+  const mode = lineupModeOf(lineup);
+  if (mode !== opt.mode) { // Part F: a lineup loads into its own mode's working lineup, on its own board; a Save then writes back to it
+    requestTab(mode, () => { setMode(mode); placeLoadedLineup(lineup); });
+    return;
+  }
+  placeLoadedLineup(lineup);
+}
+
+function placeLoadedLineup(lineup) {
   const board = store.get().board;
   const seated = reseatClassic(lineup.slots ?? [], boardRowMap(board), kickoffLookup(board), slateKeyOf(board), board?.slates); // an older record is seated as DraftKings seats it, here and wherever it is drawn (classic-seat.js)
   state.slots = placeBySlotName(seated.map((s) => ({ slot: s.slot, id: s.playerId })));
@@ -898,7 +951,7 @@ function wire(container) {
   container.querySelectorAll("[data-action='toggle-star']").forEach((btn) => {
     btn.addEventListener("click", () => poolStarClick(btn.dataset.id));
   });
-  container.querySelectorAll(".lineup-rows-table th[data-col]").forEach((th) => {
+  container.querySelectorAll("#thead th[data-col]").forEach((th) => {
     th.addEventListener("click", () => {
       const col = th.dataset.col;
       const sort = store.get().sort;
@@ -994,9 +1047,14 @@ function wire(container) {
   });
 
   const setup = poolColumnSetup();
-  wireColumns(container, { ...setup, available: () => poolAvailableKeys(setup.defs), onChange: () => commit() }); // A17: the Columns button on the pool's heading; the TwoGun columns are offered on a TwoGun board only
+  const columnsSlot = typeof document !== "undefined" ? document.getElementById?.("columns-slot") : null; // the Columns button sits at the end of the filter bar's first row (the approved look)
+  if (columnsSlot) {
+    columnsSlot.innerHTML = columnsButtonHtml();
+    wireColumns(columnsSlot, { ...setup, available: () => poolAvailableKeys(setup.defs), onChange: () => commit() }); // A17: the TwoGun columns are offered on a TwoGun board only
+  }
 
   wireOptimizer(container);
+  wireLineupsScreen(container);
 }
 
 // --------------------------------------------------------------------------------------------------------
@@ -1051,7 +1109,7 @@ export const opt = {
   qb: newQbState(), // per-QB stack settings (lineup-qb-stacks.js), keyed by player id, persisted with the locks
   spreadDst: false, // "Spread defenses", per slate in the browser memory
   exp: defaultExpState("classic"), // the one exposure table's sort and Pos filter {col, dir, filter} (lineup-exposure.js, A10), kept in the browser
-  sort: cleanSortState(null), // the card lists' sort, per tab: {new: {key, dir}, saved: {key, dir}}, persisted (lineup-sort.js)
+  sort: cleanSortState(null, LOOK_SORT_KEYS), // the card lists' sort, per tab: {new: {key, dir}, saved: {key, dir}}, persisted (lineup-sort.js)
   generating: false,
   stopping: false, // Stop was pressed and the build is ending: the button reads "Stopping..." (lineup-stop.js)
   stopError: "", // the sentence under Stop when the server did not hear it (optimizer standard D18)
@@ -1121,5 +1179,5 @@ function syncOptimizerSlate() {
 }
 
 // Re-exports: every name this module exported before the split is still importable from here (tabs.js, the tests and the site build import them).
-export { setPoolCallbacks, slotPlayerHtml, savedLineupSlotHtml, savedLineupCardHtml, savedGroupsHtml, savedLineupPlayers, savedLineupFigures, saveControlsHtml, poolStarClick, rightColumnHtml, lineupTotalsOf, ruleRowsHtml, starredQbQualifiers, usableQbIds, starredQbNote, avoidChipsHtml, optLineupCardHtml, optNotesHtml, bendsLineHtml, cardIsSaved } from "./lineup-view.js";
+export { setPoolCallbacks, slotPlayerHtml, savedLineupSlotHtml, savedLineupCardHtml, savedLineupPlayers, savedLineupFigures, saveControlsHtml, poolStarClick, rightColumnHtml, lineupTotalsOf, ruleRowsHtml, starredQbQualifiers, usableQbIds, starredQbNote, avoidChipsHtml, optLineupCardHtml, optNotesHtml, bendsLineHtml, cardIsSaved } from "./lineup-view.js";
 export { swapScanHook, parseWhole, parsePct, exposureProblem, exposureOfLineups, lineupSetKey, savedSetKeys, savedForSlate, uniqueSavedName, playerMaxProblem, playerMinProblem, minSlotsFull, minSlotWords, dkKeyOfRow, minRowOut, pairClash, lockStackRefuses, minLockSkips, playerMinPositionProblem, lockedIds, requestCount, minProblemFor, buildGenerateSettings, buildGeneratePayload, slotsForSave, duplicateSaveStatus } from "./lineup-optimizer.js";

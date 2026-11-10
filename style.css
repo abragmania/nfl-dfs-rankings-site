@@ -384,11 +384,7 @@ html, body {
 .status.error { color: var(--danger); }
 
 /* ---------- Tabs ---------- */
-#classic-main > .tabs { position: sticky; top: 0; z-index: 20; background: var(--bg); padding-top: var(--sp-1); } /* Adam 2026-11-08: always on screen; app.js syncFilterbarHeight keeps --tabs-h for the layers under it */
-/* The Lineups tab: the Optimizer panel with only its results showing (same mount, same state). */
-#showdown-main > .tabs { position: sticky; top: 0; z-index: 20; background: var(--bg); padding-top: var(--sp-1); } /* the Showdown tab row stays on screen as classic's; showdown/view.js syncFilterbarHeight keeps --tabs-h */
-#lineup-panel.lineups-only > :not(#lineup-mount):not(#build-notice) { display: none; }
-#lineup-panel.lineups-only #lineup-mount > :not(.opt-results) { display: none; }
+#showdown-main > .tabs { position: sticky; top: 0; z-index: 20; background: var(--bg); padding-top: var(--sp-1); } /* the Showdown tab row stays on screen; showdown/view.js syncFilterbarHeight keeps --tabs-h */
 .tabs {
   display: flex;
   gap: var(--sp-2);
@@ -496,141 +492,6 @@ body.table-expanded { overflow: hidden; }
   .upload-info { white-space: normal; }
   .main { padding-left: var(--sp-3); padding-right: var(--sp-3); }
   .tabs { flex-wrap: wrap; }
-}
-
-/* ---------- Game strip (D26) ---------- */
-.gamestrip { margin-bottom: var(--sp-4); }
-.gamestrip-toggle-row { display: flex; justify-content: flex-end; margin-bottom: var(--sp-2); }
-.gamestrip-toggle-btn {
-  cursor: pointer;
-  background: none;
-  border: none;
-  color: var(--accent);
-  font-size: var(--fs-sm);
-  font-weight: 600;
-  padding: 0;
-}
-.gamestrip-toggle-btn:hover { color: var(--accent-hover); }
-
-.gamestrip-boxes {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
-  gap: var(--sp-3);
-}
-/* Compact default (👁 visual-qa): every game stays visible in one row without a hidden overflow at both
-   1366 and 1920 wide. A fixed 12-column grid stretched every box to fill the row (👁 visual-qa third
-   pass), but a 13-plus game slate then wrapped its extra box(es) onto a lonely second row (coordinator
-   round 2). Flex with equal shrinking shares instead: whatever number of games there are (12 to 16),
-   every box narrows to fit the same single row rather than a fixed column count. */
-.gamestrip-boxes.collapsed {
-  display: flex;
-  flex-wrap: nowrap;
-  gap: 3px;
-}
-.gamestrip-boxes.collapsed .game-box.compact {
-  flex: 1 1 0;
-  min-width: 0;
-}
-.game-box.compact .game-team { gap: 0; }
-.game-box.compact .game-team-abbr, .game-box.compact .game-team-implied { font-size: var(--fs-sm); }
-.game-box.compact .game-box-meta { gap: 6px; }
-.game-box.compact .game-popularity-rank { font-weight: 700; }
-
-.game-box {
-  cursor: pointer;
-  background: var(--bg-elevated);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: var(--sp-2) var(--sp-3);
-  color: var(--text);
-  font-family: inherit;
-  text-align: left;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-.game-box.compact { padding: 3px 4px; gap: 2px; }
-.game-box:hover { border-color: var(--accent); }
-.game-box.active { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
-
-.game-box-teams {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-.game-team {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 2px;
-  font-size: var(--fs-sm);
-}
-.game-team-logo { display: block; border-radius: 4px; }
-.game-team-abbr { color: var(--text-muted); font-weight: 600; white-space: nowrap; }
-.game-team-spread { color: var(--text-dim); font-weight: 400; }
-.game-team-implied { color: var(--text); font-weight: 700; }
-.game-team-implied-cap { color: var(--text-dim); font-size: var(--fs-sm); text-transform: uppercase; letter-spacing: 0.02em; }
-.game-at { color: var(--text-dim); font-size: var(--fs-sm); }
-/* Kickoff time sits at the top of the cell, centred over the "@" between the two teams. */
-.game-mid { display: flex; flex-direction: column; align-items: center; align-self: stretch; gap: 1px; }
-.game-kickoff { color: var(--text-dim); font-size: var(--fs-sm); line-height: 1.1; text-align: center; }
-/* Compact boxes are narrow: the time wraps to "1:00" over "PM" instead of widening the team row. */
-.game-box.compact .game-kickoff { width: min-content; }
-
-.game-box-meta {
-  display: flex;
-  justify-content: space-between;
-  font-size: var(--fs-sm);
-  color: var(--text-muted);
-}
-.game-total { font-weight: 700; color: var(--text); white-space: nowrap; } /* "O/U 54.5" stays on one line (Round 2 fix 22) */
-.game-total.line-unknown { color: var(--amber); font-weight: 600; }
-
-.game-weather { font-size: var(--fs-sm); color: var(--text-muted); }
-
-.game-popularity { display: flex; align-items: center; gap: var(--sp-2); }
-.game-popularity-bar {
-  flex: 1;
-  height: 6px;
-  background: var(--bg-elevated-2);
-  border-radius: 999px;
-  overflow: hidden;
-}
-.game-popularity-fill { height: 100%; background: var(--accent); }
-.game-popularity-rank { font-size: var(--fs-sm); color: var(--text-dim); white-space: nowrap; }
-/* --pop-t (0 = the slate's least-owned game .. 1 = the most-owned, set inline) blends the label from muted to a bright accent. */
-.game-popularity-rank[style] {
-  color: color-mix(in srgb, color-mix(in srgb, var(--accent) 45%, var(--text)) calc(var(--pop-t) * 100%), var(--text-dim));
-}
-/* Compact mode always shows the popularity rank so "#3" is never lost when the box shrinks (👁
-   visual-qa); the bar next to it only appears once the strip has room to spare (1600px+ viewport, 👁
-   visual-qa third pass) — below that, each of the twelve boxes is too narrow for a legible bar. */
-.game-popularity-compact { display: flex; align-items: center; justify-content: flex-end; gap: 4px; }
-.game-popularity-compact .game-popularity-bar { display: none; }
-.game-popularity-compact .game-popularity-rank { font-weight: 700; }
-@media (min-width: 1600px) {
-  /* `flex: 1` here is what actually gives the bar something to grow into: .game-popularity-compact
-     itself is a flex item inside .game-box-meta (alongside the kickoff/total text) and, without this,
-     shrinks to its content width (just the rank), leaving the inner flex:1 bar nothing to stretch
-     against (👁 visual-qa third pass: the bar was in the markup but effectively zero width). */
-  .game-box-meta .game-popularity-compact { flex: 1; justify-content: flex-end; }
-  .game-popularity-compact .game-popularity-bar { display: block; flex: 1; height: 4px; margin-right: var(--sp-1); }
-}
-
-/* Phone: the game strip is one sideways-scrolling row inside its own box (Adam 2026-10-10). Placed after the base
-   strip rules so it wins at equal specificity. */
-@media (max-width: 700px) {
-  .gamestrip-boxes,
-  .gamestrip-boxes.collapsed {
-    display: flex;
-    flex-wrap: nowrap;
-    overflow-x: auto;
-    gap: var(--sp-2);
-    padding-bottom: var(--sp-2);
-    -webkit-overflow-scrolling: touch;
-  }
-  .gamestrip-boxes .game-box { flex: 0 0 190px; min-width: 190px; }
-  .gamestrip-boxes.collapsed .game-box.compact { flex: 0 0 132px; min-width: 132px; padding: 4px 6px; }
 }
 
 /* ---------- Filter bar ---------- */
@@ -909,9 +770,9 @@ tr:last-child .cell-edit-hint, tr:last-child .cell-edit-error { top: auto; botto
 .lineup-pool-table td.tags-cell { line-height: 1.6; }
 /* A15 (round 5): the table always fits its wrapper, whatever columns are ticked and however long a tag is, so the page never scrolls sideways (1760px and wider, where the pool has no margin to spare). The
    cells that can hold long text wrap instead of widening the column: the matchup line under a name, the tags (a pill wraps inside its own box and is never cut). The name
-   line (logo, name, position, injury letter) never wraps: when the ticked columns still overflow the panel, pool-fit.js caps it (--lp-name-max) and the name alone ends in an ellipsis, its full name the hover. */
+   line (logo, name, position, injury letter) never wraps: the name alone ends in an ellipsis, its full name the hover. */
 .lineup-pool-table td.lp-name { white-space: normal; }
-.lineup-pool-table td.lp-name .lp-l1 { white-space: nowrap; flex-wrap: nowrap; max-width: var(--lp-name-max, 100%); } /* one line, never wrapped; pool-fit.js caps it only when the ticked columns would overflow the panel */
+.lineup-pool-table td.lp-name .lp-l1 { white-space: nowrap; flex-wrap: nowrap; max-width: var(--lp-name-max, 100%); } /* one line, never wrapped */
 .lineup-pool-table td.lp-name .lp-l1 .player-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .lineup-pool-table .lp-l2 .meta-pill { white-space: normal; }
 .lineup-pool-table td.tags-cell { white-space: normal; max-width: 200px; }
@@ -2859,7 +2720,7 @@ td.opt-exp-opp { color: var(--text-muted); } /* the cells only: the Matchup head
   .sd-lo-line:first-child .sd-lo-figs { margin-left: auto; }
   .sd-lo-field { order: 3; flex: 1 0 100%; }
 }
-/* Phone, classic pool and both tab rows (👁 QA at 390): the pool shows the cards' short name as Showdown's does and pool-fit.js applies no cap; the matchup line stays one line;
+/* Phone, classic pool and both tab rows (👁 QA at 390): the pool shows the cards' short name as Showdown's does; the matchup line stays one line;
    the four tabs fit one line; the sticky tab row's background runs across the page margin (the main's 12px side padding) so no cell shows beside it. Placed last. */
 @media (max-width: 700px) {
   .main { padding-left: var(--sp-3); padding-right: var(--sp-3); }

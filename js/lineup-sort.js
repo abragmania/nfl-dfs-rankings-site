@@ -33,6 +33,21 @@ export function sortKeysFor(mode, hasMedian) {
   return SORT_KEYS.filter((k) => (k.key === "median" ? Boolean(hasMedian) : k.key === "geo" ? mode !== "cash" : true));
 }
 
+/** The Lineups tab's sort keys (the approved look's buttons), the figures `lineupFigures` and the Lineups screen give (`salary`, the Salary sort, the screen adds): as the `built` key is first in order, Newest means the order they were built or saved, newest saved first. */
+export const LOOK_SORT_KEYS = Object.freeze([
+  { key: "proj", label: "Projection", dir: "desc", title: "Projected total" },
+  { key: "salary", label: "Salary", dir: "desc", title: "Salary used" },
+  { key: "own", label: "Ownership", dir: "asc", title: "Total ownership of the nine players; lowest first is the least-owned lineup" },
+  { key: "built", label: "Newest", dir: "asc", title: "The order the lineups were made or saved" },
+  { key: "median", label: "Median", dir: "desc", title: "TwoGun's median total" },
+  { key: "geo", label: "Own vs field", dir: "asc", title: "Where the lineup sits on the Own vs field bar; most unique first" },
+]);
+
+/** The Lineups tab's keys on offer: Median on a board with medians, Own vs field where GPP lineups are shown (cash has none). */
+export function lookSortKeysFor(hasMedian, hasGeo) {
+  return LOOK_SORT_KEYS.filter((k) => (k.key === "median" ? Boolean(hasMedian) : k.key === "geo" ? Boolean(hasGeo) : true));
+}
+
 /** A stable copy of `items` ordered by figure `key`; `figuresOf(item)` gives the figures. A null figure goes last either way. */
 export function sortLineups(items, key, dir, figuresOf, keys = SORT_KEYS) {
   const list = [...(items ?? [])];

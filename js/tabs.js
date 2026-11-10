@@ -72,9 +72,11 @@ export function shownTab(activeTab, tabs = visibleTabs()) {
   return tabs.some((t) => t.key === key) || isSourcesTab(key) ? key : "lineup";
 }
 
-export function renderTabs(container, activeTab, onTabClick) {
+/** `lineupsCount`: the lineups built on the Lineups tab (the approved look's count beside its label), or null for none. */
+export function renderTabs(container, activeTab, onTabClick, { lineupsCount = null } = {}) {
   container.innerHTML = visibleTabs().map((t) => {
-    return `<button type="button" class="tab-btn${t.key === activeTab ? " active" : ""}" data-tab="${t.key}">${escapeHtml(t.label)}</button>`;
+    const count = t.key === "lineups" && lineupsCount ? ` <b id="lineups-tab-count">${escapeHtml(String(lineupsCount))}</b>` : "";
+    return `<button type="button" class="tab-btn${t.key === activeTab ? " active" : ""}" data-tab="${t.key}">${escapeHtml(t.label)}${count}</button>`;
   }).join("");
   container.querySelectorAll(".tab-btn").forEach((el) => {
     el.addEventListener("click", () => onTabClick(el.dataset.tab));

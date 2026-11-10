@@ -65,7 +65,12 @@
   pointer-events: none;
   cursor: default;
 }
+/* The classic Saved card's rename pencil: only a lineup saved on this device can be renamed. */
+.is-site .rn[data-action="lineup-rename-start"]:not([data-id^="device-"]) {
+  display: none !important;
+}
 /* The small "saved on this device" note on a lineup saved on this site, after its saved time. */
+.is-site .lc.svc:has([data-action="lineup-load"][data-id^="device-"]) .lt-time::after,
 .is-site .saved-lineup-card:has([data-action="lineup-load"][data-id^="device-"]) .saved-lineup-time::after,
 .is-site .saved-lineup-card:has([data-action="sd-load"][data-id^="device-"]) .saved-lineup-time::after {
   content: " \00b7  saved on this device"; /* two spaces: a CSS hex escape swallows the first */

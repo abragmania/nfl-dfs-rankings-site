@@ -103,18 +103,26 @@ export function pillsSummaryText(ids, sources, warningCount = 0, _now = Date.now
   return parts.join(" · ");
 }
 
-export function renderSlateLine(container, slate) {
+/** The salary file's name on this slate, as data/salaries names it (router Data rules); null without a season and week. */
+export function salaryFileName(slate, slateKey = null) {
+  if (slate?.season == null || slate?.week == null) return null;
+  const nn = String(slate.week).padStart(2, "0");
+  return `${slate.season}-w${nn}-${slateKey ? `${slateKey}-` : ""}DKSalaries.csv`;
+}
+
+// The stamps of the classic top bar (Season, Week, Salaries, Cap): the slate's own season and week, its salary file's name (the main slate's or the second slate on screen, D57) and DraftKings' cap.
+export function renderSlateLine(container, slate, { slateKey = null, cap = 50000 } = {}) {
   if (!slate) {
     container.textContent = "No slate loaded";
     return;
   }
-  const games = Array.isArray(slate.games) ? slate.games.length : 0;
-  const weekLabel = slate.week != null ? slate.week : "?";
-  const line = `${slate.season ?? "?"} · Week ${weekLabel} · ${games} game${games === 1 ? "" : "s"}`;
+  const part = (label, value, cls = "") => `<span${cls ? ` class="${cls}"` : ""}>${label}<b>${escapeHtml(String(value))}</b></span>`;
+  const line = [part("Season", slate.season ?? "?"), part("Week", slate.week ?? "?")];
+  const file = salaryFileName(slate, slateKey);
+  if (file) line.push(part("Salaries", file));
+  line.push(part("Cap", `$${Number(cap).toLocaleString("en-US")}`, "lock"));
   // A7: ?sample=1 shows the frozen dev fixture board; the page says so, and api.js refuses every write.
-  container.innerHTML = isSampleMode()
-    ? `<span class="sample-tag" title="Sample data from the dev fixture board. Stars, typed numbers and every other change are refused; nothing reaches the server.">SAMPLE DATA · nothing is saved</span> ${escapeHtml(line)}`
-    : escapeHtml(line);
+  container.innerHTML = `${isSampleMode() ? `<span class="sample-tag" title="Sample data from the dev fixture board. Stars, typed numbers and every other change are refused; nothing reaches the server.">SAMPLE DATA · nothing is saved</span>` : ""}${line.join("")}`;
 }
 
 // The line shown after an upload that the server saved as a second slate (D57). Players the server could not
@@ -436,6 +444,29 @@ export function wireThemeToggle(btn, { onChange = null } = {}) {
     if (typeof document.querySelectorAll === "function") document.querySelectorAll(".theme-toggle-btn").forEach((other) => { if (other !== btn) paintThemeToggle(other); });
     onChange?.(next); // C15 (round 3): the page draws its logos again in the new theme's variant
   });
+}
+
+/** The classic top bar's Dark | Light switch (the approved look: two themes only): the same attribute and saved choice as wireThemeToggle, the Showdown header's button. */
+export function wireThemeSwitch(root, { onChange = null } = {}) {
+  const buttons = root ? [...root.querySelectorAll("[data-theme-set]")] : [];
+  const paint = () => buttons.forEach((b) => b.classList.toggle("on", b.dataset.themeSet === currentTheme()));
+  paint();
+  for (const b of buttons) {
+    b.addEventListener("click", () => {
+      const next = b.dataset.themeSet;
+      if (next === currentTheme()) return;
+      document.documentElement.setAttribute("data-theme", next);
+      try {
+        window.localStorage.setItem(THEME_STORAGE_KEY, next);
+      } catch (e) {
+        /* localStorage unavailable — the switch still works for this page load */
+      }
+      paint();
+      document.querySelectorAll(".theme-toggle-btn").forEach((other) => paintThemeToggle(other));
+      onChange?.(next);
+    });
+  }
+  return paint;
 }
 
 // The header's Sources link (Adam 2026-10-18): opens the Sources view (tabs.js SOURCE_TABS); `active` marks it while that view shows.
