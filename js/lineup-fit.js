@@ -172,3 +172,11 @@ export function fitReasonText(result, man) {
   const others = result.others === 1 ? "the other open seat" : `the other ${plural(result.others, "open seat")}`;
   return `${money(man.salary)} is too much: you have ${left} left and the cheapest way to fill ${others} costs ${money(result.fill)}.`;
 }
+
+/** The few words a greyed classic pool row shows under its name (walkthrough friction, PROJECT.md Part 4 item 5: greyed rows say why without a hover); the sentence above stays the hover. */
+export function fitShortText(result, man) {
+  if (result.fits) return "";
+  if (result.why === "noSalary") return "no salary";
+  if (result.why === "noSeat") return result.seat === "cpt" ? "Captain seat taken" : result.seat === "flex" ? "FLEX seats full" : result.full ? "lineup full" : `no ${man.pos} seat left`;
+  return result.others === 0 ? `over your ${money(result.left)} left` : "too dear for the seats left";
+}

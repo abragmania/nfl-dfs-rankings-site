@@ -9,7 +9,7 @@
 // for (his salary against the salary left, less the cheapest legal fill of the other open seats, the Captain's 1.5x counted; lineup-fit.js showdownFit) is
 // greyed too. The fill leaves out the men the pool greys for a missing figure and the men excluded (a Captain exclude takes only the Captain seat). It
 // decides clicks only; a Build never reads it.
-import { showdownFit, fitReasonText } from "../lineup-fit.js";
+import { showdownFit, fitReasonText, fitShortText } from "../lineup-fit.js";
 
 /**
  * Whether the man who was Captain can take a FLEX seat: he needs a FLEX salary and must not be excluded from FLEX. `row`: his board row; `excluded(row, tab)`:
@@ -109,7 +109,7 @@ export function seatPicker({ board, cap, placed, excluded = () => false, locks =
   };
   const { fillable, asFiller } = fillerRules(excluded); // the men who could fill an open seat, each for the seats he could take
   const others = rows.filter((r) => !seated.has(String(r.id)) && fillable(r)).map(asFiller);
-  const grey = (reason) => ({ action: null, reason });
+  const grey = (reason, short) => ({ action: null, reason, short }); // `short`: the few words the greyed row shows under his name, as classic's (lead 3:10 PM 11-11)
   return function pickOf(row, tab, base) {
     const id = String(row.id);
     const name = row.name ?? "He";
@@ -118,27 +118,27 @@ export function seatPicker({ board, cap, placed, excluded = () => false, locks =
     const mineIsFlex = flexIds.includes(id);
     const captainSeatLocked = cptId !== null && lockedCpt.has(cptId);
     if (mineIsCpt && !isCptTab) {
-      return grey(lockedCpt.has(id) ? `${name} is locked into your lineup as Captain. Unlock him first, or click his slot.` : `${name} is your Captain. Click him on the Captain list to take him out.`);
+      return grey(lockedCpt.has(id) ? `${name} is locked into your lineup as Captain. Unlock him first, or click his slot.` : `${name} is your Captain. Click him on the Captain list to take him out.`, lockedCpt.has(id) ? "locked as Captain" : "your Captain");
     }
     if ((mineIsCpt && isCptTab) || (mineIsFlex && !isCptTab)) {
-      return (isCptTab ? lockedCpt : lockedFlex).has(id) ? grey(lockedInText(name)) : { action: base, reason: "" }; // his own seat's list: the click takes him out
+      return (isCptTab ? lockedCpt : lockedFlex).has(id) ? grey(lockedInText(name), "locked in your lineup") : { action: base, reason: "" }; // his own seat's list: the click takes him out
     }
     if (mineIsFlex) {
       // The Captain list's row of a FLEX man: the click swaps him with the Captain (C19), unless either seat is locked.
-      if (lockedFlex.has(id)) return grey(`${name} is locked into your lineup in a FLEX seat. Unlock him first, or click his slot.`);
-      if (captainSeatLocked) return grey(`The Captain seat is locked on ${byId.get(cptId)?.name ?? "your Captain"}. Unlock him first.`);
+      if (lockedFlex.has(id)) return grey(`${name} is locked into your lineup in a FLEX seat. Unlock him first, or click his slot.`, "locked in FLEX");
+      if (captainSeatLocked) return grey(`The Captain seat is locked on ${byId.get(cptId)?.name ?? "your Captain"}. Unlock him first.`, "Captain seat locked");
     } else if (isCptTab && captainSeatLocked) {
-      return grey(`The Captain seat is locked on ${byId.get(cptId)?.name ?? "your Captain"}. Unlock him first, or click his slot.`);
+      return grey(`The Captain seat is locked on ${byId.get(cptId)?.name ?? "your Captain"}. Unlock him first, or click his slot.`, "Captain seat locked");
     }
-    if (excluded(row, tab)) return grey(`${name} is excluded${isCptTab ? " as Captain" : " from every lineup"}. Take the exclude off to use him.`);
+    if (excluded(row, tab)) return grey(`${name} is excluded${isCptTab ? " as Captain" : " from every lineup"}. Take the exclude off to use him.`, "excluded");
     if (!mineIsFlex && (isCptTab ? lockedFlex : lockedCpt).has(id)) {
-      return grey(`${name} is locked as ${isCptTab ? "FLEX" : "Captain"}. Unlock him first, or use his ${isCptTab ? "FLEX" : "Captain"} row.`);
+      return grey(`${name} is locked as ${isCptTab ? "FLEX" : "Captain"}. Unlock him first, or use his ${isCptTab ? "FLEX" : "Captain"} row.`, `locked as ${isCptTab ? "FLEX" : "Captain"}`);
     }
     // A missing figure greys a row (A18): no salary for the seat, or no projection for it (never ownership). A typed Proj brings him in, as in classic (B3); where nothing can be typed (the public site) the reason stops at the fact.
     const salary = isCptTab ? row.cptSalary : row.salary;
-    if (!Number.isFinite(salary)) return grey(`${name} has no ${isCptTab ? "Captain" : "FLEX"} salary, so he cannot be costed against the cap.`);
+    if (!Number.isFinite(salary)) return grey(`${name} has no ${isCptTab ? "Captain" : "FLEX"} salary, so he cannot be costed against the cap.`, "no salary");
     if (!Number.isFinite(isCptTab ? row.cptProj : row.proj)) {
-      return grey(`${name} has no ${isCptTab ? "Captain" : "FLEX"} projection, so he cannot be added.${canType ? ` Type one in his ${isCptTab ? "CPT Proj" : "Proj"} in the pool to bring him in.` : ""}`);
+      return grey(`${name} has no ${isCptTab ? "Captain" : "FLEX"} projection, so he cannot be added.${canType ? ` Type one in his ${isCptTab ? "CPT Proj" : "Proj"} in the pool to bring him in.` : ""}`, "no projection");
     }
     // The lineup as it will stand with him in: a new Captain sends the old one to FLEX (or out), so the fit is judged on that lineup without him.
     const oldRow = cptId ? byId.get(cptId) : null;
@@ -148,6 +148,6 @@ export function seatPicker({ board, cap, placed, excluded = () => false, locks =
     const fillers = base2.removed && oldRow && fillable(oldRow) ? [...others, asFiller(oldRow)] : others; // an old Captain who was removed is free to fill a seat again
     const fit = showdownFit({ man: { id, salary: row.salary, cptSalary: row.cptSalary }, seat: isCptTab ? "cpt" : "flex", salaryLeft: cap - used, open, others: fillers });
     if (fit.fits) return { action: base, reason: "" };
-    return grey(fitReasonText(fit, { ...row, name, salary }));
+    return grey(fitReasonText(fit, { ...row, name, salary }), fitShortText(fit, { ...row, name, salary }));
   };
 }

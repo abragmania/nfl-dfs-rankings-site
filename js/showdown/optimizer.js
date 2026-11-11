@@ -1,7 +1,7 @@
 // The Showdown Optimizer (Adam 2026-10-19 10:31 PM: sketch A, "start making this go live"; PROJECT.md Part 4 "Showdown Optimizer
 // port"): the classic Optimizer's GPP and Cash screen on a Showdown, under the Showdown Optimizer tab beside the one-lineup builder,
 // which stays as it is. This file holds the page state (the settings per showdown key, the batch on screen, busy flags), the two
-// requests (POST .../lineup/generate here; saves through ./api.js postShowdownLineup) and the wiring; optimizer-state.js has the
+// requests (POST .../lineup/generate here; a built card is saved from the Lineups screen, lineups-screen.js) and the wiring; optimizer-state.js has the
 // pure settings and request rules, optimizer-view.js the markup. lineup.js calls syncOptimizer before each draw, puts the pieces
 // in its panel and calls wireOptimizer after; the player pool (pool.js) asks poolControls for each row's boxes and buttons.
 // Live app only (as the meter): the published site and sample mode have no generate route, so nothing here is drawn there.
@@ -12,13 +12,13 @@ import { limitsCrossed } from "../limit-cross.js"; // item 18
 import { wireLimitBox, flushOpenLimit, limitRefusals } from "../limit-box.js"; // A3 (round 4): the pool's Min % and Max % boxes save when they close, as classic's do
 import { projEditHtml, ownEditHtml, isTyped, starHtml } from "./pool-edit.js"; // B2, B3: the star, the typed Proj and Own
 import { onSitePage } from "../tabs.js"; // the one is-site check
-import { parsePct, uniqueSavedName, duplicateSaveStatus } from "../lineup.js";
+import { parsePct } from "../lineup.js";
 import { countBelowMin, syncCountNote, COUNT_MIN_SENTENCE, fullLineupText } from "../lineup-settings.js";
 import { toggleMustHave, bulkUids, filterBarHtml } from "../lineup-filter.js";
 import { defaultExpState, nextExpSort, cleanExpState } from "../lineup-exposure.js"; // A10: the one exposure table's sort and Seat filter
 import { rememberedExp, saveExp } from "./view-memory.js"; // A9: kept per game in the browser's one memory
 const persistExp = () => saveExp(opt.key, opt.exp);
-import { postShowdownLineup, getShowdowns, supports, stopShowdownLineupGenerate, canStopShowdownLineupGenerate } from "./api.js"; // supports: D71, what the public site implements
+import { getShowdowns, supports, stopShowdownLineupGenerate, canStopShowdownLineupGenerate } from "./api.js"; // supports: D71, what the public site implements
 import { afterBuildingDelay, goSitsBelow, stopFailure } from "../lineup-stop.js";
 import { createNoticeController } from "../build-notice.js"; // A15: `Building...`, `Build finished.` and a failure under the filter bar while the Make row is off screen
 import { answerTone } from "../row-message.js";
@@ -325,58 +325,6 @@ function jumpToResults(container) {
   }
 }
 
-// ---------- saves ----------
-
-async function saveCards(uids, ctx) {
-  if (opt.saving || opt.generating || !opt.results) return;
-  const results = opt.results;
-  const key = opt.key;
-  const mode = opt.ks.mode;
-  const tabNow = () => opt.tabs[tabName(mode)]; // a save's message belongs to the tab it was pressed on, looked up after the awaits (leaving the game and coming back replaces opt.tabs)
-  opt.saving = true;
-  tabNow().saveError = null;
-  ctx.commit();
-  const skipped = [];
-  let savedCount = 0;
-  let saveError = null;
-  for (const uid of uids) {
-    const lineup = results.lineups.find((l) => l.uid === uid);
-    if (!lineup || savedKeysOf(ctx.getSaved(), results.mode, ctx.board).has(S.sdSetKey(lineup.slots, S.boardIndex(ctx.board).personOf))) continue;
-    const stem = results.mode === "cash" ? "Cash" : "Lineup";
-    const cardName = `${stem} ${lineup.index + 1}`;
-    try {
-      // The card's own name is kept unless this showdown already has it (names stay unique, as classic keeps them per slate).
-      const data = await (ctx.save ?? postShowdownLineup)(key, saveBody(lineup, results, uniqueSavedName(cardName, ctx.getSaved().map((l) => l.name), stem)));
-      if (opt.key !== key) break;
-      if (data?.error?.code === "DUPLICATE_LINEUP") {
-        skipped.push({ name: cardName, message: data.error.message });
-        continue;
-      }
-      if (!data || data.ok === false) {
-        saveError = data?.error?.message ?? "Could not save the lineup.";
-        break;
-      }
-      if (Array.isArray(data.lineups)) ctx.setSaved(data.lineups);
-      savedCount++;
-    } catch (e) {
-      saveError = requestFailureText(e);
-      break;
-    }
-  }
-  if (opt.key === key) { // another game on screen now: its tabs are not told of this save
-    const tab = tabNow();
-    tab.saveError = saveError;
-    tab.saveTone = "error";
-    if (skipped.length) {
-      const status = duplicateSaveStatus(uids.length, savedCount, skipped);
-      if (!saveError) tab.saveTone = "warn"; // only "already saved": a notice, amber; a real failure alongside keeps it red
-      tab.saveError = saveError ? `${status}. ${saveError}` : status;
-    }
-  }
-  opt.saving = false;
-  ctx.commit();
-}
-
 // ---------- the pieces lineup.js draws ----------
 
 const showing = () => opt.generating && opt.buildingShown; // a build under a second shows nothing (lineup-stop.js); doGenerate itself refuses a second click
@@ -518,7 +466,7 @@ export const poolControls = {
 /** Puts the summary (which names the count) and the included / locked line back after a box changed, without a redraw (focus stays). */
 function refreshLines(container, board) {
   const summary = container.querySelector("#sd-opt-summary");
-  if (summary) summary.textContent = S.summaryText(modeState(), opt.ks.mode, board, opt.ks.variance);
+  if (summary) summary.title = S.summaryText(modeState(), opt.ks.mode, board, opt.ks.variance); // item 7: the hover only
   const info = container.querySelector("#sd-opt-lockinfo");
   if (info) {
     const text = S.statusLineText(modeState(), board, seatedNow(board));
@@ -739,9 +687,7 @@ export function wireOptimizer(ctx) {
   });
   c.querySelector("#sd-opt-stop-btn")?.addEventListener("click", () => doStop(ctx));
   c.querySelector("[data-action='sd-open-lineups']")?.addEventListener("click", () => openLineupsRecent()); // the one button where the cards were: Lineups, on Recently generated
-  c.querySelectorAll("[data-sd-opt-save]").forEach((btn) => btn.addEventListener("click", () => saveCards([btn.dataset.sdOptSave], ctx)));
   c.querySelectorAll("[data-sd-opt-load]").forEach((btn) => btn.addEventListener("click", () => ctx.loadResult?.(btn.dataset.sdOptLoad))); // A13: the card's six men into the builder's seats (lineup.js)
-  c.querySelector("[data-sd-opt-save-all]")?.addEventListener("click", () => saveCards(shownUids(), ctx)); // the shown lineups only while filtered (D77)
   c.querySelectorAll("[data-sd-opt-discard]").forEach((btn) => {
     btn.addEventListener("click", () => {
       if (!opt.results) return;
@@ -764,5 +710,5 @@ export function wireOptimizer(ctx) {
   wireExposureSort(c, ctx);
 }
 
-/** Test hook: run Make / Save with a context of stand-ins. */
-export const testHooks = { doGenerate, saveCards };
+/** Test hook: run Make with a context of stand-ins. */
+export const testHooks = { doGenerate };

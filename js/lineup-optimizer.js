@@ -9,7 +9,8 @@ import { nextSort, LOOK_SORT_KEYS } from "./lineup-sort.js"; // Adam 2026-10-17:
 import { toggleMustHave } from "./lineup-filter.js";
 import { OPT_POSITIONS, exposureLimit, minLimit, nextExpSort } from "./lineup-exposure.js"; // A10: the one exposure table
 import { wireQbStacks } from "./lineup-qb-stacks.js";
-import { postLineupGenerate, postLineup, stopLineupGenerate, canStopLineupGenerate } from "./api.js";
+import { postLineupGenerate, postLineup, getLineups, stopLineupGenerate, canStopLineupGenerate } from "./api.js";
+import { saveOutcome, isAlreadySavedAnswer } from "./save-outcome.js"; // Save and Save all never refuse a lineup already saved (Adam 6:30 PM 11-09)
 import { afterBuildingDelay, goSitsBelow, stopFailure } from "./lineup-stop.js";
 import { createNoticeController } from "./build-notice.js"; // A15: `Building...`, `Build finished.` and a failure under the filter bar while the Build row is off screen
 import { ruleOn, countBelowMin, syncCountNote, COUNT_MIN_SENTENCE, fullLineupText } from "./lineup-settings.js";
@@ -837,55 +838,75 @@ async function saveGenerated(uids) {
   if (!results) return;
   opt.saving = true;
   tab.saveError = null;
+  state.justSaved = new Set(); // Saved marks what this run saves (walkthrough friction, PROJECT.md Part 4 item 5)
   commit();
   const slateKey = results.slateKey ?? "main"; // the slate these lineups were made for, not the one on screen now
   const rowById = new Map((store.get().board?.rows ?? []).map((r) => [String(r.id), r]));
   const mode = results.mode === "cash" ? "cash" : "gpp"; // Cash mode job 3b, 2026-10-17: a card saves in the mode it was built in
+  const stem = mode === "cash" ? "Cash" : "Lineup";
+  const cardNameOf = (lineup) => `${stem} ${results.lineups.indexOf(lineup) + 1}`;
   const skipped = [];
+  const failed = [];
   let savedCount = 0;
+  const answeredSaved = []; // cards the server answered "already saved": the list is read again after the run
+  let stopped = null; // the reason the run stopped: every card after it is listed as not saved with it (G62)
   for (const uid of uids) {
     const lineup = results.lineups.find((l) => l.uid === uid);
-    if (!lineup || cardIsSaved(lineup, savedSetKeys(savedOfActiveSlate(mode), rowById), rowById)) continue;
+    if (!lineup) { failed.push({ name: "a lineup", reason: "it is no longer on the list" }); continue; }
+    // Already saved is checked before a stop, so a saved card is never listed as "Not saved": never sent again, never refused (Adam 6:30 PM 11-09)
+    if (cardIsSaved(lineup, savedSetKeys(savedOfActiveSlate(mode), rowById), rowById)) { skipped.push(cardNameOf(lineup)); continue; }
+    if (stopped) { failed.push({ name: cardNameOf(lineup), reason: stopped }); continue; }
     try {
       // The card's own name ("Lineup 2", "Cash 2") is kept as the saved name unless this slate already has it (Entries
       // picks lineups by name, so names stay unique per slate, across both modes).
       const taken = savedOfActiveSlate(null).map((l) => l.name);
-      const stem = mode === "cash" ? "Cash" : "Lineup";
-      const cardName = `${stem} ${results.lineups.indexOf(lineup) + 1}`;
+      const cardName = cardNameOf(lineup);
       const name = uniqueSavedName(cardName, taken, stem);
       const data = await postLineup({ name, slots: slotsForSave(lineup.players), slate: slateKey, ...(mode === "cash" ? { mode } : {}), build: batchBuild(results) }); // Cash 3b fix round, 2026-10-17: GPP sends no mode
-      if (data?.error?.code === "DUPLICATE_LINEUP") {
-        skipped.push({ name: cardName, message: data.error.message });
+      if (isAlreadySavedAnswer(data)) { // saved elsewhere since this list was read: the list is read again after the run
+        answeredSaved.push(lineup);
+        skipped.push(cardName);
         continue;
       }
       if (!data || data.ok === false) {
-        tab.saveError = data?.error?.message ?? "Could not save the lineup.";
-        break;
+        stopped = data?.error?.message ?? "Could not save the lineup.";
+        failed.push({ name: cardName, reason: stopped });
+        continue;
       }
       // The saved list decides "Saved ✓" (so a later Delete shows Save again); the card's own flag is only for a
       // save answer that carried no list to match against.
       if (Array.isArray(data.lineups)) state.savedLineups = data.lineups;
       else lineup.saved = true;
+      if (data.lineup?.id) state.justSaved.add(data.lineup.id);
       savedCount++;
     } catch (e) {
-      tab.saveError = `Could not reach the server: ${e.message}`;
-      break;
+      stopped = `Could not reach the server: ${e.message}`;
+      failed.push({ name: cardNameOf(lineup), reason: stopped });
     }
   }
-  tab.saveTone = "error";
-  if (skipped.length) {
-    const status = duplicateSaveStatus(uids.length, savedCount, skipped);
-    if (!tab.saveError) tab.saveTone = "warn"; // only "already saved": a notice, amber; a real failure alongside keeps it red
-    tab.saveError = tab.saveError ? `${status}. ${tab.saveError}` : status;
+  if (answeredSaved.length) {
+    // Saved ✓ follows the saved list (so a later Delete shows Save again); the card's own flag only when the list, read again or not
+    // (a failed read keeps the old one), still cannot show its twin. As Showdown's knownSaved (showdown/lineups-screen.js).
+    await rereadSavedLineups();
+    const keys = savedSetKeys(savedOfActiveSlate(mode), rowById);
+    for (const lineup of answeredSaved) if (!cardIsSaved(lineup, keys, rowById)) lineup.saved = true;
   }
+  const said = saveOutcome({ asked: uids.length, saved: savedCount, skipped, failed });
+  tab.saveError = said.text || null;
+  tab.saveTone = said.tone;
   opt.saving = false;
   commit();
 }
 
-/** Cards refused as copies (Adam 2026-10-18): one card's own sentence, or for Save all "N saved, M already saved (names)". */
-export function duplicateSaveStatus(asked, savedCount, skipped) {
-  if (asked === 1 && skipped.length === 1) return skipped[0].message;
-  return `${savedCount} saved, ${skipped.length} already saved (${skipped.map((s) => s.name).join(", ")})`;
+/** The saved list read again after a save found a lineup already saved that this page's list did not hold (saved from another tab or device): the Saved tab then shows it. A failed read keeps the list and says so in the console only; the card already reads Saved ✓. */
+export async function rereadSavedLineups() {
+  try {
+    const fresh = await getLineups();
+    if (fresh && fresh.ok !== false && Array.isArray(fresh.lineups)) state.savedLineups = fresh.lineups;
+    else console.warn("Saved lineups: the list could not be read again after an already-saved answer", fresh?.error?.message ?? "");
+  } catch (e) {
+    console.warn("Saved lineups: the list could not be read again after an already-saved answer", e);
+  }
 }
 
 function discardGenerated(uid) {
@@ -944,7 +965,7 @@ export function wireOptimizer(container) {
   // ChatGPT wish i: the footer summary follows the boxes that do not re-render the panel as they are typed in.
   const refreshSummary = () => {
     const el = container.querySelector(".opt-summary");
-    if (el) el.textContent = optSummaryText(store.get().board);
+    if (el) el.title = optSummaryText(store.get().board); // item 7: the hover only, no visible text
   };
   // Item 18: `Minimum 1` beside a count box while it is below 1, and the refusal a Build made of it goes once the box is fixed.
   const countTyped = (el) => {

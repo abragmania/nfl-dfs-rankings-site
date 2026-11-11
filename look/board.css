@@ -576,6 +576,7 @@
 .nl .bump-fig{display:inline-block;min-width:5ch;padding:0 2px;text-align:right;font-variant-numeric:tabular-nums;vertical-align:middle;cursor:text}
 .nl .bump-fig.bump-up{background:#39e58c1f;color:var(--gr)}
 .nl .bump-fig.bump-down{background:#ff4d5e1f;color:var(--rd)}
+.nl .bump-fig .bump-from{display:block;font-size:9.5px;line-height:10px;font-weight:500;color:var(--mu);white-space:nowrap} /* what a bumped figure was bumped from: "30.0 −5%" (walkthrough friction) */
 .nl .bump-fig.bump-typed,.nl td.own .v.ov-typed,.nl .min-typed{outline:1px solid var(--am);outline-offset:-1px;background:#ffb00014;color:var(--am)}
 /* A typed number's box: room on the right inside it, pulled out by the same amount so its digits stay in line with the column. */
 .nl .min-typed{display:inline-block;min-width:5ch;padding:0 4px;margin-right:-4px;text-align:right}
@@ -671,6 +672,7 @@
 .nl tr.blk .logo{filter:grayscale(1)}
 .nl tr.team.blk:hover td{background:none}
 .nl tr.excl.blk td{opacity:.3}
+.nl tr.blk .blk-why{color:var(--am);font-weight:600} /* why he cannot go in, under his name (walkthrough friction): the full sentence stays the hover */
 .nl .opt .slot.pick{cursor:pointer}
 .nl .opt .slot.pick:hover{background-color:#ffffff0f}
 .nl .opt .slot.pick:hover .sl{outline:1px solid var(--am);outline-offset:1px}

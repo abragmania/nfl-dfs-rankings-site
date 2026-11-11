@@ -178,7 +178,7 @@ function noWayText(name, problems, ctx) {
   if (rules.size === 0) return `Every seat ${name} can take holds a locked man, so he cannot come in.`;
   if (rules.size > 1) return `No swap of one or two men gets ${name} in under the ${money(SALARY_CAP)} cap and the team rules.`;
   const { rule, team } = problems[0];
-  if (rule === "both") return `Getting ${name} in would leave your lineup with nobody from ${team}, and DraftKings requires both teams.`;
+  if (rule === "both") return `Leaves no ${team} player.`; // item 7 (Adam 2:59 PM 11-11): a few words, no rule reminder
   if (rule === "team") return `Getting ${name} in would put more than ${ctx.maxPerTeam} men from ${team} in your lineup, over your Max per team.`;
   return `No swap of one or two men gets ${name} in under the ${money(SALARY_CAP)} cap.`;
 }

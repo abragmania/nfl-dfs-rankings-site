@@ -5,7 +5,6 @@
 // the Showdown Optimizer (./optimizer.js, Adam 2026-10-19) and drive its one Build (optimizer standard A13, round 3: the old one-lineup Build, which ignored
 // locks and excludes and replaced the placed men, is folded into it). The Optimizer's band heads the left column, its Build row ends it, and its batch is
 // drawn full width below both columns, above the swaps and the saved lineups.
-import { escapeHtml } from "../format.js";
 import { getShowdownLineups, postShowdownLineup, deleteShowdownLineup } from "./api.js";
 import { poolHtml, poolVisibleRows, paintPool, wirePool, wirePoolTabs, setPoolControls, POOL_PICK_SKIP } from "./pool.js"; // the one player pool, the Rankings table with both roles on each row (Adam 2026-10-26)
 import { wirePick, wirePickRows, SLOT_PICK_SKIP } from "../pick-rows.js"; // click-to-pick, the one wiring classic's Optimizer shares (D81)
@@ -25,12 +24,12 @@ import { controlsHtml as controlsMarkup } from "./lineup-look.js"; // the two-ro
 import { slotsHtml as slotsMarkup, repaintSlots } from "./lineup-slots.js"; // the six slots' markup and figure repaint (Adam 2026-10-21 Q3 option A split)
 export { slotPlayerHtml } from "./lineup-slots.js"; // tests import it from here
 // The saved-lineups view lives in ./lineup-saved.js (state stays here); the two pure helpers keep their old exports from this module.
-import { lineupTotals, lineupTotalsHtml } from "../lineup-totals.js"; // A11
-import { findRow, SALARY_CAP, FLEX_COUNT, savedLineupCardHtml as savedCardHtml, cardPutGuard } from "./lineup-saved.js";
+import { findRow, FLEX_COUNT, savedLineupCardHtml as savedCardHtml, cardPutGuard } from "./lineup-saved.js";
+import { computeTotals, workingTotalsHtml } from "./working-totals.js"; // A11: the working lineup's totals (moved out to keep this file under its cap)
+export { computeTotals, workingTotalsHtml }; // tests import them from here
 import { onSitePage } from "../tabs.js"; // the public site marks the page is-site: its saved cards draw no letter select (it can only be refused there)
 export { savedLineupSlotHtml, savedProjTotal } from "./lineup-saved.js";
 import { syncSwaps, swapsPanelHtml, wireSwaps, seatsAfterSwap, holdSwapsHeight, setSwapsRefusal } from "./lineup-swaps.js"; // the uniqueness swaps, full width below both columns (Adam 2026-10-18); C22: a click on a swap makes it
-import { showdownPerSpotText, shownTotal } from "../totals.js";
 import { syncMeter, meterStripHtml, wireMeter, playerFigures, lineupFigureRow } from "./lineup-meter.js"; // uniqueness / projection strip under the slots; every figure on the screen is the served board's (Adam 2026-10-20)
 import { lineupReadHtml } from "./lineup-read.js"; // the "Lineup read" sentences under the meter (Adam 2026-10-29 5:10 PM: "just make it not suck")
 import { showBand } from "../show-band.js"; // A12, A15: a Load brings the whole band into view
@@ -39,7 +38,8 @@ import { saveView } from "./view-memory.js"; // A9: the pool's filters and sort,
 import { loadTabSeats, showTabSeats, dropGoneFromTabs, saveTabSeats } from "./tab-seats.js"; // the GPP and Cash tabs' own lineups: the seats on screen are the tab on screen's
 import { leftOutPanelHtml, syncLeftOut } from "./left-out-panel.js"; // Part F: the Cash tab's Left out panel, under the two columns (the sticky lineup band must fit the window)
 import { onConfirmDismiss } from "../confirm-inline.js"; // B13, C11: Esc and a click outside close an open confirm
-import { notDeletedText } from "../delete-words.js"; // A12: the one sentence a failed delete leaves, the classic Optimizer's words
+import { notDeletedText, canDeleteSaved } from "../delete-words.js"; // A12: the one sentence a failed delete leaves, the classic Optimizer's words; the site's app lineups have no Delete
+import { isAlreadySavedAnswer, alreadySavedText, loadedText } from "../save-outcome.js"; // a Save of a lineup already saved says where it is, never refuses (Adam 6:30 PM 11-09)
 import { wireStaleMessages } from "../stale-messages.js"; // item 17: a one-shot message goes at the next click on any control
 import { wireSavedActions } from "./lineups-saved-wire.js"; // A12: Download DK CSV for the saved lineups ticked, rename, the letter, Delete and Load: the saved cards' wiring, on the Lineups tab
 // The working lineup, its click rules, Lock/Unlock, Clear lineup and the saved-or-not question: ./seats.js (split out to keep this file under its cap).
@@ -81,6 +81,17 @@ function loadSavedLineups(key) {
     });
 }
 
+/** The game's saved list read again after a save found a lineup already saved that this page's list did not hold (saved from another tab or device). A failed read keeps the list and says so in the console only. */
+async function rereadSavedLineups(key) {
+  try {
+    const data = await getShowdownLineups(key);
+    if (data && data.ok !== false && Array.isArray(data.lineups) && lastKey === key) state.savedLineups = data.lineups;
+    else if (!data || data.ok === false) console.warn("Showdown saved lineups: the list could not be read again after an already-saved answer", data?.error?.message ?? "");
+  } catch (e) {
+    console.warn("Showdown saved lineups: the list could not be read again after an already-saved answer", e);
+  }
+}
+
 let lineupsRedraw = null; // the Lineups tab's redraw (lineups-screen.js registers it): the saved cards live there, so a change to them redraws it too
 export function setLineupsRedraw(fn) {
   lineupsRedraw = typeof fn === "function" ? fn : null;
@@ -89,54 +100,6 @@ export function setLineupsRedraw(fn) {
 function commit() {
   if (lastContainer) renderShowdownLineupPanel(lastContainer, lastBoard, lastKey);
   lineupsRedraw?.();
-}
-
-/**
- * Salary used, salary left and total projection of the placed players (`picked` = {cpt, flex}, the panel's state by
- * default; exported for the tests). The projection is the sum of the figures the slots show (`figures`, the meter's
- * playerFigures by default: the board row's own); salary is the board's too. Missing
- * is missing: a placed player who is no longer on the board makes both the salary and the projection unknown (null),
- * and one with no projection makes the projection unknown. The projection is shownTotal's (each slot rounded as it is
- * shown, then summed; Adam 2026-10-17), as the results cards, the cash totals and the saved card add it.
- */
-export function computeTotals(board, picked = state, figures = playerFigures) {
-  const entries = [];
-  if (picked.cpt) entries.push({ id: picked.cpt.id, cpt: true });
-  for (const s of picked.flex ?? []) if (s) entries.push({ id: s.id, cpt: false });
-  let salaryUsed = 0;
-  let projs = [];
-  for (const { id, cpt } of entries) {
-    const row = findRow(board, id);
-    if (!row) {
-      salaryUsed = null;
-      projs = null;
-      continue;
-    }
-    if (salaryUsed !== null) salaryUsed += (cpt ? row.cptSalary : row.salary) ?? 0;
-    // Missing is missing: a placed player with no projection makes the total unknown, never a sum counting him as 0.
-    const proj = figures(row, cpt).proj;
-    projs = projs !== null && Number.isFinite(proj) ? [...projs, proj] : null;
-  }
-  const totalProj = projs === null ? null : projs.length ? shownTotal(projs) : 0;
-  return { salaryUsed, salaryLeft: salaryUsed === null ? null : SALARY_CAP - salaryUsed, totalProj, filled: entries.length };
-}
-
-/** A11: the working lineup's `Salary used`, `Salary left`, `Proj` and `Own` under the last slot, from the first man (lineup-totals.js): empty reads $0, the full cap and dashes;
- *  a board that has not loaded reads dashes with the reason; a placed man no longer on the board makes every figure that needs him a dash. Salary per open spot follows (Adam 2026-10-18). */
-export function workingTotalsHtml(board, picked = state, figures = playerFigures) {
-  const entries = [];
-  if (picked.cpt) entries.push({ id: picked.cpt.id, cpt: true });
-  for (const s of picked.flex ?? []) if (s) entries.push({ id: s.id, cpt: false });
-  const men = entries.map(({ id, cpt }) => {
-    const row = findRow(board, id);
-    if (!row) return {};
-    const f = figures(row, cpt);
-    return { salary: cpt ? row.cptSalary : row.salary, proj: f.proj, own: f.notOnBoard ? null : f.own };
-  });
-  const notLoaded = (board?.rows ?? []).length ? null : "the board has not loaded";
-  const t = computeTotals(board, picked, figures);
-  const perSpot = t.salaryLeft === null ? null : showdownPerSpotText(t.salaryLeft, !picked.cpt, FLEX_COUNT - (picked.flex ?? []).filter(Boolean).length);
-  return lineupTotalsHtml(lineupTotals(men, { cap: SALARY_CAP, notLoaded }), { cap: SALARY_CAP, attrs: " data-working-totals", extra: perSpot ? escapeHtml(perSpot) : "" });
 }
 
 /**
@@ -171,12 +134,18 @@ async function doSaveLineup(key, name) {
   commit();
   try {
     const data = await postShowdownLineup(key, body);
-    if (!data || data.ok === false) {
+    if (isAlreadySavedAnswer(data)) { // the men are already saved in this mode: no refusal, no second copy; it says which saved lineup it is
+      const nameOf = () => state.savedLineups.find((l) => l.id === data.duplicateOf)?.name ?? null;
+      if (!nameOf()) await rereadSavedLineups(key);
+      state.saveName = "";
+      state.saveConfirm = alreadySavedText(nameOf());
+    } else if (!data || data.ok === false) {
       state.saveError = data?.error?.message ?? "Could not save the lineup.";
     } else {
       state.savedLineups = Array.isArray(data.lineups) ? data.lineups : state.savedLineups;
       state.saveName = "";
       state.saveConfirm = `Saved "${data.lineup?.name ?? ""}".`;
+      if (data.lineup?.id) state.justSaved = new Set([data.lineup.id]); // Saved marks what was just saved
     }
   } catch (e) {
     state.saveError = requestFailureText(e);
@@ -239,6 +208,8 @@ function doLoadLineup(kind, id) {
   state.cpt = cptSlot ? { id: personOf(cptSlot) } : null;
   state.flex = new Array(FLEX_COUNT).fill(null).map((_, i) => (flexSlots[i] ? { id: personOf(flexSlots[i]) } : null));
   state.addError = null;
+  const kept = kind === "result" ? findKept(lastKey, id) : null;
+  state.saveConfirm = loadedText(kept ? `${kept.build.mode === "cash" ? "Cash" : "Lineup"} ${lineup.index + 1}` : lineup.name, optimizerState().ks?.mode); // a Load says where the lineup went (walkthrough friction)
   releaseAllLocks(); // the whole lineup is replaced: every lock of the tab on screen goes (the other tab's are its own)
   commit();
   openShowdownTabKey("lineup"); // the cards are on the Lineups tab: the Optimizer tab comes up so the working lineup is in view
@@ -318,7 +289,7 @@ export function repaintShowdownPool() {
 
 // The saved card with the panel's rename box, delete prompt and PUT state (lineup-saved.js draws it); `numbers`: numberLineups of this game's saved lineups.
 export function savedLineupCardHtml(lineup, board, figures = playerFigures, numbers = null) {
-  return savedCardHtml(lineup, board, figures, { renamingId: state.renamingId, deleteConfirmId: state.deleteConfirmId, numbers, busy: cardPuts.busy.has(lineup.id), error: cardPuts.errors[lineup.id] ?? null, deleteError: state.deleteErrors[lineup.id] ?? null, editableTag: !onSitePage(), ticked: state.dkSelected.has(lineup.id), confirm: state.confirm });
+  return savedCardHtml(lineup, board, figures, { renamingId: state.renamingId, deleteConfirmId: state.deleteConfirmId, numbers, busy: cardPuts.busy.has(lineup.id), error: cardPuts.errors[lineup.id] ?? null, deleteError: state.deleteErrors[lineup.id] ?? null, editableTag: !onSitePage(), ticked: state.dkSelected.has(lineup.id), confirm: state.confirm, canDelete: canDeleteSaved(lineup.id, onSitePage()), justSaved: state.justSaved.has(lineup.id) });
 }
 
 // The saved cards are drawn on the Lineups tab now (lineups-screen.js); `lineupsHands` is what it reads and acts through, so their rename, Load, Download and Delete work as they did.
@@ -326,6 +297,8 @@ export function lineupsHands(board, key) {
   return {
     saved: { loaded: state.savedLoaded, error: state.savedError, lineups: state.savedLineups },
     setSaved: (list) => { state.savedLineups = list; },
+    reread: () => rereadSavedLineups(key), // after an already-saved answer the list is read again, so the Saved view holds that lineup
+    markJustSaved: (ids) => { state.justSaved = new Set(ids); }, // Saved marks what the last Save or Save all saved
     cardOf: (l, numbers) => savedLineupCardHtml(l, board, undefined, numbers),
     dk: { selected: state.dkSelected, status: state.dkStatus },
     confirm: state.confirm,

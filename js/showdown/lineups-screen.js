@@ -11,9 +11,11 @@ import { boardIndex, pickChipName } from "./optimizer-state.js";
 import { optimizerState } from "./optimizer.js";
 import { saveExp } from "./view-memory.js";
 import { lineupsHands, setLineupsRedraw } from "./lineup.js";
-import { keptBuilds, keptNote, findKept, removeKeptBuild, discardKeptLineup, onKeptChange, savedKeySet, isSaved, saveBodyFor } from "./lineups-store.js";
+import { keptBuilds, keptNote, findKept, removeKeptBuild, discardKeptLineup, onKeptChange, savedKeySet, isSaved, saveBodyFor, SORT_KEYS } from "./lineups-store.js";
 import { takeWantedView } from "./lineups-nav.js";
-import { freshUi, controlBarHtml, bodyHtml, savedShown } from "./lineups-view.js";
+import { freshUi, controlBarHtml, bodyHtml, savedShown, shownRecentUids } from "./lineups-view.js";
+import { nextSort } from "../lineup-sort.js"; // the one sort-click rule (classic's): the lit key reverses, another starts in its own direction
+import { saveOutcome, isAlreadySavedAnswer } from "../save-outcome.js";
 
 let ui = freshUi();
 let uiKey = null; // the game the bar's choices belong to
@@ -78,7 +80,7 @@ function wireBar(container, hands) {
     setMsg("");
     draw();
   }));
-  container.querySelectorAll("[data-sdl-sort]").forEach((btn) => btn.addEventListener("click", () => { ui.sort = btn.dataset.sdlSort; draw(); }));
+  container.querySelectorAll("[data-sdl-sort]").forEach((btn) => btn.addEventListener("click", () => { ui.sort = nextSort(ui.sort, btn.dataset.sdlSort, SORT_KEYS); draw(); })); // a second click on the lit sort reverses it (classic's nextSort)
   container.querySelectorAll("[data-sdl-mode]").forEach((btn) => btn.addEventListener("click", () => { ui.mode = btn.dataset.sdlMode; draw(); }));
   container.querySelector("#sdl-text")?.addEventListener("input", (e) => { // the lists redraw once typing pauses (the same 150 ms as the filter bars), not on every key
     ui.text = e.target.value;
@@ -89,7 +91,8 @@ function wireBar(container, hands) {
 
 function wireBody(body, hands) { // `body`: the tab's box (the body's controls are found by their own attributes)
   const { board, key } = last;
-  body.querySelectorAll("[data-sd-opt-save]").forEach((btn) => btn.addEventListener("click", () => saveBuilt(btn.dataset.sdOptSave)));
+  body.querySelectorAll("[data-sd-opt-save]").forEach((btn) => btn.addEventListener("click", () => saveBuilt([btn.dataset.sdOptSave])));
+  body.querySelector("[data-sdl-save-all]")?.addEventListener("click", () => saveBuilt(shownRecentUids(viewData(lineupsHands(board, key))))); // Save all unsaved: every shown card, the saved ones skipped and counted
   body.querySelectorAll("[data-sd-opt-load]").forEach((btn) => btn.addEventListener("click", () => hands.requestLoad(btn.dataset.sdOptLoad)));
   body.querySelectorAll("[data-sd-opt-discard]").forEach((btn) => btn.addEventListener("click", () => discardKeptLineup(key, btn.dataset.sdOptDiscard)));
   body.querySelectorAll("[data-sdl-exposure]").forEach((btn) => btn.addEventListener("click", () => { ui.exposureBuild = btn.dataset.sdlExposure; paintBody(); }));
@@ -122,32 +125,65 @@ function wireBody(body, hands) { // `body`: the tab's box (the body's controls a
   hands.wireSaved(body, () => savedShown(hands.saved.lineups, ui, board));
 }
 
-/** Save on a built card: the build's own mode, not the tab on screen; the card then reads Saved ✓ (the saved list it is matched against is the server's answer). */
-async function saveBuilt(uid) {
+/**
+ * Save on a built card, and Save all unsaved (the shown cards not yet saved): each in its build's own mode, not the tab on screen. A card already saved is skipped, never sent
+ * again and never refused (Adam 6:30 PM 11-09), and reads Saved ✓ (matched against the saved list, the server's answer; one answered "already saved" makes the list be read again).
+ * The run says what it saved, what it skipped and what it could not save (save-outcome.js); a single card says nothing unless it failed. Saved marks what this run saved.
+ */
+async function saveBuilt(uids) {
+  if (saving || !last || !uids.length) return;
   const { board, key } = last;
-  const hands = lineupsHands(board, key); // read now: a Save button on screen can be older than the saved list
-  const found = findKept(key, uid);
-  if (!found || saving) return;
-  const { build, lineup } = found;
   const index = boardIndex(board);
-  if (isSaved(lineup, savedKeySet(hands.saved.lineups, build.mode, index.personOf), index.personOf)) return;
   saving = true;
-  setMsg("");
-  paintBody();
-  const stem = build.mode === "cash" ? "Cash" : "Lineup";
   try {
-    const name = uniqueSavedName(`${stem} ${lineup.index + 1}`, hands.saved.lineups.map((l) => l.name), stem);
-    const data = await postShowdownLineup(key, saveBodyFor(build, lineup, name));
-    if (last?.key !== key) return; // another game on screen now: nothing of this answer is shown there
-    if (data?.error?.code === "DUPLICATE_LINEUP") setMsg(data.error.message, "warn");
-    else if (!data || data.ok === false) setMsg(data?.error?.message ?? "Could not save the lineup.", "error");
-    else if (Array.isArray(data.lineups)) hands.setSaved(data.lineups);
-  } catch (e) {
-    setMsg(requestFailureText(e), "error");
+    setMsg("");
+    paintBody();
+    const skipped = [];
+    const failed = [];
+    const justSaved = [];
+    const answeredSaved = [];
+    let saved = 0;
+    let stopped = null; // the reason the run stopped: every card after it is listed as not saved with it (G62)
+    for (const uid of uids) {
+      if (last?.key !== key) break; // another game on screen now: nothing of this run is shown there
+      const found = findKept(key, uid);
+      if (!found) { failed.push({ name: "a lineup", reason: "it is no longer on the list" }); continue; }
+      const { build, lineup } = found;
+      const stem = build.mode === "cash" ? "Cash" : "Lineup";
+      const cardName = `${stem} ${lineup.index + 1}`;
+      const hands = lineupsHands(board, key); // read each time: the list grows as the run saves
+      // Already saved is checked before a stop, so a saved card is never listed as "Not saved".
+      if (isSaved(lineup, savedKeySet(hands.saved.lineups, build.mode, index.personOf), index.personOf) || ui.knownSaved.has(uid)) { skipped.push(cardName); continue; }
+      if (stopped) { failed.push({ name: cardName, reason: stopped }); continue; }
+      try {
+        const name = uniqueSavedName(cardName, hands.saved.lineups.map((l) => l.name), stem);
+        const data = await postShowdownLineup(key, saveBodyFor(build, lineup, name));
+        if (last?.key !== key) break;
+        if (isAlreadySavedAnswer(data)) { skipped.push(cardName); answeredSaved.push({ uid, build, lineup }); continue; }
+        if (!data || data.ok === false) { stopped = data?.error?.message ?? "Could not save the lineup."; failed.push({ name: cardName, reason: stopped }); continue; }
+        if (Array.isArray(data.lineups)) hands.setSaved(data.lineups);
+        if (data.lineup?.id) justSaved.push(data.lineup.id);
+        saved++;
+      } catch (e) {
+        stopped = requestFailureText(e);
+        failed.push({ name: cardName, reason: stopped });
+      }
+    }
+    if (last?.key === key) {
+      const hands = lineupsHands(board, key);
+      if (answeredSaved.length) { // saved from another tab or device since this list was read: read it again; a card it still cannot show reads Saved ✓ all the same
+        await hands.reread();
+        const now = lineupsHands(board, key).saved.lineups;
+        for (const a of answeredSaved) if (!isSaved(a.lineup, savedKeySet(now, a.build.mode, index.personOf), index.personOf)) ui.knownSaved.add(a.uid);
+      }
+      hands.markJustSaved(justSaved);
+      const said = saveOutcome({ asked: uids.length, saved, skipped, failed });
+      setMsg(said.text, said.tone);
+    }
   } finally {
-    saving = false;
+    saving = false; // a throw anywhere in the run never leaves Save stuck off
+    redraw();
   }
-  redraw();
 }
 
 /** Download (n) on a build header: that build's lineups as a DraftKings file (the same file the saved lineups' Download DK CSV writes). */

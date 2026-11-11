@@ -56,8 +56,8 @@ export function repaintSlots(container, board, { cpt, flex }) {
 // buttons"): filled is the card row (it carries the slot name), and a click on a placed slot takes his man out (lineup.js wires `clearAttrs`);
 // Empty and "Not on this board" keep the label and the same 64px (style.css .lineup-slot-big).
 function slotHtml({ label, placed, row, palette, attrs, clearAttrs }) {
-  const body = !placed
-    ? `<span class="lineup-slot-player lineup-slot-empty">Empty</span>`
+  const body = !placed // an empty seat says how to fill it (walkthrough friction, PROJECT.md Part 4 item 5)
+    ? `<span class="lineup-slot-player lineup-slot-empty">Empty<span class="lineup-slot-hint"> · click a player on the ${label === "CPT" ? "Captain" : "FLEX"} list</span></span>`
     : row
       ? slotPlayerHtml(row, label === "CPT", palette)
       : `<span class="lineup-slot-player lineup-slot-missing">Not on this board</span>`;

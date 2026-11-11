@@ -9,6 +9,7 @@ import { lineupLabel } from "../lineup-tags.js";
 import { escapeHtml } from "../format.js";
 import { getShowdownLineups, getShowdownEntries, postShowdownEntriesUpload, postShowdownEntriesExport } from "./api.js";
 import { requestFailureText } from "./read-json.js";
+import { slateLockedText } from "../dk-lineup-csv.js";
 
 export const SHOWDOWN_ENTRIES_NS = "nfldfs.sdentries";
 /** No file yet for the game on screen; it names no Build step. */
@@ -62,6 +63,7 @@ const wire = createEntriesWire({
   numberOverFor: (saved) => saved, // the list is already this game's
   summaryOf: showdownSummary,
   lineupLabelOf: showdownLineupLabel,
+  lockedTextFor: () => slateLockedText({ kind: "showdown", board: current.board }), // the game has kicked off: Download is greyed and says why
   api: {
     list: () => getShowdownEntries(current.key),
     upload: async (csv) => {

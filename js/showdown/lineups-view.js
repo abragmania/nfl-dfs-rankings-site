@@ -13,22 +13,30 @@ import { lineupTotals } from "../lineup-totals.js";
 import { statusLineHtml } from "../row-message.js";
 import { playerFigures } from "./lineup-meter.js";
 import { findRow } from "./lineup-saved.js";
-import { SORTS, sortItems, matchesText, modeMatches, slotFigures, headerText, isSaved, countLineups } from "./lineups-store.js";
+import { SORT_KEYS, FIRST_SORT, sortItems, matchesText, modeMatches, slotFigures, headerText, isSaved, countLineups } from "./lineups-store.js";
 
 export const EMPTY_RECENT = "No lineups generated yet on this game. Build from the Optimizer tab.";
 export const EMPTY_SAVED = "No saved lineups for this game yet.";
 export const NO_FILTER_MATCH = "No lineups here match the filter.";
 export const REMOVE_QUESTION = (n) => `Remove this build of ${n} lineups from Recently generated? Saved lineups stay.`;
 
-const SORT_LABEL = { proj: "Projection", salary: "Salary", own: "Ownership", newest: "Newest" };
-const SORT_TITLE = { proj: "Most projected points first", salary: "Most salary used first", own: "Lowest total ownership first", newest: "Newest first (a build's own order; saved lineups, the most recently saved first)" };
+const SORT_TITLE = { proj: "Most projected points first; click again for fewest", salary: "Most salary used first; click again for least", own: "Lowest total ownership first; click again for highest", built: "Newest first (a build's own order; saved lineups, the most recently saved first)" };
 const MODES = ["All", "Cash", "GPP"];
 const OBJECTIVE_WORD = { proj: "projection", median: "median" };
 
-/** The state a fresh Lineups screen starts with (per game). */
-export const freshUi = () => ({ view: null, sort: "newest", mode: "All", text: "", chosen: [], names: {}, confirmRemove: null, exposureBuild: null, msg: null });
+/** The state a fresh Lineups screen starts with (per game). `sort` is lineup-sort.js nextSort's {key, dir}; `knownSaved` the uids of built cards a save answered "already saved" whose saved twin this page's list could not show (they read Saved ✓). */
+export const freshUi = () => ({ view: null, sort: { ...FIRST_SORT }, mode: "All", text: "", chosen: [], names: {}, confirmRemove: null, exposureBuild: null, msg: null, knownSaved: new Set() });
 
-const seg = (items, on, attr, titleOf = () => "") => items.map((v) => `<button type="button" class="sdl-btn${on === v ? " active" : ""}" ${attr}="${v}" title="${escapeHtml(titleOf(v))}">${escapeHtml(SORT_LABEL[v] ?? v)}</button>`).join("");
+const seg = (items, on, attr) => items.map((v) => `<button type="button" class="sdl-btn${on === v ? " active" : ""}" ${attr}="${v}">${escapeHtml(v)}</button>`).join("");
+
+/** The Sort buttons: the active one lit with ▲ or ▼ (none on Newest), as classic's Lineups bar draws them (look-lineups.js). */
+function sortButtonsHtml(sort) {
+  return SORT_KEYS.map((k) => {
+    const on = k.key === sort?.key;
+    const arrow = on && k.key !== "built" ? (sort.dir === "asc" ? " ▲" : " ▼") : "";
+    return `<button type="button" class="sdl-btn${on ? " active" : ""}" data-sdl-sort="${k.key}" aria-pressed="${on}" title="${escapeHtml(SORT_TITLE[k.key] ?? k.title)}">${escapeHtml(k.label)}${arrow}</button>`;
+  }).join("");
+}
 
 /** The view on screen: the one asked for, else Recently generated when any build is kept, else Saved. */
 export const viewOf = (ui, builds) => (ui.view === "recent" || ui.view === "saved" ? ui.view : builds.length ? "recent" : "saved");
@@ -40,7 +48,7 @@ export function controlBarHtml(ui, builds, savedCount) {
     <div class="sdl-bar" id="sdl-bar">
       <span class="sdl-views"><button type="button" class="sdl-btn${view === "recent" ? " active" : ""}" data-sdl-view="recent">Recently generated <b>${countLineups(builds)}</b></button><button type="button" class="sdl-btn${view === "saved" ? " active" : ""}" data-sdl-view="saved">Saved <b>${savedCount}</b></button></span>
       <input type="text" class="sdl-filter" id="sdl-text" placeholder="Filter by player..." value="${escapeHtml(ui.text)}" aria-label="Filter by player" autocomplete="off" />
-      <span class="sdl-group"><span class="sdl-label">Sort</span>${seg(SORTS, ui.sort, "data-sdl-sort", (v) => SORT_TITLE[v])}</span>
+      <span class="sdl-group"><span class="sdl-label">Sort</span>${sortButtonsHtml(ui.sort)}</span>
       <span class="sdl-group"><span class="sdl-label">Mode</span>${seg(MODES, ui.mode, "data-sdl-mode")}</span>
     </div>`;
 }
@@ -99,9 +107,8 @@ function buildHeadHtml(b, ui, exposureOn) {
  * Recently generated. `v` = {board, builds, ui, savedKeys ({cash, gpp}: Sets of set keys), personOf, exp, confirm, busy}. Builds stay newest first whatever the sort; the sort, Mode, the player box and the chosen men
  * only decide which lineups of each build show and in what order inside it.
  */
-function recentBodyHtml(v) {
-  const { board, builds, ui } = v;
-  if (!builds.length) return `<div class="saved-lineups-empty sdl-empty">${EMPTY_RECENT}</div>`;
+/** The builds and cards Recently generated shows: {shown: [{build, items}] (the Mode switch, the player box and the chosen men decide which, in the sort's order), beforePick (cards before the chosen men)}. */
+function shownRecent(builds, ui) {
   const shown = [];
   let beforePick = 0;
   for (const b of builds.filter((x) => modeMatches(x.mode, ui.mode))) {
@@ -110,19 +117,39 @@ function recentBodyHtml(v) {
     const items = filterLineups(typed, ui.chosen, sdPlayersOf).map((e) => e.item);
     if (items.length) shown.push({ build: b, items: sortItems(items, ui.sort, (l) => slotFigures(l.slots)) });
   }
+  return { shown, beforePick };
+}
+
+function recentBodyHtml(v) {
+  const { board, builds, ui } = v;
+  if (!builds.length) return `<div class="saved-lineups-empty sdl-empty">${EMPTY_RECENT}</div>`;
+  const { shown, beforePick } = shownRecent(builds, ui);
   const all = shown.flatMap((s) => s.items);
   if (!all.length) return `${filterBarHtml(chipsOf(ui), 0, beforePick)}<div class="saved-lineups-empty sdl-empty">${ui.chosen.length ? NO_MATCH_TEXT : NO_FILTER_MATCH}</div>`;
   // The exposure column is one build's, as Showdown has it (that build's Min / Max marks, its Captain and FLEX counted apart): the one picked with a header's Exposure button, else the newest on screen after the Mode filter.
   const of = shown.find((s) => s.build.id === ui.exposureBuild) ?? shown[0];
   const whole = of.items.length === of.build.lineups.length && of.build.lineups.length === of.build.made && of.build.made >= (of.build.marks?.asked ?? Infinity);
   const exposure = `<div class="sdl-exp-title">${escapeHtml(headerText(of.build))}</div>${exposureHtml(of.items, board, v.exp, whole ? of.build.marks : null, pickOf(ui), ui.chosen.length ? beforePick : null, "built")}`;
+  const savedHere = (b, l) => isSaved(l, v.savedKeys[b.mode], v.personOf) || Boolean(ui.knownSaved?.has(l.uid)); // knownSaved: answered "already saved" while this page's list could not show the twin
   const blocks = shown.map(({ build: b, items }) => {
     const cash = b.mode === "cash";
-    const cards = items.map((l) => cardHtml(l, l.index, { cash, basis: b.basis, objective: b.objective, busy: v.busy, saved: isSaved(l, v.savedKeys[b.mode], v.personOf), board, confirm: v.confirm ?? null })).join("");
+    const cards = items.map((l) => cardHtml(l, l.index, { cash, basis: b.basis, objective: b.objective, busy: v.busy, saved: savedHere(b, l), board, confirm: v.confirm ?? null })).join("");
     const bends = items.length === b.lineups.length && b.lineups.length === b.made ? bendsLineHtml(b.bends, b.made) : "";
     return `<section class="sdl-build" data-build="${escapeHtml(b.id)}">${buildHeadHtml(b, ui, b.id === of.build.id)}${buildInfoHtml(b)}<div class="opt-cards sdl-cards">${cards}</div>${bends}</section>`;
   }).join("");
-  return `${filterBarHtml(chipsOf(ui), all.length, beforePick)}<div class="sdl-grid"><aside class="sdl-exposure">${exposure}</aside><div class="sdl-main">${blocks}</div></div>`;
+  const unsaved = shown.reduce((n, { build: b, items }) => n + items.filter((l) => !savedHere(b, l)).length, 0);
+  return `${filterBarHtml(chipsOf(ui), all.length, beforePick)}${saveAllHtml(unsaved, v.busy)}<div class="sdl-grid"><aside class="sdl-exposure">${exposure}</aside><div class="sdl-main">${blocks}</div></div>`;
+}
+
+/** Save all unsaved (N, the shown cards not yet saved): each in its own build's mode (classic's Lineups button, Adam yes 6:30 PM 11-09); none when every shown card is saved. */
+function saveAllHtml(unsaved, busy) {
+  if (!unsaved) return "";
+  return `<div class="sdl-actions"><button type="button" class="sdl-btn sdl-save-all" data-sdl-save-all title="Save every lineup shown here that is not saved yet; one already saved is skipped"${busy ? " disabled" : ""}>Save all unsaved (${unsaved})</button></div>`;
+}
+
+/** The uids Save all acts on: every shown card (the Mode switch, the player box and the chosen men decide which), builds newest first; the save skips the ones already saved and says how many (Adam 6:30 PM 11-09). */
+export function shownRecentUids(v) {
+  return shownRecent(v.builds, v.ui).shown.flatMap(({ items }) => items.map((l) => l.uid));
 }
 
 /** Saved: `v` adds {saved: {loaded, error, lineups}, cardOf(lineup, numbers), dk: {selected, status}}. Most recently saved first; the saved cards draw the live board as they do everywhere. */

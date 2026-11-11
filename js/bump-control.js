@@ -92,19 +92,17 @@ export function bumpFigureOnlyHtml(row, figure, { kind = null, none = "no proj" 
   const before = row?.override?.proj ?? row?.projBase;
   const base = before == null ? null : isCpt ? Number(before) * CPT_MULT : before;
   const shown = isCpt ? row?.cptProj : row?.proj;
-  return bumpFigureHtml(row, dec1(figure), base, shown);
+  return bumpFigureHtml(row, dec1(figure), base, shown, row?.override?.proj != null);
 }
 
-/** The one copy of the bump tint: a figure's span, plain at 0 steps, else .bump-up / .bump-down with the hover "Base 20.0 → 22.0 (+10%)"
- *  (`base`, `shown`: the numbers the hover names; a missing base reads "—"). */
-function bumpFigureHtml(row, text, base, shown) {
+/** The one copy of the bump tint: a figure's span, plain at 0 steps, else .bump-up / .bump-down with the hover "Base 20.0 → 22.0 (+10%)" ("Typed 30.0 → 28.5 (−5%)" on his
+ *  own number) and, under the figure, what it was bumped from: "30.0 −5%" (walkthrough friction, PROJECT.md Part 4 item 5: a typed projection shows its bump). `base`, `shown`:
+ *  the numbers named; a missing base reads "—". */
+function bumpFigureHtml(row, text, base, shown, typed = false) {
   const steps = bumpStepsOf(row);
-  let attrs = `class="bump-fig"`;
-  if (steps) {
-    const title = `Base ${dec1(base) ?? "—"} → ${dec1(shown) ?? "—"} (${bumpPctText(steps)})`;
-    attrs = `class="bump-fig ${steps > 0 ? "bump-up" : "bump-down"}" title="${escapeHtml(title)}"`;
-  }
-  return `<span ${attrs}>${text}</span>`;
+  if (!steps) return `<span class="bump-fig">${text}</span>`;
+  const title = `${typed ? "Typed" : "Base"} ${dec1(base) ?? "—"} → ${dec1(shown) ?? "—"} (${bumpPctText(steps)})`;
+  return `<span class="bump-fig ${steps > 0 ? "bump-up" : "bump-down"}" title="${escapeHtml(title)}">${text}<small class="bump-from">${escapeHtml(`${dec1(base) ?? "—"} ${bumpPctText(steps)}`)}</small></span>`;
 }
 
 const inFlight = new Set(); // the ids whose bump request is out: a press for one of them is ignored until it is answered

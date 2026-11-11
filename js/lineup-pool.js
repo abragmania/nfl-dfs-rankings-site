@@ -278,7 +278,6 @@ export function ownCellInner(row, { canReset = true } = {}) {
 const canWrite = () => Boolean(poolCallbacks?.onBump);
 
 const idAttr = (id) => escapeHtml(String(id));
-
 function rightRowHtml(row, picked, placedSet, posShown, maxMap = {}, minMap = {}, cashWant = null, keys = poolColumnKeys(), palette = null) { // cashWant: a Set of Want ids in cash mode, else null; picked: poolPicker's {action, reason}
   const id = String(row.id);
   const maxText = maxMap[id] ?? "";
@@ -301,7 +300,7 @@ function rightRowHtml(row, picked, placedSet, posShown, maxMap = {}, minMap = {}
   // The name cell (A1): logo, name, position and injury letter on the first line, team and matchup (D43) on the second, the click's message under them. The TwoGun dot follows the name for a status that changed after his board was made.
   const cells = {
     star: () => `<td class="ctl"><button type="button" class="fav${row.starred ? " on" : ""}" title="${row.starred ? "Starred" : "Star"}" data-action="toggle-star" data-id="${idAttr(id)}"${poolCallbacks?.onToggleStar ? "" : " disabled"}>${row.starred ? "★" : "☆"}</button></td>`,
-    player: () => `<td class="pl"><div class="who">${teamLogoHtml(row.team, "logo", 24)}<div class="whot"><div class="l1"><span class="name player-name" title="${name}">${cardNameHtml(row)}</span>${playerTagHtml(row)}${posShown && row.pos ? `<span class="pos">${escapeHtml(row.pos)}</span>` : ""}${markerHtml(twoGunMarkerTexts(row, "status"))}</div><div class="l2">${escapeHtml(row.team ?? "")}${opponentLabel(row) ? ` · ${escapeHtml(opponentLabel(row))}` : ""}</div></div></div>${poolRowMessageHtml(id)}</td>`,
+    player: () => `<td class="pl"><div class="who">${teamLogoHtml(row.team, "logo", 24)}<div class="whot"><div class="l1"><span class="name player-name" title="${name}">${cardNameHtml(row)}</span>${playerTagHtml(row)}${posShown && row.pos ? `<span class="pos">${escapeHtml(row.pos)}</span>` : ""}${markerHtml(twoGunMarkerTexts(row, "status"))}</div><div class="l2">${escapeHtml(row.team ?? "")}${opponentLabel(row) ? ` · ${escapeHtml(opponentLabel(row))}` : ""}${greyed && picked.short ? ` · <span class="blk-why">${escapeHtml(picked.short)}</span>` : ""}</div></div></div>${poolRowMessageHtml(id)}</td>`, // a greyed row says why under his name (walkthrough friction), the full sentence on hover
     salary: () => `<td class="num sal">${money(row.salary)}${markerHtml(twoGunMarkerTexts(row, "salary"))}</td>`,
     proj: () => `<td class="num proj"><div class="editable-cell" data-field="proj" data-id="${idAttr(id)}">${projCellInner(row, { canReset: !noWrite })}</div></td>`,
     own: () => `<td class="num bar own">${ownBar}<span class="v"><div class="editable-cell" data-field="own" data-id="${idAttr(id)}">${ownCellInner(row, { canReset: !noWrite })}</div></span></td>`,

@@ -13,13 +13,14 @@ import { onSitePage } from "./tabs.js";
 import { isSampleMode, getBoard, postSources, postMode } from "./api.js";
 import { selectionHtml, playersHeadHtml, sharePercents, WEIGHT_MIN, WEIGHT_MAX } from "./sources-page-html.js";
 import { selectionFromBoard, makeSiteApi, unmatchedRows } from "./sources-page-board.js";
+import { dataAsOfHtml } from "./data-as-of.js"; // item 7 (Adam 2:48 PM 11-11): Data as of, at the top of the page
 
 export const DEBOUNCE_MS = 300;
 export const SAVED_MS = 1600;
 export { selectionHtml, playersHeadHtml, sharePercents, sourceIsTicked } from "./sources-page-html.js";
 export { selectionFromBoard } from "./sources-page-board.js";
 
-const SKELETON = `<div class="sources-page"><div class="sp-controls"></div><div class="sp-players-head"></div></div>`;
+const SKELETON = `<div class="sources-page"><div class="sp-asof-host"></div><div class="sp-controls"></div><div class="sp-players-head"></div></div>`;
 export const NOT_A_LIST = "The server answered, but not with a list of sources the page can read.";
 const siteApi = makeSiteApi({ getBoard, postSources, postMode });
 
@@ -352,6 +353,7 @@ function mount(st, container) {
   container.innerHTML = SKELETON;
   st.controlsEl = container.querySelector(".sp-controls");
   st.headEl = container.querySelector(".sp-players-head");
+  st.asOfEl = container.querySelector(".sp-asof-host");
   wire(st);
 }
 
@@ -394,6 +396,7 @@ export function renderSourcesPage(container, ctx) {
   const st = pageOf(container);
   st.ctx = ctx;
   mount(st, container);
+  if (st.asOfEl) st.asOfEl.innerHTML = ctx.asOf ? dataAsOfHtml(ctx.board, ctx.asOf) : ""; // item 7: the board's provenance, moved here from the main views
   st.headEl.innerHTML = playersHeadHtml(ctx.activeKey);
   if (fromBoard(ctx)) {
     drawFromBoard(st, ctx);

@@ -12,6 +12,8 @@ import {
   FILL_DEFAULT, handPick, reproposeFill, clearContestFill, fillModelOf, classProposals, tickClassContests, fillClassPreset, confirmClassFill,
 } from "./entries-fill.js";
 import { createEntriesStorage } from "./entries-storage.js";
+import { slateLockedText } from "./dk-lineup-csv.js"; // the one reading of a slate's lock, the DraftKings download's
+import { store } from "./state.js";
 
 // ---- State and wiring ----------------------------------------------------------------------------------------------
 
@@ -22,7 +24,7 @@ export function createEntriesWire(config = {}) {
   const cfg = Object.fromEntries(Object.entries(ENTRIES_TAB_DEFAULTS).map(([k, v]) => [k, config[k] ?? v]));
   const api = { list: getEntries, upload: postEntriesUpload, exportFile: postEntriesExport, ...(config.api ?? {}) };
   // What the HTML builders read from the model besides the state (entries.js entriesInnerHtml, entriesSectionHtml).
-  const shape = { sectionId: cfg.sectionId, fileInputId: cfg.fileInputId, emptyText: cfg.emptyText, noLineupsText: cfg.noLineupsText, lineupsFor: cfg.lineupsFor, numberOverFor: cfg.numberOverFor, summaryOf: cfg.summaryOf, lineupLabelOf: cfg.lineupLabelOf };
+  const shape = { sectionId: cfg.sectionId, fileInputId: cfg.fileInputId, emptyText: cfg.emptyText, noLineupsText: cfg.noLineupsText, lineupsFor: cfg.lineupsFor, numberOverFor: cfg.numberOverFor, summaryOf: cfg.summaryOf, lineupLabelOf: cfg.lineupLabelOf, lockedTextFor: cfg.lockedTextFor };
 
   const ent = {
     weekKey: null,
@@ -475,5 +477,5 @@ function saveBlob(blob, filename) {
 }
 
 // The classic Entries tab (the main slate's): today's four names, so lineup.js, app.js and the tests import them unchanged.
-const classic = createEntriesWire();
+const classic = createEntriesWire({ lockedTextFor: (f) => slateLockedText({ kind: "classic", board: store.get().board, slateKey: f.slate?.key }) }); // a locked slate greys Download with its reason
 export const { renderEntriesSection, wireEntries, uploadEntriesText, setUploadRouter } = classic;

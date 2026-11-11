@@ -2,7 +2,9 @@
 import { escapeHtml } from "./format.js";
 
 // `hintCls`: an extra class on the hint line (ChatGPT wish k, Adam 2026-10-17: "opt-warn" colours the starred-QB count at 0).
-export function settingRowHtml(label, controlHtml, hint = "", hintCls = "") {
+// `titleOnly` (item 7, G64): the hint is the row's hover, never a visible line.
+export function settingRowHtml(label, controlHtml, hint = "", hintCls = "", { titleOnly = false } = {}) {
+  if (titleOnly) return `<div class="opt-set"${hint ? ` title="${escapeHtml(hint)}"` : ""}><div class="opt-set-main"><span class="opt-set-label">${escapeHtml(label)}</span><span class="opt-set-ctl">${controlHtml}</span></div></div>`;
   return `<div class="opt-set"><div class="opt-set-main"><span class="opt-set-label">${escapeHtml(label)}</span><span class="opt-set-ctl">${controlHtml}</span></div>${hint ? `<div class="opt-set-hint${hintCls ? ` ${hintCls}` : ""}">${escapeHtml(hint)}</div>` : ""}</div>`;
 }
 

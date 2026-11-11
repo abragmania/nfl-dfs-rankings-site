@@ -28,6 +28,9 @@ body:not(.nl-page) #classic-header{padding:0 var(--sp-5)}
 .nl .tg-mode-btn.active{background:var(--p2);color:var(--tx)}
 .nl .header-actions{display:flex;align-items:center;gap:8px;margin:0}
 .nl .upload-info{font-size:11px;color:var(--mu)}
+/* After an upload its stamp hangs under the Upload button and takes no width, so Season, Week, Salaries and Cap never truncate (walkthrough friction); on a phone it wraps in line. */
+.nl .header-actions{position:relative}
+.nl .header-actions .upload-info{position:absolute;left:0;top:100%;margin-top:2px;font-size:10px;line-height:12px;pointer-events:auto}
 .nl .chip.upload-btn{cursor:pointer}
 .nl .brand .mode-tag{background:none;border:0;padding:0;margin:0;font:500 12px "JetBrains Mono",monospace;color:var(--mu);letter-spacing:0}
 .nl #tg-pill,.nl #pills-row{margin:0}
@@ -39,6 +42,8 @@ body:not(.nl-page) #classic-header{padding:0 var(--sp-5)}
 /* The two quiet lines under the game strip: the ownership and injury notes on the left, the board's as-of times on the right. */
 .nl .updline{display:flex;justify-content:space-between;gap:16px;align-items:baseline;margin:0 0 6px;padding-right:150px;font-size:11px;color:var(--dim)}
 .nl .updline .own-banner{margin:0;padding:0;border:0;background:none;color:var(--dim);font-size:11px}
+.nl .updline .own-banner.stale-line{color:var(--am)} /* item 7: the one short line a stale or missing feed leaves, e.g. "Injuries: saved copy" */
+.nl .updline:has(.own-banner[hidden]){display:none}
 .nl .stamps-line{font-size:11px;color:var(--dim);margin:0}
 .nl .stamps-line .stamp{margin-left:12px;white-space:nowrap}
 .nl .stamps-line i{font-style:normal;color:var(--dim)}
@@ -94,6 +99,9 @@ body:not(.nl-page) #classic-header{padding:0 var(--sp-5)}
 .nl .opt .lu.wk .wkr .lkb,.nl .opt .lu.wk .wkr .lkd{width:22px;height:22px;display:inline-grid;place-items:center;padding:0}
 .nl .opt .lu.wk .wkr.empty .sn{grid-column:2 / -1}
 .nl .opt .lu.wk .wkr.empty .sn b{font:500 13px "Space Grotesk",sans-serif}
+.nl .opt .lu.wk .wkr.empty .sn{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.nl .opt .lu.wk .wkr.empty .sn b{display:inline}
+.nl .opt .lu.wk .wkr.empty .eh{font:400 11.5px "Space Grotesk",sans-serif;color:var(--dim)} /* how to fill an empty seat (walkthrough friction) */
 .nl .opt .lu.wk .wkr.tm{box-shadow:none}
 .nl .opt .lu.wk .wkr.hand{cursor:pointer}
 .nl .opt .lu.wk .cap{margin-top:6px}
@@ -171,8 +179,7 @@ body:not(.nl-page) #classic-header{padding:0 var(--sp-5)}
 .nl .who{display:flex;align-items:center;gap:8px;min-width:0}
 .nl .who .whot{min-width:0}
 .nl .l1{display:flex;align-items:center;gap:6px;white-space:nowrap}
-.nl .l1 .name{overflow:hidden;text-overflow:ellipsis;min-width:0;cursor:pointer}
-.nl .l2{color:var(--dim);font-size:11px}
+.nl .l1 .name{overflow:hidden;text-overflow:ellipsis;min-width:0;cursor:pointer}.nl .l2{color:var(--dim);font-size:11px}
 .nl .who .logo{width:24px;height:24px;flex-shrink:0}
 .nl td .editable-cell{justify-content:flex-end;display:inline-flex;align-items:center}
 .nl td.proj .cell-value.is-override{outline:1px solid var(--am);padding:0 3px}
@@ -227,6 +234,8 @@ body:not(.nl-page) #classic-header{padding:0 var(--sp-5)}
 .nl .lt-badge{font-size:10px;color:var(--mu);border:1px solid var(--ln);padding:0 5px}
 .nl .lt-badge.bad{color:var(--rd);border-color:var(--rd)}
 .nl .lt-badge.warn{color:var(--am)}
+.nl .lt-badge.new{color:var(--gr);border-color:var(--gr)}
+.nl #lineups .lc.svc.just{border-color:var(--gr)}
 .nl .lt-pre{color:var(--dim);margin-right:4px}
 .nl .lt-confirm{display:inline-flex;gap:4px;align-items:center;font-size:10.5px;color:var(--rd)}
 .nl .lt-tag{background:var(--p2);border:1px solid var(--ln);color:var(--mu);font-size:10.5px;height:18px;padding:0 2px}
@@ -307,6 +316,7 @@ html[data-theme="light"] .nl .vtabs button.on,html[data-theme="light"] .nl .vtab
   .nl .top #tg-mode{order:4}
   .nl .top .header-actions{order:5;display:flex;flex-wrap:wrap;gap:4px;flex:1 1 auto}
   .nl .top .header-actions .chip{min-height:32px}
+  .nl .top .header-actions .upload-info{position:static;margin-top:0}
   .nl .top .stamps{order:6;flex:1 1 100%}
   .nl .vtabs{max-width:100%;flex-wrap:wrap}
   .nl .vtabs nav{display:contents}
@@ -331,11 +341,19 @@ html[data-theme="light"] .nl .vtabs button.on,html[data-theme="light"] .nl .vtab
   .nl #tbody tr[data-id]{border-bottom:1px solid var(--ln);padding:2px 0}
   .nl #tbody td.pl .logo{display:none}
   .nl #tbody td.pl .who{gap:0}
+  /* The injury letter moves to the matchup line, so the name keeps the room beside the position (walkthrough friction: names clipped beside a Q badge). */
+  .nl #tbody td.pl .whot{position:relative}
+  .nl #tbody td.pl .l1>:is(.status-badge,.out-tag){position:absolute;left:0;top:18px;font-size:9.5px;line-height:12px;padding:0 3px;margin:0}
+  .nl #tbody td.pl .whot:has(.l1>.status-badge) .l2{padding-left:16px}
+  .nl #tbody td.pl .whot:has(.l1>.out-tag) .l2{padding-left:30px}
   .nl .tbl #thead th{box-shadow:none}
   .nl .tbl .lineup-pool-empty{display:block}
   /* The panel is one closed line above the player list until it is opened. */
   .nl .opt-phone-toggle{display:flex;justify-content:space-between;align-items:center;width:100%;min-height:40px;padding:8px 12px;background:var(--p2);border:1px solid var(--am);color:var(--tx);font-weight:700;font-size:13px;text-align:left;cursor:pointer}
   .nl .opt:not(.phone-open)>:not(.opt-phone-toggle){display:none}
+  /* Opened, the working lineup comes last, right above the filter bar and the player list its seats are filled from (walkthrough friction: it sat far from the pool). */
+  .nl .opt.phone-open{display:flex;flex-direction:column}
+  .nl .opt.phone-open>.lu.wk{order:1}
   .nl .work{gap:8px}
   /* Lineups: the cards first, the exposure table behind its switch; buttons and the build line wrap. */
   .nl #lineups .lt-body{display:flex;flex-direction:column;gap:8px}

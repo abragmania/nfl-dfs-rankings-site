@@ -6,7 +6,7 @@
 // The order of reasons: he is in the lineup (an unlocked man stays clickable and the click takes him out; a locked man is greyed, unlock him first),
 // he is excluded, he has no salary, no open seat can take his position, his salary is more than the salary left less the cheapest
 // legal fill of the other open seats (lineup-fit.js; positions and salaries only).
-import { classicFit, fillPool, fitReasonText, FLEX_POSITIONS } from "./lineup-fit.js";
+import { classicFit, fillPool, fitReasonText, fitShortText, FLEX_POSITIONS } from "./lineup-fit.js";
 
 /** True when a row has the two figures a click needs: a salary and a projection (ownership is never one). */
 const hasFigures = (r) => Number.isFinite(r.salary) && r.proj != null;
@@ -46,17 +46,17 @@ export function poolPicker({ rows, rowById, slotNames, slots, locks, excludes, c
     const name = row.name ?? "He";
     if (action === "remove") {
       return lockedIdentities.has(identityOf(row))
-        ? { action: null, reason: `${name} is locked into your lineup. Unlock him first, or click his slot.` }
+        ? { action: null, reason: `${name} is locked into your lineup. Unlock him first, or click his slot.`, short: "locked in your lineup" }
         : { action: "remove", reason: "" };
     }
-    if (action === null) return { action: null, reason: `${name} is excluded from every lineup. Take the exclude off to use him.` };
+    if (action === null) return { action: null, reason: `${name} is excluded from every lineup. Take the exclude off to use him.`, short: "excluded" };
     // A18 (round 3 fixes): a missing figure greys a row. No salary: he cannot be costed against the cap. No projection (proj == null; an out man's 0 is a figure): he cannot be
-    // weighed. Never ownership. Typing a projection for him (his Proj in the ranked list) brings him back.
-    if (!Number.isFinite(row.salary)) return { action: null, reason: `${name} has no DraftKings salary, so he cannot be costed against the cap.` };
-    if (row.proj == null) return { action: null, reason: `${name} has no projection, so he cannot be added. Type one in his Proj in the ranked list to bring him in.` };
+    // weighed. Never ownership. Typing a projection for him (his Proj in the ranked list) brings him back. `short`: the few words the greyed row shows under his name.
+    if (!Number.isFinite(row.salary)) return { action: null, reason: `${name} has no DraftKings salary, so he cannot be costed against the cap.`, short: "no salary" };
+    if (row.proj == null) return { action: null, reason: `${name} has no projection, so he cannot be added. Type one in his Proj in the ranked list to bring him in.`, short: "no projection" };
     const others = heldOnly.filter((r) => identityOf(r) !== identityOf(row)); // the held men other than the one asking
     const salaryLeft = cap - used - others.reduce((s, r) => s + r.salary, 0);
     const fit = classicFit({ man: { id: row.id, pos: row.pos, salary: row.salary }, salaryLeft, openSlots: seatsAfter(others), pool });
-    return fit.fits ? { action: "add", reason: "" } : { action: null, reason: fitReasonText(fit, row) };
+    return fit.fits ? { action: "add", reason: "" } : { action: null, reason: fitReasonText(fit, row), short: fitShortText(fit, row) };
   };
 }

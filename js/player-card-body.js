@@ -267,5 +267,8 @@ export function cardHtml(ctx) {
   const log = data.gameLog
     ? `<section class="pc-log"><h3 class="pc-log-title">${escapeHtml(data.gameLog.season)} game log <span class="pc-src">NFLDepthCharts</span></h3><div class="pc-log-wrap">${gameLogTableHtml(data.gameLog)}</div></section>`
     : `<div class="pc-note pc-note-error">${escapeHtml(data.gameLogMissing ?? "The game log is not available.")}</div>`;
-  return `${head}${strip}${bioLineHtml(data.player.bio)}${log}${sourceLineHtml(data)}`;
+  return `${head}${strip}${bioLineHtml(data.player.bio)}${log}${NEWS_NOTE}${sourceLineHtml(data)}`;
 }
+
+/** Where a first-timer looks for his news (walkthrough friction, PROJECT.md Part 4 item 5): the app has no news source, and says so rather than leave him searching. */
+export const NEWS_NOTE = `<div class="pc-note pc-news">News: no news source connected.</div>`;

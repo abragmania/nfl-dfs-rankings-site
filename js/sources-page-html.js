@@ -7,9 +7,8 @@ import { WEIGHT_MIN, WEIGHT_MAX } from "./weight-limits.js"; // the browser's co
 
 export { WEIGHT_MIN, WEIGHT_MAX };
 export const WEIGHT_STEP = 0.25;
-const REBUILD_LINE = "Changes rebuild the board from the data already pulled; nothing is re-downloaded.";
-/** The header's quiet line: the body's own appliesTo in front ("Applies to classic slates." or "Applies to this Showdown game."), dropped when the body sends none (the public site). */
-export const quietLine = (appliesTo) => (typeof appliesTo === "string" && appliesTo.trim() ? `Applies to ${appliesTo.trim()}. ${REBUILD_LINE}` : REBUILD_LINE);
+/** The header's quiet line: none (item 7, lead 3:10 PM 11-11: "Applies to classic slates. Changes rebuild the board from the data already pulled; nothing is re-downloaded." is deleted). Kept as a function so a body's own `quiet` (the site's read-only line) still shows. */
+export const quietLine = () => "";
 export const PRESETS = Object.freeze([
   Object.freeze({ key: "twogun", label: "TwoGun only" }),
   Object.freeze({ key: "ours", label: "Our sources" }),
@@ -83,6 +82,11 @@ const pulledHtml = (ts) => (stampText(ts) ? `<span title="Eastern time (ET)">${e
 // where it was read from. A plain string cut, no time read (D30); the stamp stays on one line (style.css td.sp-c-posted).
 export function postedShown(text) {
   const s = String(text);
+  const iso = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:\d{2})$/.test(s) ? localStamp(s) : null;
+  if (iso) { // a raw ISO stamp (Sleeper's) reads in Eastern, 12-hour, like the other sources' stamps (lead 3:10 PM 11-11)
+    const [h, m] = iso.clock.split(":").map(Number);
+    return `${iso.monthDay}, ${h % 12 || 12}:${String(m).padStart(2, "0")} ${h < 12 ? "AM" : "PM"} ET`;
+  }
   const cut = s.indexOf(" (");
   return cut > 0 ? s.slice(0, cut) : s;
 }
@@ -169,7 +173,7 @@ export function headerHtml(data, view) {
   const presets = data.preset == null ? "" : `<span class="sp-seg" role="group" aria-label="Preset">${PRESETS.map(btn).join("")}${custom}</span>`;
   // A Showdown game with no choices saved reads its default (server/sources/showdown-default.js): data.defaulted { preset, why }.
   const defaulted = defaultedPillHtml(data.defaulted);
-  return `<div class="sp-head"><h1 class="sp-title">Sources</h1>${presets}${defaulted}<span class="sp-quiet">${esc(data.quiet ?? quietLine(data.appliesTo))}</span>${err ? `<span class="sp-err" role="alert">${esc(err)}</span>` : ""}</div>`;
+  return `<div class="sp-head"><h1 class="sp-title">Sources</h1>${presets}${defaulted}${(data.quiet ?? quietLine()) ? `<span class="sp-quiet">${esc(data.quiet ?? quietLine())}</span>` : ""}${err ? `<span class="sp-err" role="alert">${esc(err)}</span>` : ""}</div>`;
 }
 
 /** The pill's words for a game reading its default: "default (TwoGun only)" or "default (Our sources)". */

@@ -26,9 +26,10 @@ function floorNoteHtml(allRows, shownRows) {
   const showAll = Boolean(store.get().filters.showAllPlayers);
   if (hidden <= 0 && !showAll) return "";
   const text = hidden > 0
-    ? `Showing ${shownRows.length} of ${allRows.length} players. ${hidden} ${hidden === 1 ? "is" : "are"} hidden: projected for ${CLASSIC_PROJ_FLOOR.toFixed(1)} points or fewer, or no projection.`
-    : `Showing all ${allRows.length} players.`;
-  return `<p class="tab-note">${escapeHtml(text)} ${showAllToggleHtml(showAll, `data-action="show-all"`)}</p>`;
+    ? `${shownRows.length} of ${allRows.length} shown` // item 7 (lead 3:10 PM 11-11): a few words; the floor is the hover
+    : `All ${allRows.length} shown`;
+  const why = `Hidden: projected for ${CLASSIC_PROJ_FLOOR.toFixed(1)} points or fewer, or no projection.`;
+  return `<p class="tab-note" title="${escapeHtml(why)}">${escapeHtml(text)} ${showAllToggleHtml(showAll, `data-action="show-all"`)}</p>`;
 }
 
 const TABS = [
@@ -58,7 +59,7 @@ export function sourcesTabToOpen(current, last) {
 // Rules repo 2026-10-17: the public site marks the page `is-site` (tools/publish.mjs injectSite marks the html tag at publish time; site-src/site.js adds it too), the same signal filterbar.js reads;
 // Entries holds Adam's private entries files (site.css hides .entries-section there), so the site gets no Entries tab.
 export function onSitePage() {
-  return typeof document !== "undefined" && document.documentElement.classList.contains("is-site");
+  return typeof document !== "undefined" && Boolean(document.documentElement?.classList?.contains("is-site")); // a page stand-in with no documentElement is the app
 }
 
 /** The tabs to draw: all of them in the app, all but Entries on the public site. */
@@ -86,8 +87,8 @@ export function renderTabs(container, activeTab, onTabClick, { lineupsCount = nu
 
 // The few board notes that exist (the scoring fallback, an unreadable overrides file) are shown as one quiet
 // line inside the tab they belong to (board.tabNotes), never as header pills.
-function tabNotesHtml(notes) {
-  const list = (notes ?? []).filter(Boolean);
+function tabNotesHtml(notes, board = null) {
+  const list = (notes ?? []).filter((n) => Boolean(n) && n !== board?.injuryNote); // item 7: the injury note is the Data as of block's, above, never repeated here
   return list.length ? `<p class="tab-note">${escapeHtml(list.join(" "))}</p>` : "";
 }
 
@@ -131,7 +132,7 @@ export function renderProjectionsPanel(container, board, callbacks) {
   const pasteOptions = PASTE_POSITIONS.map((p) => `<option value="${p}">${p}</option>`).join("");
 
   container.innerHTML = `
-    ${tabNotesHtml(board.tabNotes?.projections)}
+    ${tabNotesHtml(board.tabNotes?.projections, board)}
     ${injuryUnmatchedHtml(board.unmatched?.bySource?.["espn-injuries"], escapeHtml)}
     <details class="paste-box">
       <summary>Paste a FantasyPros table</summary>
@@ -287,7 +288,7 @@ export function renderOwnershipPanel(container, board, callbacks) {
 
   container.innerHTML = `
     <p class="tab-note">${published} of ${rows.length} players have a published DraftKings ownership number; ${blank} are blank.</p>
-    ${tabNotesHtml(board.tabNotes?.ownership)}
+    ${tabNotesHtml(board.tabNotes?.ownership, board)}
     ${floorNoteHtml(rows, floorRows(rows))}
     <div class="tab-table-group"><div class="tab-table-wrap scroll-panel"><table class="source-value-table sv-classic"><thead></thead><tbody></tbody></table></div></div>
   `;

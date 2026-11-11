@@ -45,9 +45,9 @@ export function lookRowHtml(man, { slot, kind = "card", locked = false, palette 
   return `<div class="${classes}"${cardId} style="${teamVars(man.team, palette)}"${attrs ? ` ${attrs}` : ""}><span class="sl" title="Roster slot ${escapeHtml(slot)}">${escapeHtml(slot)}</span>${logo(man.team)}${nameCell(man, note)}${figures}</div>`;
 }
 
-/** An open slot: the slot box and the word (`Empty`, `Not on this slate`). `kind` as lookRowHtml. */
-export function lookEmptyRowHtml(slot, word = "Empty", { kind = "work", attrs = "" } = {}) {
-  return `<div class="crow ${kind === "work" ? "wkr" : "lead lr"} empty"${attrs ? ` ${attrs}` : ""}><span class="sl">${escapeHtml(slot)}</span><div class="sn"><b>${escapeHtml(word)}</b></div></div>`;
+/** An open slot: the slot box and the word (`Empty`, `Not on this slate`), and `hint` after it when given (how to fill it). `kind` as lookRowHtml. */
+export function lookEmptyRowHtml(slot, word = "Empty", { kind = "work", attrs = "", hint = "" } = {}) {
+  return `<div class="crow ${kind === "work" ? "wkr" : "lead lr"} empty"${attrs ? ` ${attrs}` : ""}><span class="sl">${escapeHtml(slot)}</span><div class="sn"><b>${escapeHtml(word)}</b>${hint ? `<span class="eh"> · ${escapeHtml(hint)}</span>` : ""}</div></div>`;
 }
 
 /** The working lineup's padlock: green while locked (a click unlocks, D70), else a plain padlock (a click locks him in). Lineup.js wires data-action="row-lock" as the pool's. */

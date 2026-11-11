@@ -18,7 +18,7 @@ import { renderSourcesPage, sectionSources } from "../sources-page.js";
 import { escapeHtml, dec1 } from "../format.js";
 import { store } from "../state.js";
 import { sdShowAll, setSdShowAll, onSdShowAllChange } from "./show-all.js"; // C24: the Showdown's own Show all players
-import { boardStamps, stampsLineHtml } from "../stamps.js"; // B11, C26: Board, Injuries, Pulled and Lock, with the Sources link
+import { staleLineText, savedCopiesLine } from "../data-as-of.js"; // item 7: one short stale line under the game line; Board, Injuries, Pulled and Lock are on the Sources page
 import { makeFilterDebounce } from "../filter-debounce.js"; // the typed boxes wait out classic's 150 ms pause
 import { syncExpandUi } from "../expand.js";
 import { adjustScrollPanels } from "../scroll-panels.js";
@@ -27,7 +27,7 @@ import { keptCount, onKeptChange } from "./lineups-store.js"; // the Lineups tab
 import { setTabOpener } from "./lineups-nav.js";
 import { repaintShowdownPool } from "./lineup.js";
 import { lineupFigureRow } from "./lineup-meter.js";
-import { poolState, poolCountText } from "./pool.js";
+import { poolState, poolCountText, poolNoteText, ownTotalsLine } from "./pool.js";
 import { restoreView } from "./view-memory.js"; // A9: the pool's filters and sort per game
 import { filterBarHtml, wireFilterBar, takeBarFocus, restoreBarFocus, tabResetQuestion } from "./filter-bar.js"; // the filter bar above the builder (team and position chips, search, salary range, Min Proj)
 import { figuresPillHtml } from "./figures-label.js"; // the header pill naming the sources this game's board reads (Adam 2026-10-20)
@@ -44,6 +44,7 @@ const state = {
   loading: false,
   error: null, // only shown when there is no good board to fall back to; a failure while a good board is
   // already on screen is reported in #sd-status instead (see loadBoard).
+  uploadStale: null, // {key, ids}: the last upload's saved copies for that game, for the Sources page's Data as of (showUploadPills)
 };
 
 // Monotonic token plus the key it was issued for: every async board-affecting call (a fresh load, Refresh,
@@ -177,10 +178,16 @@ function renderFilterBar() {
   restoreBarFocus(els.filterbar, focused);
 }
 
-// B11, C26: the four as-of stamps under the game line, with the Sources link (the same opener as the header's Sources button).
+// Item 7 (Adam 2:48 PM 11-11): under the game line only one short line, and only when a feed is a saved copy or missing ("Injuries: saved copy"), with the Sources link;
+// the four stamps and the injury report's counts are on the Sources page's Data as of block.
 function renderStamps() {
   if (!els.stamps) return;
-  els.stamps.innerHTML = state.board ? stampsLineHtml(boardStamps(state.board), { sourcesLink: true }) : "";
+  const b = state.board;
+  // A failed source is broken: it keeps its few words here (the header's pills row is gone, lead 3:10 PM 11-11). Counted from the board's
+  // sources as header.js counts one failed: status failed or error, or whole positions missing (A1); the injury report is staleLineText's.
+  const failed = b ? (b.sources ?? []).filter((s) => ["failed", "error"].includes(String(s?.status ?? "").toLowerCase()) || (s?.missingPositions?.length ?? 0) > 0).length : 0;
+  const stale = b ? [staleLineText(b), failed ? `Sources: ${failed} failed` : ""].filter(Boolean).join(" · ") : "";
+  els.stamps.innerHTML = stale ? `<div class="stamps-line stale-line" role="status">${escapeHtml(stale)} <button type="button" class="link-btn sd-figures-link" title="Open the Sources page: when each source was pulled">Sources</button></div>` : "";
   els.stamps.querySelectorAll(".sd-figures-link").forEach((btn) => btn.addEventListener("click", () => openSources()));
 }
 
@@ -431,6 +438,7 @@ function renderSourcesView() {
       if (why) throw new Error(why); // loadBoard never rejects: the page says "Saved, but the board could not be refreshed" from this
     },
     onSelection: () => { if (isSourcesTab(state.activeTab) && state.board) render(); }, // the ticks arrived after the first draw: the Projections table's columns follow them
+    asOf: { lines: [poolNoteText(state.board), savedCopiesLine(state.board), uploadStaleLine(), state.board ? ownTotalsLine(state.board.rows) : "", state.board?.injuryNote].filter(Boolean) }, // item 7: the game's stamps, its figures reading and saved copies (the header's chips) and the injury report's counts, moved here
   });
   if (state.activeTab === "projections") {
     renderShowdownProjectionsPanel(els.projectionsPanel, state.board, {
@@ -520,8 +528,19 @@ export async function forceReloadShowdown(key) {
   await loadBoard(key);
 }
 
-// Exported for app.js's upload flow (🔵 finding): the upload response's own stale list is shown
-// immediately, the same way the classic header's wireUpload shows pills before the board reload lands.
+// Exported for app.js's upload flow (🔵 finding): the upload response's own stale list (the game on screen's), kept for the Sources
+// page's Data as of (G64: the header's chip row is hidden on Showdown, so a chip there was never seen; G62: nothing dropped). A saved
+// copy the reloaded board already names is said once, by its own line (uploadStaleLine).
 export function showUploadPills(staleIds) {
-  renderPills(els.pillsRow, { staleIds: staleIds ?? [], sources: state.board?.sources ?? null, warnings: [], injuryReport: state.board?.injuryReport });
+  state.uploadStale = { key: showdownKeyFromHash() ?? state.boardKey, ids: [...(staleIds ?? [])] };
+  if (isSourcesTab(state.activeTab) && state.board) render();
+}
+
+/** The upload's saved copies the board on screen does not already name, as one Data as of line, or "". */
+function uploadStaleLine() {
+  const up = state.uploadStale;
+  if (!up || up.key !== state.boardKey) return "";
+  const named = new Set(state.board?.stale ?? []);
+  const line = savedCopiesLine({ stale: up.ids.filter((id) => !named.has(id)), sources: state.board?.sources ?? [] });
+  return line.replace(/^Saved copies/, "At the upload, saved copies");
 }

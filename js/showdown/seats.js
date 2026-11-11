@@ -28,6 +28,7 @@ export const state = {
   saveConfirm: null,
   renamingId: null,
   deleteConfirmId: null,
+  justSaved: new Set(), // the saved lineup ids the last Save or Save all saved: their Saved cards say "Just saved" (PROJECT.md Part 4 item 5); page-only
 };
 
 let boardRef = null; // the board the panel is drawing (lineup.js sets it on every draw)

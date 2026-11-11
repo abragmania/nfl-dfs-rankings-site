@@ -91,7 +91,7 @@ export function savedSlotsHtml(lineup, board, figures = playerFigures) {
 // this card's refused change (a badge on the card, as classic's lineupErrors badge); `editableTag` = false leaves the letter select out
 // (the public site, where a letter can only be refused; the prefix still shows the letter), default true.
 export function savedLineupCardHtml(lineup, board, figures = playerFigures, ui = {}) {
-  const { renamingId = null, deleteConfirmId = null, numbers = null, busy = false, error = null, editableTag = true, ticked = false, confirm = null, deleteError = null } = ui; // confirm: the open confirm's key (C11: `load:saved:<id>` asks before replacing unsaved slots)
+  const { renamingId = null, deleteConfirmId = null, numbers = null, busy = false, error = null, editableTag = true, ticked = false, confirm = null, deleteError = null, canDelete = true, justSaved = false } = ui; // confirm: the open confirm's key (C11: `load:saved:<id>` asks before replacing unsaved slots); canDelete false: the site's read-only app lineup (no Delete); justSaved: the last Save or Save all saved it
   const busyAttr = busy ? " disabled" : "";
   const prefix = lineupPrefix(lineup, numbers);
   const tagOptions = `<option value=""${lineup.tag ? "" : " selected"}>no letter</option>${TAG_OPTIONS.map((t) => `<option value="${t}"${t === lineup.tag ? " selected" : ""}>${t}</option>`).join("")}`;
@@ -114,6 +114,7 @@ export function savedLineupCardHtml(lineup, board, figures = playerFigures, ui =
   const isConfirmingDelete = deleteConfirmId === lineup.id;
   const badges = [
     modeBadgeHtml(lineup), // A12 (round 3): every card says Cash or GPP, as classic's Saved card does
+    justSaved ? `<span class="saved-lineup-badge saved-lineup-badge-new" title="Saved by your last Save or Save all">Just saved</span>` : "",
     error ? `<span class="saved-lineup-badge saved-lineup-badge-danger">${escapeHtml(error)}</span>` : "",
     incomplete ? `<span class="saved-lineup-badge saved-lineup-badge-warning">Incomplete</span>` : "",
     overCap ? `<span class="saved-lineup-badge saved-lineup-badge-danger">Over cap</span>` : "",
@@ -127,14 +128,14 @@ export function savedLineupCardHtml(lineup, board, figures = playerFigures, ui =
     : `<button type="button" class="saved-lineup-name-btn" data-action="sd-rename-start" data-id="${escapeHtml(lineup.id)}" title="Click to rename">${escapeHtml(lineup.name)}</button>`;
   const rowsHtml = savedSlotsHtml(lineup, board, figures);
   const totalsBlock = savedTotalsHtml(lineup, board, figures);
-  const deleteHtml = isConfirmingDelete
+  const deleteHtml = !canDelete ? "" : isConfirmingDelete
     ? `<span class="saved-lineup-confirm">${DELETE_QUESTION}
         <button type="button" class="saved-lineup-mini-btn danger" data-action="sd-delete-yes" data-id="${escapeHtml(lineup.id)}">Yes</button>
         <button type="button" class="saved-lineup-mini-btn" data-action="sd-delete-no">No</button>
       </span>`
     : `<button type="button" class="saved-lineup-btn danger" data-action="sd-delete-start" data-id="${escapeHtml(lineup.id)}">Delete</button>`;
   return `
-    <div class="saved-lineup-card">
+    <div class="saved-lineup-card${justSaved ? " just-saved" : ""}">
       <div class="saved-lineup-card-head">
         ${dkSelectHtml(lineup.id, ticked)}${prefix ? `<span class="saved-lineup-prefix">${escapeHtml(prefix)} &middot;</span>` : ""}${nameHtml}
         ${tagHtml}

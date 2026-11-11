@@ -1025,6 +1025,9 @@ tr:last-child .cell-edit-hint, tr:last-child .cell-edit-error { top: auto; botto
 .lineup-slot-label { width: 44px; flex: 0 0 44px; font-weight: 700; color: var(--text-muted); }
 .lineup-slot-player { flex: 1; min-width: 0; display: flex; align-items: center; gap: var(--sp-2); color: var(--text); }
 .lineup-slot-player.lineup-slot-empty { color: var(--text-dim); font-style: italic; }
+.lineup-slot-hint { font-size: 11px; font-style: normal; } /* how to fill an empty seat (walkthrough friction) */
+.sd-blk-why { display: block; font-size: 10.5px; line-height: 12px; color: var(--amber); opacity: .8; } /* a greyed Showdown pool row's few words of why, as classic's .blk-why */
+#showdown-header .header-sub { display: none; } /* item 7 (lead 3:10 PM 11-11): the "8 cached" chip and the figures pill are source state, now the Sources page's Data as of */
 .lineup-slot-player.lineup-slot-missing { color: var(--danger); font-style: italic; }
 
 /* ---------- Showdown meter strip (Adam 2026-10-18; public/js/showdown/lineup-meter.js) ----------
@@ -1230,6 +1233,7 @@ tr:last-child .cell-edit-hint, tr:last-child .cell-edit-error { top: auto; botto
 .bump-fig { display: inline-block; min-width: 4ch; padding: 0 1px; border-radius: 3px; text-align: right; font-variant-numeric: tabular-nums; vertical-align: baseline; }
 .bump-fig.bump-up { background: var(--grade-v1-bg); color: var(--success); }
 .bump-fig.bump-down { background: var(--grade-v5-bg); color: var(--danger); }
+.bump-fig .bump-from { display: block; font-size: 9.5px; line-height: 10px; font-weight: 500; color: var(--text-dim); white-space: nowrap; } /* what a bumped figure was bumped from (walkthrough friction) */
 .lineup-row-btn {
   cursor: pointer;
   background: var(--bg-elevated-2);
@@ -1577,6 +1581,8 @@ th.sd-cpt-col.sorted { color: var(--amber); }
    ran past the table's right edge. width 0 with min-width 100% keeps it out of the grid's width and gives it the grid's. */
 #sd-pool > .table-legend { width: 0; min-width: 100%; }
 #sd-pool > .sd-pool-wrap { width: auto; max-width: 100%; margin: 0; } /* no scroll box since A15 (round 5): the page scrolls, the head sticks under the filter bar */
+/* The phone exception to A15: at 700px and below the pool scrolls sideways inside its box so the page never scrolls sideways; the head does not stick on a phone. */
+@media (max-width: 700px) { #sd-pool > .sd-pool-wrap { overflow-x: auto; } }
 .sd-pool-note { font-size: var(--fs-sm); color: var(--text-dim); }
 /* The table: the look the retired Rankings table had (sticky head, cell padding, 30px rows, hover, dimmed rows), laid out by its content, not fixed widths, since its columns vary (the Optimizer's boxes and buttons).
    The figures right-align with tabular digits; Player and Notes read left. The Player cell stops at 250px (a long name gives way
@@ -2242,6 +2248,8 @@ td.opt-exp-opp { color: var(--text-muted); } /* the cells only: the Matchup head
    panel, its header band and the mode row above them, so their edges stay aligned; at 2560 the pool's 1437px table fits beside the
    600px builder. Wider than a phone only (the phone keeps its own padding). */
 #showdown-main { max-width: min(100vw, 2480px); }
+#showdown-main { padding-top: var(--sp-2); } /* item 7 (lead 3:10 PM 11-11): no tall empty band between the header and the tabs */
+#showdown-main > #sd-status:empty { min-height: 0; margin: 0; }
 @media (min-width: 701px) {
   #showdown-header, body:has(#showdown-main:not([hidden])) .mode-row { padding-left: max(var(--sp-5), calc((100% - 2480px) / 2 + var(--sp-5))); padding-right: max(var(--sp-5), calc((100% - 2480px) / 2 + var(--sp-5))); }
 }
@@ -2307,6 +2315,15 @@ td.opt-exp-opp { color: var(--text-muted); } /* the cells only: the Matchup head
    stamp stays on one line (👁 round 4) and carries its full text as its hover; for the method note, the short note fits one line, a longer
    one wraps, and the whole sentence is the hover. */
 .sources-page { display: flex; flex-direction: column; gap: var(--sp-2); }
+/* Item 7 (Adam 2:48 PM 11-11): Data as of, the board's stamps and counts moved off the main views; a short table and terse lines. */
+.sp-asof { display: flex; flex-wrap: wrap; align-items: flex-start; gap: var(--sp-1) var(--sp-4); font-size: 12px; color: var(--text-muted); }
+.sp-asof-title { flex: 0 0 100%; margin: 0; font-size: 13px; color: var(--text); }
+.sp-asof-stamps { border-collapse: collapse; }
+.sp-asof-stamps th { text-align: left; font-weight: 600; color: var(--text-dim); padding: 0 var(--sp-2) 0 0; }
+.sp-asof-stamps td { padding: 0; font-variant-numeric: tabular-nums; }
+.sp-asof-stamps tr.stamp-missing td { color: var(--danger); }
+.sp-asof-notes { margin: 0; padding-left: 1.1em; }
+.sd-stamps .stale-line, #sd-stamps .stale-line { color: var(--amber); font-size: 12px; }
 .sp-controls { display: flex; flex-direction: column; gap: var(--sp-2); min-width: 0; }
 .sp-head { display: flex; align-items: center; flex-wrap: wrap; gap: var(--sp-2) var(--sp-4); }
 .sp-title { margin: 0; font-size: var(--fs-lg); line-height: 1.1; }
@@ -2687,6 +2704,11 @@ td.opt-exp-opp { color: var(--text-muted); } /* the cells only: the Matchup head
 #sd-lineups-panel .sdl-cards .opt-card { padding: var(--sp-2); }
 #sd-lineups-panel .sdl-empty { padding: var(--sp-4) 0; }
 #sd-lineups-panel #sd-saved-lineups .saved-lineup-card-head { min-height: 20px; }
+#sd-lineups-panel .sdl-actions { display: flex; justify-content: flex-end; margin: 0 0 var(--sp-2); font-family: var(--sdl-mono); } /* Save all unsaved (N), classic's Lineups button (PROJECT.md Part 4 item 5) */
+#sd-lineups-panel .sdl-actions .sdl-btn:disabled { opacity: .5; cursor: default; }
+#sd-lineups-panel #sdl-body > .lineup-status { margin: 0 0 var(--sp-2); } /* a save's words stand apart from the column under them */
+.saved-lineup-card.just-saved { border-color: var(--success); } /* Saved marks what the last Save or Save all saved */
+.saved-lineup-badge-new { color: var(--success); background: color-mix(in srgb, var(--success) 15%, transparent); }
 @media (max-width: 1100px) { #sd-lineups-panel .sdl-grid { grid-template-columns: minmax(0, 1fr); } }
 
 /* Part F: the Cash tab's Left out panel (left-out-panel.js), under the two columns as the Lineup read is (A15: the sticky lineup band must fit the window): at most three men, two lines

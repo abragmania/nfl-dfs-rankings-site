@@ -19,14 +19,15 @@
 import { optimizeShowdown } from "../server/lineup/showdown.js";
 import { generateShowdownLineups } from "../server/lineup/showdown-multi.js";
 import { lineupRows } from "../server/showdown/lineup-rows.js";
-import { validateOptimizeBody, validateShowdownSlots, buildShowdownSnapshot, staleModeError, WEEK_UNKNOWN_MESSAGE, BUILD_OPTIONS, PROJECTION_CHANGED_CODE, figuresChangedError } from "../server/showdown/lineup-checks.js";
+import { validateOptimizeBody, validateShowdownSlots, buildShowdownSnapshot, staleModeError, WEEK_UNKNOWN_MESSAGE, BUILD_OPTIONS, PROJECTION_CHANGED_CODE, figuresChangedError, showdownPersonIndex, showdownLineupKey } from "../server/showdown/lineup-checks.js";
+import { DUPLICATE_CODE, findDuplicate, duplicateMessage } from "../server/lineups/duplicate.js";
 import { meterAnswer, validateMeterBody, halvesOf, zFor } from "../server/showdown/meter-answer.js";
 import { swapsAnswer } from "../server/showdown/swaps.js";
 import { generateBodyCheck, generateAnswer, WEEK_UNKNOWN_SAVED_NOTE } from "../server/showdown/generate-answer.js";
 import { curvesFromText, curvesMissingSentence, curvesUnreadableSentence } from "../server/showdown/field-curves-core.js";
 import { envelope, errorBody } from "./site-generate.js";
 import { createWorkerRunner, endedSiteResult } from "./site-worker.js";
-import { validateLineupName, validateLineupBuild } from "../server/lineups/validate.js";
+import { validateLineupName, validateLineupBuild, validateLineupMode } from "../server/lineups/validate.js";
 import {
   pageStorage, readKey, writeKey, sortedNewestFirst, nextLineupName, makeDeviceId, DEVICE_ID_PREFIX, STORAGE_UNAVAILABLE_MESSAGE
 } from "./site-lineups.js";
@@ -181,6 +182,8 @@ export function saveShowdownLineup(storage, key, board, payload, bakedLineups = 
   if (slotsResult.error) return errorBody("VALIDATION_ERROR", slotsResult.error);
   const nameResult = validateLineupName(body.name);
   if (nameResult.error) return errorBody("VALIDATION_ERROR", nameResult.error);
+  const modeResult = validateLineupMode(body.mode);
+  if (modeResult.error) return errorBody("VALIDATION_ERROR", modeResult.error);
   // A batch made before this device's edits (a typed number, a ± adjustment) is refused as the app's save refuses it (lineups-routes.js finishBuild): the board's figures key moves with them.
   const pre = validateLineupBuild(body.build, BUILD_OPTIONS);
   if (pre.error) return errorBody("VALIDATION_ERROR", pre.error);
@@ -190,6 +193,11 @@ export function saveShowdownLineup(storage, key, board, payload, bakedLineups = 
   if (snapshot.error) return errorBody("VALIDATION_ERROR", snapshot.error);
   const device = readShowdownDeviceLineups(storage, key);
   const others = [...bakedLineups, ...device];
+  // One saved copy only, Captain-aware, as the route (server/showdown/lineups-routes.js handleLineupsPost): among the app's
+  // baked lineups and this device's; nothing is written and the answer names the twin (duplicateOf).
+  const personOf = showdownPersonIndex(board.rows);
+  const dup = findDuplicate(snapshot.slots, modeResult.mode, null, others, { keyOf: (slots) => showdownLineupKey(slots, personOf) });
+  if (dup) return { ...errorBody(DUPLICATE_CODE, duplicateMessage(dup)), duplicateOf: dup.id };
   const trimmed = (nameResult.name ?? "").trim();
   const entry = {
     id: makeDeviceId(others),
@@ -200,6 +208,7 @@ export function saveShowdownLineup(storage, key, board, payload, bakedLineups = 
     totalProj: snapshot.totalProj,
     device: true,
   };
+  if (typeof modeResult.mode === "string") entry.mode = modeResult.mode; // as store.js buildLineupEntry: the duplicate check reads it
   if (!storage || !writeKey(storage, showdownStorageKey(key), [entry, ...device])) {
     return errorBody("DEVICE_STORAGE_UNAVAILABLE", STORAGE_UNAVAILABLE_MESSAGE);
   }

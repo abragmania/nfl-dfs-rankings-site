@@ -56,7 +56,8 @@ import { onConfirmDismiss } from "./confirm-inline.js"; // B13: Esc and a click 
 import { notDeletedText } from "./delete-words.js"; // A12: the one sentence a failed delete leaves
 import { wireStaleMessages } from "./stale-messages.js"; // item 17: a one-shot message goes at the next click on any control
 import { wirePick, wirePickRows, SLOT_PICK_SKIP } from "./pick-rows.js"; // click-to-pick, the one wiring the Showdown Optimizer shares (D81)
-import { cleanPlayerMax, boardModeOf, slateKeyOf, uniqueSavedName, lockedIds, cashPick, wireOptimizer, savedSetKeys, lineupSetKey, refreshBuildNotice, resetBuildNotice } from "./lineup-optimizer.js";
+import { cleanPlayerMax, boardModeOf, slateKeyOf, uniqueSavedName, lockedIds, cashPick, wireOptimizer, savedSetKeys, lineupSetKey, refreshBuildNotice, resetBuildNotice, rereadSavedLineups } from "./lineup-optimizer.js";
+import { isAlreadySavedAnswer, alreadySavedText, loadedText } from "./save-outcome.js"; // a Save of a lineup already saved says where it is, never refuses (Adam 6:30 PM 11-09)
 
 export const LINEUP_SLOTS = ["QB", "RB", "RB", "WR", "WR", "WR", "TE", "FLEX", "DST"];
 export const SALARY_CAP = 50000;
@@ -108,6 +109,7 @@ export const state = {
   deleteConfirmId: null, // id of the saved lineup currently showing its inline "Delete this lineup?" prompt, or null
   lineupErrors: {}, // saved lineup id -> the server's message for a refused letter change; cleared by its next good PUT
   deleteErrors: {}, // saved lineup id -> why its delete did not happen (A12), one sentence on the card's Load and Delete row until the next try
+  justSaved: new Set(), // the saved lineup ids the last Save or Save all saved: their Saved cards say "Just saved" (PROJECT.md Part 4 item 5); page-only
 };
 
 let savedFetchInFlightKey = null; // the season-week key a GET is currently in flight for, else null
@@ -699,8 +701,13 @@ async function doSaveLineup(name, { asNew = false } = {}) {
   } catch (e) {
     failure = `Could not reach the server: ${e.message}`;
   }
-  const after = afterSave({ data, name, editId, weekChanged: lastSavedKey !== keyAtStart, loadedAtStart, loadedNow: state.loadedId, slateChanged: currentMemoryKey() !== slateAtStart, modeChanged: opt.mode !== modeAtStart });
+  const savedNameOf = (id) => state.savedLineups.find((l) => l.id === id)?.name ?? null;
+  const after = afterSave({ data, name, editId, weekChanged: lastSavedKey !== keyAtStart, loadedAtStart, loadedNow: state.loadedId, slateChanged: currentMemoryKey() !== slateAtStart, modeChanged: opt.mode !== modeAtStart, savedNameOf });
   if (!after.discard) {
+    if (after.alreadySavedId && !savedNameOf(after.alreadySavedId)) { // saved from another tab or device: read the list again so the Saved tab shows it, and name it
+      await rereadSavedLineups();
+      if (savedNameOf(after.alreadySavedId)) after.saveConfirm = alreadySavedText(savedNameOf(after.alreadySavedId));
+    }
     if (Array.isArray(data?.lineups)) state.savedLineups = data.lineups;
     if (after.dropId) state.savedLineups = state.savedLineups.filter((l) => l.id !== after.dropId);
     if ("loadedId" in after) state.loadedId = after.loadedId;
@@ -708,6 +715,7 @@ async function doSaveLineup(name, { asNew = false } = {}) {
     state.saveError = failure ?? after.saveError ?? null;
     state.saveTone = "error"; // the server's answer or a lost connection: a failure
     state.saveConfirm = after.saveConfirm ?? null;
+    if (!failure && data && data.ok !== false && data.lineup?.id) state.justSaved = new Set([data.lineup.id]); // Saved marks what was just saved
   }
   state.saving = false;
   commit();
@@ -715,9 +723,12 @@ async function doSaveLineup(name, { asNew = false } = {}) {
 
 /** What a finished save changes (PROJECT.md Part 4 Lineups): {discard} for a week changed under the request; a Load or
  *  Clear lineup made during the save keeps its loadedId and name; NOT_FOUND and READ_ONLY unload the edited lineup. */
-export function afterSave({ data, name, editId, weekChanged, loadedAtStart, loadedNow, slateChanged = false, modeChanged = false }) {
+export function afterSave({ data, name, editId, weekChanged, loadedAtStart, loadedNow, slateChanged = false, modeChanged = false, savedNameOf = () => null }) {
   if (weekChanged) return { discard: true };
   const moved = slateChanged || modeChanged || loadedNow !== loadedAtStart; // a slate or a tab switched under the request: the list is updated, but the new lineup is not loaded (nor its name put in the box) on a slate or tab it was not made on (Part F)
+  // Men already saved (Adam 6:30 PM 11-09), a new lineup or a loaded one edited into another's twin: no refusal, no second copy, a plain notice naming
+  // where they are. Nothing else moves: the loaded lineup and the name box stay as they were (the server wrote nothing).
+  if (isAlreadySavedAnswer(data)) return { saveConfirm: alreadySavedText(savedNameOf(data.duplicateOf)), alreadySavedId: data.duplicateOf ?? null };
   if (!data || data.ok === false) {
     const code = data?.error?.code;
     const unload = editId && (code === "NOT_FOUND" || code === "READ_ONLY");
@@ -817,7 +828,7 @@ function placeLoadedLineup(lineup) {
   state.loadedId = lineup.id;
   state.saveName = lineup.name ?? "";
   state.saveError = null;
-  state.saveConfirm = null;
+  state.saveConfirm = loadedText(lineup.name, opt.mode); // a Load says where the lineup went (walkthrough friction, PROJECT.md Part 4 item 5)
   state.addError = null;
   opt.cashUndo = null; // Cash 3b fix round 2, 2026-10-17: Undo never replaces a loaded lineup
   commit();
@@ -1180,4 +1191,4 @@ function syncOptimizerSlate() {
 
 // Re-exports: every name this module exported before the split is still importable from here (tabs.js, the tests and the site build import them).
 export { setPoolCallbacks, slotPlayerHtml, savedLineupSlotHtml, savedLineupCardHtml, savedLineupPlayers, savedLineupFigures, saveControlsHtml, poolStarClick, rightColumnHtml, lineupTotalsOf, ruleRowsHtml, starredQbQualifiers, usableQbIds, starredQbNote, avoidChipsHtml, optLineupCardHtml, optNotesHtml, bendsLineHtml, cardIsSaved } from "./lineup-view.js";
-export { swapScanHook, parseWhole, parsePct, exposureProblem, exposureOfLineups, lineupSetKey, savedSetKeys, savedForSlate, uniqueSavedName, playerMaxProblem, playerMinProblem, minSlotsFull, minSlotWords, dkKeyOfRow, minRowOut, pairClash, lockStackRefuses, minLockSkips, playerMinPositionProblem, lockedIds, requestCount, minProblemFor, buildGenerateSettings, buildGeneratePayload, slotsForSave, duplicateSaveStatus } from "./lineup-optimizer.js";
+export { swapScanHook, parseWhole, parsePct, exposureProblem, exposureOfLineups, lineupSetKey, savedSetKeys, savedForSlate, uniqueSavedName, playerMaxProblem, playerMinProblem, minSlotsFull, minSlotWords, dkKeyOfRow, minRowOut, pairClash, lockStackRefuses, minLockSkips, playerMinPositionProblem, lockedIds, requestCount, minProblemFor, buildGenerateSettings, buildGeneratePayload, slotsForSave } from "./lineup-optimizer.js";

@@ -9,9 +9,12 @@ import { sdSetKey } from "./optimizer-state.js";
 import { saveBody } from "./optimizer-requests.js";
 import { lineupTotals } from "../lineup-totals.js";
 import { lineupModeOf } from "../lineup-cash.js";
+import { LOOK_SORT_KEYS, sortLineups } from "../lineup-sort.js";
 
 export const KEEP_BUILDS = 1; // per mode
-export const SORTS = Object.freeze(["proj", "salary", "own", "newest"]);
+/** The Lineups tab's sorts, classic's own keys (lineup-sort.js LOOK_SORT_KEYS: Projection, Salary, Ownership, Newest, each with its first direction), so a second click reverses one exactly as classic's nextSort does (Adam yes 11:01 AM 11-10). */
+export const SORT_KEYS = Object.freeze(LOOK_SORT_KEYS.filter((k) => ["proj", "salary", "own", "built"].includes(k.key)));
+export const FIRST_SORT = Object.freeze({ key: "built", dir: "asc" }); // Newest: a build's own order, the saved list's most recent first
 export const KEY_PREFIX = "nfldfs.sdBuilds.v1.";
 export const NOTE_UNREADABLE = "The lineups kept for this game could not be read from this browser, so the list starts empty.";
 export const NOTE_BLOCKED = "This browser is not keeping lineups, so the ones shown stay only until this page is closed.";
@@ -149,27 +152,12 @@ export function slotFigures(slots) {
   return { used: t.used, proj: t.proj, own: t.own };
 }
 
-const SORT_VALUE = { proj: (f) => f.proj, salary: (f) => f.used, own: (f) => f.own };
-
 /**
- * `items` in the order of `sort`: "proj" and "salary" most first, "own" lowest first, a missing total always last; "newest" keeps the order given (a build's own order, or the saved list's most recent first).
- * `figuresOf(item)` gives {used, proj, own}. Stable; a new array.
+ * `items` in the order of `sort` ({key, dir}, nextSort's state): by projection, salary used or total ownership in `dir`, a missing total always last; "built" (Newest) keeps the order given
+ * (a build's own order, or the saved list's most recent first). `figuresOf(item)` gives {used, proj, own}. Stable; a new array (lineup-sort.js sortLineups, the one sorter).
  */
 export function sortItems(items, sort, figuresOf) {
-  const value = SORT_VALUE[sort];
-  if (!value) return [...items];
-  const sign = sort === "own" ? 1 : -1;
-  return items
-    .map((item, i) => ({ item, i, v: value(figuresOf(item)) }))
-    .sort((a, b) => {
-      const av = Number.isFinite(a.v);
-      const bv = Number.isFinite(b.v);
-      if (!av && !bv) return a.i - b.i;
-      if (!av) return 1;
-      if (!bv) return -1;
-      return a.v === b.v ? a.i - b.i : sign * (a.v - b.v);
-    })
-    .map((x) => x.item);
+  return sortLineups(items, sort?.key, sort?.dir, (item) => { const f = figuresOf(item); return { proj: f.proj, salary: f.used, own: f.own }; }, SORT_KEYS);
 }
 
 /** Whether any name matches the typed text (any man's name, case ignored); no text matches everything. */

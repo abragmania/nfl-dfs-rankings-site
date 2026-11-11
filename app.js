@@ -22,7 +22,7 @@ import {
   postProjectionsPaste,
   postMode,
 } from "./js/api.js";
-import { renderPills, renderSlateLine, wireUpload, wireRefresh, wireThemeToggle, wireThemeSwitch, secondSlateSavedText, renderModeBox, uploadStatusSetter, entriesUploadedHandler, paintSourcesLink, wireSourcesLink, wireTrackedLink } from "./js/header.js";
+import { modeStampText, twoGunCoverageText, renderPills, renderSlateLine, wireUpload, wireRefresh, wireThemeToggle, wireThemeSwitch, secondSlateSavedText, renderModeBox, uploadStatusSetter, entriesUploadedHandler, paintSourcesLink, wireSourcesLink, wireTrackedLink } from "./js/header.js";
 import { uploadEntriesText, setUploadRouter } from "./js/entries-wire.js"; // Adam 2026-10-18: one upload for every DraftKings export
 import { showdownKeyFromHash, showdownRowById, showdownBoardAsOf, showdownBoardNow } from "./js/showdown/view.js";
 import { configureShowdown, setRouteDkFile, uploadShowdownText, uploadShowdownEntriesText, renderModeRowNow, renderShowdownTabNow, loadShowdownList, applyMode } from "./js/app-showdown.js";
@@ -44,7 +44,7 @@ import { initPlayerCard } from "./js/player-card.js";
 import { delegateBumpClicks, bumpPatch } from "./js/bump-control.js"; // Adam 2026-10-22: ± bump
 import { delegateRowReset } from "./js/row-reset.js"; // B12: the pool's row reset (typed numbers and bump)
 import { stickyHeights } from "./js/build-notice.js"; // A15: the sticky stack's heights, the notice a layer of it
-import { boardStamps, stampsLineHtml } from "./js/stamps.js"; // B11: Board, Injuries, Pulled and Lock, `missing` when the board carries no time
+import { staleLineText, ownCoverageLine } from "./js/data-as-of.js"; // item 7: the main view's one short stale line; the rest is the Sources page's Data as of block
 
 const el = {
   modeRow: document.getElementById("mode-row"),
@@ -64,7 +64,6 @@ const el = {
   slateNote: document.getElementById("slate-note"),
   projectionsPanel: document.getElementById("projections-panel"),
   ownBanner: document.getElementById("own-banner"),
-  stampsLine: document.getElementById("stamps-line"),
   ownershipPanel: document.getElementById("ownership-panel"),
   lineupPanel: document.getElementById("lineup-panel"),
   lineupMount: document.getElementById("lineup-mount"), // the Optimizer's redrawn part inside #lineup-panel (step 4); the strip, filter bar and ranked list around it are static
@@ -361,16 +360,6 @@ function renderSlateChrome() {
   el.slateNote.textContent = `${slateDisplayName(slate)}: ${n} of this week's ${total} game${total === 1 ? "" : "s"}. Projections and ownership are the main slate's numbers.`;
 }
 
-// The one line above the Rankings table that says where Own% comes from: only numbers a named source
-// published for the DraftKings main slate. Everyone else is blank, and the app never estimates.
-function ownBannerText(rows) {
-  const published = (rows ?? []).filter((r) => r.ownKind === "quoted").length;
-  if (published === 0) {
-    return "No published DraftKings ownership numbers yet for this week. Own is blank until real numbers are added.";
-  }
-  return `Own shows published DraftKings numbers only (${published} player${published === 1 ? "" : "s"}). Everyone else is blank.`;
-}
-
 /** The approved look's page (dark background, full width) belongs to the classic Optimizer and Lineups tabs; Entries, Sources and the Showdown screens keep the app's own page (style.css). */
 function syncPageLook() {
   const tab = shownTab(store.get().activeTab);
@@ -408,8 +397,10 @@ function renderRankedParts(board, filters, slateRows) {
     onToggleCollapse: onToggleGamestripCollapse,
   });
   const allRows = rowsGradedForView(slateRows, filters.pos, board.rows); // D33: the FLEX view pools RB, WR and TE
-  el.ownBanner.textContent = [ownBannerText(allRows), board.injuryNote, ...(board.tabNotes?.favorites ?? []), board.siteEditsNote].filter(Boolean).join(" "); // siteEditsNote: the public site's saved changes that could not be read (G62)
-  if (el.stampsLine) el.stampsLine.innerHTML = stampsLineHtml(boardStamps(board, { games: activeSlateGames(board) })); // B11: the board's own times, `missing` for one it does not carry
+  // Item 7 (Adam 2:48 PM 11-11): no provenance prose in the main view. One short line only when a feed is stale or missing, or the site's saved changes could not be read (G62);
+  // the stamps, the Own coverage and the injury report's counts are on the Sources page's Data as of block (data-as-of.js).
+  el.ownBanner.textContent = [staleLineText(board, { games: activeSlateGames(board) }), ...(board.tabNotes?.favorites ?? []), board.siteEditsNote].filter(Boolean).join(" · "); // favorites: the overrides file is unreadable, an error line that stays
+  el.ownBanner.hidden = !el.ownBanner.textContent;
   const filtered = filterRows(allRows, filters);
   const activeGame = filters.gameId ? (board.slate?.games ?? []).find((g) => g.id === filters.gameId) : null;
   updateFilterSummary(el.filterbar, {
@@ -469,7 +460,8 @@ function renderDynamic() {
     renderLineupPanel(el.lineupMount, tableCallbacks);
   } else if (isSourcesTab(activeTab)) {
     // The Sources page (always the main slate's choices, D57), then the Projections or Ownership table under its Players heading.
-    renderSourcesPage(el.sourcesPanel, { board, slate: "main", showdown: false, activeKey: activeTab, onPlayersTab: onTabClick, onChanged: repaintAfterSourceSave });
+    const asOf = { games: activeSlateGames(board), lines: [modeStampText(board.mode), twoGunCoverageText(board.mode), ownCoverageLine(slateRows), board.injuryNote].filter(Boolean) }; // item 7: what the Optimizer's banner and the line under the top bar said, here in short lines
+    renderSourcesPage(el.sourcesPanel, { board, slate: "main", showdown: false, activeKey: activeTab, onPlayersTab: onTabClick, onChanged: repaintAfterSourceSave, asOf });
     if (activeTab === "projections") renderProjectionsPanel(el.projectionsPanel, board, sourceCallbacks);
     else renderOwnershipPanel(el.ownershipPanel, board, sourceCallbacks);
   } else if (activeTab === "showdown") {

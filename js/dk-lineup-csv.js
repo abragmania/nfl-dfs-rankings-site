@@ -122,23 +122,41 @@ function showdownCells(lineup, ctx) {
   return { cells: ids.map((id) => dkCell(pool.get(id).name, id)), warnings: verdict.warnings };
 }
 
+/** A slate's or Showdown game's lock: {lockMs (null when its kickoff cannot be read), text (the sentence once it has locked, else null)}. `record` the second slate's (board.slates), null for the main slate.
+ *  The one copy: the download gate below and the Entries tab's greyed Download (walkthrough friction, PROJECT.md Part 4 item 5). */
+function lockOf({ showdown, board, record, nowMs }) {
+  if (showdown) {
+    const g = board?.game ?? {};
+    const lockMs = earliestKickoffMs({ games: [{ id: g.gameId, kickoffUtc: g.kickoffUtc }] }, null);
+    return { lockMs, text: lockMs !== null && nowMs >= lockMs ? `The ${g.away ?? "?"}@${g.home ?? "?"} Showdown has locked (its game has kicked off); DraftKings would refuse these lineups, so no file is written.` : null };
+  }
+  const lockMs = earliestKickoffMs({ games: board?.slate?.games ?? [] }, record ? { gameIds: record.gameIds } : null);
+  return { lockMs, text: lockMs !== null && nowMs >= lockMs ? `The ${lockName(record ? record.label : "Main slate")} has locked (its first game has kicked off); DraftKings would refuse these lineups, so no file is written.` : null };
+}
+
+/** The sentence saying the slate `slateKey` ("main" or a second slate's key) or the Showdown game on `board` has locked, or null while it is open (or its kickoff or slate cannot be read: the download says that itself). */
+export function slateLockedText({ kind, board, slateKey, nowMs = Date.now() }) {
+  const showdown = kind === "showdown";
+  const record = !showdown && hasText(slateKey) && slateKey !== "main" ? (board?.slates ?? []).find((s) => s?.key === slateKey) ?? null : null;
+  if (!showdown && (!hasText(slateKey) || (slateKey !== "main" && !record))) return null;
+  return lockOf({ showdown, board, record, nowMs }).text;
+}
+
 /** The whole file refused before any lineup is looked at: Entries' own gates (the injury report, the lock). Returns a sentence, or null when the file may be written. */
 function gate({ showdown, board, record, slateKey, nowMs }) {
   const problem = entriesInjuryProblem(board?.injuryReport);
   if (problem?.error) return { error: problem.error };
   if (showdown) {
-    const g = board?.game ?? {};
-    const lockMs = earliestKickoffMs({ games: [{ id: g.gameId, kickoffUtc: g.kickoffUtc }] }, null);
-    if (lockMs === null) return { error: "The kickoff of this Showdown game could not be read from its salary file, so no file is written." };
-    if (nowMs >= lockMs) return { error: `The ${g.away ?? "?"}@${g.home ?? "?"} Showdown has locked (its game has kicked off); DraftKings would refuse these lineups, so no file is written.` };
+    const lock = lockOf({ showdown, board, record: null, nowMs });
+    if (lock.lockMs === null) return { error: "The kickoff of this Showdown game could not be read from its salary file, so no file is written." };
+    if (lock.text) return { error: lock.text };
     return { warning: problem?.warning ?? null };
   }
   if (!hasText(slateKey)) return { error: "The slate on screen is not known, so the file's DraftKings ids cannot be chosen; nothing is written." };
   if (slateKey !== "main" && !record) return { error: `The slate on screen (${slateKey}) is not on this board, so its DraftKings ids are not known; nothing is written.` };
-  const games = board?.slate?.games ?? [];
-  const lockMs = earliestKickoffMs({ games }, record ? { gameIds: record.gameIds } : null);
-  if (lockMs === null) return { error: "The earliest kickoff of this slate could not be read from the salary file, so no file is written." };
-  if (nowMs >= lockMs) return { error: `The ${lockName(record ? record.label : "Main slate")} has locked (its first game has kicked off); DraftKings would refuse these lineups, so no file is written.` };
+  const lock = lockOf({ showdown, board, record, nowMs });
+  if (lock.lockMs === null) return { error: "The earliest kickoff of this slate could not be read from the salary file, so no file is written." };
+  if (lock.text) return { error: lock.text };
   return { warning: problem?.warning ?? null };
 }
 

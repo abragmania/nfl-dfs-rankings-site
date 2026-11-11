@@ -156,7 +156,7 @@ export function renderShowdownProjectionsPanel(container, board, callbacks) {
       </div>
       <div id="sd-kicker-paste-result" class="paste-result">${sdPasteResultText ? escapeHtml(sdPasteResultText) : ""}</div>
     </details>
-    <p class="tab-note">${showAllToggleHtml(sdShowAll(), `data-action="show-all"`)} Blended from the projection sources ticked above. Hover a Proj figure for how it was made; every column sorts.</p>
+    <p class="tab-note">${showAllToggleHtml(sdShowAll(), `data-action="show-all"`)}</p>${"" /* item 7: the "Blended from … every column sorts." sentence is deleted */}
     ${dash ? `<p class="tab-note sd-all-dash">${escapeHtml(dash)}</p>` : ""}
     ${injuryUnmatchedHtml(board.unmatched?.injuries, escapeHtml)}
     <div class="tab-table-wrap scroll-panel">
@@ -418,7 +418,7 @@ export function renderShowdownOwnershipPanel(container, board, opts = {}) {
     || noTickedOwnershipNote(rows, opts.flex ?? null, opts.cpt ?? null, (board.rows ?? []).length);
   const dirFor = numberFirstDir(new Set(["ownFlex", "ownCpt", ...srcCols.map((c) => c.key)])); // a figure starts high to low (classic's Own% does)
   container.innerHTML = `
-    <p class="tab-note">${showAllToggleHtml(sdShowAll(), `data-action="show-all"`)} Blended from the ownership sources ticked above. Hover a figure when it says more than the number.</p>
+    <p class="tab-note">${showAllToggleHtml(sdShowAll(), `data-action="show-all"`)}</p>${"" /* item 7: the "Blended from … says more than the number." sentence is deleted */}
     <p class="tab-note sd-own-basis">${escapeHtml(ownershipBasisText(board, kinds, rows, [opts.flex ?? [], opts.cpt ?? []]))}</p>
     ${dash ? `<p class="tab-note sd-all-dash">${escapeHtml(dash)}</p>` : ""}
     <div class="tab-table-wrap scroll-panel">

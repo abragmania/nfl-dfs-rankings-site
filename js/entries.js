@@ -53,6 +53,7 @@ export const ENTRIES_TAB_DEFAULTS = Object.freeze({
   numberOverFor: null, // (saved, f) -> the list the lineup numbers run over, when lineupsFor gives only the pickable part (the Showdown tab); classic numbers its own list
   summaryOf: currentSummary, // (entry.current) -> { text, title }: "In the file now" (the Showdown tab names the Captain)
   lineupLabelOf: lineupLabel, // (lineup, numbers) -> the lineup's name in the pickers and the lists (the Showdown tab adds the Captain)
+  lockedTextFor: null, // (f) -> the sentence saying the file's slate has locked, or null: Download is then greyed with it (each tab passes its own reading of the board)
 });
 
 /** A DraftKings roster cell `Name (44312211)` as the plain name. */
@@ -321,12 +322,14 @@ export function fileBlockHtml(f, saved, assigned, result, busy, fileContext = []
   // 🔵 2026-10-18: proposals of both tabs still waiting for Confirm are said under Download.
   const waiting = Object.keys(m.proposals).length;
   const waitingText = waiting ? ` ${waiting} ${waiting === 1 ? "proposal is" : "proposals are"} not confirmed.` : "";
+  const locked = view?.lockedTextFor?.(f) ?? null; // once the slate has locked, Download is greyed and says why (walkthrough friction, PROJECT.md Part 4 item 5)
+  const dlTitle = locked ?? (n === 0 ? "Confirm at least one lineup first; nothing is written until a row is confirmed" : "Writes your entries file with every confirmed lineup, GPP and Cash");
   return `
     <div class="entries-file" data-file="${escapeHtml(f.file)}">
       ${head}
       <div class="entries-download-row">
-        <button type="button" class="lineup-build-btn" data-action="entries-download" data-file="${escapeHtml(f.file)}" title="${n === 0 ? "Confirm at least one lineup first; nothing is written until a row is confirmed" : "Writes your entries file with every confirmed lineup, GPP and Cash"}"${n === 0 || busy ? " disabled" : ""}>${busy ? "Preparing…" : "Download for DraftKings"}</button>
-        <span class="entries-quiet">${n === 0 ? "Confirm a lineup for at least one entry. Entries left as is stay as they are." : `${n} of ${entries.length} entries will change.`}${waitingText}</span>
+        <button type="button" class="lineup-build-btn" data-action="entries-download" data-file="${escapeHtml(f.file)}" title="${escapeHtml(dlTitle)}"${n === 0 || busy || locked ? " disabled" : ""}>${busy ? "Preparing…" : "Download for DraftKings"}</button>
+        <span class="entries-quiet${locked ? " entries-locked" : ""}"${locked ? ` title="${escapeHtml(locked)}"` : ""}>${locked ? "Locked: the first game has kicked off." : `${n === 0 ? "Confirm a lineup for at least one entry. Entries left as is stay as they are." : `${n} of ${entries.length} entries will change.`}${waitingText}`}</span>
       </div>
       ${resultHtml(result)}
       <div class="opt-tabs entries-tabs" role="tablist">${tabBtn("gpp", "GPP")}${tabBtn("cash", "Cash")}</div>
@@ -354,11 +357,10 @@ export function entriesInnerHtml(m) {
   if (!m.loaded) body = `<div class="entries-empty">Loading…</div>`;
   else if (m.loadError) body = `<div class="lineup-status lineup-status-error">${escapeHtml(m.loadError)}</div>`;
   else if (!m.files?.length) body = `<div class="entries-empty">${escapeHtml(m.emptyText ?? ENTRIES_TAB_DEFAULTS.emptyText)}</div>`;
-  else body = m.files.map((f) => fileBlockHtml(f, m.saved, m.assign?.[f.file], m.results?.[f.file], m.busyFile === f.file, m.fileContext, { fill: m.fill?.[f.file], classes: m.classes?.[f.file], sortBy: m.sortBy, fold: m.fold?.[f.file], tab: m.tab?.[f.file], adjust: m.adjust?.[f.file], lineupsFor: m.lineupsFor, noLineupsText: m.noLineupsText, numberOverFor: m.numberOverFor, summaryOf: m.summaryOf, lineupLabelOf: m.lineupLabelOf })).join("");
+  else body = m.files.map((f) => fileBlockHtml(f, m.saved, m.assign?.[f.file], m.results?.[f.file], m.busyFile === f.file, m.fileContext, { fill: m.fill?.[f.file], classes: m.classes?.[f.file], sortBy: m.sortBy, fold: m.fold?.[f.file], tab: m.tab?.[f.file], adjust: m.adjust?.[f.file], lineupsFor: m.lineupsFor, noLineupsText: m.noLineupsText, numberOverFor: m.numberOverFor, summaryOf: m.summaryOf, lineupLabelOf: m.lineupLabelOf, lockedTextFor: m.lockedTextFor })).join("");
   const upErr = m.uploadError ? `<div class="lineup-status lineup-status-error entries-error">${escapeHtml(m.uploadError)}</div>` : "";
   return `
-      <h3 class="entries-title">Entries <span class="opt-sub">saved lineups are proposed for the entries, you confirm, then download the file to upload to DraftKings</span></h3>${storage}
-      <div class="entries-quiet">Projections here are as saved, from the moment each lineup was saved. The Saved list on the Lineups tab shows today's live figures, so the two can differ.</div>
+      <h3 class="entries-title">Entries</h3>${storage}
       <div class="entries-upload-row">
         <button type="button" class="saved-lineup-btn" data-action="entries-upload"${m.uploading ? " disabled" : ""}>${m.uploading ? "Uploading…" : "Upload DraftKings entries file"}</button>
         <input type="file" id="${escapeHtml(m.fileInputId ?? ENTRIES_TAB_DEFAULTS.fileInputId)}" accept=".csv,text/csv" hidden />

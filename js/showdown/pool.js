@@ -208,6 +208,13 @@ export function ownTotals(rows) {
   return { players: list.length, flex: side("ownFlex", OWN_EXPECTED.flex), cpt: side("ownCpt", OWN_EXPECTED.cpt) };
 }
 
+/** The totals as one line for the Sources page's Data as of (item 7: the row is gone from the pool): "Own total, all 48 players · none blank: FLEX 500.0% (on the mark), CPT 100.0% (on the mark)". */
+export function ownTotalsLine(rows) {
+  const t = ownTotals(rows);
+  const side = (name, s) => (s.sum === null ? `${name} none` : `${name} ${pct1(s.sum)} (${s.diffText})`);
+  return `${ownTotalsLabel(t).replace(/ /g, " ")}: ${side("FLEX", t.flex)}, ${side("CPT", t.cpt)}`;
+}
+
 /** The totals row's label: "Own total, all 55 players · 3 blank" (each side's count when they differ; "none blank" when none is). */
 export function ownTotalsLabel(t) {
   const b = " blank"; // a no-break space: "1 blank" never splits across lines (👁 V5)
@@ -283,7 +290,7 @@ export function poolHeadHtml(board, sort = poolSort(board), tab = poolTab()) {
   const cells = cols.map((c) => (c.ctl
     ? `<th class="sd-pool-ctl sd-pool-ctl-${c.key}${c.key === "star" ? " lineup-star-col" : ""}${c.gold ? " sd-cpt-col" : ""}${c.key === "min_pct" || c.key === "cpt_min_pct" ? " lineup-min-head" : c.key === "max_pct" || c.key === "cpt_max_pct" ? " lineup-max-head" : ""}" title="${escapeHtml(c.title)}">${escapeHtml(c.label)}</th>`
     : showdownHeadCellsHtml(sort, [c]))).join("");
-  return `<tr>${cells}${FILL_HEAD}</tr>${ownTotalsRowHtml(ownTotals(board?.rows ?? []), cols)}`;
+  return `<tr>${cells}${FILL_HEAD}</tr>`; // item 7 (G64, lead 3:10 PM 11-11): the Own totals row is the Sources page's Data as of line now (ownTotalsLine)
 }
 
 /** Where he sits in the lineup, whichever list is on screen: "cpt", "flex" or null (lineup.js keeps the placement as { cptId, flexIds }, strings). C21: both lists mark the whole lineup. */
@@ -356,7 +363,11 @@ export function poolBodyHtml(board, rows, placement, figures = playerFigures, ta
     // The Player cell names him in full and, for a phone, the cards' short name too (style.css shows one; 👁 V1: no name cut mid-word); then the seat tag of a man in
     // the lineup on either list (C21), a lock icon for a man locked in either seat (C20). A click's refusal (placement.message, lineup.js) is drawn under the name of the
     // row that was clicked (row-message.js, standard A14).
-    playerCell: (row) => `<div class="player-cell">${sdLine(row, { nameHtml: cardNameHtml(row) })}<span class="sd-seat-slot">${seatTagHtml(placedSeat(placement, row.id))}${controls?.lockIcon?.(row) ?? ""}</span></div>${messageIsFor(placement?.message, row.id) ? rowMessageHtml(placement.message.text, placement.message.tone) : ""}`,
+    playerCell: (row) => { // a greyed row says why under his name in a few words (seat-picker.js `short`), the sentence on hover, as classic's pool does
+      const p = picks.get(String(row.id));
+      const why = !p.action && p.short ? `<span class="sd-blk-why">${escapeHtml(p.short)}</span>` : "";
+      return `<div class="player-cell">${sdLine(row, { nameHtml: cardNameHtml(row) })}<span class="sd-seat-slot">${seatTagHtml(placedSeat(placement, row.id))}${controls?.lockIcon?.(row) ?? ""}</span></div>${why}${messageIsFor(placement?.message, row.id) ? rowMessageHtml(placement.message.text, placement.message.tone) : ""}`;
+    },
     valueCell: (row) => poolValueHtml(row, figures),
     // A man seated in the lineup, on either list, has his row tinted (the builder's), kept apart from a lock (the icon, C20), beside the Optimizer's own look (excluded), each class once.
     // A row that cannot be clicked is greyed instead of a pick row (A18); the lookup is made once per row and shared by the class and the attributes.
@@ -442,8 +453,7 @@ export function poolHtml(board, placement, rows) {
       <div class="sd-pool-head">
         <h3 class="lineup-right-title">Player pool</h3>
         ${poolTabsHtml()}
-        ${columnsButtonHtml()}
-        <span class="sd-pool-note">${escapeHtml(poolNoteText(board))}</span>
+        ${columnsButtonHtml()}${"" /* item 7: "Figures: TwoGun only" is the Sources page's Data as of line */}
       </div>
       <div class="sd-pool-wrap">
         <table id="sd-table" class="sd-pool-table">
@@ -453,7 +463,6 @@ export function poolHtml(board, placement, rows) {
       </div>
       <div id="sd-legend" class="table-legend">${escapeHtml(poolLegendText(board))}</div>
       ${board?.deviceNote ? `<div class="table-legend sd-device-note" role="note">${escapeHtml(board.deviceNote)}</div>` : ""}
-      ${board?.injuryNote ? `<div class="table-legend sd-injury-note" role="note">${escapeHtml(board.injuryNote)}</div>` : ""}
       ${board?.siteEditsNote ? `<div class="table-legend sd-device-note" role="note">${escapeHtml(board.siteEditsNote)}</div>` : ""}
     </section>`;
 }
@@ -515,8 +524,6 @@ export function paintPool(container, ctx) {
   const openEdit = ctx.takeEdit?.(pool) ?? null;
   head.innerHTML = poolHeadHtml(ctx.board);
   body.innerHTML = poolBodyHtml(ctx.board, rows, ctx.placement());
-  const note = pool.querySelector(".sd-pool-note");
-  if (note) note.textContent = poolNoteText(ctx.board);
   wirePool(pool, ctx);
   ctx.onRepaint?.(pool, rows);
   ctx.restoreEdit?.(pool, openEdit);

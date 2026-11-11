@@ -189,12 +189,29 @@ function modeParts(mode) {
     const stamp = tg.boardUpdated ? ` Board stamped ${tg.boardUpdated}.` : "";
     pill = modePillHtml("pill-warning", withScope(stale.text), `${stale.sentence}${stamp}${tg.note ? ` ${tg.note}` : ""}${applies}`);
   } else if (tg.status === "ok") {
-    const counts = Number.isFinite(tg.covered) ? ` TwoGun covers ${tg.covered} players${Number.isFinite(tg.fallback) ? `; ${tg.fallback} show the current sources' figures, marked` : ""}.` : "";
-    pill = modePillHtml("pill-mode", withScope(`TwoGun board ${tg.boardUpdated ?? "(time not given)"}`), `TwoGun's figures as he published them.${counts}${tg.note ? ` ${tg.note}` : ""}${applies}`);
+    const counts = coverageSentence(tg);
+    pill = modePillHtml("pill-mode", withScope(`TwoGun board ${tg.boardUpdated ?? "(time not given)"}`), `TwoGun's figures as he published them.${counts ? ` ${counts}` : ""}${tg.note ? ` ${tg.note}` : ""}${applies}`);
   } else {
     pill = modePillHtml("pill-warning", "No TwoGun board · current numbers shown", `${tg.note || "TwoGun mode is on but no TwoGun board could be read, so the current sources show."}${applies}`);
   }
   return { switchHtml, pillHtml: pill };
+}
+
+const coverageSentence = (tg) =>
+  Number.isFinite(tg?.covered) ? `TwoGun covers ${tg.covered} players${Number.isFinite(tg.fallback) ? `; ${tg.fallback} show the current sources' figures, marked` : ""}.` : "";
+
+/** TwoGun's coverage ("TwoGun covers 180 players; 12 show the current sources' figures, marked.") as its own Data as of line (G62: the men
+ *  he lacks are counted where Adam looks; G64: there, not in a hover), "" unless TwoGun mode shows a board read from his file. */
+export function twoGunCoverageText(mode) {
+  const tg = mode?.twogun;
+  return mode?.active === "twogun" && (tg?.status === "ok" || tg?.status === "stale") ? coverageSentence(tg) : "";
+}
+
+/** The mode pill's words as one plain line for the Sources page's Data as of ("TwoGun board Sun, Nov 8, 11:35 AM ET · classic slates"), "" for a board with no mode. */
+export function modeStampText(mode) {
+  const html = modeParts(mode)?.pillHtml ?? "";
+  const entities = { "&amp;": "&", "&middot;": "·", "&#39;": "'", "&quot;": "\"", "&lt;": "<", "&gt;": ">" };
+  return html.replace(/<[^>]*>/g, "").replace(/&(amp|middot|#39|quot|lt|gt);/g, (m) => entities[m]).trim();
 }
 
 export function modeBoxHtml(mode) {
@@ -211,7 +228,8 @@ export function renderModeBox(headerEl, mode, { onSwitch } = {}) {
   const pillEl = headerEl.querySelector("#tg-pill");
   const html = parts ? (pillEl ? parts.switchHtml : `${parts.switchHtml}${parts.pillHtml}`) : "";
   if (pillEl) {
-    pillEl.innerHTML = parts && parts.pillHtml ? parts.pillHtml : "";
+    // Item 7 (G64, lead 3:10 PM 11-11): under the top bar only a warning ("TwoGun board 40 h old at lock"); the plain stamp ("TwoGun board Sun, Nov 8 …") is the Sources page's Data as of (modeStampText).
+    pillEl.innerHTML = parts && parts.pillHtml && /pill-warning/.test(parts.pillHtml) ? parts.pillHtml : "";
     pillEl.hidden = !pillEl.innerHTML;
   }
   let box = headerEl.querySelector("#tg-mode");
@@ -297,7 +315,9 @@ export function wireUpload({ csvInput, uploadInfo, slateLine, pillsRow }, { onUp
       const message = `Uploaded ${file.name}.`;
       setStatus(message, false);
       const uploadedClock = localStamp(data.uploadedAt)?.clock;
-      uploadInfo.textContent = `${data.savedAs ?? file.name} · uploaded ${uploadedClock ? `${uploadedClock} ET` : data.uploadedAt}`;
+      // Short, so the top bar's Season, Week, Salaries and Cap never truncate after an upload (walkthrough friction): the file's name is on the bar already; its saved path is the hover.
+      uploadInfo.textContent = `Uploaded ${uploadedClock ? `${uploadedClock} ET` : data.uploadedAt}`;
+      uploadInfo.title = `Saved as ${data.savedAs ?? file.name}`;
       renderSlateLine(slateLine, data);
       // Show the warning chips of this response immediately, before the board reloads. The per-source chips (data.stale) are off the
       // classic header (optimizer standard C30, 2026-11-03).

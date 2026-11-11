@@ -12,6 +12,8 @@ import { filterLineups, filterBarHtml, pickButtonHtml } from "./lineup-filter.js
 import { classicEntries, shownExposureEntries, cleanExpState, expColumns, exposureMark, zeroMinRows, OPT_POSITIONS } from "./lineup-exposure.js";
 import { statusLineHtml, rowMessageHtml, TONE_WARN } from "./row-message.js";
 import { requestTab } from "./lineup-tabs.js";
+import { onSitePage } from "./tabs.js";
+import { canDeleteSaved } from "./delete-words.js";
 import { paletteForRows } from "./team-palette.js";
 import { TAG_OPTIONS, numberLineups, lineupPrefix, byAge } from "./lineup-tags.js";
 import { slateLineups } from "./entries.js";
@@ -121,21 +123,23 @@ export function savedLineupCardHtml(lineup, rowById, numbers = null) {
     ? `<input type="text" class="lt-name saved-lineup-rename-input" data-rename-input value="${escapeHtml(lineup.name)}" />${ltBtn("", "Save", `data-action="lineup-rename-save" data-id="${id}"${busy}`)}${ltBtn("", "Cancel", `data-action="lineup-rename-cancel"`)}`
     : `<span${title.name !== lineup.name ? ` title="${escapeHtml(lineup.name)}"` : ""}>${escapeHtml(title.name)}</span><button type="button" class="rn" data-action="lineup-rename-start" data-id="${id}" title="Rename this lineup" aria-label="Rename this lineup">✎</button>`;
   const loadConfirm = state.confirm === `load:${lineup.id}` ? confirmHtml(REPLACE_QUESTION, { data: `load:${lineup.id}` }) : "";
-  const deleting = state.deleteConfirmId === lineup.id
-    ? `<span class="lt-confirm">${DELETE_QUESTION} ${ltBtn("x", "Yes", `data-action="lineup-delete-yes" data-id="${id}"`)}${ltBtn("", "No", `data-action="lineup-delete-no"`)}</span>`
-    : ltBtn("x", "Delete", `data-action="lineup-delete-start" data-id="${id}"`);
+  const deleting = !canDeleteSaved(lineup.id, onSitePage()) ? "" // the site's read-only app lineups have no Delete
+    : state.deleteConfirmId === lineup.id
+      ? `<span class="lt-confirm">${DELETE_QUESTION} ${ltBtn("x", "Yes", `data-action="lineup-delete-yes" data-id="${id}"`)}${ltBtn("", "No", `data-action="lineup-delete-no"`)}</span>`
+      : ltBtn("x", "Delete", `data-action="lineup-delete-start" data-id="${id}"`);
   const prefix = title.prefix;
   const median = boardMediansForSort() ? medianText(savedLineupFigures(lineup, rowById).median, (lineup.slots ?? []).some((s) => scoreOfRow(rowById.get(String(s.playerId)), "median") != null), "a player has no TwoGun median or is no longer on the slate") : "";
   const readLine = lineup.mode === "cash" ? "" : contrarianHtml(savedRead(lineup, rowById)); // GPP only (demo 2026-11-04)
   const palette = paletteForRows(rowById);
   const badges = [
+    state.justSaved?.has(lineup.id) ? `<span class="lt-badge new" title="Saved by your last Save or Save all">Just saved</span>` : "",
     state.loadedId === lineup.id ? `<span class="lt-badge">Loaded</span>` : "",
     state.lineupErrors[lineup.id] ? `<span class="lt-badge bad">${escapeHtml(state.lineupErrors[lineup.id])}</span>` : "",
     incomplete ? `<span class="lt-badge warn">Incomplete</span>` : "",
     t.left !== null && t.left < 0 ? `<span class="lt-badge bad">Over cap</span>` : "",
   ].join("");
   const buildText = buildTypeText(lineup.build);
-  return `<div class="lc svc" data-lineup-id="${id}">
+  return `<div class="lc svc${state.justSaved?.has(lineup.id) ? " just" : ""}" data-lineup-id="${id}">
     <div class="lch"><span class="lt-title">${dkSelectHtml(lineup.id, state.dkSelected.has(lineup.id))}${prefix ? `<span class="lt-pre">${escapeHtml(prefix)}</span>` : ""}${name}</span>
       <span class="lcb">${anchorHtml(ltBtn("", "Load", `data-action="lineup-load" data-id="${id}" title="Make it the working lineup"`), loadConfirm, { align: "left" })}${ltBtn("", "Download", `data-lt-dl-card="${id}" title="Download this lineup for DraftKings"`)}${deleting}</span></div>
     <div class="lt-at"><span class="md${lineupModeOf(lineup) === "cash" ? " cash" : ""}">${lineupModeOf(lineup) === "cash" ? "Cash" : "GPP"}</span><label class="lt-tagl" title="A letter that follows this lineup onto the Entries tab">Entries letter<select class="saved-lineup-tag lt-tag" data-action="lineup-tag" data-id="${id}" aria-label="Letter for ${escapeHtml(lineup.name)}"${busy}>${tagOptions}</select></label><span class="lt-time">Saved ${escapeHtml(formatSavedAt(lineup.savedAt))}</span>${buildText ? `<span class="lt-badge" title="How this lineup was made">${escapeHtml(buildText)}</span>` : ""}${badges}</div>
@@ -281,7 +285,8 @@ export function exposureHtml(entries, label, marks, pick) {
 const exposureToggleHtml = () => `<button type="button" class="lt-extog" data-action="lt-exposure-toggle" aria-expanded="${ltState.exposureOpen}">${ltState.exposureOpen ? "Hide exposure" : "Show exposure"}</button>`;
 
 /** What the Own vs field bar on a GPP card means, once per screen in plain words (the words themselves: lineup-contrarian.js). */
-const READ_LEGEND = `<div class="lt-legend">How popular is each lineup? The bar runs from Super unique (few entries will have it) to Super chalky (many will); the tick marks a typical lineup in this field. "Not unique enough" means more popular than typical, "Unique enough" less, "Right at the middle" about the same. Stack is your quarterback and his teammates, Rest is everyone else.</div>`;
+// Item 7 (G64, Adam 2:49 PM 11-11): one line under the cards, never a paragraph above them.
+const READ_LEGEND = `<div class="lt-legend">Own vs field: Super unique to Super chalky; the tick is a typical lineup. Stack = your QB and teammates, Rest = everyone else.</div>`;
 
 const opponentWords = (opp) => {
   const m = /^(vs|@)\s*(.+)$/i.exec(String(opp).trim());
@@ -377,7 +382,7 @@ function savedViewHtml(savedHere, shown, rowById, pick) {
   const label = `saved · ${filtered ? `${shown.length} of ${n}` : `${n}`} lineup${n === 1 ? "" : "s"}`;
   return {
     top: `<div class="lt-top">${summaryHtml(figures, [["Saved", dates.length ? `${fmtDay(dates[0])} to ${fmtDay(dates[dates.length - 1])}`.replace(/^(.*) to \1$/, "$1") : NO_FIGURE], figuresCell(true)])}<span class="lt-btns">${ticked ? `<span class="lt-ticked">${ticked} of ${shown.length} ticked <button type="button" class="link-btn" data-action="dk-select-none">Clear selection</button></span>` : ""}${state.dkStatus ? `<span class="dk-status" role="status">${dkStatusLinesHtml(state.dkStatus)}</span>` : ""}<button type="button" class="ol lt-dl" data-lt-dl="saved"${dlCount ? "" : " disabled"}>Download CSV for DraftKings (${dlCount})</button></span></div>`,
-    body: `<div class="lt-body${ltState.exposureOpen ? " exopen" : ""}">${exposureHtml(classicEntries(exposure), label, null, pick)}${exposureToggleHtml()}<div class="lt-cards" id="saved-lineups">${opt.mode === "cash" ? "" : READ_LEGEND}${shown.length ? cards : `<div class="lt-empty saved-lineups-empty">No lineups here have all of the chosen players.</div>`}</div></div>`,
+    body: `<div class="lt-body${ltState.exposureOpen ? " exopen" : ""}">${exposureHtml(classicEntries(exposure), label, null, pick)}${exposureToggleHtml()}<div class="lt-cards" id="saved-lineups">${shown.length ? cards : `<div class="lt-empty saved-lineups-empty">No lineups here have all of the chosen players.</div>`}${opt.mode === "cash" ? "" : READ_LEGEND}</div></div>`,
   };
 }
 
@@ -441,7 +446,7 @@ function newViewHtml(batches, rowById, pick, nBuilt) {
   const latest = batches.map((b) => b.r.builtAt).filter(Boolean).sort().pop();
   return {
     top: `<div class="lt-top">${summaryHtml(figures, [["Builds", String(buildCount)], figuresCell(false), ["Latest", latest ? clock(latest) : NO_FIGURE]])}<span class="lt-btns">${state.dkStatus ? `<span class="dk-status" role="status">${dkStatusLinesHtml(state.dkStatus)}</span>` : ""}${unsaved ? `<button type="button" class="ol lt-dl" data-action="lt-save-all"${busy ? " disabled" : ""}>Save all unsaved (${unsaved})</button>` : ""}<button type="button" class="ol lt-dl" data-lt-dl="new"${nBuilt ? "" : " disabled"}>Download CSV for DraftKings (${nBuilt})</button></span></div>`,
-    body: `<div class="lt-body${ltState.exposureOpen ? " exopen" : ""}">${exposureHtml(classicEntries(exposure), label, marks, pick)}${exposureToggleHtml()}<div class="lt-cards">${opt.mode === "cash" ? "" : READ_LEGEND}${groups.join("")}</div></div>`,
+    body: `<div class="lt-body${ltState.exposureOpen ? " exopen" : ""}">${exposureHtml(classicEntries(exposure), label, marks, pick)}${exposureToggleHtml()}<div class="lt-cards">${groups.join("")}${opt.mode === "cash" ? "" : READ_LEGEND}</div></div>`,
   };
 }
 
