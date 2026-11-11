@@ -28,7 +28,7 @@ import {
   MAX_AT, CONFIGS, listNames, slotsFull, lockedSlotWords, minPlan, forcedSet, lowestScoreFirst, trialOrder, chooseBend, bendLabel,
   bendTrials, diagnosisSentence, percentNote, unmetMinNotes
 } from "./soft.js"; // pure; Min % and soft rules
-import { objectiveScore, ceilingNotes, FIGURE_BUILDS, figureOf, retiredObjectiveNote } from "./objective.js"; // pure; cash mode job 1, 2026-10-17
+import { objectiveScore, ceilingNotes, keptOutNote, keptOutReason, FIGURE_BUILDS, figureOf, retiredObjectiveNote } from "./objective.js"; // pure; cash mode job 1, 2026-10-17
 import { cashEngineSettings, medianOf } from "./cash.js"; // pure; entered only when settings.mode is "cash" (cash mode job 1, 2026-10-17)
 
 // --------------------------------------------------------------------------------------------------------
@@ -958,6 +958,8 @@ function prepare(rows, opts, notes) {
   let noCeilingLeftOut = 0; // median build: players kept out only for having no TwoGun median
   let typedIgnored = 0; // median build: pool players whose typed projection does not move it
   const revivedLeftOut = new Map(); // name -> reason; median build: listed-out players brought back by a typed projection, kept out unless locked
+  const keptOut = {}; // G62: unlocked players left out for any other reason, counted for the Optimizer note (keptOutNote)
+  const keepOut = (why) => { keptOut[why] = (keptOut[why] ?? 0) + 1; };
   for (const [id, row] of byId) {
     if (opts.excludes.has(id)) continue;
     const locked = lockSet.has(id);
@@ -968,6 +970,7 @@ function prepare(rows, opts, notes) {
         st.fatal = `Locked ${name} has no position a classic lineup can use.`;
         return st;
       }
+      keepOut("no position a classic lineup can use");
       continue;
     }
     const salary = num(row.salary);
@@ -976,13 +979,16 @@ function prepare(rows, opts, notes) {
         st.fatal = `Locked ${name} has no salary in the DraftKings CSV, so he cannot be costed against the cap.`;
         return st;
       }
+      keepOut("no salary");
       continue;
     }
-    const { proj, overridden, projMissing, noProjection, sidelined, game, avoided, unstarredQb, noCeiling, revivedOut, lateOut } = rowFlags(row, pos, opts);
+    const flagsOf = rowFlags(row, pos, opts);
+    const { proj, overridden, projMissing, noProjection, sidelined, game, avoided, unstarredQb, noCeiling, revivedOut, lateOut } = flagsOf;
     const otherwiseOut = noProjection || sidelined || avoided || unstarredQb || lateOut;
     if (!locked && (otherwiseOut || noCeiling || revivedOut)) {
       if (revivedOut && !otherwiseOut) revivedLeftOut.set(name, revivedOut);
       else if (noCeiling && !otherwiseOut) noCeilingLeftOut++;
+      else keepOut(keptOutReason(flagsOf));
       continue;
     }
     if (locked) {
@@ -1031,6 +1037,8 @@ function prepare(rows, opts, notes) {
     }
     byKey.set(cand.key, cand);
   }
+  const keptOutLine = keptOutNote(keptOut);
+  if (keptOutLine) notes.push(keptOutLine);
   if (figureWord) ceilingNotes(noCeilingLeftOut, typedIgnored, notes, figureWord, [...byKey.values()].filter((c) => byId.get(c.id)?.override?.bump).length);
   for (const [name, reason] of revivedLeftOut) notes.push(`${name} ${REVIVED_OUT_WORDS[reason](figureWord).replace(/^he /, "")}; include him by locking him.`);
 

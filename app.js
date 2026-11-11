@@ -408,7 +408,7 @@ function renderRankedParts(board, filters, slateRows) {
     onToggleCollapse: onToggleGamestripCollapse,
   });
   const allRows = rowsGradedForView(slateRows, filters.pos, board.rows); // D33: the FLEX view pools RB, WR and TE
-  el.ownBanner.textContent = [ownBannerText(allRows), board.injuryNote, ...(board.tabNotes?.favorites ?? [])].filter(Boolean).join(" ");
+  el.ownBanner.textContent = [ownBannerText(allRows), board.injuryNote, ...(board.tabNotes?.favorites ?? []), board.siteEditsNote].filter(Boolean).join(" "); // siteEditsNote: the public site's saved changes that could not be read (G62)
   if (el.stampsLine) el.stampsLine.innerHTML = stampsLineHtml(boardStamps(board, { games: activeSlateGames(board) })); // B11: the board's own times, `missing` for one it does not carry
   const filtered = filterRows(allRows, filters);
   const activeGame = filters.gameId ? (board.slate?.games ?? []).find((g) => g.id === filters.gameId) : null;

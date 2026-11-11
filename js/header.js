@@ -134,7 +134,9 @@ export function secondSlateSavedText(secondSlate) {
   const extras = [];
   const unmatched = secondSlate?.unmatched?.length ?? 0;
   const diffs = secondSlate?.salaryDiffs?.length ?? 0;
-  if (unmatched) extras.push(`${unmatched} player${unmatched === 1 ? "" : "s"} could not be matched to the main slate`);
+  // G62: each one named with why (server/slate/second-slates.js matchPlayers), a shared name, team and position included.
+  const who = (u) => `${u?.name ?? "?"} (${[u?.team, u?.pos].filter(Boolean).join(" ")}: ${u?.reason ?? "not matched"})`;
+  if (unmatched) extras.push(`${unmatched} player${unmatched === 1 ? "" : "s"} could not be matched to the main slate: ${secondSlate.unmatched.map(who).join("; ")}`);
   if (diffs) extras.push(`${diffs} salar${diffs === 1 ? "y differs" : "ies differ"} from the main slate`);
   return `Saved as a second slate: ${name}. The main slate is unchanged.${extras.length ? ` ${extras.join("; ")}.` : ""}`;
 }
@@ -324,7 +326,7 @@ export function wireUpload({ csvInput, uploadInfo, slateLine, pillsRow }, { onUp
         entries: async (text) => {
           const r = await onEntriesText?.(text);
           if (!r?.ok) return fail("entries", r?.message ?? "unknown error");
-          const message = `Entries file loaded: ${r.entries} entr${r.entries === 1 ? "y" : "ies"} in ${r.contests} contest${r.contests === 1 ? "" : "s"} · see the Entries tab`;
+          const message = `Entries file loaded: ${r.entries} entr${r.entries === 1 ? "y" : "ies"} in ${r.contests} contest${r.contests === 1 ? "" : "s"}${r.notRead ? ` · ${r.notRead}` : ""} · see the Entries tab`;
           setStatus(message, false);
           return { ok: true, kind: "entries", message };
         },
@@ -332,7 +334,7 @@ export function wireUpload({ csvInput, uploadInfo, slateLine, pillsRow }, { onUp
           if (typeof onShowdownEntriesText !== "function") return fail("showdownEntries", SHOWDOWN_ENTRIES_NOT_CONNECTED);
           const r = await onShowdownEntriesText(text);
           if (!r?.ok) return fail("showdownEntries", r?.message ?? "unknown error");
-          const message = `Showdown entries file loaded: ${r.entries} entr${r.entries === 1 ? "y" : "ies"} in ${r.contests} contest${r.contests === 1 ? "" : "s"} · see the game's Entries tab`;
+          const message = `Showdown entries file loaded: ${r.entries} entr${r.entries === 1 ? "y" : "ies"} in ${r.contests} contest${r.contests === 1 ? "" : "s"}${r.notRead ? ` · ${r.notRead}` : ""} · see the game's Entries tab`;
           setStatus(message, false);
           return { ok: true, kind: "showdownEntries", message };
         },

@@ -63,27 +63,43 @@ function copyEdits(edits) {
   };
 }
 
-// Only entries a write could have stored survive (the checks validateOverrides makes on the merged result).
-function cleanEdits(raw) {
+// Only entries a write could have stored survive (the checks validateOverrides makes on the merged result). `bad()` is
+// called once for each saved entry (or whole section that is not an object) left out, so the board can say how many (G62).
+export function cleanEdits(raw, bad = () => {}) {
   const out = emptyEdits();
-  if (!isObject(raw)) return out;
-  const section = (obj, name) => (isObject(obj?.[name]) ? Object.entries(obj[name]) : []);
-  for (const [id, v] of section(raw, "proj")) if (v === null || validProj(v)) out.proj[id] = v;
-  for (const [id, v] of section(raw, "own")) if (v === null || validOwn(v)) out.own[id] = v;
-  for (const [id, v] of section(raw, "stars")) if (typeof v === "boolean" && id !== "") out.stars[id] = v;
-  for (const [id, v] of section(raw, "notes")) if (v === null || (typeof v === "string" && v.length < 500)) out.notes[id] = v;
-  for (const [id, v] of section(raw, "bump")) if (v === null || validBump(v)) out.bump[id] = v;
+  if (raw === null || raw === undefined) return out;
+  if (!isObject(raw)) { bad(); return out; }
+  const section = (obj, name) => {
+    if (obj?.[name] === undefined || obj?.[name] === null) return [];
+    if (!isObject(obj[name])) { bad(); return []; }
+    return Object.entries(obj[name]);
+  };
+  const keep = (ok, put) => (ok ? put() : bad());
+  for (const [id, v] of section(raw, "proj")) keep(v === null || validProj(v), () => { out.proj[id] = v; });
+  for (const [id, v] of section(raw, "own")) keep(v === null || validOwn(v), () => { out.own[id] = v; });
+  for (const [id, v] of section(raw, "stars")) keep(typeof v === "boolean" && id !== "", () => { out.stars[id] = v; });
+  for (const [id, v] of section(raw, "notes")) keep(v === null || (typeof v === "string" && v.length < 500), () => { out.notes[id] = v; });
+  for (const [id, v] of section(raw, "bump")) keep(v === null || validBump(v), () => { out.bump[id] = v; });
   // Whether each typed projection revived a man the baked board listed out, decided when it was typed (as the app decides at its write, never again on a read). Edits saved before this
   // record existed have none (`revive` absent), and are judged once, on the next write.
   if (isObject(raw.revive)) {
     out.revive = {};
-    for (const [id, v] of section(raw, "revive")) if (typeof v === "boolean") out.revive[id] = v;
+    for (const [id, v] of section(raw, "revive")) keep(typeof v === "boolean", () => { out.revive[id] = v; });
   }
   const cleared = isObject(raw.cleared) ? raw.cleared : {};
-  for (const [id, v] of section(cleared, "proj")) if (validProj(v)) out.cleared.proj[id] = v;
-  for (const [id, v] of section(cleared, "own")) if (validOwn(v)) out.cleared.own[id] = v;
-  for (const [id, v] of section(cleared, "bump")) if (validBump(v)) out.cleared.bump[id] = v;
+  for (const [id, v] of section(cleared, "proj")) keep(validProj(v), () => { out.cleared.proj[id] = v; });
+  for (const [id, v] of section(cleared, "own")) keep(validOwn(v), () => { out.cleared.own[id] = v; });
+  for (const [id, v] of section(cleared, "bump")) keep(validBump(v), () => { out.cleared.bump[id] = v; });
   return out;
+}
+
+/** The board's one line on saved changes that could not be read or applied (G62), or null. `unread`: entries left out
+ *  on reading (-1 for a whole saved record that is not readable at all); `why`: the reason saved changes could not be applied. */
+export function siteEditsNoteText(unread, why = null) {
+  if (why) return `Your saved changes in this browser could not be applied (${why}), so the published board is shown.`;
+  if (unread === -1) return "Your saved changes in this browser could not be read, so none are applied; the next change you make replaces them.";
+  if (unread > 0) return `${unread} saved change${unread === 1 ? "" : "s"} in this browser could not be read and ${unread === 1 ? "is" : "are"} left out; the next change you make removes ${unread === 1 ? "it" : "them"}.`;
+  return null;
 }
 
 /**
@@ -114,14 +130,18 @@ function reconcile(edits, published) {
 // rebuilt from the baked one and the effective overrides (`remerge(board, slate, overrides)`). The main slate's is the default of every function below.
 const CLASSIC = Object.freeze({ keyOf: (season, week) => storageKey(season, week), published: (board) => publishedOverrides(board), remerge: (board, slate, overrides) => remergeOverrides(board, slate, overrides) });
 
-/** The visitor's saved changes for the week; empty when storage is unavailable, empty or unreadable. An adapter with `load` reads its own entries (the Showdown Cash tab's two). */
+/** The visitor's saved changes for the week as { edits, unread }; empty when storage is unavailable, empty or unreadable. `unread`
+ *  (G62): how many saved entries were left out, -1 when the whole record could not be read. An adapter with `load` reads its own entries (the Showdown Cash tab's two). */
 function readEdits(storage, season, week, published, adapter = CLASSIC) {
-  if (!storage) return emptyEdits();
+  if (!storage) return { edits: emptyEdits(), unread: 0 };
   try {
     const raw = adapter.load ? adapter.load(storage, season, week) : storage.getItem(adapter.keyOf(season, week));
-    return raw ? reconcile(cleanEdits(JSON.parse(raw)), published) : emptyEdits();
-  } catch {
-    return emptyEdits(); // unreadable or not JSON: ignored, the published board shows
+    let unread = 0;
+    const edits = raw ? reconcile(cleanEdits(JSON.parse(raw), () => { unread++; }), published) : emptyEdits();
+    return { edits, unread };
+  } catch (e) {
+    console.warn("site overrides: saved changes unreadable", e);
+    return { edits: emptyEdits(), unread: -1 }; // unreadable or not JSON: the published board shows, and the board says so
   }
 }
 
@@ -223,14 +243,19 @@ function remerged(board, slate, published, edits, adapter = CLASSIC) {
 export function boardWithEdits(board, slate, storage, season, week, adapter = CLASSIC) {
   if (!board || board.ok === false || !Array.isArray(board.rows)) return board;
   const published = adapter.published(board);
-  const edits = readEdits(storage, season, week, published, adapter);
-  if (isEmpty(edits)) return { ...board, siteTypedNumbers: false };
+  const { edits, unread } = readEdits(storage, season, week, published, adapter);
+  // G62: saved changes that could not be read or applied are said on the board (siteEditsNote: app.js's banner, the Showdown pool).
+  const said = (b, why = null) => {
+    const note = siteEditsNoteText(unread, why);
+    return note ? { ...b, siteEditsNote: note } : b;
+  };
+  if (isEmpty(edits)) return said({ ...board, siteTypedNumbers: false });
   try {
     validateOverrides(effective(published, edits, board));
-    return remerged(board, slate, published, edits, adapter);
+    return said(remerged(board, slate, published, edits, adapter));
   } catch (e) {
     console.warn("site overrides: saved changes not applied", e);
-    return { ...board, siteTypedNumbers: false };
+    return said({ ...board, siteTypedNumbers: false }, e?.message ?? "they did not pass the checks");
   }
 }
 
@@ -239,7 +264,7 @@ export function boardWithEdits(board, slate, storage, season, week, adapter = CL
 function write(storage, season, week, board, slate, nextFrom, adapter = CLASSIC) {
   if (!storage) return { error: { code: "DEVICE_STORAGE_UNAVAILABLE", message: STORAGE_UNAVAILABLE_MESSAGE } };
   const published = adapter.published(board);
-  const next = nextFrom(readEdits(storage, season, week, published, adapter), published);
+  const next = nextFrom(readEdits(storage, season, week, published, adapter).edits, published); // what could not be read is not carried, so this write removes it
   try {
     validateOverrides(effective(published, next, board));
   } catch (e) {

@@ -453,6 +453,8 @@ export function poolHtml(board, placement, rows) {
       </div>
       <div id="sd-legend" class="table-legend">${escapeHtml(poolLegendText(board))}</div>
       ${board?.deviceNote ? `<div class="table-legend sd-device-note" role="note">${escapeHtml(board.deviceNote)}</div>` : ""}
+      ${board?.injuryNote ? `<div class="table-legend sd-injury-note" role="note">${escapeHtml(board.injuryNote)}</div>` : ""}
+      ${board?.siteEditsNote ? `<div class="table-legend sd-device-note" role="note">${escapeHtml(board.siteEditsNote)}</div>` : ""}
     </section>`;
 }
 

@@ -9,6 +9,7 @@ import { store, passesProjFloor, CLASSIC_PROJ_FLOOR, activeSlateRows, sortRows }
 import { showAllToggleHtml, wireShowAllButtons } from "./filterbar.js";
 import { sourceFailedMarkerHtml, sortArrowHtml, sortArrowText } from "./table.js";
 import { playerLineHtml } from "./player-row.js";
+import { injuryUnmatchedHtml } from "./unmatched.js";
 import { sourceIsTicked } from "./sources-page-html.js"; // the one tick predicate (the Sources page and the Showdown tables use it too)
 
 // The classic projection floor (D52) as it applies to the two source tables: the same predicate and the same
@@ -131,6 +132,7 @@ export function renderProjectionsPanel(container, board, callbacks) {
 
   container.innerHTML = `
     ${tabNotesHtml(board.tabNotes?.projections)}
+    ${injuryUnmatchedHtml(board.unmatched?.bySource?.["espn-injuries"], escapeHtml)}
     <details class="paste-box">
       <summary>Paste a FantasyPros table</summary>
       <div class="paste-box-controls">

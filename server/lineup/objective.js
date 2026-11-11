@@ -37,6 +37,24 @@ export function figureOf(row, objective) {
   return objective === "median" ? medianOf(row) : null;
 }
 
+/** Why an unlocked player is kept out of the pool, the first that holds (rowFlags' reasons), for keptOutNote. */
+export function keptOutReason({ lateOut, sidelined, noProjection, avoided, unstarredQb }) {
+  if (lateOut) return "ruled out after TwoGun's board";
+  if (sidelined) return "listed out";
+  if (noProjection) return "no projection";
+  if (avoided) return "in a game set to avoid";
+  if (unstarredQb) return "quarterbacks not starred";
+  return "kept out";
+}
+
+/** Global rule G62: the Optimizer note's one line on the unlocked players the pool left out, by reason ({reason: count}),
+ *  most first: "212 players kept out: 180 no projection, 30 listed out, 2 no salary." Null when none was. */
+export function keptOutNote(counts) {
+  const parts = Object.entries(counts ?? {}).filter(([, n]) => n > 0).sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1));
+  const total = parts.reduce((s, [, n]) => s + n, 0);
+  return total ? `${total} player${total === 1 ? "" : "s"} kept out: ${parts.map(([why, n]) => `${n} ${why}`).join(", ")}.` : null;
+}
+
 /** A figure build's notes: how many were left out for want of the figure, that typed projections do not move it, and how
  *  many pool players' figures carry Adam's ± bump (`bumped`; Adam 2026-10-22, 5% a step, merge.js bumpFigures), in which
  *  case the figures are no longer as he publishes them. `word` names the figure ("median", FIGURE_BUILDS). */

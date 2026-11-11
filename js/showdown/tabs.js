@@ -15,6 +15,7 @@ import { sortRows, defaultDirFor } from "../state.js";
 import { sdShowAll, sdShowAllFlag } from "./show-all.js"; // C24: the Showdown's own Show all players, not classic's
 import { sortableHeadHtml, unusedColumn, onSitePage, isSourcesTab } from "../tabs.js"; // the classic sortable header and its dimmed unused-source column
 import { sourceIsTicked } from "../sources-page-html.js"; // the one tick predicate the Sources page and this table share
+import { injuryUnmatchedHtml } from "../unmatched.js";
 import { snapPanelMaxHeight } from "../lineup.js"; // the classic tables' sizing step
 
 // Fits the table's scroll box to the room below its top edge, as app.js adjustScrollPanels does for classic's tables (the last whole row that
@@ -157,6 +158,7 @@ export function renderShowdownProjectionsPanel(container, board, callbacks) {
     </details>
     <p class="tab-note">${showAllToggleHtml(sdShowAll(), `data-action="show-all"`)} Blended from the projection sources ticked above. Hover a Proj figure for how it was made; every column sorts.</p>
     ${dash ? `<p class="tab-note sd-all-dash">${escapeHtml(dash)}</p>` : ""}
+    ${injuryUnmatchedHtml(board.unmatched?.injuries, escapeHtml)}
     <div class="tab-table-wrap scroll-panel">
       <table class="source-value-table sd-fit">
         <thead>${parts.head}</thead>

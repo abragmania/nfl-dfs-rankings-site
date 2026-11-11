@@ -55,6 +55,17 @@ export function slateTeamSet(rows) {
   return set;
 }
 
+/**
+ * The Projections tab's closed list of injury-report entries that carry a real designation at a slate position but placed
+ * on no slate player (board.unmatched.bySource["espn-injuries"] on a classic board, board.unmatched.injuries on a
+ * Showdown one; D27, G62). The banner's injury note only counts them (D32). "" when there are none.
+ */
+export function injuryUnmatchedHtml(names, escapeHtml) {
+  const list = (names ?? []).filter(Boolean);
+  if (!list.length) return "";
+  return `<details class="source-unmatched injury-unmatched"><summary>${list.length} injury report ${list.length === 1 ? "entry" : "entries"} with a designation ${list.length === 1 ? "was" : "were"} not placed on a player</summary>${list.map(escapeHtml).join(", ")}</details>`;
+}
+
 /** The markup pieces under a source's row on the Sources page: a small expander of the on-slate names, and a closed one for the rest (D27). */
 export function unmatchedPartsHtml(names, slateTeams, slateRows, escapeHtml) {
   const { onSlate, offSlate } = splitUnmatched(names, slateTeams, slateRows);

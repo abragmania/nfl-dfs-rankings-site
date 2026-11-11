@@ -218,14 +218,24 @@ export function tagsCellTitle(row) {
     .join(" · ");
 }
 
-/** The status tag(s) of one player-list row: the board status, then the injury report's word when it adds one. */
+/** The status tag(s) of one player-list row: the board status, then the injury report's word when it adds one, then a word
+ *  the report used that the app does not read (row.injury.unknownStatus, G62: shown as written, never taken as a status). */
 export function statusTagsHtml(row) {
   const key = (row.status ?? "").trim().toLowerCase();
   const injuryStatus = row.injury?.status;
   const same = injuryStatus && (injuryStatus.toLowerCase() === key || (STATUS_INFO[key] && STATUS_INFO[key].label === STATUS_INFO[injuryStatus.toLowerCase()]?.label));
   // With a board status of its own, the second (injury report) badge says nothing of TwoGun's call (src left off).
   const injuryHtml = injuryStatus && !same ? statusBadgeHtml({ ...row, tg: key ? null : row.tg, src: key ? undefined : row.src, injury: key ? { ...row.injury, comment: "" } : row.injury, flags: [] }, injuryStatus) : "";
-  return `${statusBadgeHtml(row)}${injuryHtml}`;
+  return `${statusBadgeHtml(row)}${injuryHtml}${unknownStatusHtml(row)}`;
+}
+
+/** The badge for a status word the injury report used that the app does not read, or "". */
+export function unknownStatusHtml(row) {
+  const word = typeof row?.injury?.unknownStatus === "string" ? row.injury.unknownStatus.trim() : "";
+  if (!word) return "";
+  const comment = (row.injury.comment ?? "").trim();
+  const title = `${row.injury.source ?? "The injury report"} lists him as "${word}", a word this app does not read as an injury status, so he is treated as having none.${comment ? ` ${comment}` : ""}`;
+  return `<span class="status-badge status-other" title="${escapeHtml(title)}">${escapeHtml(word)}</span>`;
 }
 
 /** Whether a row shows any status tag. */

@@ -279,7 +279,7 @@ export function fileBlockHtml(f, saved, assigned, result, busy, fileContext = []
         <span class="entries-slate">${escapeHtml(label)}</span>
         <span class="entries-file-name">${escapeHtml(f.file)}</span>
         <span class="entries-count">${entries.length} entr${entries.length === 1 ? "y" : "ies"} in ${nContests} contest${nContests === 1 ? "" : "s"}</span>
-      </div>`;
+      </div>${f.notRead ? `<div class="entries-quiet entries-not-read" role="note">${escapeHtml(f.notRead)}</div>` : ""}`;
   if (f.error || !slateKey) {
     return `<div class="entries-file">${head}<div class="lineup-status lineup-status-error">${escapeHtml(f.error ?? "This file's slate could not be told; upload it again.")}</div></div>`;
   }

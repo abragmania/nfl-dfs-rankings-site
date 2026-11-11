@@ -151,9 +151,16 @@ export function parseEntriesCsv(text, layout = CLASSIC_LAYOUT) {
   if (header[0]?.trim() !== "Entry ID" || headerSlots.join(",") !== layout.slots.join(",")) throw new Error(layout.wrongFile);
 
   const entries = [];
+  const notRead = []; // G62: rows that look like data but are not read, { line, why } (notReadText words them)
   for (let i = 1; i < records.length; i++) {
     const cells = records[i].cells;
-    if (!/^\d+$/.test(cells[0].trim())) continue;
+    const first = cells[0].trim();
+    if (!/^\d+$/.test(first)) {
+      // A blank first cell is a player-list row; anything else in the entry columns is a row not read.
+      if (first) notRead.push({ line: i + 1, why: `its first cell "${first}" is not an entry id` });
+      else if (cells.slice(1, end).some(c => c.trim())) notRead.push({ line: i + 1, why: "entry cells are filled but the Entry ID is blank" });
+      continue;
+    }
     if (cells.length < end) throw new Error(`Line ${i + 1} looks like an entry (${cells[0]}) but has fewer than ${end} cells.`);
     entries.push({ lineIndex: i, entryId: cells[0], contestName: cells[1], contestId: cells[2], entryFee: cells[3], roster: cells.slice(start, end), rest: cells.slice(end) });
   }
@@ -162,7 +169,8 @@ export function parseEntriesCsv(text, layout = CLASSIC_LAYOUT) {
     header,
     lines: records.map(r => r.raw),
     entries,
-    pool: readPlayerList(records, end),
+    notRead,
+    pool: readPlayerList(records, end, notRead),
     bom,
     eols: records.map(r => r.eol),
     rawCells: records.map(r => r.rawCells),
@@ -171,8 +179,8 @@ export function parseEntriesCsv(text, layout = CLASSIC_LAYOUT) {
 }
 
 /** The player list: find its header (a "Position" cell directly followed by "Name + ID") to the right of the roster
- *  columns (from `rosterEnd`), then read the rows below. */
-function readPlayerList(records, rosterEnd) {
+ *  columns (from `rosterEnd`), then read the rows below; a non-number id or a repeated one (first kept) goes on `notRead`. */
+function readPlayerList(records, rosterEnd, notRead = []) {
   const pool = new Map();
   let listLine = -1;
   let listCol = -1;
@@ -204,7 +212,10 @@ function readPlayerList(records, rosterEnd) {
     for (let i = listLine + 1; i < records.length; i++) {
       const cells = records[i].cells;
       const id = (cells[cId] ?? "").trim();
-      if (!/^\d+$/.test(id)) continue;
+      if (!/^\d+$/.test(id)) {
+        if (id) notRead.push({ line: i + 1, why: `the player list's ID "${id}" is not a number` });
+        continue;
+      }
       const nameId = cells[cNameId] ?? "";
       if (idOfCell(nameId) !== id) {
         throw new Error(`Line ${i + 1} of the entries file: the Name + ID cell "${nameId}" does not carry the ID ${id}.`);
@@ -213,7 +224,10 @@ function readPlayerList(records, rosterEnd) {
       if (!Number.isFinite(salary) || (cells[cSalary] ?? "").trim() === "") {
         throw new Error(`Line ${i + 1} of the entries file: the salary "${cells[cSalary]}" for ${nameId} is not a number.`);
       }
-      if (pool.has(id)) continue;
+      if (pool.has(id)) {
+        notRead.push({ line: i + 1, why: `player id ${id} is listed a second time; the first row is kept` });
+        continue;
+      }
       pool.set(id, {
         nameId,
         name: cells[cName] ?? "",
