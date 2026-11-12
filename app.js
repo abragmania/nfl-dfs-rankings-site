@@ -46,7 +46,7 @@ import { delegateBumpClicks, bumpPatch } from "./js/bump-control.js"; // Adam 20
 import { delegateRowReset } from "./js/row-reset.js"; // B12: the pool's row reset (typed numbers and bump)
 import { delegateStatusClicks, statusPatch } from "./js/status-switch.js"; // Adam 2026-11-12: In / Out / Auto per man
 import { stickyHeights } from "./js/build-notice.js"; // A15: the sticky stack's heights, the notice a layer of it
-import { staleLineText, ownCoverageLine } from "./js/data-as-of.js"; // item 7: the main view's one short stale line; the rest is the Sources page's Data as of block
+import { staleLineText, ownCoverageLine, selfCheckLines } from "./js/data-as-of.js"; // item 7: the main view's one short stale line; the rest is the Sources page's Data as of block
 
 const el = {
   modeRow: document.getElementById("mode-row"),
@@ -469,7 +469,7 @@ function renderDynamic() {
     renderLineupPanel(el.lineupMount, tableCallbacks);
   } else if (isSourcesTab(activeTab)) {
     // The Sources page (always the main slate's choices, D57), then the Projections or Ownership table under its Players heading.
-    const asOf = { games: activeSlateGames(board), lines: [modeStampText(board.mode), twoGunCoverageText(board.mode), ownCoverageLine(slateRows), board.injuryNote].filter(Boolean) }; // item 7: what the Optimizer's banner and the line under the top bar said, here in short lines
+    const asOf = { games: activeSlateGames(board), lines: [modeStampText(board.mode), twoGunCoverageText(board.mode), ownCoverageLine(slateRows), board.injuryNote, ...selfCheckLines(board)].filter(Boolean) }; // item 7: what the Optimizer's banner and the line under the top bar said, here in short lines
     renderSourcesPage(el.sourcesPanel, { board, slate: "main", showdown: false, activeKey: activeTab, onPlayersTab: onTabClick, onChanged: repaintAfterSourceSave, asOf, canSetStatus: true });
     if (activeTab === "projections") renderProjectionsPanel(el.projectionsPanel, board, sourceCallbacks);
     else renderOwnershipPanel(el.ownershipPanel, board, sourceCallbacks);

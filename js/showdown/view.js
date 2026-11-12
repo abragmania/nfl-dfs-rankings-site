@@ -19,7 +19,7 @@ import { renderSourcesPage, sectionSources } from "../sources-page.js";
 import { escapeHtml, dec1 } from "../format.js";
 import { store } from "../state.js";
 import { sdShowAll, setSdShowAll, onSdShowAllChange } from "./show-all.js"; // C24: the Showdown's own Show all players
-import { staleLineText, savedCopiesLine } from "../data-as-of.js"; // item 7: one short stale line under the game line; Board, Injuries, Pulled and Lock are on the Sources page
+import { staleLineText, savedCopiesLine, selfCheckLines } from "../data-as-of.js"; // item 7: one short stale line under the game line; Board, Injuries, Pulled and Lock are on the Sources page
 import { makeFilterDebounce } from "../filter-debounce.js"; // the typed boxes wait out classic's 150 ms pause
 import { syncExpandUi } from "../expand.js";
 import { adjustScrollPanels } from "../scroll-panels.js";
@@ -441,7 +441,7 @@ function renderSourcesView() {
     },
     onSelection: () => { if (isSourcesTab(state.activeTab) && state.board) render(); }, // the ticks arrived after the first draw: the Projections table's columns follow them
     canSetStatus: supports("overrides") && !isShowdownSampleMode(), // the Player status card's switches (Adam 2026-11-12)
-    asOf: { lines: [poolNoteText(state.board), savedCopiesLine(state.board), uploadStaleLine(), state.board ? ownTotalsLine(state.board.rows) : "", state.board?.injuryNote].filter(Boolean) }, // item 7: the game's stamps, its figures reading and saved copies (the header's chips) and the injury report's counts, moved here
+    asOf: { lines: [poolNoteText(state.board), savedCopiesLine(state.board), uploadStaleLine(), state.board ? ownTotalsLine(state.board.rows) : "", state.board?.injuryNote, ...selfCheckLines(state.board)].filter(Boolean) }, // item 7: the game's stamps, its figures reading and saved copies (the header's chips) and the injury report's counts, moved here
   });
   if (state.activeTab === "projections") {
     renderShowdownProjectionsPanel(els.projectionsPanel, state.board, {

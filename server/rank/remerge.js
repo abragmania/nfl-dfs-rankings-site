@@ -10,6 +10,7 @@ import { computeTags } from "./tags-core.js";
 import { buildGames } from "./games.js";
 import { summariseOwnership } from "./ownership-summary.js";
 import { zeroOutRows } from "./sidelined.js";
+import { withSelfCheck } from "./self-check.js";
 
 export function reconstructBaseRows(rows) {
   return rows.map((r) => ({ ...r, proj: r.projBase, own: r.ownBase }));
@@ -86,5 +87,5 @@ export function remergeOverrides(previousBoard, full, overrides, generatedAt = n
     ownership: (prevTabNotes.ownership ?? []).filter((n) => !staleOverrideNotes.has(n)),
     favorites: []
   };
-  return { ...previousBoard, generatedAt, rows, games, ownership, notes, tabNotes };
+  return withSelfCheck({ ...previousBoard, generatedAt, rows, games, ownership, notes, tabNotes }); // G65: the remerged board checks itself
 }

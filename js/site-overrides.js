@@ -25,6 +25,7 @@
 // null means unavailable. Pure apart from that: no network, no page.
 import { applyOverrideChanges, validateOverrides, mergeOverridesIntoRows, assertShowdownWriteIds, BUMP_MAX_STEPS, STATUS_VALUES } from "../server/overrides/merge.js";
 import { remergeOverrides } from "../server/rank/remerge.js";
+import { withSelfCheck } from "../server/rank/self-check.js";
 import { sidelinedIdsOf, zeroOutRows, rowIsOut, statusWordOf } from "../server/rank/sidelined.js";
 import { valueOf } from "../server/rank/value-core.js";
 import { lineupRows } from "../server/showdown/lineup-rows.js";
@@ -387,7 +388,7 @@ export function remergeShowdown(board, overrides) {
   const typedProj = moved("proj") || moved("bump"); // a projection or a bump the visitor typed, or cleared from Adam's: either moves the main players' points R85 reads
   const removed = rows.filter(rowIsOut).map((r) => ({ id: r.id, name: r.name, team: r.team, pos: r.pos, status: statusWordOf(r) }));
   const sameFigures = figuresText(overrides, onBoard) === figuresText(publishedAll, onBoard);
-  return {
+  return withSelfCheck({ // G65: the in-browser board checks itself as the app's does (server/rank/self-check.js)
     ...board,
     rows,
     removed,
@@ -395,7 +396,7 @@ export function remergeShowdown(board, overrides) {
     // The baked key stays while the figures are the published ones (a star, a note, or a clean board); it moves with a number that differs from them, so a batch made before it is refused after.
     figures: board.figures && !sameFigures ? { ...board.figures, key: `${board.figures.key ?? ""}~${figuresText(overrides, onBoard)}` } : board.figures,
     ...(typedProj ? { deviceNote: SHOWDOWN_DEVICE_NOTE } : {}),
-  };
+  });
 }
 
 // The Hidden note the board's builder writes (server/showdown/board.js, rank/select-showdown.js) over the men listed out; one wording, kept in step with them by tests/showdown-board.test.mjs.

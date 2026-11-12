@@ -11,6 +11,13 @@ export function ownCoverageLine(rows) {
   return published === 0 ? "Own: no published DraftKings numbers yet; blank until there are." : `Own: published DraftKings numbers for ${published} of ${list.length} players; the rest blank.`;
 }
 
+/** G65: the board's self-check failures (one plain line each), then its counts of what it set aside, for the Notes card at the foot of the Sources page (never the main view); [] when the board passes or carries none. */
+export function selfCheckLines(board) {
+  const failures = Array.isArray(board?.selfCheck?.failures) ? board.selfCheck.failures.map((f) => f?.line) : [];
+  const notes = Array.isArray(board?.selfCheck?.notes) ? board.selfCheck.notes : [];
+  return [...failures, ...notes].map((l) => String(l ?? "")).filter(Boolean);
+}
+
 // The injury note's stale sentences in a few words (lead 3:10 PM 11-11): the board's own wording is matched, and anything else is kept as written.
 const SHORTER = [
   [/^ESPN injury report is a saved copy because the live fetch failed\b.*$/, "Injuries: saved copy (live fetch failed)."],
