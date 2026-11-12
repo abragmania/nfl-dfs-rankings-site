@@ -281,7 +281,7 @@
 .nl .lu.wk .cap .capt .perop{grid-column:3;justify-self:start;align-items:flex-start}
 .nl .lu.wk .capt .none,.nl .lu.wk .capt .none b{font-size:12.5px;font-weight:400;color:var(--dim)}
 /* At about 1920 the optimizer's footer columns are too tight for "Per open slot" beside "Salary used": tighter labels keep them apart. */
-@media (min-width:901px) and (max-width:2100px){.nl .opt .lu.wk .cap .capt{font-size:10px;letter-spacing:.3px}.nl .opt .lu.wk .cap .capt b{font-size:20px}.nl .opt .lu.wk .cap .capt .perop{white-space:normal;max-width:60px;line-height:1.15}}
+@media (min-width:901px) and (max-width:2100px){.nl .opt .lu.wk .cap .capt{font-size:10px;letter-spacing:.3px}.nl .opt .lu.wk .cap .capt b{font-size:20px}.nl .opt .lu.wk .cap .capt .perop{white-space:nowrap;line-height:1.15}}
 /* A narrow optimizer panel (the 1920 laptop, about 530px): tighter columns, no position badge, and a long name (over 20 letters) shows its first name as an initial, so the last name and "Empty" always show. */
 .nl .lu.wk{container-type:inline-size}
 @container (max-width:640px){

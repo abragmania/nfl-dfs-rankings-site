@@ -174,6 +174,8 @@ body:not(.nl-page) #classic-header{padding:0 var(--sp-5)}
 .nl .tbl td.num{min-width:0}
 .nl #thead th:last-child,.nl #tbody td:last-child{width:auto}
 .nl #thead th.k-star{width:40px}.nl #thead th.k-sal{width:84px}.nl #thead th.k-proj{width:78px}.nl #thead th.k-own{width:116px}.nl #thead th.k-val{width:62px}.nl #thead th.k-pos{width:52px}.nl #thead th.k-thumbs{width:76px}.nl #thead th.k-lock{width:52px}.nl #thead th.k-excl{width:66px}.nl #thead th.k-lim{width:56px}.nl #thead th.k-cash{width:178px}.nl #thead th.k-tg{width:58px}.nl #thead th.k-tags{width:190px}
+/* Pool beside the panel (about 1830 to 2199 wide, about 1120px of table): the fixed columns left Player no room, so they tighten and the name keeps what is left. */
+@media (min-width:1831px) and (max-width:2199px){.nl #thead th.k-star{width:36px}.nl #thead th.k-sal{width:70px}.nl #thead th.k-proj{width:70px}.nl #thead th.k-own{width:90px}.nl #thead th.k-val{width:52px}.nl #thead th.k-pos{width:46px}.nl #thead th.k-thumbs{width:64px}.nl #thead th.k-lock{width:46px}.nl #thead th.k-excl{width:54px}.nl #thead th.k-lim{width:50px}.nl #thead th.k-cash{width:150px}.nl #thead th.k-tg{width:48px}.nl #thead th.k-tags{width:110px}}
 .nl .tbl th.ctl,.nl .tbl td.ctl,.nl .tbl th.bmp,.nl .tbl td.bmp,.nl .tbl th.lim,.nl .tbl td.lim,.nl .tbl th.cs,.nl .tbl td.cs{text-align:center;padding-left:0;padding-right:0}
 .nl .tbl td.bmp .bump-ctl,.nl .tbl td.cs .tabs{display:inline-flex;vertical-align:middle}
 .nl .tbl td.ctl:first-child,.nl .tbl th.ctl:first-child{padding-left:10px}
