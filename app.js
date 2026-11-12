@@ -44,6 +44,7 @@ import { makeFilterDebounce } from "./js/filter-debounce.js";
 import { initPlayerCard } from "./js/player-card.js";
 import { delegateBumpClicks, bumpPatch } from "./js/bump-control.js"; // Adam 2026-10-22: ± bump
 import { delegateRowReset } from "./js/row-reset.js"; // B12: the pool's row reset (typed numbers and bump)
+import { delegateStatusClicks, statusPatch } from "./js/status-switch.js"; // Adam 2026-11-12: In / Out / Auto per man
 import { stickyHeights } from "./js/build-notice.js"; // A15: the sticky stack's heights, the notice a layer of it
 import { staleLineText, ownCoverageLine } from "./js/data-as-of.js"; // item 7: the main view's one short stale line; the rest is the Sources page's Data as of block
 
@@ -260,9 +261,14 @@ const tableCallbacks = {
   // Adam 2026-10-22: ± bump from an Optimizer pool row (bumpPatch: 0 steps is sent as null, which removes it). Applied as a star
   // toggle's answer is; the answer (null when refused) goes back so the pair is re-enabled only after a refusal.
   onBump: (id, steps) => writeOnTab((tab) => putOverrides(bumpPatch(id, steps), tab), "the projection bump"),
+  // Adam 2026-11-12: his In / Out / Auto (null), kept once for both tabs as a star is; the answer (null when refused) goes back so the switch is given back only after a refusal.
+  onStatus: (id, next) => writeOnTab((tab) => putOverrides(statusPatch(id, next), tab), "the In / Out setting", { rowId: id, shared: true }),
 };
 // The pool's ± pairs are redrawn with the Optimizer's mount, so one listener on the mount serves them all (bump-control.js).
 delegateBumpClicks(el.lineupMount, { rowOf: findRow, onBump: tableCallbacks.onBump });
+// Adam 2026-11-12: the pool's In / Out / Auto switch on each status badge, and the Sources page's Player status table; a refusal is said in the status line (writeOnTab) and under his name.
+delegateStatusClicks(el.lineupMount, tableCallbacks.onStatus, (id) => setPoolRowError(id, el.status.textContent));
+delegateStatusClicks(el.sourcesPanel, tableCallbacks.onStatus);
 // B12: the pool's row reset (the x beside a projection that carries a typed number or a bump); a refusal is said under his name in the pool.
 delegateRowReset(el.lineupMount, {
   onReset: async (id) => {
@@ -464,7 +470,7 @@ function renderDynamic() {
   } else if (isSourcesTab(activeTab)) {
     // The Sources page (always the main slate's choices, D57), then the Projections or Ownership table under its Players heading.
     const asOf = { games: activeSlateGames(board), lines: [modeStampText(board.mode), twoGunCoverageText(board.mode), ownCoverageLine(slateRows), board.injuryNote].filter(Boolean) }; // item 7: what the Optimizer's banner and the line under the top bar said, here in short lines
-    renderSourcesPage(el.sourcesPanel, { board, slate: "main", showdown: false, activeKey: activeTab, onPlayersTab: onTabClick, onChanged: repaintAfterSourceSave, asOf });
+    renderSourcesPage(el.sourcesPanel, { board, slate: "main", showdown: false, activeKey: activeTab, onPlayersTab: onTabClick, onChanged: repaintAfterSourceSave, asOf, canSetStatus: true });
     if (activeTab === "projections") renderProjectionsPanel(el.projectionsPanel, board, sourceCallbacks);
     else renderOwnershipPanel(el.ownershipPanel, board, sourceCallbacks);
   } else if (activeTab === "showdown") {

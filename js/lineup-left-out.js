@@ -42,9 +42,8 @@ function contextOf({ rows, lockedIds, excludedIds, avoidGames, maxPerTeam, basis
 
 /** The same DraftKings player: a board can carry him under two ids, so a seated or held man is compared by this (lineup.js dkIdentity's rule, the page's one meaning of "the same man"). */
 const dkOf = (row) => String(row?.dkId ?? row?.id);
-const revived = (row) => (row?.flags ?? []).includes("revived") || row?.override?.revive === true;
-/** Barred from the panel: a man out; and in TwoGun mode a revived one too, whatever the engine would allow (Adam's standing rule: never raise an Out or revived man in TwoGun mode). */
-const barred = (row, ctx) => rowIsOut(row) || (ctx.twoGun && revived(row));
+/** Barred from the panel: a man out. A revived man (his typed number) is in, in every mode (Adam 2026-11-12: a typed number always wins). `ctx` kept for the callers' shape. */
+const barred = (row, _ctx) => rowIsOut(row);
 
 /** The identities of the men in the `seats` and the padlocks: a man held is never listed, nor a twin of his. */
 function readHeld(seats, lockedIds, ctx) {

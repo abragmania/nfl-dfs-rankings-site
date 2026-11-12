@@ -16,7 +16,7 @@
 // Lineups are ranked by total projection, then by lower salary, then by the sorted player ids, so ties are settled
 // the same way on every machine. Projections are compared as integers (millionths of a point) so float rounding
 // never decides anything.
-import { rowIsOut } from "../rank/sidelined.js"; // pure: the public site runs this engine in the browser (D69)
+import { rowIsOut, statusSetting } from "../rank/sidelined.js"; // pure: the public site runs this engine in the browser (D69)
 import { assignSlots } from "./dk-entries.js";
 import { warn } from "../lib/log.js";
 import { BUILD_CEILING_MS, stopSentence } from "./build-control.js"; // pure leaf: the one ten minute limit
@@ -369,7 +369,7 @@ function rowFlags(row, pos, opts) {
     // revivedOut is the reason ("noCeiling", meaning no figure, or "calledOut") or false.
     revivedOut: figureBuild && flags.includes("revived") && (figure === null || (row.tg && row.tg.call) === "OUT")
       ? (figure === null ? "noCeiling" : "calledOut") : false,
-    lateOut: outAfterStamp(flags)
+    lateOut: outAfterStamp(flags) && statusSetting(row) !== "in" // Adam's own In clears it (2026-11-12)
   };
 }
 

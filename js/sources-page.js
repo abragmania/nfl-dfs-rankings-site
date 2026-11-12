@@ -14,13 +14,14 @@ import { isSampleMode, getBoard, postSources, postMode } from "./api.js";
 import { selectionHtml, playersHeadHtml, sharePercents, WEIGHT_MIN, WEIGHT_MAX } from "./sources-page-html.js";
 import { selectionFromBoard, makeSiteApi, unmatchedRows } from "./sources-page-board.js";
 import { dataAsOfHtml } from "./data-as-of.js"; // item 7 (Adam 2:48 PM 11-11): Data as of, at the top of the page
+import { playerStatusTableHtml } from "./status-switch.js"; // Adam 2026-11-12: the Player status card
 
 export const DEBOUNCE_MS = 300;
 export const SAVED_MS = 1600;
 export { selectionHtml, playersHeadHtml, sharePercents, sourceIsTicked } from "./sources-page-html.js";
 export { selectionFromBoard } from "./sources-page-board.js";
 
-const SKELETON = `<div class="sources-page"><div class="sp-asof-host"></div><div class="sp-controls"></div><div class="sp-players-head"></div></div>`;
+const SKELETON = `<div class="sources-page"><div class="sp-asof-host"></div><div class="sp-controls"></div><div class="sp-status-host"></div><div class="sp-players-head"></div></div>`;
 export const NOT_A_LIST = "The server answered, but not with a list of sources the page can read.";
 const siteApi = makeSiteApi({ getBoard, postSources, postMode });
 
@@ -354,6 +355,7 @@ function mount(st, container) {
   st.controlsEl = container.querySelector(".sp-controls");
   st.headEl = container.querySelector(".sp-players-head");
   st.asOfEl = container.querySelector(".sp-asof-host");
+  st.statusEl = container.querySelector(".sp-status-host"); // Adam 2026-11-12: the Player status card (its clicks are the caller's, delegated on the panel)
   wire(st);
 }
 
@@ -390,13 +392,15 @@ function drawFromBoard(st, ctx) {
 /**
  * Draws the Sources page into `container` (classic: #sources-panel; Showdown: #sd-sources-panel).
  * ctx: { board, slate: "main" | a Showdown key, showdown: boolean, activeKey: "projections" | "ownership",
- *        onPlayersTab(key), onChanged(): Promise (the board repaint after a save), onSelection() (a read of the selection arrived), api?, readOnly? }
+ *        onPlayersTab(key), onChanged(): Promise (the board repaint after a save), onSelection() (a read of the selection arrived), api?, readOnly?,
+ *        canSetStatus (the Player status card's switches are live; the caller delegates their clicks on `container`, status-switch.js) }
  */
 export function renderSourcesPage(container, ctx) {
   const st = pageOf(container);
   st.ctx = ctx;
   mount(st, container);
   if (st.asOfEl) st.asOfEl.innerHTML = ctx.asOf ? dataAsOfHtml(ctx.board, ctx.asOf) : ""; // item 7: the board's provenance, moved here from the main views
+  if (st.statusEl) st.statusEl.innerHTML = Array.isArray(ctx.board?.rows) ? playerStatusTableHtml(ctx.board.rows, { canWrite: Boolean(ctx.canSetStatus) }) : ""; // Adam 2026-11-12: who is in or out
   st.headEl.innerHTML = playersHeadHtml(ctx.activeKey);
   if (fromBoard(ctx)) {
     drawFromBoard(st, ctx);

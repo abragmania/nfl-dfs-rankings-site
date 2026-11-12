@@ -10,7 +10,7 @@ export const DEFAULT_TAB = "gpp";
 
 /** The sections of a change that are the tab's own figures, and the ones both tabs share. */
 export const TAB_SECTIONS = Object.freeze(["proj", "own", "bump"]);
-export const SHARED_SECTIONS = Object.freeze(["stars", "notes"]);
+export const SHARED_SECTIONS = Object.freeze(["stars", "notes", "status"]); // Adam's In / Out (2026-11-12) is about the man, as a star is: one copy for both tabs
 
 /** { tab } for a request's tab (absent or null is GPP), or { error } with the plain sentence a 400 answers. */
 export function readTab(raw) {
@@ -64,6 +64,7 @@ export function tabOverrides(figures, shared) {
     revive: [...(figures?.revive ?? [])],
     reviveTwoGun: [...(figures?.reviveTwoGun ?? [])],
     bump: { ...(figures?.bump ?? {}) },
+    status: { ...(shared?.status ?? {}) },
     updatedAt: figures?.updatedAt ?? null
   };
 }

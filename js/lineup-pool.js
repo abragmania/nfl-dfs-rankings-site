@@ -17,6 +17,7 @@ import { bumpControlHtml, bumpFigureOnlyHtml } from "./bump-control.js"; // sinc
 import { messageIsFor, rowMessageHtml, TONE_WARN } from "./row-message.js";
 import { poolPicker } from "./lineup-pool-fit.js"; // A18, D3: what a click on each pool row may do, and why a row is greyed
 import { rowResetHtml } from "./row-reset.js"; // B12: the x beside a figure that clears his typed numbers and bump
+import { statusSwitchHtml } from "./status-switch.js"; // Adam 2026-11-12: In / Out / Auto on the status badge (app.js delegates the clicks)
 import { crossedNoteHtml } from "./limit-cross.js"; // item 18: Min % above Max % is said under the Max box
 import { refusalNoteHtml } from "./limit-box.js"; // item 7: a refused Min % / Max % text is drawn beside its row until the next press
 import { state, opt, LINEUP_SLOTS, SALARY_CAP, dkIdentity } from "./lineup.js";
@@ -248,17 +249,21 @@ function poolRowMessageHtml(id) {
 /** What a Proj or Own reset puts back, in words: a listed-out man goes back to 0 (R82: out = 0), the rest to the blend's or the published number. */
 function backWords(row, field) {
   const out = field === "proj" && (rowIsOut(row) || (row.flags ?? []).includes("revived"));
-  const outLabel = STATUS_INFO[String(row.status ?? "").trim().toLowerCase()]?.label || row.status || "injured";
   const base = field === "proj" ? row.projBase : row.ownBase;
-  return out ? `Back to 0 (listed ${outLabel})` : `Back to the original (${base == null ? "none" : dec1(base)})`;
+  return out ? `Back to 0 (${outWhy(row)})` : `Back to the original (${base == null ? "none" : dec1(base)})`;
 }
 
 /** The hover on a typed number: his own number, and what it replaces. */
 function typedTitle(row, field) {
   const out = field === "proj" && (rowIsOut(row) || (row.flags ?? []).includes("revived"));
-  const outLabel = escapeHtml(STATUS_INFO[String(row.status ?? "").trim().toLowerCase()]?.label || row.status || "injured");
   const base = field === "proj" ? row.projBase : row.ownBase;
-  return `Your number. ${out ? `Without it: 0 (listed ${outLabel})` : `Original: ${base == null ? "none" : escapeHtml(dec1(base))}`}`;
+  return `Your number. ${out ? `Without it: 0 (${escapeHtml(outWhy(row))})` : `Original: ${base == null ? "none" : escapeHtml(dec1(base))}`}`;
+}
+
+/** Why an out man counts 0, in a few words: his own Out (2026-11-12), else the word he is listed with. */
+function outWhy(row) {
+  if (row.override?.status === "out") return "you marked him Out";
+  return `listed ${STATUS_INFO[String(row.status ?? "").trim().toLowerCase()]?.label || row.status || "injured"}`;
 }
 
 /** The inside of the Proj cell: the figure (typed ones coloured, the bump's tint on a bumped one), the flag and TwoGun dots, and the small x that puts the original back. */
@@ -300,7 +305,7 @@ function rightRowHtml(row, picked, placedSet, posShown, maxMap = {}, minMap = {}
   // The name cell (A1): logo, name, position and injury letter on the first line, team and matchup (D43) on the second, the click's message under them. The TwoGun dot follows the name for a status that changed after his board was made.
   const cells = {
     star: () => `<td class="ctl"><button type="button" class="fav${row.starred ? " on" : ""}" title="${row.starred ? "Starred" : "Star"}" data-action="toggle-star" data-id="${idAttr(id)}"${poolCallbacks?.onToggleStar ? "" : " disabled"}>${row.starred ? "★" : "☆"}</button></td>`,
-    player: () => `<td class="pl"><div class="who">${teamLogoHtml(row.team, "logo", 24)}<div class="whot"><div class="l1"><span class="name player-name" title="${name}">${cardNameHtml(row)}</span>${playerTagHtml(row)}${posShown && row.pos ? `<span class="pos">${escapeHtml(row.pos)}</span>` : ""}${markerHtml(twoGunMarkerTexts(row, "status"))}</div><div class="l2">${escapeHtml(row.team ?? "")}${opponentLabel(row) ? ` · ${escapeHtml(opponentLabel(row))}` : ""}${greyed && picked.short ? ` · <span class="blk-why">${escapeHtml(picked.short)}</span>` : ""}</div></div></div>${poolRowMessageHtml(id)}</td>`, // a greyed row says why under his name (walkthrough friction), the full sentence on hover
+    player: () => `<td class="pl"><div class="who">${teamLogoHtml(row.team, "logo", 24)}<div class="whot"><div class="l1"><span class="name player-name" title="${name}">${cardNameHtml(row)}</span>${statusSwitchHtml(row, playerTagHtml(row), { canWrite: Boolean(poolCallbacks?.onStatus) })}${posShown && row.pos ? `<span class="pos">${escapeHtml(row.pos)}</span>` : ""}${markerHtml(twoGunMarkerTexts(row, "status"))}</div><div class="l2">${escapeHtml(row.team ?? "")}${opponentLabel(row) ? ` · ${escapeHtml(opponentLabel(row))}` : ""}${greyed && picked.short ? ` · <span class="blk-why">${escapeHtml(picked.short)}</span>` : ""}</div></div></div>${poolRowMessageHtml(id)}</td>`, // a greyed row says why under his name (walkthrough friction), the full sentence on hover
     salary: () => `<td class="num sal">${money(row.salary)}${markerHtml(twoGunMarkerTexts(row, "salary"))}</td>`,
     proj: () => `<td class="num proj"><div class="editable-cell" data-field="proj" data-id="${idAttr(id)}">${projCellInner(row, { canReset: !noWrite })}</div></td>`,
     own: () => `<td class="num bar own">${ownBar}<span class="v"><div class="editable-cell" data-field="own" data-id="${idAttr(id)}">${ownCellInner(row, { canReset: !noWrite })}</div></span></td>`,

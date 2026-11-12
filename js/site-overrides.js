@@ -23,9 +23,9 @@
 // site-lineups.js). Saved data that is not well formed is ignored entry by entry; a write the browser refuses is a
 // plain refusal and the board is left as it was. `storage` is passed in (the page's localStorage or a test double);
 // null means unavailable. Pure apart from that: no network, no page.
-import { applyOverrideChanges, validateOverrides, mergeOverridesIntoRows, assertShowdownWriteIds, BUMP_MAX_STEPS } from "../server/overrides/merge.js";
+import { applyOverrideChanges, validateOverrides, mergeOverridesIntoRows, assertShowdownWriteIds, BUMP_MAX_STEPS, STATUS_VALUES } from "../server/overrides/merge.js";
 import { remergeOverrides } from "../server/rank/remerge.js";
-import { sidelinedIdsOf, zeroOutRows, rowIsOut } from "../server/rank/sidelined.js";
+import { sidelinedIdsOf, zeroOutRows, rowIsOut, statusWordOf } from "../server/rank/sidelined.js";
 import { valueOf } from "../server/rank/value-core.js";
 import { lineupRows } from "../server/showdown/lineup-rows.js";
 import { TWOGUN_ID } from "../server/sources/selection-core.js";
@@ -40,10 +40,11 @@ export function storageKey(season, week) {
 }
 
 const NUMBER_FIELDS = ["proj", "own"];
-const emptyEdits = () => ({ proj: {}, own: {}, stars: {}, notes: {}, bump: {}, cleared: { proj: {}, own: {}, bump: {} } });
+// status (Adam 2026-11-12): the visitor's In / Out per man, "in" | "out", or null to clear Adam's published one (Auto); kept with the stars and notes.
+const emptyEdits = () => ({ proj: {}, own: {}, stars: {}, notes: {}, bump: {}, status: {}, cleared: { proj: {}, own: {}, bump: {} } });
 
 function isEmpty(edits) {
-  return ["proj", "own", "stars", "notes", "bump"].every((k) => Object.keys(edits[k]).length === 0);
+  return ["proj", "own", "stars", "notes", "bump", "status"].every((k) => Object.keys(edits[k] ?? {}).length === 0);
 }
 
 // A bump is a number change too, so Reset all undoes it.
@@ -57,7 +58,7 @@ const validBump = (v) => Number.isInteger(v) && v !== 0 && Math.abs(v) <= BUMP_M
 
 function copyEdits(edits) {
   return {
-    proj: { ...edits.proj }, own: { ...edits.own }, stars: { ...edits.stars }, notes: { ...edits.notes }, bump: { ...edits.bump },
+    proj: { ...edits.proj }, own: { ...edits.own }, stars: { ...edits.stars }, notes: { ...edits.notes }, bump: { ...edits.bump }, status: { ...(edits.status ?? {}) },
     cleared: { proj: { ...edits.cleared.proj }, own: { ...edits.cleared.own }, bump: { ...edits.cleared.bump } },
     ...(edits.revive ? { revive: { ...edits.revive } } : {}),
   };
@@ -80,6 +81,7 @@ export function cleanEdits(raw, bad = () => {}) {
   for (const [id, v] of section(raw, "stars")) keep(typeof v === "boolean" && id !== "", () => { out.stars[id] = v; });
   for (const [id, v] of section(raw, "notes")) keep(v === null || (typeof v === "string" && v.length < 500), () => { out.notes[id] = v; });
   for (const [id, v] of section(raw, "bump")) keep(v === null || validBump(v), () => { out.bump[id] = v; });
+  for (const [id, v] of section(raw, "status")) keep(v === null || STATUS_VALUES.includes(v), () => { out.status[id] = v; });
   // Whether each typed projection revived a man the baked board listed out, decided when it was typed (as the app decides at its write, never again on a read). Edits saved before this
   // record existed have none (`revive` absent), and are judged once, on the next write.
   if (isObject(raw.revive)) {
@@ -164,11 +166,12 @@ function writeEdits(storage, season, week, edits, adapter = CLASSIC) {
 
 /** Adam's published overrides, read back off the baked board's rows (mergeOverridesIntoRows put every one there). */
 export function publishedOverrides(board) {
-  const out = { proj: {}, own: {}, stars: [], notes: {}, revive: [], bump: {}, updatedAt: null };
+  const out = { proj: {}, own: {}, stars: [], notes: {}, revive: [], bump: {}, status: {}, updatedAt: null };
   for (const row of board?.rows ?? []) {
     if (!row || row.id == null) continue;
     const id = String(row.id);
     if (row.override?.proj != null) out.proj[id] = row.override.proj;
+    if (STATUS_VALUES.includes(row.override?.status)) out.status[id] = row.override.status; // Adam's In / Out (2026-11-12)
     if (row.override?.bump != null) out.bump[id] = row.override.bump; // Adam 2026-10-22: his ± bump survives a visitor's edit
     if (row.override?.revive === true) out.revive.push(id);
     if (row.override?.own != null) out.own[id] = row.override.own;
@@ -208,6 +211,12 @@ function recordChanges(edits, changes, published, sidelined = null) {
   }
   for (const [id, v] of Object.entries(changes?.stars ?? {})) next.stars[id] = Boolean(v); // truthy stars, as the app
   for (const [id, v] of Object.entries(changes?.notes ?? {})) next.notes[id] = v;
+  // The In / Out (Adam 2026-11-12): "in" or "out" kept; null (Auto) clears Adam's published one, kept as null, or drops the visitor's own when Adam has none.
+  for (const [id, v] of Object.entries(changes?.status ?? {})) {
+    if (STATUS_VALUES.includes(v)) next.status[id] = v;
+    else if (published.status?.[id] !== undefined) next.status[id] = null;
+    else delete next.status[id];
+  }
   // The ± bump: the new total of steps, as the app takes it; null or 0 clears Adam's published bump (kept as null, the
   // cleared bump recorded) or drops the visitor's own when Adam has none.
   for (const [id, v] of Object.entries(changes?.bump ?? {})) {
@@ -292,7 +301,7 @@ export function resetPlayerEdits(storage, season, week, board, slate, id, adapte
  * Adam's published numbers; the visitor's stars and notes stay (D72).
  */
 export function resetAllEdits(storage, season, week, board, slate, adapter = CLASSIC) {
-  return write(storage, season, week, board, slate, (edits) => ({ ...emptyEdits(), stars: { ...edits.stars }, notes: { ...edits.notes } }), adapter);
+  return write(storage, season, week, board, slate, (edits) => ({ ...emptyEdits(), stars: { ...edits.stars }, notes: { ...edits.notes }, status: { ...(edits.status ?? {}) } }), adapter);
 }
 
 // ---------------------------------------------------------------------------------------------------------------------
@@ -376,7 +385,7 @@ export function remergeShowdown(board, overrides) {
   const keep = (m) => Object.entries(m ?? {}).filter(([id]) => onBoard.has(id)).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
   const moved = (field) => JSON.stringify(keep(overrides?.[field])) !== JSON.stringify(keep(publishedAll[field]));
   const typedProj = moved("proj") || moved("bump"); // a projection or a bump the visitor typed, or cleared from Adam's: either moves the main players' points R85 reads
-  const removed = rows.filter(rowIsOut).map((r) => ({ id: r.id, name: r.name, team: r.team, pos: r.pos, status: r.status }));
+  const removed = rows.filter(rowIsOut).map((r) => ({ id: r.id, name: r.name, team: r.team, pos: r.pos, status: statusWordOf(r) }));
   const sameFigures = figuresText(overrides, onBoard) === figuresText(publishedAll, onBoard);
   return {
     ...board,
@@ -407,7 +416,9 @@ function hiddenNoteWith(notes, was, now) {
 /** A short stable text of what moves a figure (typed Proj and Own, bumps, revives) for the ids on the board, so a batch made before an edit is refused after it, as the server's figures key does. */
 function figuresText(o, onBoard) {
   const entries = (m) => Object.entries(m ?? {}).filter(([id]) => onBoard.has(id)).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
-  const text = JSON.stringify([entries(o?.proj), entries(o?.own), entries(o?.bump), [...(o?.revive ?? [])].filter((id) => onBoard.has(id)).sort()]);
+  const parts = [entries(o?.proj), entries(o?.own), entries(o?.bump), [...(o?.revive ?? [])].filter((id) => onBoard.has(id)).sort()];
+  const status = entries(o?.status); // Adam's In / Out moves a figure too (2026-11-12); none set keeps the older text
+  const text = JSON.stringify(status.length ? [...parts, status] : parts);
   let h = 2166136261;
   for (let i = 0; i < text.length; i++) h = Math.imul(h ^ text.charCodeAt(i), 16777619) >>> 0;
   return h.toString(16);
@@ -420,7 +431,7 @@ const SHOWDOWN = Object.freeze({ keyOf: (_season, gameKey) => `${SHOWDOWN_STORAG
 // app's Cash board (board-cash.json), which carries Adam's Cash numbers and the shared stars and notes.
 export const SHOWDOWN_CASH_STORAGE_PREFIX = "nfldfs-site-showdown-cash-overrides:";
 export const CLASSIC_CASH_STORAGE_PREFIX = "nfldfs-site-cash-overrides:"; // the main slate's Cash tab, per week as its GPP entry
-const SHARED_FIELDS = ["stars", "notes"];
+const SHARED_FIELDS = ["stars", "notes", "status"]; // the In / Out (Adam 2026-11-12) is about the man, as a star
 
 /** One entry's object, or null when there is none or it is not well formed (ignored, as readEdits ignores it). */
 function entryObject(storage, name) {
@@ -444,18 +455,18 @@ function withCashTab(base, cashKeyOf) {
       const shared = entryObject(storage, base.keyOf(season, week));
       if (!own && !shared) return null;
       const figures = Object.fromEntries(Object.entries(own ?? {}).filter(([k]) => !SHARED_FIELDS.includes(k)));
-      return JSON.stringify({ ...figures, stars: shared?.stars, notes: shared?.notes });
+      return JSON.stringify({ ...figures, stars: shared?.stars, notes: shared?.notes, status: shared?.status });
     },
     // The numbers to Cash's entry, the stars and notes to GPP's (its numbers untouched); the two move together or not at all.
     save: (storage, season, week, edits) => {
-      const { stars, notes, ...figures } = edits;
+      const { stars, notes, status, ...figures } = edits;
       const own = cashKeyOf(season, week);
       const was = storage.getItem(own);
       if (["proj", "own", "bump"].some((f) => Object.keys(figures[f]).length > 0)) storage.setItem(own, JSON.stringify(figures));
       else storage.removeItem(own);
       try {
         const gppKey = base.keyOf(season, week);
-        const next = { ...(entryObject(storage, gppKey) ?? {}), stars, notes };
+        const next = { ...(entryObject(storage, gppKey) ?? {}), stars, notes, status };
         if (isEmpty(cleanEdits(next))) storage.removeItem(gppKey);
         else storage.setItem(gppKey, JSON.stringify(next));
       } catch (e) {

@@ -12,7 +12,7 @@ import { showdownFileKeyOf } from "./entries-plan.js";
 import { classicFilePool, kickoffLookup } from "./classic-seat.js";
 import { assignSlots, validateLineup, earliestKickoffMs } from "../server/lineup/dk-entries.js";
 import { validateShowdownEntry } from "../server/lineup/dk-showdown-entries.js";
-import { entriesInjuryProblem, rowIsSidelined, isRevived } from "../server/rank/sidelined.js";
+import { entriesInjuryProblem, rowIsSidelined, isRevived, statusWordOf } from "../server/rank/sidelined.js";
 
 export const CLASSIC_SEATS = Object.freeze(["QB", "RB", "RB", "WR", "WR", "WR", "TE", "FLEX", "DST"]);
 export const SHOWDOWN_SEATS = Object.freeze(["CPT", "FLEX", "FLEX", "FLEX", "FLEX", "FLEX"]);
@@ -53,7 +53,7 @@ function injuryOptions(men) {
   const revived = new Map();
   for (const { row, ids } of men) {
     for (const id of ids) {
-      statusById.set(id, row.status ?? null);
+      statusById.set(id, statusWordOf(row)); // Adam's own In reads no status, his Out "Out" (2026-11-12)
       if (isRevived(row)) revived.set(id, row.override.proj);
       else if (rowIsSidelined(row)) sidelinedIds.add(id);
     }

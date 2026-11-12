@@ -1,9 +1,12 @@
 // TwoGun's callText already starts with its own "[lean] " tag; the tag is printed once, so that prefix is dropped.
 export const untagged =(text) => (text ? String(text).replace(/^\[[^\]]*\]\s*/, "") : "");
 
+// Adam's own In / Out (overrides.status, 2026-11-12), off the merged row: "in", "out" or null (Auto). The server's copy is server/rank/sidelined.js statusSetting.
+const settingOf = (row) => (row?.override?.status === "in" || row?.override?.status === "out" ? row.override.status : null);
+
 export function twoGunOutReason(row) {
   const flags = Array.isArray(row?.flags) ? row.flags : [];
-  if (flags.includes("revived")) return null;
+  if (flags.includes("revived") || settingOf(row) === "in") return null;
   const parts = [];
   if (flags.includes("outAfterStamp")) {
     parts.push("Ruled out after TwoGun's board was made (the injury report now lists him out). Projection 0.");
@@ -17,8 +20,10 @@ export function twoGunOutReason(row) {
 }
 
 // The one out-test (Adam 2026-10-15, R82): the grade, the row dimming and the Lineup Builder all use it.
-// A "revived" row (his typed number, 2026-10-16) is never out, whatever TwoGun says.
+// A "revived" row (his typed number, 2026-10-16) is never out, whatever TwoGun says. His own In / Out decides first (2026-11-12).
 export function rowIsOut(row) {
+  const set = settingOf(row);
+  if (set) return set === "out";
   const flags = Array.isArray(row?.flags) ? row.flags : [];
   return Boolean(twoGunOutReason(row)) || (flags.includes("injured") && !flags.includes("revived"));
 }

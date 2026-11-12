@@ -390,7 +390,7 @@ export function minRowOut(row, id, pool) {
   const salary = numOrNull(row?.salary);
   if (!pos || salary === null || salary < 0) return true;
   const flags = Array.isArray(row.flags) ? row.flags : [];
-  if (flags.includes("outAfterStamp") && !flags.includes("revived")) return true;
+  if (flags.includes("outAfterStamp") && !flags.includes("revived") && row.override?.status !== "in") return true; // Adam's own In clears it (2026-11-12)
   if (rowIsOut(row)) return true;
   const overridden = numOrNull(row.override?.proj) !== null;
   if (numOrNull(row.proj) === null || (!overridden && flags.includes("no projection"))) return true;

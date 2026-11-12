@@ -13,7 +13,7 @@
 import { escapeHtml } from "../format.js";
 import { startEdit, takeOpenEditor, showNotSaved } from "../typed-edit.js";
 import { CPT_MULT, BUMP_STEP_PCT, bumpStepsOf } from "../bump-control.js";
-import { isSetAside } from "./lineup-meter.js";
+import { statusSwitchClick } from "../status-switch.js"; // Adam 2026-11-12: In / Out / Auto on the badge
 
 const idOf = (row) => String(row?.id ?? "");
 const attr = (v) => escapeHtml(String(v ?? ""));
@@ -52,25 +52,22 @@ export function prefillOf(row, shown) {
   return steps ? shown / (1 + (BUMP_STEP_PCT / 100) * steps) : shown;
 }
 
-/** What a Proj box opens on (round 4, item 5): the number he typed (times 1.5 on the Captain list) when there is one, even if the lineup reads him as 0 (a revive set aside under
- *  TwoGun only), so an Enter can never store that 0 over it; else the figure without his bump (prefillOf). */
+/** What a Proj box opens on (round 4, item 5): the number he typed (times 1.5 on the Captain list) when there is one, even if the row reads him as 0 (his own Out),
+ *  so an Enter can never store that 0 over it; else the figure without his bump (prefillOf). */
 export function projPrefill(row, seat, shown) {
   const typed = row?.override?.proj;
   if (typed != null && Number.isFinite(Number(typed))) return seat === "cpt" ? Number(typed) * CPT_MULT : Number(typed);
   return prefillOf(row, shown);
 }
 
-/** The sentence a typed number that is set aside carries on hover (item 5): the ruling is "TwoGun mode ignores a revive". */
-export const SET_ASIDE_TEXT = "Your number is not used: he is listed out and TwoGun is the only projection source ticked, so he counts 0 in lineups.";
-
 // ---------- the cells ----------
 
-/** The Proj (FLEX list) or CPT Proj (Captain list) cell around `figureHtml` as an editor: click to type. Plain when nothing can be written (`canWrite` false). */
+/** The Proj (FLEX list) or CPT Proj (Captain list) cell around `figureHtml` as an editor: click to type. Plain when nothing can be written (`canWrite` false).
+ *  A typed number is always his number (Adam 2026-11-12), in every mode, so it always wears the typed look. */
 export function projEditHtml(row, isCpt, figureHtml, canWrite) {
   if (!canWrite) return figureHtml;
   const seat = isCpt ? "cpt" : "flex";
-  const aside = isSetAside(row); // a typed revive the lineup does not use: not drawn as his number, and the hover says why
-  return `<span class="editable-cell" data-sd-edit="proj" data-seat="${seat}" data-id="${attr(row.id)}"><span class="cell-value${isTyped(row, "proj", seat) && !aside ? " is-override" : ""}"${aside ? ` title="${attr(SET_ASIDE_TEXT)}"` : ""}>${figureHtml}</span></span>`;
+  return `<span class="editable-cell" data-sd-edit="proj" data-seat="${seat}" data-id="${attr(row.id)}"><span class="cell-value${isTyped(row, "proj", seat) ? " is-override" : ""}">${figureHtml}</span></span>`;
 }
 
 /** The Own / CPT Own cell around `text` as an editor; a typed number wears the amber emphasis (D54). A man with no Captain row has no editor on the Captain list. */
@@ -146,6 +143,13 @@ export function wirePoolEdits(root, ctx) {
     });
   });
   root.querySelectorAll("[data-sd-edit]").forEach((cell) => cell.addEventListener("click", () => beginNumber(cell, ctx)));
+  // Adam 2026-11-12: the In / Out / Auto switch on the status badge (status-switch.js); a refusal is said beside his row.
+  root.querySelectorAll("[data-action='player-status']").forEach((btn) => {
+    btn.addEventListener("click", () => statusSwitchClick(btn, (id, next) => {
+      const row = ctx.rowOf(id);
+      return row && ctx.setStatus ? ctx.setStatus(row, next) : Promise.resolve(false);
+    }, (id) => ctx.rowError?.(id, "The In / Out setting was not saved. The message above says why.")));
+  });
 }
 
 /** Before the pool's rows are redrawn: the open box, taken out (its removal is not a click away) and described for restorePoolEdit; null when none is open in `within`. */

@@ -3,11 +3,16 @@
 // public site can run it in the visitor's browser (DECISIONS.md D71). store.js keeps the disk I/O and re-exports
 // everything here, so every existing caller is unchanged.
 
+import { listedSidelined } from "../rank/sidelined.js"; // pure, as this file is
+
 /** No typed numbers: the one frozen copy that select.js, select-showdown.js, overlay.js and mode.js fall back to. */
 export const EMPTY_OVERRIDES = Object.freeze({
   proj: Object.freeze({}), own: Object.freeze({}), stars: Object.freeze([]), notes: Object.freeze({}),
-  revive: Object.freeze([]), reviveTwoGun: Object.freeze([]), bump: Object.freeze({}), updatedAt: null
+  revive: Object.freeze([]), reviveTwoGun: Object.freeze([]), bump: Object.freeze({}), status: Object.freeze({}), updatedAt: null
 });
+
+// Adam 2026-11-12: "mark players in and out". `status: {id: "in" | "out"}`; no entry is Auto (the sources' word). Kept with the stars and notes (about the man, not a figure).
+export const STATUS_VALUES = Object.freeze(["in", "out"]);
 
 // Adam 2026-10-22: the ± bump, 5% of the base a step. `bump: {id: steps}`, steps a whole number from -10 to 10, never 0
 // (0 or null removes the id). It scales the projection (typed or base) and TwoGun's point figures alike; never ownership.
@@ -109,6 +114,13 @@ export function validateOverrides(obj) {
       invalid("bump", `value for "${id}" must be a whole number of steps from -${BUMP_MAX_STEPS} to ${BUMP_MAX_STEPS}, never 0`);
     }
   }
+
+  // Adam 2026-11-12: his In / Out.
+  const status = obj.status ?? {};
+  if (typeof status !== "object" || status === null || Array.isArray(status)) invalid("status", "must be an object");
+  for (const [id, v] of Object.entries(status)) {
+    if (!STATUS_VALUES.includes(v)) invalid("status", `value for "${id}" must be "in" or "out"`);
+  }
 }
 
 const isPlainObject = (v) => typeof v === "object" && v !== null && !Array.isArray(v);
@@ -132,13 +144,18 @@ export function assertIdsOnSlate(changes, slateIds, extraIds = []) {
   if (!isPlainObject(changes)) badShape("A change to the overrides must be an object");
   const known = new Set([...(slateIds ?? [])].map(String));
   const named = new Set(extraIds.map(String));
-  for (const field of ["proj", "own", "stars", "notes", "bump"]) {
+  for (const field of ["proj", "own", "stars", "notes", "bump", "status"]) {
     const section = changes[field];
     if (section === undefined) continue;
     if (!isPlainObject(section)) badShape(`"${field}" must be an object keyed by player id`);
     if (field === "stars") {
       for (const [id, v] of Object.entries(section)) {
         if (typeof v !== "boolean") badShape(`The star for player id "${id}" must be true or false`);
+      }
+    }
+    if (field === "status") {
+      for (const [id, v] of Object.entries(section)) {
+        if (v !== null && !STATUS_VALUES.includes(v)) badShape(`The status for player id "${id}" must be "in", "out" or null (Auto)`);
       }
     }
     for (const id of Object.keys(section)) named.add(id);
@@ -165,7 +182,7 @@ export function assertShowdownWriteIds(changes, players) {
   assertIdsOnSlate(changes, list.flatMap((p) => [p.id, p.cptId]).filter((id) => id !== null && id !== undefined));
   const flexIds = new Set(list.map((p) => String(p.id)));
   const captainIds = new Set(list.map((p) => p.cptId).filter((id) => id !== null && id !== undefined).map(String));
-  for (const [section, what] of [["bump", "A ± adjustment"], ["proj", "A typed projection"], ["stars", "A star"], ["notes", "A note"]]) {
+  for (const [section, what] of [["bump", "A ± adjustment"], ["proj", "A typed projection"], ["stars", "A star"], ["notes", "A note"], ["status", "An In / Out setting"]]) {
     const onCaptain = Object.keys(changes?.[section] ?? {}).filter((id) => captainIds.has(id) && !flexIds.has(id));
     if (onCaptain.length) {
       const err = new Error(`${what} is kept under the player's FLEX id, never his Captain id (${onCaptain.join(", ")}), so nothing was saved.`);
@@ -190,6 +207,7 @@ export function applyOverrideChanges(current, changes = {}, sidelinedIds = null,
     revive: [...(current.revive ?? [])],
     reviveTwoGun: [...(current.reviveTwoGun ?? [])],
     bump: { ...(current.bump ?? {}) }, // a file written before the bump existed has none
+    status: { ...(current.status ?? {}) }, // nor the In / Out (Adam 2026-11-12)
     updatedAt: current.updatedAt
   };
 
@@ -223,13 +241,18 @@ export function applyOverrideChanges(current, changes = {}, sidelinedIds = null,
     if (v === null || v === 0) delete next.bump[id];
     else next.bump[id] = v;
   }
+  // Adam 2026-11-12: his In / Out; null is Auto (the entry goes).
+  for (const [id, v] of Object.entries(changes.status ?? {})) {
+    if (v === null) delete next.status[id];
+    else next.status[id] = v;
+  }
 
   return next;
 }
 
 /**
- * Pure function: removes one player's typed projection and ownership numbers and his ± bump. His star and note stay
- * (DECISIONS.md D72); stars and notes are copied, never shared with the input.
+ * Pure function: removes one player's typed projection and ownership numbers and his ± bump. His star, note and In / Out stay
+ * (DECISIONS.md D72); stars, notes and the In / Out are copied, never shared with the input.
  */
 export function resetPlayer(current, id) {
   const next = {
@@ -240,6 +263,7 @@ export function resetPlayer(current, id) {
     revive: (current.revive ?? []).filter((r) => r !== id),
     reviveTwoGun: (current.reviveTwoGun ?? []).filter((r) => r !== id),
     bump: { ...(current.bump ?? {}) },
+    status: { ...(current.status ?? {}) },
     updatedAt: current.updatedAt
   };
   delete next.proj[id];
@@ -250,10 +274,10 @@ export function resetPlayer(current, id) {
 
 /**
  * Pure function: clears every typed projection and ownership number and every ± bump for the week (one button,
- * PROJECT.md D28). Stars and notes stay (DECISIONS.md D72): Adam's stars outlive a reset of the numbers.
+ * PROJECT.md D28). Stars, notes and the In / Out stay (DECISIONS.md D72): Adam's stars outlive a reset of the numbers.
  */
 export function resetAll(current) {
-  return { proj: {}, own: {}, stars: [...(current.stars ?? [])], notes: { ...(current.notes ?? {}) }, revive: [], reviveTwoGun: [], bump: {}, updatedAt: current.updatedAt };
+  return { proj: {}, own: {}, stars: [...(current.stars ?? [])], notes: { ...(current.notes ?? {}) }, revive: [], reviveTwoGun: [], bump: {}, status: { ...(current.status ?? {}) }, updatedAt: current.updatedAt };
 }
 
 /**
@@ -269,11 +293,14 @@ export function mergeOverridesIntoRows(rows, overrides) {
   const stars = new Set(overrides?.stars ?? []);
   const revive = new Set(overrides?.revive ?? []);
   const bump = overrides?.bump ?? {};
+  const status = overrides?.status ?? {};
 
   return rows.map((row) => {
     const hasProj = Object.prototype.hasOwnProperty.call(proj, row.id);
     const hasOwn = Object.prototype.hasOwnProperty.call(own, row.id);
-    const marked = hasProj && revive.has(row.id);
+    const setting = Object.prototype.hasOwnProperty.call(status, row.id) && STATUS_VALUES.includes(status[row.id]) ? status[row.id] : null;
+    // A typed number always wins (Adam 2026-11-12): above 0 on a man the sources list out, it revives him in every mode, whenever it was typed; his own Out wins over it.
+    const marked = hasProj && setting !== "out" && isFiniteNum(proj[row.id]) && proj[row.id] > 0 && (revive.has(row.id) || listedSidelined(row));
     const steps = Object.prototype.hasOwnProperty.call(bump, row.id) && hasSteps(bump[row.id]) ? bump[row.id] : 0;
     const chosen = hasProj ? proj[row.id] : row.proj;
     const out = {
@@ -283,7 +310,7 @@ export function mergeOverridesIntoRows(rows, overrides) {
       proj: steps && isFiniteNum(chosen) ? scaled(chosen, steps) : chosen,
       own: hasOwn ? own[row.id] : row.own,
       override: {
-        proj: hasProj ? proj[row.id] : null, own: hasOwn ? own[row.id] : null, ...(marked ? { revive: true } : {}), ...(steps ? { bump: steps } : {})
+        proj: hasProj ? proj[row.id] : null, own: hasOwn ? own[row.id] : null, ...(marked ? { revive: true } : {}), ...(steps ? { bump: steps } : {}), ...(setting ? { status: setting } : {})
       },
       starred: stars.has(row.id)
     };

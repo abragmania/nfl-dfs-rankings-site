@@ -30,7 +30,7 @@ export { computeTotals, workingTotalsHtml }; // tests import them from here
 import { onSitePage } from "../tabs.js"; // the public site marks the page is-site: its saved cards draw no letter select (it can only be refused there)
 export { savedLineupSlotHtml, savedProjTotal } from "./lineup-saved.js";
 import { syncSwaps, swapsPanelHtml, wireSwaps, seatsAfterSwap, holdSwapsHeight, setSwapsRefusal } from "./lineup-swaps.js"; // the uniqueness swaps, full width below both columns (Adam 2026-10-18); C22: a click on a swap makes it
-import { syncMeter, meterStripHtml, wireMeter, playerFigures, lineupFigureRow } from "./lineup-meter.js"; // uniqueness / projection strip under the slots; every figure on the screen is the served board's (Adam 2026-10-20)
+import { syncMeter, meterStripHtml, wireMeter, playerFigures } from "./lineup-meter.js"; // uniqueness / projection strip under the slots; every figure on the screen is the served board's (Adam 2026-10-20)
 import { lineupReadHtml } from "./lineup-read.js"; // the "Lineup read" sentences under the meter (Adam 2026-10-29 5:10 PM: "just make it not suck")
 import { showBand } from "../show-band.js"; // A12, A15: a Load brings the whole band into view
 import { focusOpenRename } from "../rename-focus.js"; // the rename box: focused and selected on open
@@ -233,7 +233,7 @@ function repaintSlotFigures() {
   lineupsRedraw?.();
 }
 
-export const lineupReadOf = (board) => lineupReadHtml({ ...board, rows: (board?.rows ?? []).map(lineupFigureRow) }, state); // the rows as the lineup reads them (a revive TwoGun-only ignores reads 0)
+export const lineupReadOf = (board) => lineupReadHtml({ ...board, rows: board?.rows ?? [] }, state); // the board's rows, as the lineup reads them (a typed number always wins, Adam 2026-11-12)
 /** Redraws the Lineup read in place when the modes answer lands (it reads the same figures as the slots): replaced, removed when empty, or added above the status block. */
 function repaintLineupRead() {
   const holder = lastContainer.querySelector("#sd-read-holder"); // A15: the read sits under the two columns, not in the lineup band, which must fit the window

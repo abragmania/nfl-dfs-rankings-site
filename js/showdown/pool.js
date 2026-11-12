@@ -366,7 +366,7 @@ export function poolBodyHtml(board, rows, placement, figures = playerFigures, ta
     playerCell: (row) => { // a greyed row says why under his name in a few words (seat-picker.js `short`), the sentence on hover, as classic's pool does
       const p = picks.get(String(row.id));
       const why = !p.action && p.short ? `<span class="sd-blk-why">${escapeHtml(p.short)}</span>` : "";
-      return `<div class="player-cell">${sdLine(row, { nameHtml: cardNameHtml(row) })}<span class="sd-seat-slot">${seatTagHtml(placedSeat(placement, row.id))}${controls?.lockIcon?.(row) ?? ""}</span></div>${why}${messageIsFor(placement?.message, row.id) ? rowMessageHtml(placement.message.text, placement.message.tone) : ""}`;
+      return `<div class="player-cell">${sdLine(row, { nameHtml: cardNameHtml(row), tagWrap: controls?.statusTag ? (tag) => controls.statusTag(row, tag) : undefined })}<span class="sd-seat-slot">${seatTagHtml(placedSeat(placement, row.id))}${controls?.lockIcon?.(row) ?? ""}</span></div>${why}${messageIsFor(placement?.message, row.id) ? rowMessageHtml(placement.message.text, placement.message.tone) : ""}`;
     },
     valueCell: (row) => poolValueHtml(row, figures),
     // A man seated in the lineup, on either list, has his row tinted (the builder's), kept apart from a lock (the icon, C20), beside the Optimizer's own look (excluded), each class once.

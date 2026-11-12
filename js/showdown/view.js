@@ -10,7 +10,8 @@
 import { getShowdownBoard, postShowdownRefresh, postShowdownProjectionsPaste, supports, isShowdownSampleMode } from "./api.js";
 import { resetAllEnabled } from "../row-reset.js";
 import { stickyHeights } from "../build-notice.js"; // A15: the sticky stack's heights, the notice a layer of it
-import { deleteShowdownOverrides, optimizerLive, optimizerTabFor, setTabSwitchGate } from "./optimizer.js";
+import { deleteShowdownOverrides, putShowdownOverrides, optimizerLive, optimizerTabFor, setTabSwitchGate } from "./optimizer.js";
+import { delegateStatusClicks, statusPatch } from "../status-switch.js"; // Adam 2026-11-12: the Sources page's Player status card
 import { makeTabBoards, otherTab, tabWord } from "./tab-boards.js"; // Part F: the GPP and Cash tabs' own boards
 import { renderPills, kickoffDateAndClock, paintSourcesLink, wireSourcesLink, modePillHtml } from "../header.js";
 import { isSourcesTab, sourcesTabToOpen } from "../tabs.js";
@@ -26,7 +27,6 @@ import { renderShowdownTabs, renderShowdownProjectionsPanel, renderShowdownOwner
 import { keptCount, onKeptChange } from "./lineups-store.js"; // the Lineups tab's count and its redraw when a build is kept
 import { setTabOpener } from "./lineups-nav.js";
 import { repaintShowdownPool } from "./lineup.js";
-import { lineupFigureRow } from "./lineup-meter.js";
 import { poolState, poolCountText, poolNoteText, ownTotalsLine } from "./pool.js";
 import { restoreView } from "./view-memory.js"; // A9: the pool's filters and sort per game
 import { filterBarHtml, wireFilterBar, takeBarFocus, restoreBarFocus, tabResetQuestion } from "./filter-bar.js"; // the filter bar above the builder (team and position chips, search, salary range, Min Proj)
@@ -77,7 +77,7 @@ export function showdownRowById(id) {
   const found = state.board?.rows?.find((r) => String(r.id) === String(id) || (r.cptId != null && String(r.cptId) === String(id)));
   const g = state.board?.game;
   if (!found) return null;
-  const row = lineupFigureRow(found); // a typed revive set aside under TwoGun only reads 0 here, as Build counts him (round 4, item 5)
+  const row = found; // the board's row, as Build counts him (a typed number always wins, Adam 2026-11-12)
   return row.gameId || !g?.away || !g?.home ? row : { ...row, gameId: `${g.away}@${g.home}` }; // the board row's figures on every tab, as the Lineup tab's slots show them
 }
 export const showdownBoardAsOf = () => state.board?.generatedAt ?? null;
@@ -281,6 +281,8 @@ async function writeBoard(send, label, opts = {}) {
   }
   return data !== null;
 }
+// Adam 2026-11-12: a switch in the Sources page's Player status card writes his In / Out / Auto, kept once for both tabs (as a star).
+delegateStatusClicks(els.sourcesPanel, (id, next) => writeBoard((key, tab) => putShowdownOverrides(key, statusPatch(id, next), undefined, tab), "the In / Out setting", { shared: true }));
 
 // Part F: a GPP | Cash click shows that tab's own board at once when it is kept; otherwise it is read first, and the switch waits for it (a failure says so and the tab stays).
 // `switched`: a Load's switch (optimizer.js setOptimizerMode), made already; a board not kept yet paints when its read lands (tab-boards.js), a failure is said there.
@@ -438,6 +440,7 @@ function renderSourcesView() {
       if (why) throw new Error(why); // loadBoard never rejects: the page says "Saved, but the board could not be refreshed" from this
     },
     onSelection: () => { if (isSourcesTab(state.activeTab) && state.board) render(); }, // the ticks arrived after the first draw: the Projections table's columns follow them
+    canSetStatus: supports("overrides") && !isShowdownSampleMode(), // the Player status card's switches (Adam 2026-11-12)
     asOf: { lines: [poolNoteText(state.board), savedCopiesLine(state.board), uploadStaleLine(), state.board ? ownTotalsLine(state.board.rows) : "", state.board?.injuryNote].filter(Boolean) }, // item 7: the game's stamps, its figures reading and saved copies (the header's chips) and the injury report's counts, moved here
   });
   if (state.activeTab === "projections") {

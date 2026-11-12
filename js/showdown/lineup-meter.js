@@ -95,9 +95,8 @@ const finiteOrNull = (v) => (typeof v === "number" && Number.isFinite(v) ? v : n
  * The figures a slot shows for one board row: { proj, own } (own in percent; Captain: cptProj and ownCpt, FLEX: proj and ownFlex),
  * this game's ticked sources' and Adam's typed numbers. `players` is the modes answer's board-path map (GET .../modes,
  * modes.current.players). Once it is in, the projection is its proj / cptProj: the server's own reading of the rows
- * (server/showdown/lineup-rows.js lineupRows, the rows the meter, swaps, Build, Generate and the saved snapshot count), so a typed
- * revive of a man listed Out under TwoGun only shows his 0 as they count him (Adam 2026-10-18); in every other case it equals the
- * row's, which stays the figure before the answer lands. Ownership is the row's. The map also adds what the row cannot say:
+ * (server/showdown/lineup-rows.js lineupRows, the rows the meter, swaps, Build, Generate and the saved snapshot count), which
+ * equals the row's (a typed number always wins, Adam 2026-11-12); the row's stays the figure before the answer lands. Ownership is the row's. The map also adds what the row cannot say:
  * notOnBoard for a slot whose figure is TwoGun's 0% for a man his posted board has no row for (Q8), projNote (a man listed Out
  * counts as 0; what TwoGun projects) and missingReason (why a blank stays blank). Missing is missing: null, never zero (D29).
  * `rowProj` true keeps the row's projection while still taking the map's notes: the map was read for an older board (🔵 2026-10-22,
@@ -227,20 +226,6 @@ export function meterState() {
 export function playerFigures(row, isCpt) {
   if (!isLive()) return figuresFor(row, isCpt, null);
   return figuresFor(row, isCpt, modesInfo?.modes?.current?.players, { rowProj: modesReadFor !== modesAskedOf(last.key, last.board, last.tab) });
-}
-
-/** Whether the server reads this man as out although the board row carries a typed projection above 0: while TwoGun is the only projection source ticked a typed revive is set
- *  aside (RULES.md: "TwoGun mode ignores a revive", server/showdown/lineup-rows.js unrevived), so his figure in a lineup is 0, whatever the row and the card would say. The modes
- *  answer's figure is that reading; a row with no typed number, or one whose figure is not 0 there, is not set aside. */
-export function isSetAside(row) {
-  return Boolean(row) && row.override?.proj != null && Number(row.proj) > 0 && playerFigures(row, false).proj === 0;
-}
-
-/** The row as the lineup reads it: a revive set aside reads as out (projection 0, the typed number and the revive away, his typed ownership kept), as lineup-rows.js unrevived does
- *  on the server; every other row as it is. The player card and the Lineup read use this, so they say what Build counts (round 4). */
-export function lineupFigureRow(row) {
-  if (!isSetAside(row)) return row;
-  return { ...row, proj: 0, cptProj: 0, value: 0, override: { ...row.override, proj: null, revive: false }, flags: (row.flags ?? []).filter((f) => f !== "revived") };
 }
 
 /** What a modes read is for: the showdown and its board's figures key (board-view.js figuresKeyOf). */

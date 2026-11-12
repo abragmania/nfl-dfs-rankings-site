@@ -24,9 +24,13 @@ export function outTagHtml(row) {
   return reason ? `<span class="out-tag" title="${escapeHtml(reason)}">OUT</span>` : "";
 }
 
+/** The hover of a man Adam marked Out himself (overrides.status, 2026-11-12). */
+export const YOURS_OUT_TITLE = "You marked him Out: projection 0, hidden like a DraftKings Out.";
+
 /** R82: the red OUT tag on the Optimizer, keyed on rowIsOut (Out, Doubtful and IR all count). */
 export function lineupOutTagHtml(row) {
   if (!rowIsOut(row)) return "";
+  if (row?.override?.status === "out") return `<span class="out-tag" title="${escapeHtml(YOURS_OUT_TITLE)}">OUT</span>`; // his own Out (2026-11-12)
   let title = twoGunOutReason(row);
   if (!title) {
     const raw = (row.status || row.injury?.status || "").trim();
@@ -174,7 +178,7 @@ export function sourceFailedMarkerHtml(row, sources) {
 /** The Proj cell's flag dot: thin coverage, injured, unknown injury, and a source that failed for his position. */
 export function projFlagMarkerHtml(row) {
   const flags = row.flags ?? [];
-  const present = ["thin", "injured", "injuryUnknown"].filter((f) => flags.includes(f) && !(f === "injured" && flags.includes("revived")));
+  const present = ["thin", "injured", "injuryUnknown"].filter((f) => flags.includes(f) && !(f === "injured" && (flags.includes("revived") || row.override?.status === "in")));
   const failedText = sourceFailedTexts(row);
   if (!present.length && !failedText.length) return "";
   const title = [...present.map((f) => PROJ_FLAG_LABELS[f] ?? f), ...failedText].join(" ");
@@ -221,6 +225,9 @@ export function tagsCellTitle(row) {
 /** The status tag(s) of one player-list row: the board status, then the injury report's word when it adds one, then a word
  *  the report used that the app does not read (row.injury.unknownStatus, G62: shown as written, never taken as a status). */
 export function statusTagsHtml(row) {
+  // Adam's own In / Out (2026-11-12): In shows no badge at all, Out his own O.
+  if (row?.override?.status === "in") return "";
+  if (row?.override?.status === "out") return `<span class="status-badge status-out" title="${escapeHtml(YOURS_OUT_TITLE)}">O</span>`;
   const key = (row.status ?? "").trim().toLowerCase();
   const injuryStatus = row.injury?.status;
   const same = injuryStatus && (injuryStatus.toLowerCase() === key || (STATUS_INFO[key] && STATUS_INFO[key].label === STATUS_INFO[injuryStatus.toLowerCase()]?.label));

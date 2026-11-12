@@ -1,13 +1,11 @@
 // What the Showdown pool's star, typed Proj and Own cells need (pool-edit.js wirePoolEdits), and the two messages a pool row can carry beside itself:
 // moved out of lineup.js (round 5, to keep that file under its cap) unchanged in behaviour. The panel's state, its redraw and view.js's board writer come in as arguments,
 // because lineup.js owns them and reassigns the writer when the view is drawn.
-import { rowIsOut } from "../table.js";
 import { putShowdownOverrides } from "./optimizer.js";
 import { projPatch, ownPatch, starPatch } from "./pool-edit.js"; // B2, B3
+import { statusPatch } from "../status-switch.js"; // Adam 2026-11-12: In / Out / Auto
 import { playerFigures } from "./lineup-meter.js";
 import { findRow } from "./lineup-saved.js";
-
-export const SET_ASIDE_NOTICE = "He is listed out and TwoGun is the only projection source ticked, so your number does not bring him back: he counts 0 in lineups.";
 
 /** A failed write for a pool row is said beside that row, in red (B12, B3). */
 export function rowErrorIn(state, commit, id, text) {
@@ -40,13 +38,9 @@ export function editCtxFor({ board, state, commit, boardWrite }) {
       const f = playerFigures(row, isCpt);
       return field === "proj" ? f.proj : f.own;
     },
-    save: async (row, field, seat, value) => {
-      const taken = await write(field === "proj" ? projPatch(row, seat, value) : ownPatch(row, seat, value), "the typed number");
-      // Item 5: while TwoGun is the only projection source ticked, a typed number does not bring a man listed out back (the standing ruling); say so beside his row at the write.
-      if (taken && field === "proj" && value > 0 && rowIsOut(row) && board?.mode?.cashMode === "twogun") rowNoticeIn(state, commit, row.id, SET_ASIDE_NOTICE);
-      return taken;
-    },
+    save: (row, field, seat, value) => write(field === "proj" ? projPatch(row, seat, value) : ownPatch(row, seat, value), "the typed number"), // a typed number always wins (Adam 2026-11-12)
     toggleStar: (row) => write(starPatch(row), "the star", true),
+    setStatus: (row, next) => write(statusPatch(row.id, next), "the In / Out setting", true), // kept once for both tabs, as a star
     rowError,
   };
 }

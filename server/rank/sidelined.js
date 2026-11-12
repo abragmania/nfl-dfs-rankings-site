@@ -56,15 +56,37 @@ export function entriesInjuryProblem(report) {
   return { error: "Injury status could not be checked: the board does not say whether it has an injury report." };
 }
 
-/** True when a board row is out, on IR or doubtful, from the injury report's status or the board's injured flag. */
-export function rowIsSidelined(row) {
+/** Adam's own In / Out for this man (overrides.status, Adam 2026-11-12: "mark players in and out"), read off the merged row: "in", "out" or null (Auto). */
+export function statusSetting(row) {
+  const s = row?.override?.status;
+  return s === "in" || s === "out" ? s : null;
+}
+
+/** True when the sources list him out, on IR or doubtful (the injury report's status or the board's injured flag), Adam's own setting aside. */
+export function listedSidelined(row) {
   return isSidelined(row?.status) || Boolean(row?.flags?.includes?.("injured"));
 }
 
-// A projection above 0 typed after the board listed him out puts him back in (Adam 2026-10-16).
+/** True when a board row is out: Adam's In / Out when he set one, else the sources' word (listedSidelined). */
+export function rowIsSidelined(row) {
+  const set = statusSetting(row);
+  if (set) return set === "out";
+  return listedSidelined(row);
+}
+
+/** The status word a row is read with: none for a man Adam marked in, "Out" for one he marked out, else the sources' word. Entries' injury checks and the Hidden notes read it. */
+export function statusWordOf(row) {
+  const set = statusSetting(row);
+  if (set === "in") return null;
+  if (set === "out") return "Out";
+  return row?.status ?? null;
+}
+
+// A projection above 0 that Adam typed on a man the sources list out puts him back in, in every mode (Adam 2026-10-16; 2026-11-12: a typed number always wins).
+// His own Out wins over it; his own In needs no revive.
 export function isRevived(row) {
   const typed = row?.override?.proj;
-  return rowIsSidelined(row) && row?.override?.revive === true && typeof typed === "number" && Number.isFinite(typed) && typed > 0;
+  return statusSetting(row) === null && listedSidelined(row) && row?.override?.revive === true && typeof typed === "number" && Number.isFinite(typed) && typed > 0;
 }
 
 export function sidelinedIdsOf(rows) {

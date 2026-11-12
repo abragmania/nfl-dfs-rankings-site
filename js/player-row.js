@@ -46,14 +46,15 @@ export function playerTagHtml(row) {
  * One player's identity, in the one order: logo, name (always class player-name), status tag, team abbreviation (Adam 2026-10-18 Q3: the tag
  * sits right after the name), then the position chip when `opts.pos` (a list sets it from showPos). The team abbreviation is drawn only when the row has no logo
  * (D80 as amended 2026-10-25, Adam 7:12 PM: "we have the logo ... so I can see people's names"; `chip` is accepted and ignored). Options: logo false (this builder draws no logo), logoShown (the caller draws the team logo itself, as the lineup cards do, so no chip), chip (accepted, inert: no logo draws the chip, a logo never does), nameCls, nameHtml, titled, chipPlain, posHtml, tagCls, and `tag`: false for none,
- * "out" for the red OUT alone (lineups), "main" for TwoGun's OUT rule plus the status badges (main-slate lists), else R82's OUT or the badges.
+ * "out" for the red OUT alone (lineups), "main" for TwoGun's OUT rule plus the status badges (main-slate lists), else R82's OUT or the badges; `tagWrap(tagHtml)` draws the tag's place itself (null keeps it).
  */
 export function playerIdentityHtml(row, opts = {}) {
   const r = row ?? {};
   const logo = opts.logo === false ? "" : teamLogoHtml(r.team, "player-logo", 20);
   const name = `<span class="player-name${opts.nameCls ? ` ${opts.nameCls}` : ""}"${opts.titled ? ` title="${escapeHtml(r.name ?? "")}"` : ""}>${opts.nameHtml ?? escapeHtml(r.name ?? "")}</span>`;
   const chip = logo || opts.logoShown ? "" : teamChipHtml(r.team, { plain: opts.chipPlain }); // D80, Adam 2026-10-25 7:12 PM: "we have the logo ... so I can see people's names"; only a row with no logo draws the chip
-  const tagInner = opts.tag === false ? "" : opts.tag === "out" ? lineupOutTagHtml(r) : opts.tag === "main" ? outTagHtml(r) || statusTagsHtml(r) : playerTagHtml(r);
+  const tagDrawn = opts.tag === false ? "" : opts.tag === "out" ? lineupOutTagHtml(r) : opts.tag === "main" ? outTagHtml(r) || statusTagsHtml(r) : playerTagHtml(r);
+  const tagInner = typeof opts.tagWrap === "function" ? opts.tagWrap(tagDrawn) ?? tagDrawn : tagDrawn; // a pool wraps the tag in its In / Out switch (status-switch.js, Adam 2026-11-12)
   const tag = tagInner && opts.tagCls ? `<span class="${opts.tagCls}">${tagInner}</span>` : tagInner;
   const pos = opts.pos ? posChipHtml(r.pos, opts.posHtml) : "";
   return `${logo}${name}${tag}${chip}${pos}`; // Adam 2026-10-18 Q3: the tag's place is this one line, right after the name
