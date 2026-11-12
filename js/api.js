@@ -291,10 +291,6 @@ export function uploadCsv() {
   return readOnly();
 }
 
-export function postLineupOptimize() {
-  return readOnly();
-}
-
 // The Optimizer's work runs in a module worker (opt-worker.js) when the browser allows one, else on the page's thread
 // (site-worker.js, the one copy of the runner, which the Showdown Optimizer uses too).
 const GENERATE_FAILED = () => siteError("LINEUP_GENERATE_FAILED", "Could not make lineups.");
