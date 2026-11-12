@@ -6,7 +6,7 @@
 // objective (Projection or median), minUnique, locks, includes (Adam 2026-10-19), excludes, maxPerTeam, mode (gpp
 // or cash), and a Max % and a Min % for the Captain and for FLEX kept apart:
 //   captainMaxExposure, captainMinExposure, flexMaxExposure, flexMinExposure  ({"<player id>": {pct: 0-100}})
-// and variance (a percent, GPP only; ../lineup/sd-variance.js).
+// and variancePos (a percent per position, QB RB WR TE DST K) or the older variance (one percent), GPP only; ../lineup/sd-variance.js.
 // A player id is the man's FLEX id or his Captain id; either names the same man. Locks and excludes use candidate ids as
 // optimizeShowdown does: a FLEX id is his FLEX row, a Captain id his Captain row; excluding a FLEX id removes the man.
 //
@@ -24,7 +24,7 @@ import { figureOf, CEILING_REMOVED_SENTENCE } from "../lineup/objective.js"; // 
 import { readIncludes, withIncludes } from "../lineup/showdown-includes.js";
 import { readShowdownRules } from "../lineup/showdown-rules.js";
 import { SHOWDOWN_CASH_REFUSED } from "../lineup/showdown-cash.js";
-import { varianceError, variancePercent, VARIANCE_CASH_SENTENCE } from "../lineup/sd-variance.js";
+import { varianceRequestError, resolveVariance, VARIANCE_CASH_SENTENCE, SHOWDOWN_VARIANCE_POSITIONS } from "../lineup/sd-variance.js";
 import { rowIsSidelined } from "../rank/sidelined.js"; // pure: the one copy of who the board lists sidelined (D45)
 import { bumpFigures } from "../overrides/merge.js"; // pure: the ± bump's one copy (Adam 2026-10-22)
 
@@ -34,7 +34,7 @@ import { bumpFigures } from "../overrides/merge.js"; // pure: the ± bump's one 
 // GPP and Cash; an array of FLEX or Captain ids, held as person ids; absent or empty means none.
 export const SHOWDOWN_GENERATE_SETTING_KEYS = new Set([
   "count", "minUnique", "locks", "excludes", "objective", "captainMaxExposure", "captainMinExposure", "flexMaxExposure", "flexMinExposure",
-  "lineupRules", "maxPerTeam", "mode", "includes", "variance"
+  "lineupRules", "maxPerTeam", "mode", "includes", "variance", "variancePos"
 ]);
 // The builds a request may ask for: Projection, TwoGun's median (the Captain at 1.5x of it). The one list,
 // lineup-checks.js BUILD_OPTIONS.objectives, the one the saved lineups' build record accepts, pinned to the engine's figure builds.
@@ -109,19 +109,20 @@ export function validateShowdownGenerateSettings(raw, rows) {
   }
   const mode = raw.mode === undefined || raw.mode === null ? "gpp" : raw.mode;
   if (mode !== "gpp" && mode !== "cash") return { error: "mode must be cash or gpp" };
-  const varianceBad = varianceError(raw.variance);
+  const varianceBad = varianceRequestError(raw, SHOWDOWN_VARIANCE_POSITIONS);
   if (varianceBad) return { error: varianceBad };
-  const variance = variancePercent(raw.variance);
+  const variance = resolveVariance(raw, SHOWDOWN_VARIANCE_POSITIONS); // {pos: pct} above 0, or null: off
   if (mode === "cash") {
     const refused = SHOWDOWN_CASH_REFUSED.find(({ keys }) => keys.some((k) => raw[k] !== undefined && raw[k] !== null));
     if (refused) return { error: refused.error };
-    if (variance > 0) return { error: VARIANCE_CASH_SENTENCE };
+    if (variance) return { error: VARIANCE_CASH_SENTENCE };
   }
   const { personOf, candOf, rowOf } = boardIds(rows);
   const nameOf = (id) => rowOf.get(personOf.get(id))?.name ?? id;
   const out = { notes: [] };
   if (raw.mode !== undefined && raw.mode !== null) out.mode = mode;
-  if (variance > 0) out.variance = variance; // set only when on, so a request without it is unchanged
+  // Set only when on, so a request without it (or with every percent blank or 0) is unchanged; the older single percent passes as sent.
+  if (variance) Object.assign(out, raw.variancePos !== undefined ? { variancePos: variance } : { variance: raw.variance });
   if (raw.maxPerTeam !== undefined && raw.maxPerTeam !== null) {
     if (!maxPerTeamOk(raw.maxPerTeam)) return { error: MAX_PER_TEAM_SENTENCE };
     out.maxPerTeam = raw.maxPerTeam;

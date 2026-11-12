@@ -5,6 +5,7 @@
 // players (Adam 2026-10-17; Cash 3b fix round names it as CASH_NOTES does); a per-team cap covers
 // every team, the quarterback's included (D76 off). multi.js enters this file only in cash. Pure and browser-safe (D69).
 import { rowIsOut } from "../rank/sidelined.js";
+import { resolveVariance, varianceIgnoredNotes, VARIANCE_CASH_SENTENCE, CLASSIC_VARIANCE_POSITIONS } from "./sd-variance.js"; // pure; GPP-only variance
 
 const num = (v) => (typeof v === "number" && Number.isFinite(v) ? v : null);
 
@@ -29,6 +30,7 @@ export const CASH_NOTES = Object.freeze({
 const STACK_KEYS = Object.freeze(["stackOwn", "stackOwnOrMore", "stackOpp", "stackOppOrMore", "qbStacks"]);
 const RULE_SETTING_KEYS = Object.freeze(["rules", "allowRbGames"]);
 const EXPOSURE_KEYS = Object.freeze(["maxExposure", "playerMaxExposure", "playerMinExposure", "spreadDst"]);
+const VARIANCE_KEYS = Object.freeze(["variance", "variancePos"]); // GPP only (sd-variance.js): dropped, with VARIANCE_CASH_SENTENCE
 const RULES_OFF = Object.freeze({ starredQbOnly: false, noSameTeamRbs: false, noSameGameRbs: false, noDstVsOwnPlayers: false });
 
 /** TwoGun's published median for a board row, or null; 0 for an out row that has one (out = projection 0 and median 0, Adam). */
@@ -67,8 +69,10 @@ export function cashEngineSettings(settings, rows, boardMode) {
   if (given(EXPOSURE_KEYS)) notes.push(CASH_NOTES.exposure);
   if (s.minUnique !== undefined && s.minUnique !== null) notes.push(CASH_NOTES.unique);
   if (s.objective !== undefined && s.objective !== null) notes.push(CASH_NOTES.basis);
+  // Anything but off (every percent blank or 0) is said, a value the route would refuse included (G62).
+  if (resolveVariance(s, CLASSIC_VARIANCE_POSITIONS) || varianceIgnoredNotes(s, CLASSIC_VARIANCE_POSITIONS).length) notes.push(VARIANCE_CASH_SENTENCE);
   const out = { ...s };
-  for (const k of [...STACK_KEYS, ...RULE_SETTING_KEYS, ...EXPOSURE_KEYS]) delete out[k];
+  for (const k of [...STACK_KEYS, ...RULE_SETTING_KEYS, ...EXPOSURE_KEYS, ...VARIANCE_KEYS]) delete out[k];
   Object.assign(out, {
     count: s.count ?? CASH_DEFAULTS.count,
     minUnique: CASH_DEFAULTS.minUnique, // Cash: no minimum unique, Adam 2026-10-17: the X best, only distinct from each other

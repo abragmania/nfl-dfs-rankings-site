@@ -27,6 +27,7 @@ import {
 } from "./lineup.js";
 import { heldSplit, cardIsSaved, optSummaryText, stackDefaultsApply, STACK_INERT_TITLE, savedOfActiveSlate, openSetops } from "./lineup-view.js";
 import { requestTab } from "./lineup-tabs.js"; // Part F: the GPP | Cash click's gate
+import { variancePosSettings, variancePosProblem, CLASSIC_VARIANCE_POSITIONS } from "./variance-pos.js"; // GPP variance per position (Adam 2026-11-11)
 import { buildAfterQuiet } from "./lineup-left-out-panel.js"; // Part F: a Build goes before the quiet Left out build
 
 // ---- Cash mode job 3b, 2026-10-17 (PROJECT.md Part 4 "Cash mode"; the pure pieces are in lineup-cash.js) ----
@@ -544,6 +545,9 @@ export function buildGenerateSettings(form) {
   if (Object.keys(playerMinExposure).length) settings.playerMinExposure = playerMinExposure;
   if (form.qbStacks && Object.keys(form.qbStacks).length) settings.qbStacks = form.qbStacks;
   if (form.spreadDst === true) settings.spreadDst = true;
+  // GPP variance per position (Adam 2026-11-11): only the boxes holding a percent above 0, sent only when there is one.
+  const variancePos = variancePosSettings(form.variancePos, CLASSIC_VARIANCE_POSITIONS);
+  if (variancePos) settings.variancePos = variancePos;
   return settings;
 }
 
@@ -607,7 +611,7 @@ async function doGenerate() {
   const basis = cashBasisInfo(board);
   const countText = cash ? opt.cash.count : opt.count;
   const heldAll = lockedIds(state.slots, state.locks).length >= LINEUP_SLOTS.length; // every seat held: nothing to build around (item 11)
-  opt.formError = countBelowMin(countText) ? COUNT_MIN_SENTENCE : heldAll ? fullLineupText(LINEUP_SLOTS.length) : cash ? (basis.blocked ? basis.text : null) : exposureProblem(opt.maxExp) ?? playerMaxProblem(playerMax, nameOf) ?? minProblemFor(opt.count, playerMin, playerMax, state.excludes, nameOf);
+  opt.formError = countBelowMin(countText) ? COUNT_MIN_SENTENCE : heldAll ? fullLineupText(LINEUP_SLOTS.length) : cash ? (basis.blocked ? basis.text : null) : exposureProblem(opt.maxExp) ?? variancePosProblem(opt.variancePos, CLASSIC_VARIANCE_POSITIONS) ?? playerMaxProblem(playerMax, nameOf) ?? minProblemFor(opt.count, playerMin, playerMax, state.excludes, nameOf);
   if (opt.formError) {
     commit();
     buildNotice.finish({ error: opt.formError, tone: "warn" }); // a refusal says so where he pressed, even from far down (Make them Must, Undo and a blank count box reach here too)
@@ -657,6 +661,7 @@ async function doGenerate() {
       playerMin,
       qbStacks: qbStacksForRequest(board, slateNotes),
       spreadDst: opt.spreadDst,
+      variancePos: opt.variancePos,
     };
     sent = buildGeneratePayload(form, slateKey);
     // The pre-Go Min % checks read the request as built: only the locks that stay in this slate count (the route sees those alone).
@@ -1013,6 +1018,25 @@ export function wireOptimizer(container) {
         opt.formError = null;
         container.querySelector(".opt-form-error")?.remove();
         container.querySelector(".opt-form-error-footer")?.remove(); // the footer copy goes with the head copy
+      }
+    });
+  });
+  // The Variance % boxes (GPP only): kept as typed, no re-render; a box that is not a percent is marked. A refusal the boxes made follows
+  // them: it names the box still wrong, or goes once every box reads.
+  container.querySelectorAll("[data-opt-var]").forEach((el) => {
+    el.addEventListener("input", () => {
+      const before = variancePosProblem(opt.variancePos, CLASSIC_VARIANCE_POSITIONS);
+      opt.variancePos = { ...opt.variancePos, [el.dataset.optVar]: el.value };
+      savePersisted(); // A9
+      refreshSummary();
+      el.classList.toggle("invalid", Number.isNaN(parsePct(el.value)));
+      if (before && opt.formError === before) {
+        const now = variancePosProblem(opt.variancePos, CLASSIC_VARIANCE_POSITIONS);
+        opt.formError = now;
+        for (const shown of container.querySelectorAll(".opt-form-error")) {
+          if (now) shown.textContent = now;
+          else shown.remove(); // the footer copy (.opt-form-error-footer, the same element) goes with it
+        }
       }
     });
   });

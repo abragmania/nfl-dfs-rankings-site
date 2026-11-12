@@ -1119,6 +1119,7 @@ export const opt = {
   playerMin: {}, // the Min % boxes, shaped like playerMax (PROJECT.md Part 4 Optimizer (Min % and soft rules, Adam 2026-10-17))
   qb: newQbState(), // per-QB stack settings (lineup-qb-stacks.js), keyed by player id, persisted with the locks
   spreadDst: false, // "Spread defenses", per slate in the browser memory
+  variancePos: { QB: "", RB: "", WR: "", TE: "", DST: "" }, // GPP Variance % per position, text as typed; blank = none (variance-pos.js), per slate in the browser memory
   exp: defaultExpState("classic"), // the one exposure table's sort and Pos filter {col, dir, filter} (lineup-exposure.js, A10), kept in the browser
   sort: cleanSortState(null, LOOK_SORT_KEYS), // the card lists' sort, per tab: {new: {key, dir}, saved: {key, dir}}, persisted (lineup-sort.js)
   generating: false,

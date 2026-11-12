@@ -123,6 +123,12 @@ body:not(.nl-page) #classic-header{padding:0 var(--sp-5)}
 .nl .set4 .opt-numbox{display:flex;align-items:center;gap:6px;margin-top:2px}
 .nl .set4 .opt-numbox input{flex:0 0 58px;width:58px;margin-top:0}
 .nl .set4 .opt-unit-note{font-size:10px;color:var(--dim);white-space:nowrap}
+.nl .opt-var-line{padding:4px 10px;border-bottom:1px solid var(--ln)} /* GPP Variance %, one row under the four boxes (variance-pos.js) */
+.nl .opt-var-line .opt-var-row{gap:14px}
+.nl .opt-var-line .opt-var-label{font-size:11px;color:var(--mu);padding-bottom:3px}
+.nl .opt-var-line .opt-var-pos{font-size:10px;color:var(--dim)}
+.nl .opt-var-line .opt-var-input{width:44px;height:22px;background:var(--p2);border:1px solid var(--ln);padding:0 4px;font-size:13px;border-radius:0;color:var(--tx);box-sizing:border-box}
+.nl .opt-var-line .opt-var-input.invalid{border-color:var(--rd)}
 .nl .cntrow .opt-numbox{display:inline-flex;align-items:center;gap:8px}
 .nl .cntrow .opt-unit-note{font-size:10px;color:var(--dim)}
 .nl .set2{display:grid;grid-template-columns:1fr 1fr}

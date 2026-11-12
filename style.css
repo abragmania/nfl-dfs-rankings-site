@@ -2638,10 +2638,16 @@ td.opt-exp-opp { color: var(--text-muted); } /* the cells only: the Matchup head
 .sd-pool-layout .lineup-slots .opt-p-big .opt-p-fig { gap: 3px; }
 .sd-pool-layout .lineup-slots .opt-p-big .opt-p-fig i { font-size: 11px; }
 .sd-pool-layout .lineup-slots .opt-p-big .opt-p-val i { padding-right: 5px; } /* the Val chip is 5px wider than its number each side: the label lines up with the number, the chip sits behind both */
-/* The Variance row (GPP tab only): the Off | On chips, then the typed percent beside them. */
-.sd-variance { margin-right: var(--sp-2); }
-#sd-opt-variance-pct { width: 4.5em; }
-#sd-opt-variance-pct:disabled { opacity: 0.5; }
+/* The Variance % row (GPP only, classic and Showdown; public/js/variance-pos.js): the label, then one small box per position under its name, in one line. */
+.opt-var-row { display: flex; align-items: flex-end; gap: var(--sp-3); }
+.opt-var-label { font-size: var(--fs-sm); color: var(--text); white-space: nowrap; padding-bottom: 4px; }
+.opt-var-boxes { display: flex; gap: 6px; }
+.opt-var-cell { display: flex; flex-direction: column; align-items: center; gap: 1px; }
+.opt-var-pos { font-size: 10.5px; font-weight: 600; color: var(--text-muted); }
+.opt-input.opt-var-input { width: 44px; text-align: center; font-variant-numeric: tabular-nums; }
+.opt-input.opt-var-input.invalid { border-color: var(--danger); background: rgba(var(--danger-rgb), 0.12); }
+.sd-opt-panel .opt-var-label { flex: 0 0 9em; } /* lines up with the Build box's other labels */
+.sd-opt-build > .sd-opt-var { grid-column: 1 / -1; } /* one full-width line on a wide window, under the two-across rows */
 /* The working lineup is larger and clearer on a window 1760px wide or more, where it is a sticky band beside the pool (the compact rows above are the classic band's): the Captain first, then the five FLEX,
    each row 54px with its matchup line back and the figures stacked label over number; on the 2560x1307 desktop (tall as well as wide) the full 64px card row of the narrower layout. Showdown only (.sd-pool-layout). */
 @media (min-width: 1760px) {

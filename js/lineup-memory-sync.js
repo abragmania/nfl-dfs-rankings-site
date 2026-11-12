@@ -31,6 +31,7 @@ export function defaultSettings() {
     maxPerTeam: "",
     ...OPT_DEFAULT_STACK,
     spreadDst: false,
+    variancePos: { QB: "", RB: "", WR: "", TE: "", DST: "" }, // every Variance % box blank: none
     avoid: [],
     cashAvoid: [],
     cashCount: CASH_DEFAULTS_BROWSER.count,
@@ -60,6 +61,7 @@ export function applySettings(raw, board) {
     stackOpp: s.stackOpp,
     stackOppOrMore: s.stackOppOrMore,
     spreadDst: s.spreadDst,
+    variancePos: s.variancePos,
     exp: s.exp,
   });
   opt.avoid = new Set(avoidOnSlate(s.avoid, gameIds));

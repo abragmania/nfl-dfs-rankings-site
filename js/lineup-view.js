@@ -17,6 +17,7 @@ import { confirmHtml, anchorHtml, CLEAR_QUESTION, DELETE_QUESTION, REPLACE_QUEST
 import { lookMan, lookTotals, projText, ownText, NO_FIGURE } from "./look-adapter.js";
 import { lookRowHtml, lookEmptyRowHtml, padlockHtml } from "./look-row.js";
 import { lineupsScreenHtml } from "./look-lineups.js";
+import { varianceRowHtml, variancePosSettings, varianceSummary, CLASSIC_VARIANCE_POSITIONS } from "./variance-pos.js"; // GPP variance per position (Adam 2026-11-11)
 import {
   state, opt, LINEUP_SLOTS, SALARY_CAP, MAX_TEAM_OPTIONS, OPT_MAX_COUNT, OPT_MAX_UNIQUE, OPT_STACK_OWN_MAX, OPT_STACK_OPP_MAX, OPT_DEFAULT_UNIQUE,
   OPT_RULES, RULE_GROUPS, boardRowMap, effectiveObjective, qbGlobals, listedQbIds, lineupsCountNow,
@@ -119,7 +120,10 @@ function gppSettingsHtml(rowById, board) {
   const avoidRow = games.length ? settingChipsRowHtml("Avoid game", avoidChipsHtml(games, opt.avoid)) : "";
   const qbRows = listedQbs(activeSlateRows(board), lockedList);
   const qbBody = `${qbListHtml(qbRows, opt.qb, lockedList)}${qbPanelsHtml(qbRows, opt.qb, qbGlobals(), activeSlateRows(board), OPT_STACK_OWN_MAX, OPT_STACK_OPP_MAX, lockedList)}`;
+  // GPP variance per position (Adam 2026-11-11): one compact row under the four boxes, blank by default; a box that is not a percent is marked and blocks Build.
+  const varianceRow = `<div class="opt-var-line">${varianceRowHtml(opt.variancePos, CLASSIC_VARIANCE_POSITIONS, "data-opt-var")}</div>`;
   return `${row1}
+    ${varianceRow}
     ${setopHtml("stack", "Stack", stackSummary(), stackBody)}
     ${setopHtml("rules", "Rules", activeRuleNames(), ruleRows)}
     ${setopHtml("caps", "Position caps, spread defenses, avoid games, custom QB stacks", capsSummary(board, lockedList), `${capRow}${spreadRow}${avoidRow}<div class="opt-subtitle">Per-QB overrides</div>${qbBody}`)}
@@ -321,7 +325,8 @@ export function optSummaryText(board) {
   const inPool = (map) => Object.fromEntries(Object.entries(map).filter(([id]) => poolIds.has(id)));
   const caps = buildGenerateSettings({ playerMax: inPool(playerMaxFor(slateKey)), playerMin: inPool(playerMinFor(slateKey)) });
   const playerCapCount = new Set([...Object.keys(caps.playerMaxExposure ?? {}), ...Object.keys(caps.playerMinExposure ?? {})]).size;
-  const shown = { ...opt, maxExp, count: requestCount(opt.count), minUnique: parseWhole(opt.minUnique, 1, OPT_MAX_UNIQUE, OPT_DEFAULT_UNIQUE), objective: effectiveObjective(opt.objective) };
+  const variance = variancePosSettings(opt.variancePos, CLASSIC_VARIANCE_POSITIONS); // as buildGenerateSettings sends it
+  const shown = { ...opt, maxExp, count: requestCount(opt.count), minUnique: parseWhole(opt.minUnique, 1, OPT_MAX_UNIQUE, OPT_DEFAULT_UNIQUE), objective: effectiveObjective(opt.objective), varianceText: variance ? varianceSummary(variance) : "" };
   return activeRulesSummary(shown, { games: activeSlateGames(board), starredQbCount: qualifiers === 0 && lockedQb ? null : qualifiers, qbOwnCount, playerCapCount });
 }
 

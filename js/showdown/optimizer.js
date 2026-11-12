@@ -37,7 +37,7 @@ const BUSY_TEXT = "Lineups are already being made; try again when that finishes.
 
 const opt = {
   key: null, // the showdown these settings and this batch belong to
-  ks: S.defaultKeyState(), // {mode, variance, gpp, cash} for opt.key (variance: the one GPP-only setting for the showdown), mirrored to localStorage on every change
+  ks: S.defaultKeyState(), // {mode, variancePos, gpp, cash} for opt.key (variancePos: the Variance % boxes, the one GPP-only setting for the showdown), mirrored to localStorage on every change
   tabs: newTabs(), // each tab's batch, messages and filter (optimizer-tabs.js); results, doneNote, error, errorTone, formError, saveError, saveTone, mustHave and mustHaveNames below are the tab on screen's
   generating: false,
   buildingShown: false, // the build has run a second, so the screen says so (lineup-stop.js)
@@ -204,13 +204,13 @@ async function doGenerate(ctx) {
   const mode = opt.ks.mode;
   const seated = seatedNow(ctx.board); // the men in the seats are held as classic holds its slots (item 11)
   const held = S.heldCandidates(modeState(), seated);
-  opt.formError = countBelowMin(modeState().count) ? COUNT_MIN_SENTENCE : held.length >= 6 ? fullLineupText(6) : S.capProblem(modeState(), mode, ctx.board) ?? S.varianceProblem(opt.ks.variance, mode); // item 18: a count below 1 is said, not made into 1
+  opt.formError = countBelowMin(modeState().count) ? COUNT_MIN_SENTENCE : held.length >= 6 ? fullLineupText(6) : S.capProblem(modeState(), mode, ctx.board) ?? S.varianceProblem(opt.ks.variancePos, mode); // item 18: a count below 1 is said, not made into 1
   if (opt.formError) {
     ctx.commit();
     buildNotice.finish({ error: opt.formError, tone: "warn" });
     return;
   }
-  const sent = S.buildGenerateBody(modeState(), mode, ctx.board, seated, opt.ks.variance); // no boardMode: the server builds on this game's served board
+  const sent = S.buildGenerateBody(modeState(), mode, ctx.board, seated, opt.ks.variancePos); // no boardMode: the server builds on this game's served board
   const madeFor = opt.key;
   opt.generating = true;
   opt.stopping = false;
@@ -330,7 +330,7 @@ function jumpToResults(container) {
 const showing = () => opt.generating && opt.buildingShown; // a build under a second shows nothing (lineup-stop.js); doGenerate itself refuses a second click
 const busy = () => opt.generating || opt.saving;
 
-const bandView = (board) => ({ mode: opt.ks.mode, ms: modeState(), variance: opt.ks.variance, board, error: opt.error, errorTone: opt.errorTone, formError: opt.formError, seated: seatedNow(board) });
+const bandView = (board) => ({ mode: opt.ks.mode, ms: modeState(), variancePos: opt.ks.variancePos, board, error: opt.error, errorTone: opt.errorTone, formError: opt.formError, seated: seatedNow(board) });
 
 /** The Optimizer band's head (title, GPP | Cash switch, refusal sentences), at the top of the left column; "" off the live app. */
 export function optimizerBandHeadHtml(board) {
@@ -354,7 +354,7 @@ export function optimizerBandHtml(board) {
  *  `board`: the served board (its reading names the cash basis, its rows whether Median can be built). */
 export function optimizerGoRowHtml(board) {
   if (!optimizerLive()) return "";
-  return V.goRowHtml({ summary: S.summaryText(modeState(), opt.ks.mode, board, opt.ks.variance), generating: showing(), busy: showing() || opt.saving, formError: opt.formError, canStop: canStopShowdownLineupGenerate(), below: opt.buildingBelow, stopping: opt.stopping, stopError: opt.stopError, done: opt.doneNote && Boolean(opt.results) });
+  return V.goRowHtml({ summary: S.summaryText(modeState(), opt.ks.mode, board, opt.ks.variancePos), generating: showing(), busy: showing() || opt.saving, formError: opt.formError, canStop: canStopShowdownLineupGenerate(), below: opt.buildingBelow, stopping: opt.stopping, stopError: opt.stopError, done: opt.doneNote && Boolean(opt.results) });
 }
 
 /** Where the batch's cards used to be drawn: now one button, `N lineups built: open Lineups` (N = the newest kept build of this tab's mode), and, for a build that made nothing, its sentence and notes; the cards are on the Lineups tab
@@ -466,7 +466,7 @@ export const poolControls = {
 /** Puts the summary (which names the count) and the included / locked line back after a box changed, without a redraw (focus stays). */
 function refreshLines(container, board) {
   const summary = container.querySelector("#sd-opt-summary");
-  if (summary) summary.title = S.summaryText(modeState(), opt.ks.mode, board, opt.ks.variance); // item 7: the hover only
+  if (summary) summary.title = S.summaryText(modeState(), opt.ks.mode, board, opt.ks.variancePos); // item 7: the hover only
   const info = container.querySelector("#sd-opt-lockinfo");
   if (info) {
     const text = S.statusLineText(modeState(), board, seatedNow(board));
@@ -573,25 +573,25 @@ function wireBand(root, ctx) {
       else if (apply()) ctx.commit();
     });
   });
-  // The Variance switch and its percent box (GPP tab only; one setting for the showdown, kept with it): Off / On, and a typed percent from 0 to 100 (blank or 0 sends nothing).
-  root.querySelectorAll("[data-sd-variance]").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      const on = btn.dataset.sdVariance === "on";
-      if (opt.ks.variance.on === on) return;
-      opt.ks = { ...opt.ks, variance: { ...opt.ks.variance, on } };
-      if (!on && opt.formError === S.VARIANCE_SENTENCE) opt.formError = null;
+  // The Variance % boxes (GPP tab only; one setting for the showdown, kept with it): a typed percent per position, 0 to 100 (blank or 0 sends nothing). No redraw while typing.
+  root.querySelectorAll("[data-sd-var]").forEach((box) => {
+    box.addEventListener("input", () => {
+      const before = S.varianceProblem(opt.ks.variancePos, "gpp");
+      opt.ks = { ...opt.ks, variancePos: { ...opt.ks.variancePos, [box.dataset.sdVar]: box.value } };
       persist();
-      ctx.commit();
+      box.classList.toggle("invalid", Number.isNaN(parsePct(box.value))); // marked while it is not a percent from 0 to 100
+      // A refusal the boxes made follows them: it names the box still wrong, or goes once every box reads.
+      const now = S.varianceProblem(opt.ks.variancePos, "gpp");
+      if (before && opt.formError === before && !now) clearFormError(ctx.container);
+      else if (before && opt.formError === before) {
+        opt.formError = now;
+        for (const sel of [".sd-opt-head .opt-form-error", ".sd-opt-go .opt-form-error-footer"]) {
+          const shown = ctx.container.querySelector(sel);
+          if (shown) shown.textContent = now;
+        }
+      }
+      refreshLines(ctx.container, ctx.board); // the summary beside Build names the variance only while it will be sent
     });
-  });
-  const variancePct = root.querySelector("#sd-opt-variance-pct");
-  variancePct?.addEventListener("input", () => {
-    opt.ks = { ...opt.ks, variance: { ...opt.ks.variance, pct: variancePct.value } };
-    persist();
-    const bad = Boolean(S.varianceProblem(opt.ks.variance, "gpp"));
-    variancePct.classList.toggle("invalid", bad); // marked while On over a text that is not a percent from 0 to 100
-    if (!bad && opt.formError === S.VARIANCE_SENTENCE) clearFormError(ctx.container);
-    refreshLines(ctx.container, ctx.board); // the summary beside Build says `variance ±N%` only while it will be sent
   });
   for (const [sel, field] of [["#sd-opt-count", "count"], ["#sd-opt-min-unique", "minUnique"]]) {
     const el = root.querySelector(sel);

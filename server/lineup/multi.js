@@ -30,6 +30,9 @@ import {
 } from "./soft.js"; // pure; Min % and soft rules
 import { objectiveScore, ceilingNotes, keptOutNote, keptOutReason, FIGURE_BUILDS, figureOf, retiredObjectiveNote } from "./objective.js"; // pure; cash mode job 1, 2026-10-17
 import { cashEngineSettings, medianOf } from "./cash.js"; // pure; entered only when settings.mode is "cash" (cash mode job 1, 2026-10-17)
+import {
+  resolveVariance, varianceIgnoredNotes, varianceNote, lineupFactors, byRealTotal, CLASSIC_VARIANCE_POSITIONS
+} from "./sd-variance.js"; // pure; GPP variance per position (PROJECT.md Part 4 item 5, Adam 2026-11-11)
 
 // --------------------------------------------------------------------------------------------------------
 // Constants
@@ -240,6 +243,9 @@ function normaliseSettings(settings, slate, existingCount, notes) {
   const maxPerTeamRaw = num(s.maxPerTeam);
   const maxPerTeam = maxPerTeamRaw !== null && maxPerTeamRaw >= 1 ? Math.trunc(maxPerTeamRaw) : null;
 
+  // GPP variance (sd-variance.js): {pos: pct} above 0, or null (off, the unvaried path); cash never varies (cash.js drops it and says so).
+  notes.push(...varianceIgnoredNotes(s, CLASSIC_VARIANCE_POSITIONS)); // the route refuses these first
+
   return {
     cap,
     count,
@@ -254,6 +260,7 @@ function normaliseSettings(settings, slate, existingCount, notes) {
     existingCount,
     maxPerTeam,
     capAllTeams: cash && s.capAllTeams === true,
+    variance: cash ? null : resolveVariance(s, CLASSIC_VARIANCE_POSITIONS),
     stackOwn,
     stackOwnOrMore,
     stackOpp,
@@ -408,6 +415,10 @@ const oppStackActive = (opts) => !(opts.stackOpp === 0 && opts.stackOppOrMore);
  *     never limits the lineup quarterback's team or the team he faces, only every other team.
  *   Every running back, receiver and tight end counts toward the stack (D55 as amended 2026-10-17); catchers is ignored.
  *   mode: "gpp" (default) or "cash" (cash.js cashEngineSettings patches the settings; the result gains mode and basis).
+ *   variancePos: {QB, RB, WR, TE, DST}, each a percent from 0 to 100 (absent or 0 is none), or the older variance (one percent at
+ *     every position, read only when variancePos is absent): GPP only (sd-variance.js). Each lineup's every search runs on scores
+ *     times a factor per man in 1 ± his position's percent, drawn from the saved lineups' count plus the lineup's index; the
+ *     lineups are served best real total first, every figure real, with the one-line varianceNote.
  * @param {string}   [args.boardMode] "twogun" or "current": the board's mode, which picks a cash build's basis (cash refuses any other)
  * @param {Function} [args.onLineup] called after each finished lineup with the answer so far ({lineups, exposure, notes, bends}), for a build
  *   the public site may end early (site-src/site-worker.js)
@@ -530,17 +541,50 @@ function run(rows, slate, settings, existing, notes, onLineup) {
   const plan = minPlan(minEntries(opts, st));
   const named = (map) => [...map].map(([id, { pct }]) => ({ name: st.byId.get(id)?.name ?? id, pct }));
   const shortNote = (made) => percentNote(opts.capPct, named(opts.playerCap), named(opts.playerMin), opts.count, made);
+  // The answer's order: made order, or best real total first on a varied batch (sd-variance.js byRealTotal; GPP builds by projection).
+  const shown = (lineups, bends) => (opts.variance ? byRealTotal(lineups, bends, [], "proj") : { lineups: [...lineups], bends: [...bends] });
   // A build ended early (site-src/site-worker.js, server/lib/app-build.js) is short of the lineups its percents were sized for, and says so.
   const snapshot = onLineup && ((lineups, bends) => {
     const short = lineups.length < opts.count ? shortNote(lineups.length) : null;
-    onLineup({ lineups: [...lineups], exposure: exposureOf(st, prevKeys, opts), notes: short ? [...notes, short] : [...notes], bends: [...bends] });
+    const now = shown(lineups, bends);
+    onLineup({ lineups: now.lineups, exposure: exposureOf(st, prevKeys, opts), notes: short ? [...notes, short] : [...notes], bends: now.bends });
   });
-  const b = buildBatch({ rows, settings, slate, existingCount: existingList.length, prevKeys, prev, counts, opts, st, plan, notes, mustNoted, snapshot });
+  const b = buildBatch({ rows, settings, slate, existingCount: existingList.length, prevKeys, prev, counts, opts, st, plan, notes, mustNoted, snapshot, variance: varianceDraws(st, opts) });
   notes.push(...unmetMinNotes(plan, counts, { complete: b.lineups.length === opts.count, bentKeys: b.bentKeys, waits: b.waits }));
   notes.push(...mustAboveCapNotes(mustAboveCapItems(st, opts, counts, prevKeys.slice(existingList.length)), b.lineups.length));
   const short = shortNote(b.lineups.length);
   if (short) notes.push(short);
-  return { lineups: b.lineups, exposure: exposureOf(st, prevKeys, opts), notes, bends: b.bends };
+  const answer = shown(b.lineups, b.bends);
+  return { lineups: answer.lineups, exposure: exposureOf(st, prevKeys, opts), notes, bends: answer.bends };
+}
+
+/** A varied build's draws (sd-variance.js lineupFactors): every DraftKings player on the board (twin rows are one man) with his
+ *  position, so a man's factor depends on neither the pool nor the rows' order; null when the build is not varied. */
+function varianceDraws(st, opts) {
+  if (!opts.variance) return null;
+  const posOfKey = new Map();
+  for (const [id, row] of st.byId) if (!posOfKey.has(st.keyOfId.get(id))) posOfKey.set(st.keyOfId.get(id), rowPos(row));
+  return { keys: [...posOfKey.keys()], posOf: (key) => posOfKey.get(key), percents: opts.variance };
+}
+
+/**
+ * The state a varied search runs on (GPP variance): every candidate a copy whose score is his real score times his factor (whole
+ * millionths, as prepare() scores), each position's list re-sorted on those scores so the search's cut-offs and the trim hold,
+ * and, past MAX_REBUILD_SALARY_STEPS, the bound tables rebuilt (searchOne rebuilds them below it). A copy keeps his salary,
+ * projection, median and ids, so presentLineup's totals stay real; `prevList` is the same array, so the uniqueness index made
+ * on `st` (makePrevIndex) still counts him. Make it after that index. Pure: `st` is left as it is.
+ */
+function variedState(st, factors) {
+  const copies = new Map();
+  const vary = (c) => {
+    if (!copies.has(c)) copies.set(c, { ...c, score: Math.round(c.score * (factors.get(c.key) ?? 1)) });
+    return copies.get(c);
+  };
+  const byPos = {};
+  for (const pos of POSITIONS) byPos[pos] = st.byPos[pos].map(vary).sort(cmpCand);
+  const out = { ...st, byPos, pool: st.pool.map(vary), lockCands: st.lockCands.map(vary), candByKey: new Map([...st.candByKey].map(([k, c]) => [k, vary(c)])) };
+  if (st.S > MAX_REBUILD_SALARY_STEPS) out.configs = configTables(byPos, out);
+  return out;
 }
 
 /** mustAboveCapNotes' items: each must teammate (not locked, not a defense) with a position cap, his lineups of this batch
@@ -586,8 +630,12 @@ function buildBatch(c) {
     for (const id of forced) bentKeys.delete(st.keyOfId.get(id));
     const lst = forced.length ? forcedState(c.rows, opts, st, forced, forcedStates) : st;
     const lprev = lst === st ? prev : lst.fatal ? null : makePrevIndex(lst, prevKeys, 1);
-    const avail = lst.fatal ? { trimmed: 0 } : availableLists(lst, opts, counts, lprev);
-    const result = lst.fatal ? { best: null, nodes: 0 } : searchOne(lst, avail, lprev, opts, Infinity);
+    // GPP variance: this lineup's own draws (saved lineups move them, so a build after a save is no near-clone); every search for it, a bend's trials too, runs on them.
+    const factors = c.variance ? lineupFactors(c.variance.keys, c.existingCount + n, c.variance.percents, c.variance.posOf) : null;
+    const vary = factors && ((s) => variedState(s, factors));
+    const sst = vary && !lst.fatal ? vary(lst) : lst; // made after lprev, so its copies share the uniqueness index
+    const avail = lst.fatal ? { trimmed: 0 } : availableLists(sst, opts, counts, lprev);
+    const result = lst.fatal ? { best: null, nodes: 0 } : searchOne(sst, avail, lprev, opts, Infinity);
     if (opts.stats) {
       opts.stats.nodes = (opts.stats.nodes ?? 0) + result.nodes;
       opts.stats.trimmed = (opts.stats.trimmed ?? 0) + avail.trimmed;
@@ -601,7 +649,7 @@ function buildBatch(c) {
     let players = result.best;
     let bent = null;
     if (!players) {
-      const b = bendLineup(c, forced, lst, n);
+      const b = bendLineup(c, forced, lst, n, vary);
       if (b.timedOut) {
         endedByDeadline();
         break;
@@ -623,7 +671,7 @@ function buildBatch(c) {
     // Rules-repo review 2026-10-17 finding 3: a QB whose "must" player reached a cap is named once, judged on the settled lineup.
     if (st.perQb && st.locksAt.QB === 0) {
       const qbs = (lst.fatal ? availableLists(st, opts, counts, prev) : avail).QB.filter((q) => !players.some((p) => p.key === q.key));
-      notes.push(...cappedMustNotes(qbs, (lst.fatal ? st : lst).candByKey, (m) => mustCapCause(m, counts, st, opts), c.mustNoted, n + 1));
+      notes.push(...cappedMustNotes(qbs, (lst.fatal ? st : lst).candByKey, (m) => mustCapCause(m, counts, st, opts), c.mustNoted, c.variance ? null : n + 1)); // a varied batch is re-sorted: no made number
     }
     const keys = players.map((p) => p.key);
     prevKeys.push(keys);
@@ -638,6 +686,7 @@ function buildBatch(c) {
       bends.push({ lineup: n + 1, label: bent });
     }
     lineups.push(lineup);
+    if (c.variance && lineups.length === 1) notes.push(varianceNote(c.variance.percents)); // on a batch with a lineup in it, so a snapshot says it too
     c.snapshot?.(lineups, bends);
   }
   return { lineups, bends, bentKeys, waits };
@@ -803,10 +852,11 @@ function forcedState(rows, opts, st, forced, cache) {
   return cache.get(sig);
 }
 
-/** Lineup n bent by soft.js chooseBend's trial; {why} when nothing bends, {timedOut} past the deadline (a trial's lineup then is not proven best, so none is chosen). */
-function bendLineup(c, forced, lst, n) {
+/** Lineup n bent by soft.js chooseBend's trial; {why} when nothing bends, {timedOut} past the deadline (a trial's lineup then is not proven best, so none is chosen).
+ *  `vary`: a varied build's variedState for this lineup's draws (each trial searches on them), else null. */
+function bendLineup(c, forced, lst, n, vary = null) {
   const { opts } = c;
-  const d = diagnose(c.rows, c.settings, c.slate, c.existingCount, c.prevKeys, opts, null, { forced });
+  const d = diagnose(c.rows, c.settings, c.slate, c.existingCount, c.prevKeys, opts, null, { forced, vary });
   if (d.timedOut) return { timedOut: true }; // a trial's lineup past the deadline is not proven best: never chosen
   const pick = chooseBend(d.trials);
   if (!pick) {
@@ -1743,8 +1793,9 @@ function diagnose(rows, settings, slate, existingCount, prevKeys, opts, pin = nu
     const st2 = prepareLineup(rows, o2, keep, spreadCap, scratch);
     if (st2.fatal) return { best: null, nodes: 0, aborted: false };
     const prev2 = makePrevIndex(st2, prevKeys, 1);
-    const avail = availableLists(st2, o2, batchCounts, prev2);
-    return searchOne(st2, avail, prev2, o2, limit);
+    const sst2 = soft?.vary ? soft.vary(st2) : st2; // a varied lineup's bend trials search on its draws (made after prev2, sharing its index)
+    const avail = availableLists(sst2, o2, batchCounts, prev2);
+    return searchOne(sst2, avail, prev2, o2, limit);
   };
   // A bend's trials have no limit (a test's `_bendNodeLimit` aside); a quarterback check's diagnosis, which only writes a note, has its
   // own and draws on the checks' one total (opts.checkTotalLimit), so it can never eat the build. Past the deadline the trials stop.

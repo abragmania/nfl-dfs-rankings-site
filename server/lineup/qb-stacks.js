@@ -283,6 +283,8 @@ export function mustPlan(withKeys, placed, groups, idxOf, candByKey) {
 }
 
 // Rules-repo review 2026-10-17 finding 3: a "must" player at a cap takes his QB out of every later lineup; one note per QB per batch.
+// `lineupNo`: the made lineup's number, or null on a varied batch, which is re-sorted best real total first, so a made number would
+// name the wrong shown lineup (GPP variance, Adam 2026-11-11): the note then says "the later-made lineups".
 export function cappedMustNotes(qbs, candByKey, capOf, noted, lineupNo) {
   const out = [];
   for (const qb of qbs) {
@@ -292,7 +294,8 @@ export function cappedMustNotes(qbs, candByKey, capOf, noted, lineupNo) {
       const cap = c && !c.locked ? capOf(c) : null;
       if (cap === null) continue;
       noted.add(qb.key);
-      out.push(`${qb.name} is left out of lineup ${lineupNo} onward: ${c.name}, marked "Lock" for him, has reached ${cap}.`);
+      const from = lineupNo === null ? "the later-made lineups" : `lineup ${lineupNo} onward`;
+      out.push(`${qb.name} is left out of ${from}: ${c.name}, marked "Lock" for him, has reached ${cap}.`);
       break;
     }
   }

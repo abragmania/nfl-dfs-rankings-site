@@ -15,13 +15,15 @@ import { validateQbStacks } from "./qb-stacks.js";
 import { slotsFull, lockedSlotWords, minSlotProblem } from "./soft.js";
 import { medianOf, CASH_NOTES } from "./cash.js";
 import { lineupModeOf } from "../lineups/validate.js";
+import { varianceRequestError, resolveVariance, VARIANCE_CASH_SENTENCE, CLASSIC_VARIANCE_POSITIONS } from "./sd-variance.js";
 
 // An older saved request may still carry the D55 rule keys D73 replaced; they are accepted (and must be booleans).
 const GENERATE_RULE_KEYS = [...RULE_KEYS, ...LEGACY_RULE_KEYS];
 const GENERATE_BODY_KEYS = new Set(["slate", "settings"]);
 export const GENERATE_SETTING_KEYS = new Set([
   "count", "minUnique", "locks", "excludes", "catchers", "maxExposure", "rules", "maxPerTeam", "allowRbGames", "avoidGames",
-  "objective", "stackOwn", "stackOwnOrMore", "stackOpp", "stackOppOrMore", "playerMaxExposure", "playerMinExposure", "qbStacks", "spreadDst", "mode"
+  "objective", "stackOwn", "stackOwnOrMore", "stackOpp", "stackOppOrMore", "playerMaxExposure", "playerMinExposure", "qbStacks", "spreadDst", "mode",
+  "variancePos", "variance" // GPP variance per position, or the older one percent at every position (sd-variance.js)
 ]);
 // Cash mode job 2b, 2026-10-17: what a cash request may not send, each with the engine's own sentence (cash.js CASH_NOTES).
 const CASH_REFUSED = [
@@ -150,11 +152,17 @@ export function validateGenerateSettings(raw, ctx) {
   }
   const mode = raw.mode === undefined || raw.mode === null ? "gpp" : raw.mode;
   if (mode !== "gpp" && mode !== "cash") return { error: "mode must be cash or gpp" };
+  const varianceBad = varianceRequestError(raw, CLASSIC_VARIANCE_POSITIONS);
+  if (varianceBad) return { error: varianceBad };
+  const variance = resolveVariance(raw, CLASSIC_VARIANCE_POSITIONS); // {pos: pct} above 0, or null: off
   if (mode === "cash") {
     const refused = CASH_REFUSED.find(({ keys }) => keys.some((k) => raw[k] !== undefined && raw[k] !== null));
     if (refused) return { error: refused.error };
+    if (variance) return { error: VARIANCE_CASH_SENTENCE }; // blank or 0 everywhere is off, so it passes, as on Showdown
   }
   const out = { mode };
+  // Set only when on, so a request without it (or with every percent blank or 0) is unchanged; the older single percent passes as sent.
+  if (variance) Object.assign(out, raw.variancePos !== undefined ? { variancePos: variance } : { variance: raw.variance });
   if (raw.count !== undefined && raw.count !== null) {
     if (!Number.isInteger(raw.count) || raw.count < 1 || raw.count > GENERATE_MAX_COUNT) {
       return { error: `count must be a whole number from 1 to ${GENERATE_MAX_COUNT}` };

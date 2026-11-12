@@ -18,12 +18,13 @@ import { posPillHtml } from "./table.js"; // 👁 2026-10-22: the exposure rows 
 import { copiesText, gapText, scaleColour, noUniquenessText, sourceLineText } from "./lineup-meter.js";
 import { likelyRangeText, likelyFactText } from "./likely-copies.js";
 import { calcSentence, modelNote, isEstimate, estimateTitle, estimateLabelHtml } from "./field-explain.js"; // the field model's words (D82)
-import { OBJECTIVES, TEAM_OPTIONS, MAX_COUNT, MAX_UNIQUE, effectiveObjective, boardHasTg, cashBasisText, varianceProblem, statusLineText, isLocked, isIncluded, excludeState, exposureTables, sdPlayersOf } from "./optimizer-state.js";
+import { OBJECTIVES, TEAM_OPTIONS, MAX_COUNT, MAX_UNIQUE, effectiveObjective, boardHasTg, cashBasisText, statusLineText, isLocked, isIncluded, excludeState, exposureTables, sdPlayersOf } from "./optimizer-state.js";
 import { filterLineups } from "../lineup-filter.js";
 import { LOCK_SVG, rowIconButtonHtml } from "../row-controls.js"; // round 3: Lock, In and Exclude are the same small buttons in classic and Showdown
 import { confirmHtml, anchorHtml, REPLACE_QUESTION } from "../confirm-inline.js"; // A13, C11: Load on a result card asks before replacing unsaved slots
 import { crossedNoteHtml } from "../limit-cross.js"; // item 18
 import { refusalNoteHtml } from "../limit-box.js"; // A3: a refused Min % / Max % text is drawn beside its box until the next press
+import { varianceRowHtml, SHOWDOWN_VARIANCE_POSITIONS } from "../variance-pos.js"; // the Variance % row, classic's too
 
 // Classic's words (lineup-view.js NO_MATCH_TEXT) for a filter no lineup passes.
 export const NO_MATCH_TEXT = "No lineups here have all of the chosen players."; // the saved section's too (optimizer.js optimizerSavedFilter)
@@ -44,14 +45,10 @@ export function objectiveChipsHtml(picked, board) {
   }).join("");
 }
 
-/** The Variance control (GPP tab only; the showdown's one setting, optimizer-state.js): an Off | On switch and a typed percent from 0 to 100 (decimals allowed; blank or 0 sends nothing). The box starts blank and
- *  is off the keyboard while the switch is Off. `variance` = {on, pct}. */
-export function varianceRowHtml(variance) {
-  const on = variance?.on === true;
-  const chip = (value, label) => `<button type="button" class="chip toggle-chip opt-chip${on === (value === "on") ? " active" : ""}" data-sd-variance="${value}" aria-pressed="${on === (value === "on")}">${label}</button>`;
-  const bad = Boolean(varianceProblem(variance, "gpp")); // On over a box that is not a percent from 0 to 100: marked, and it blocks Build
-  const box = numberBoxHtml(`type="text" inputmode="decimal" maxlength="6" class="opt-input opt-input-num${bad ? " invalid" : ""}" id="sd-opt-variance-pct" value="${escapeHtml(variance?.pct ?? "")}" aria-label="Variance percent"${on ? "" : " disabled"}`, "%");
-  return settingRowHtml("Variance", `<span class="opt-chips sd-variance">${chip("off", "Off")}${chip("on", "On")}</span>${box}`, "Blank or 0 is off", "", { titleOnly: true }); // item 7 (G64): the hint is the hover
+/** The Variance % row (GPP tab only; the showdown's one setting, optimizer-state.js): a small box per position, QB RB WR TE DST K, each a percent from 0 to 100
+ *  (decimals allowed; blank or 0 is none), blank by default; a box that is not a percent is marked and blocks Build. `variancePos` = {QB: text, ...}. */
+export function sdVarianceRowHtml(variancePos) {
+  return `<div class="opt-set sd-opt-var">${varianceRowHtml(variancePos, SHOWDOWN_VARIANCE_POSITIONS, "data-sd-var")}</div>`;
 }
 
 function teamSelectHtml(value) {
@@ -112,7 +109,7 @@ export function bandBoxesHtml(v) {
         countRow,
         ghostRowHtml("Min unique players"),
         ...(cashMode === "twogun" ? [settingRowHtml("Build by", `<span class="cash-basis">${escapeHtml(cashBasisText(cashMode))}</span>`, "Fixed in cash: TwoGun is this game's only projection source", "", { titleOnly: true })] : hasMedians ? [ghostRowHtml("Build by")] : []),
-        ghostRowHtml("Variance"),
+        `<div class="opt-set sd-opt-var sd-opt-ghost" aria-hidden="true">${varianceRowHtml(null, SHOWDOWN_VARIANCE_POSITIONS, null)}</div>`, // the GPP row at its own height, invisible and off the keyboard (A15)
         lockLine,
       ].join("")
     : [
@@ -120,7 +117,7 @@ export function bandBoxesHtml(v) {
         settingRowHtml("Min unique players", numberBoxHtml(`type="number" min="1" max="${MAX_UNIQUE}" class="opt-input opt-input-num" id="sd-opt-min-unique" value="${escapeHtml(v.ms.minUnique)}" aria-label="Minimum unique players between lineups"`), "Between any two lineups", "", { titleOnly: true }),
         // No Build by control while Projection is the only objective (optimizer standard A13, A21): it shows only on a board whose rows carry TwoGun's medians, where Median is the second.
         ...(hasMedians ? [settingRowHtml("Build by", `<span class="opt-chips">${objectiveChipsHtml(v.ms.objective, v.board)}</span>`)] : []),
-        varianceRowHtml(v.variance), // item 7 (G64): the "Each man's Min % and Max % are on the pool rows..." sentence is gone from the Build box; the pool's own column heads say it
+        sdVarianceRowHtml(v.variancePos), // item 7 (G64): the "Each man's Min % and Max % are on the pool rows..." sentence is gone from the Build box; the pool's own column heads say it
         lockLine,
       ].join("");
   return `
