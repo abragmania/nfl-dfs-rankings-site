@@ -8,11 +8,8 @@ import { phoneMinHeight } from "./expand.js";
 // panelEl.clientHeight` is added back on as the panel's own border/scrollbar allowance. Falls back to the
 // previous head+available calc() only when the panel has no tbody rows yet (e.g. an empty table).
 //
-// This exact function also lives in public/js/lineup.js as resizeLineupScrollPanels's per-panel sizing
-// step. It isn't imported from here because app.js is the page's entry module (never imported by anyone
-// else) while lineup.js is imported by tabs.js which app.js itself imports — importing app.js back into
-// lineup.js would make that a circular module dependency. Duplicated on purpose; keep both in sync.
-function snapPanelMaxHeight(panelEl, top, reserve) {
+// The one copy: lineup.js re-exports it and showdown/tabs.js uses it. This module imports only expand.js, so no cycle.
+export function snapPanelMaxHeight(panelEl, top, reserve) {
   // Layout round 2, 2026-10-17: a panel in a hidden tab reads every rect as 0 and would be sized to 0px: leave it alone.
   if (panelEl.getClientRects().length === 0) return;
   // Layout round 2, 2026-10-17: the room is measured from the panel's place in the document (docTop), not its place

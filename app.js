@@ -160,6 +160,7 @@ async function handleBoardLoaded(data, tab = "gpp", n = null) {
     const slateResp = await getSlate();
     data.warnings = slateResp?.ok ? slateResp.warnings ?? [] : [];
   } catch (e) {
+    console.warn("The slate's warnings could not be read; the board shows none:", e);
     data.warnings = [];
   }
   if (n !== null && !tabBoards.current(tab, n)) return; // a newer write's answer was taken while this one waited for the slate: the newer board stands
@@ -291,7 +292,8 @@ const sourceCallbacks = {
         try {
           await loadBoard();
         } catch (e) {
-          // Board reload failing after a paste isn't fatal to reporting the paste result itself.
+          // A board reload failing after a paste is not fatal to the paste result; logged, never silent (G62).
+          console.warn("Board reload after a paste failed:", e);
         }
       }
       return result;

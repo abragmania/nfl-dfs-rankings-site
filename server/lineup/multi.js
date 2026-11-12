@@ -442,7 +442,7 @@ export function generateLineups(args) {
     return runMode(rows, slate, settings, existing, notes, boardMode, onLineup);
   } catch (e) {
     warn("lineup: generate failed", { error: e && e.message });
-    notes.push(`Could not make lineups: ${e && e.message ? e.message : "unexpected error"}.`);
+    notes.push("Could not make lineups."); // detail is in the log line above, never in the note
     const cash = args?.settings?.mode === "cash" ? { mode: "cash", basis: null } : {}; // Cash mode job 2b, 2026-10-17
     return { lineups: [], exposure: emptyExposure(), notes, bends: [], ...cash };
   }

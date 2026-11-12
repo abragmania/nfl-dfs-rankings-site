@@ -290,7 +290,9 @@ export function uniqueSavedName(wanted, taken, stem = "Lineup") {
   return `${stem} ${n}`;
 }
 
-/** The board mode a lineup is built in, for its saved build record: "twogun" or "current", null where the board has no mode switch. */
+/** The board mode a lineup is built in, for its saved build record: "twogun" or "current", null where the board has no mode switch.
+ *  "current" here means any board that is not TwoGun only (Our sources or a custom mix): the server's build check accepts only these two
+ *  words, so a custom board is labelled on screen by builtInText, not by this stored value. */
 export function boardModeOf(board) {
   return board?.mode ? (isTwoGunMode(board) ? "twogun" : "current") : null;
 }

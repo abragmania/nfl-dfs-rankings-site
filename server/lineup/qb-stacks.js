@@ -106,7 +106,7 @@ export function validateQbStacks(raw, ctx, ownMax, oppMax, lists) {
       if (choice === "must") {
         if (rowIsOut(row)) return { error: `${name} is marked "Lock" for ${who} but is ruled out.` };
         if (excluded.has(pid)) return { error: `${name} is marked "Lock" for ${who} but is excluded from every lineup.` };
-        if (side[pid] === "own" && upper(row.pos) !== "RB") mustOwn++;
+        if (side[pid] === "own") mustOwn++; // D55/D73: RB, WR and TE all count toward the stack
         else if (side[pid] === "opp") mustOpp++;
       }
     }

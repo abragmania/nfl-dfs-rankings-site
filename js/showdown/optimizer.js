@@ -345,11 +345,6 @@ export function optimizerBandBoxesHtml(board) {
   return V.bandBoxesHtml(bandView(board));
 }
 
-/** The whole band, head then boxes (the pieces' old order); lineup.js draws the two apart. */
-export function optimizerBandHtml(board) {
-  return optimizerBandHeadHtml(board) + optimizerBandBoxesHtml(board);
-}
-
 /** The Make row (the summary and Make N lineups), the last piece of the builder's column, sticky as classic's footer; "" off the live app.
  *  `board`: the served board (its reading names the cash basis, its rows whether Median can be built). */
 export function optimizerGoRowHtml(board) {

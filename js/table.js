@@ -238,11 +238,6 @@ export function unknownStatusHtml(row) {
   return `<span class="status-badge status-other" title="${escapeHtml(title)}">${escapeHtml(word)}</span>`;
 }
 
-/** Whether a row shows any status tag. */
-export function rowHasStatus(row) {
-  return Boolean((row?.status ?? "").trim() || (row?.injury?.status ?? "").trim());
-}
-
 // The one copy of the sort arrow (PROJECT.md D80). The space before it is an escaped no-break space (U+00A0) so the arrow stays on the last word's line.
 // `reserve` (the Projections and Ownership tables) draws it on every header, hidden when not sorted, so a sort click never moves a column.
 export function sortArrowText(dir) {

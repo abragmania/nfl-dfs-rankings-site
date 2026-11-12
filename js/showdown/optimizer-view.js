@@ -59,12 +59,8 @@ function teamSelectHtml(value) {
 /**
  * The Optimizer band in its two pieces (Adam 2026-10-20: "I can't see the main lineup that I'm building"): the head stays at the top
  * of the left column, the Pool and Build boxes sit under the build status line, just above the Make row, so the six slots and the
- * meter are the first thing on screen. bandHtml is the two together (the band's whole markup, in the old order).
- * `v` = {mode, ms, board, error, formError}.
+ * meter are the first thing on screen. `v` = {mode, ms, board, error, formError}.
  */
-export function bandHtml(v) {
-  return bandHeadHtml(v) + bandBoxesHtml(v);
-}
 
 /** The head: one line with the tab pair at the top, the title beside it and a refused Make's sentence, then a blocked
  *  Make's sentence. Its own element, #sd-opt-head. */

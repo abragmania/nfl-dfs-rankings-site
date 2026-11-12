@@ -16,7 +16,7 @@ import { sdShowAll, sdShowAllFlag } from "./show-all.js"; // C24: the Showdown's
 import { sortableHeadHtml, unusedColumn, onSitePage, isSourcesTab } from "../tabs.js"; // the classic sortable header and its dimmed unused-source column
 import { sourceIsTicked } from "../sources-page-html.js"; // the one tick predicate the Sources page and this table share
 import { injuryUnmatchedHtml } from "../unmatched.js";
-import { snapPanelMaxHeight } from "../lineup.js"; // the classic tables' sizing step
+import { snapPanelMaxHeight } from "../scroll-panels.js"; // the classic tables' sizing step
 
 // Fits the table's scroll box to the room below its top edge, as app.js adjustScrollPanels does for classic's tables (the last whole row that
 // fits), so the page does not scroll beside the box. Needed here because the Sources page reads its selection after the first draw and then

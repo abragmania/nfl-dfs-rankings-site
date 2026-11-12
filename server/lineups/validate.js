@@ -157,7 +157,7 @@ export function findLineupSlate(slate, secondSlates) {
 /**
  * The saved snapshot of validated `slots` (from validateLineupSlots), each player looked up in `rowById` (every
  * board row by string id). A lineup saved to a second slate must have every known player in its games. Returns
- * {error} or {slots, salaryUsed, totalProj}.
+ * {error} or {slots, salaryUsed, totalProj}; totalProj is null when any slot has no projection.
  */
 export function buildLineupSnapshot(slots, rowById, lineupSecondSlate) {
   if (lineupSecondSlate) {
@@ -183,6 +183,7 @@ export function buildLineupSnapshot(slots, rowById, lineupSecondSlate) {
     });
   }
   const salaryUsed = snapshotSlots.reduce((sum, s) => sum + (s.salary ?? 0), 0);
-  const totalProj = snapshotSlots.reduce((sum, s) => sum + (s.proj ?? 0), 0);
+  // G62: a slot with no projection makes the total unknown (null), never a sum with that slot counted as 0.
+  const totalProj = snapshotSlots.every((s) => typeof s.proj === "number" && Number.isFinite(s.proj)) ? snapshotSlots.reduce((sum, s) => sum + s.proj, 0) : null;
   return { slots: snapshotSlots, salaryUsed, totalProj };
 }

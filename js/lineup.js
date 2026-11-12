@@ -37,7 +37,7 @@ import { newQbState, listedQbs, pruneEntries, qbStacksPayload } from "./lineup-q
 import { getLineups, postLineup, putLineup, deleteLineup } from "./api.js";
 import { reseatClassic, kickoffLookup } from "./classic-seat.js";
 import { renderEntriesSection, wireEntries } from "./entries-wire.js";
-import { phoneMinHeight } from "./expand.js";
+import { snapPanelMaxHeight } from "./scroll-panels.js";
 import { defaultCashState, cleanCashState, swapModeStash, COUNT_DEFAULTS_VERSION, lineupModeOf } from "./lineup-cash.js";
 import { newClassicTabs, bindClassicTabFields, clearTabBuilds, clearTabFilters, requestTab } from "./lineup-tabs.js"; // Part F: GPP and Cash each keep their own batch, messages and filter
 import { syncLeftOut } from "./lineup-left-out-panel.js"; // Part F: the Cash tab's Left out panel
@@ -73,9 +73,10 @@ export function effectiveObjective(picked) {
   return OBJECTIVES.some((o) => o.value === picked) ? picked : "proj";
 }
 
-/** The words a set of new lineups is labelled with: the mode it was built in, so a set made before a mode flip says so
- *  ("TwoGun mode, by projection"). */
+/** The words a set of new lineups is labelled with: the board it was built on (board.mode.active: "twogun", "current" = Our sources, or
+ *  "custom" = the Sources page ticks match neither), so a set made before a mode flip says so ("TwoGun mode, by projection"). */
 export function builtInText(mode) {
+  if (mode === "custom") return "custom sources, by projection";
   return `${mode === "twogun" ? "TwoGun" : "current"} mode, by projection`;
 }
 
@@ -425,47 +426,7 @@ function redrawEntries() {
   if (entriesContainer && !entriesContainer.hidden) renderEntriesPanel(entriesContainer);
 }
 
-// Whole-row snapping by geometry rather than by one row's height (👁 visual-qa fourth/fifth pass): finds
-// the last tbody row whose bottom edge actually fits within the available height and snaps the panel's
-// max-height to that row's bottom, so a row that renders taller/shorter than another (wrapped text,
-// badges, etc.) never leaves a partial row peeking out at the bottom. `panelEl.offsetHeight -
-// panelEl.clientHeight` is added back on as the panel's own border/scrollbar allowance. Falls back to the
-// previous head+available calc() only when the panel has no tbody rows yet (e.g. an empty table).
-// The Optimizer pools are no longer scroll panels (A15); the Sources tables still are, and showdown/tabs.js sizes its tables with this.
-//
-// This exact function also lives in public/js/scroll-panels.js as adjustScrollPanels's per-panel sizing step
-// (snapPanelMaxHeight there). It's duplicated here rather than imported because tabs.js imports this module and
-// scroll-panels.js imports expand.js; keep both copies in sync.
-export function snapPanelMaxHeight(panelEl, top, reserve) {
-  // Layout round 2, 2026-10-17: a panel in a hidden tab reads every rect as 0 and would be sized to 0px: leave it alone.
-  if (panelEl.getClientRects().length === 0) return;
-  // Layout round 2, 2026-10-17: the room is measured from the panel's place in the document (docTop), not its place
-  // in the window, so a page scrolled past the panel's top (a negative `top`, 586 px became 1,769 px after Undo at
-  // 1920x947) sizes it exactly as an unscrolled page does; nothing is stored, so nothing goes stale.
-  const docTop = top + window.scrollY;
-  // Same phone minimum as app.js's copy (70% of the window's height at max-width 700px, via expand.js).
-  const phoneMin = phoneMinHeight();
-  const available = Math.max(window.innerHeight - docTop - reserve, phoneMin);
-  const rows = panelEl.querySelectorAll("tbody tr");
-  const borderAllowance = panelEl.offsetHeight - panelEl.clientHeight;
-  if (rows.length === 0) {
-    panelEl.style.maxHeight = phoneMin
-      ? `${Math.max(Math.round(window.innerHeight - docTop - reserve), phoneMin)}px`
-      : `calc(100vh - ${Math.round(docTop)}px - ${Math.round(reserve)}px)`;
-    return;
-  }
-  let lastFitBottom = null;
-  rows.forEach((row) => {
-    const bottomOffset = row.getBoundingClientRect().bottom + window.scrollY - docTop; // the row's bottom below the panel's top
-    if (bottomOffset <= available) lastFitBottom = bottomOffset;
-  });
-  if (lastFitBottom == null) {
-    // Not even one body row fits: show through the header only rather than clip a partial row.
-    const theadEl = panelEl.querySelector("thead");
-    lastFitBottom = theadEl ? theadEl.getBoundingClientRect().bottom + window.scrollY - docTop : 0;
-  }
-  panelEl.style.maxHeight = `${Math.floor(lastFitBottom + borderAllowance)}px`;
-}
+export { snapPanelMaxHeight }; // scroll-panels.js holds the one copy (a leaf: it imports only expand.js)
 
 export function commit() {
   savePersisted();

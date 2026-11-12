@@ -21,7 +21,7 @@ import { rowIsOut } from "../rank/sidelined.js"; // pure: the public site runs t
 import { countsTowardStack } from "./stack-rules.js";
 import { retiredObjectiveNote } from "./objective.js"; // pure; the note's one copy, re-exported so every importer keeps working
 import { BUILD_CEILING_MS, singleBuildCeilingSentence } from "./build-control.js"; // pure leaf: the ten minute limit and its sentence
-import { bestClassicExact } from "./multi.js"; // the exact search (Adam 2026-11-02); multi.js imports nothing from this file
+import { bestClassicExact, OBJECTIVES } from "./multi.js"; // the exact search (Adam 2026-11-02); multi.js imports nothing from this file
 import { oneGameSentence } from "./dk-entries.js"; // pure; the one copy of DraftKings' two-games sentence
 
 export { retiredObjectiveNote };
@@ -33,7 +33,6 @@ export { retiredObjectiveNote };
 const DEFAULT_CAP = 50000;
 const DEFAULT_SLOTS = Object.freeze(["QB", "RB", "RB", "WR", "WR", "WR", "TE", "FLEX", "DST"]);
 const DEFAULT_FLEX = Object.freeze(["RB", "WR", "TE"]);
-const OBJECTIVES = Object.freeze(new Set(["proj"]));
 const BUILD_MODES = Object.freeze(["score", "perDollar", "cheap"]);
 
 // Search bounds of the greedy search (other slot lists only). The pool is pruned to the best TOP_PER_POS players per position by the chosen objective, plus
@@ -175,7 +174,7 @@ function run(rows, options, cap) {
   const asked = options.objective === undefined || options.objective === null ? "proj" : String(options.objective);
   const retiredNote = retiredObjectiveNote(asked);
   const objective = retiredNote ? "proj" : asked;
-  if (!OBJECTIVES.has(objective)) {
+  if (!OBJECTIVES.includes(objective)) {
     return failure(`Unknown objective "${objective}". Use proj.`, cap);
   }
   const slots = (Array.isArray(options.slots) && options.slots.length ? options.slots : DEFAULT_SLOTS)

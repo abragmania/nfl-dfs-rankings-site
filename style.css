@@ -1731,7 +1731,7 @@ select.opt-input { text-align: left; padding: 3px 4px; }
 .opt-set-hint { margin-top: 1px; font-size: var(--fs-sm); color: var(--text-dim); }
 .opt-set-hint.opt-warn { color: var(--amber); }
 .opt-group-note { margin: -2px 0 var(--sp-1); }
-.opt-row-inert { opacity: 0.45; } /* Adam 2026-10-18 1:50 AM: the Default stack rows when every QB in play has his own numbers; the controls stay enabled */
+.opt-row-inert { opacity: 0.45; } /* the Default stack rows when every QB in play has his own numbers; the controls stay enabled */
 .opt-settings .opt-input { font-size: var(--fs-sm); padding: 2px 6px; }
 .opt-settings .opt-input-num, .opt-settings .opt-input-pct { text-align: right; font-variant-numeric: tabular-nums; }
 .opt-numbox { display: inline-flex; align-items: center; gap: 4px; }

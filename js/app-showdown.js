@@ -21,9 +21,9 @@ export function configureShowdown(ctx) {
 
 // ---------------------------------------------------------------------------------------------------
 // Mode row (Showdown, D39/D40): a tile per loaded showdown plus "Main slate" and "Upload Showdown CSV",
-// always visible above the classic game strip. app.js owns location.hash's "#sd=<key>" and the
-// classic-vs-showdown visibility toggle; public/js/showdown/view.js owns everything drawn inside the
-// showdown header/main once a key is active.
+// always visible above the classic game strip. This module sets location.hash's "#sd=<key>" and applyMode
+// below does the classic-vs-showdown visibility toggle (app.js only listens for hashchange); public/js/showdown/view.js
+// owns everything drawn inside the showdown header/main once a key is active.
 // ---------------------------------------------------------------------------------------------------
 let showdownList = [];
 let showdownPlayed = []; // GET /api/showdown's `played`: this week's played games, which the live list leaves out (D30)
