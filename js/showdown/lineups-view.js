@@ -125,7 +125,7 @@ function recentBodyHtml(v) {
   if (!builds.length) return `<div class="saved-lineups-empty sdl-empty">${EMPTY_RECENT}</div>`;
   const { shown, beforePick } = shownRecent(builds, ui);
   const all = shown.flatMap((s) => s.items);
-  if (!all.length) return `${filterBarHtml(chipsOf(ui), 0, beforePick)}<div class="saved-lineups-empty sdl-empty">${ui.chosen.length ? NO_MATCH_TEXT : NO_FILTER_MATCH}</div>`;
+  if (!all.length) return `${filterBarHtml(chipsOf(ui), 0, beforePick, ui.compare === true)}<div class="saved-lineups-empty sdl-empty">${ui.chosen.length ? NO_MATCH_TEXT : NO_FILTER_MATCH}</div>`;
   // The exposure column is one build's, as Showdown has it (that build's Min / Max marks, its Captain and FLEX counted apart): the one picked with a header's Exposure button, else the newest on screen after the Mode filter.
   const of = shown.find((s) => s.build.id === ui.exposureBuild) ?? shown[0];
   const whole = of.items.length === of.build.lineups.length && of.build.lineups.length === of.build.made && of.build.made >= (of.build.marks?.asked ?? Infinity);
@@ -138,7 +138,7 @@ function recentBodyHtml(v) {
     return `<section class="sdl-build" data-build="${escapeHtml(b.id)}">${buildHeadHtml(b, ui, b.id === of.build.id)}${buildInfoHtml(b)}<div class="opt-cards sdl-cards">${cards}</div>${bends}</section>`;
   }).join("");
   const unsaved = shown.reduce((n, { build: b, items }) => n + items.filter((l) => !savedHere(b, l)).length, 0);
-  return `${filterBarHtml(chipsOf(ui), all.length, beforePick)}${saveAllHtml(unsaved, v.busy)}<div class="sdl-grid"><aside class="sdl-exposure">${exposure}</aside><div class="sdl-main">${blocks}</div></div>`;
+  return `${filterBarHtml(chipsOf(ui), all.length, beforePick, ui.compare === true)}${saveAllHtml(unsaved, v.busy)}<div class="sdl-grid"><aside class="sdl-exposure">${exposure}</aside><div class="sdl-main">${blocks}</div></div>`;
 }
 
 /** Save all unsaved (N, the shown cards not yet saved): each in its own build's mode (classic's Lineups button, Adam yes 6:30 PM 11-09); none when every shown card is saved. */
@@ -162,12 +162,12 @@ function savedBodyHtml(v) {
   const nameOf = (l) => savedView(l, index).slots.map((s) => s.name);
   const typed = recentFirst(saved.lineups).filter((l) => modeMatches(lineupModeOf(l), ui.mode) && matchesText(nameOf(l), ui.text));
   const picked = filterLineups(typed, ui.chosen, (l) => sdPlayersOf(savedView(l, index))).map((e) => e.item);
-  if (!picked.length) return `${filterBarHtml(chipsOf(ui), 0, typed.length)}<div class="saved-lineups-empty sdl-empty">${ui.chosen.length ? NO_MATCH_TEXT : NO_FILTER_MATCH}</div>`;
+  if (!picked.length) return `${filterBarHtml(chipsOf(ui), 0, typed.length, ui.compare === true)}<div class="saved-lineups-empty sdl-empty">${ui.chosen.length ? NO_MATCH_TEXT : NO_FILTER_MATCH}</div>`;
   const shown = sortItems(picked, ui.sort, (l) => savedFigures(l, board));
   const numbers = numberLineups(saved.lineups);
   const exposure = exposureHtml(shown.map((l) => savedView(l, index)), board, v.exp, null, pickOf(ui), ui.chosen.length ? typed.length : null, "saved");
   const dk = dkDownloadHtml({ count: shown.filter((l) => v.dk.selected.has(l.id)).length, total: shown.length, status: v.dk.status });
-  return `${filterBarHtml(chipsOf(ui), shown.length, typed.length)}<div class="sdl-grid"><aside class="sdl-exposure">${exposure}</aside><div class="sdl-main" id="sd-saved-lineups">${dk}<div class="saved-lineups-list sdl-cards">${shown.map((l) => v.cardOf(l, numbers)).join("")}</div></div></div>`;
+  return `${filterBarHtml(chipsOf(ui), shown.length, typed.length, ui.compare === true)}<div class="sdl-grid"><aside class="sdl-exposure">${exposure}</aside><div class="sdl-main" id="sd-saved-lineups">${dk}<div class="saved-lineups-list sdl-cards">${shown.map((l) => v.cardOf(l, numbers)).join("")}</div></div></div>`;
 }
 
 /** The lineups the Saved view shows after the player box, Mode, the chosen men and the sort (what its Download DK CSV acts on). */

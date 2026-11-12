@@ -58,7 +58,7 @@ export function pickButtonHtml({ id, name, chosen = false, cls = "", innerHtml =
 
 /** The filter bar: "Only lineups with:", a chip per chosen player (× takes him out), Clear, and "showing K of N".
  *  `chips` is [{key, name}] in the order chosen; nothing chosen gives an empty string (the bar is hidden). */
-export function filterBarHtml(chips, shown, total) {
+export function filterBarHtml(chips, shown, total, compare = null) {
   if (!chips?.length) return "";
   const chipHtml = chips
     .map(
@@ -66,5 +66,30 @@ export function filterBarHtml(chips, shown, total) {
         `<button type="button" class="chip opt-chip active opt-must-chip" data-action="opt-pick-remove" data-pick-key="${escapeHtml(c.key)}" title="Stop filtering by ${escapeHtml(c.name)}" aria-label="Stop filtering by ${escapeHtml(c.name)}">${escapeHtml(c.name)} ×</button>`
     )
     .join("");
-  return `<div class="opt-must-bar" role="group" aria-label="Only lineups with"><span class="opt-must-label">Only lineups with:</span>${chipHtml}<button type="button" class="saved-lineup-btn" data-action="opt-pick-clear">Clear</button><span class="opt-sub opt-must-count">showing ${Number(shown) || 0} of ${Number(total) || 0}</span></div>`;
+  return `<div class="opt-must-bar" role="group" aria-label="Only lineups with"><span class="opt-must-label">Only lineups with:</span>${chipHtml}${compare === null ? "" : compareButtonHtml(compare)}<button type="button" class="saved-lineup-btn" data-action="opt-pick-clear">Clear</button><span class="opt-sub opt-must-count">showing ${Number(shown) || 0} of ${Number(total) || 0}</span></div>`;
+}
+
+// Compare (Adam 2026-11-12, NBA 252787e): a toggle in the filter bar that greys the held men on every shown card and in the exposure
+// list, so only the men who differ stand out. Page state only (off on reload); the helpers below are the whole of it.
+
+/** The Compare toggle: pressed while on. `on` is a boolean. */
+export function compareButtonHtml(on) {
+  const title = on ? "Turn off: show the held men in normal type again" : "Gray out the men held by the filter, so only the men who differ stand out";
+  return `<button type="button" class="saved-lineup-btn opt-compare${on ? " opt-compare-on" : ""}" data-action="opt-compare" aria-pressed="${on ? "true" : "false"}" title="${escapeHtml(title)}">Compare</button>`;
+}
+
+/** Which of a screen's row keys are greyed: those in the held set `chosen`, in `rowKeys` order. Nothing held greys nothing. */
+export function heldKeysOf(rowKeys, chosen) {
+  const want = new Set((chosen ?? []).map(String));
+  return (rowKeys ?? []).map(String).filter((k) => want.has(k));
+}
+
+/** Marks (class `cmp-held`) the held men's rows under `root` once the screen is drawn: a lineup row (`.crow` or `.opt-p`, carrying
+ *  data-card-id) whose key `keyOfRow(el)` is held, and an exposure row whose Filter button is lit. Does nothing unless `on` and a man is held. */
+export function applyCompare(root, on, chosen, keyOfRow) {
+  if (!root || !on || !(chosen ?? []).length) return;
+  const rows = [...root.querySelectorAll(".crow[data-card-id], .opt-p[data-card-id]")];
+  const held = new Set(heldKeysOf(rows.map(keyOfRow), chosen));
+  rows.forEach((el) => { if (held.has(String(keyOfRow(el)))) el.classList.add("cmp-held"); });
+  root.querySelectorAll("tr").forEach((tr) => { if (tr.querySelector(".opt-pick-on")) tr.classList.add("cmp-held"); });
 }

@@ -3,7 +3,7 @@
 // so they work as they did. Markup: lineups-view.js. Live app and public site alike: nothing here needs the server but the saved lineups and a Save.
 import { dkLineupCsv, dkCsvFileName, dkCsvStatus, downloadText } from "../dk-lineup-csv.js";
 import { nextExpSort } from "../lineup-exposure.js";
-import { toggleMustHave } from "../lineup-filter.js";
+import { toggleMustHave, applyCompare } from "../lineup-filter.js";
 import { uniqueSavedName } from "../lineup.js";
 import { postShowdownLineup } from "./api.js";
 import { requestFailureText } from "./read-json.js";
@@ -122,6 +122,8 @@ function wireBody(body, hands) { // `body`: the tab's box (the body's controls a
   }));
   body.querySelectorAll("[data-action='opt-pick-remove']").forEach((btn) => btn.addEventListener("click", () => { ui.chosen = toggleMustHave(ui.chosen, btn.dataset.pickKey); paintBody(); }));
   body.querySelectorAll("[data-action='opt-pick-clear']").forEach((btn) => btn.addEventListener("click", () => { ui.chosen = []; paintBody(); }));
+  body.querySelector("[data-action='opt-compare']")?.addEventListener("click", () => { ui.compare = ui.compare !== true; paintBody(); });
+  applyCompare(body, ui.compare === true, ui.chosen, (el) => `${el.classList.contains("sd-cpt-slot") ? "cpt" : "flex"}:${el.dataset.cardId}`); // Compare: the held men's rows grey (page state, off on reload)
   hands.wireSaved(body, () => savedShown(hands.saved.lineups, ui, board));
 }
 

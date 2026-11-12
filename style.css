@@ -1993,6 +1993,11 @@ td.opt-exp-opp { color: var(--text-muted); } /* the cells only: the Matchup head
 .opt-must-bar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); padding: var(--sp-2) var(--sp-3); background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 8px; }
 .opt-must-label { font-size: var(--fs-sm); font-weight: 600; color: var(--text-muted); }
 .opt-must-count { margin-left: auto; }
+/* Compare (lineup-filter.js applyCompare): the held men's rows recede, still readable; a lit Filter button stays full strength. */
+.opt-compare.opt-compare-on { background: var(--accent); border-color: var(--accent); color: #ffffff; }
+.crow.cmp-held > *, .opt-p.cmp-held > * { opacity: .4; }
+tr.cmp-held > td { opacity: .4; }
+tr.cmp-held > td.ex-f { opacity: 1; }
 
 /* ---------- Showdown Optimizer rows (Adam 2026-10-18 9:09 PM: "does not use the team colors that we decided on") ----------
    The six slots are classic's big card row (D81, lineup-slots.js; its rules are at "Optimizer-first step 5" above),

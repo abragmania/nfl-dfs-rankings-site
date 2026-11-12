@@ -8,7 +8,7 @@ import { shownTotal } from "./totals.js";
 import { buildTypeText } from "./lineup-builds.js";
 import { lineupFigures, medianText, sortLineups, effectiveSort, nextSort, LOOK_SORT_KEYS, lookSortKeysFor } from "./lineup-sort.js";
 import { contrarianRead, contrarianHtml, contrarianMan, readBasisFor, ownFor } from "./lineup-contrarian.js"; // Adam 2026-11-04: the GPP Stack / Rest / Own vs field read on a card
-import { filterLineups, filterBarHtml, pickButtonHtml } from "./lineup-filter.js";
+import { filterLineups, filterBarHtml, pickButtonHtml, applyCompare } from "./lineup-filter.js";
 import { classicEntries, shownExposureEntries, cleanExpState, expColumns, exposureMark, zeroMinRows, OPT_POSITIONS } from "./lineup-exposure.js";
 import { statusLineHtml, rowMessageHtml, TONE_WARN } from "./row-message.js";
 import { requestTab } from "./lineup-tabs.js";
@@ -339,7 +339,7 @@ export function lineupsScreenHtml(rowById) {
   };
   const savedShown = shownSaved(rowById);
   const pick = PICK(rowById);
-  const mustBar = filterBarHtml(opt.mustHave.map((key) => ({ key, name: opt.mustHaveNames[key] ?? key })), view === "new" ? nBuilt : savedShown.length, view === "new" ? builtHere : savedOfMode.length);
+  const mustBar = filterBarHtml(opt.mustHave.map((key) => ({ key, name: opt.mustHaveNames[key] ?? key })), view === "new" ? nBuilt : savedShown.length, view === "new" ? builtHere : savedOfMode.length, ltState.compare === true);
   let top, body;
   if (view === "saved") {
     ({ top, body } = savedViewHtml(savedOfMode, savedShown, rowById, pick));
@@ -467,6 +467,8 @@ function downloadLineups(lineups) {
 /** The Lineups screen's own controls (the GPP | Cash switch, the typed filter, Save all unsaved, Remove build, the Download buttons); the cards' Save, Discard, Load, Delete and the exposure's Filter buttons are wired with the Optimizer (lineup-optimizer.js, lineup.js). */
 export function wireLineupsScreen(container) {
   const rowById = currentRowById();
+  applyCompare(container, ltState.compare === true, opt.mustHave, (el) => identityOf(el.dataset.cardId, rowById)); // Compare: the held men's rows grey (page state, off on reload)
+  container.querySelector("[data-action='opt-compare']")?.addEventListener("click", () => { ltState.compare = ltState.compare !== true; commit(); });
   container.querySelectorAll("[data-lt-mode]").forEach((btn) => {
     btn.addEventListener("click", () => {
       if (opt.saving || state.saving || opt.mode === btn.dataset.ltMode) return;
