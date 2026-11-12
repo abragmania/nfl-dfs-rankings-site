@@ -67,7 +67,8 @@ export const LEGACY_RULE_KEYS = Object.freeze(["qbStack", "oneOffensivePerOtherT
 
 /** What the lineups maximise: "proj" (projection, as optimize.js scores it) only; "ceil" was removed (optimizer standard A21,
  *  2026-11-03) and is refused. The retired "lev" and "projMinusOwn" are built on projection with optimize.js retiredObjectiveNote's note. */
-export const OBJECTIVES = Object.freeze(["proj"]);
+import { OBJECTIVES } from "./objectives.js"; // the names live in a leaf so request checks need not load this engine
+export { OBJECTIVES };
 
 /** D73: the most teammates and opponents the QB stack can ask for, and the defaults (1 or more, 0 or more). */
 export const STACK_OWN_MAX = 4;
@@ -442,7 +443,7 @@ export function generateLineups(args) {
     return runMode(rows, slate, settings, existing, notes, boardMode, onLineup);
   } catch (e) {
     warn("lineup: generate failed", { error: e && e.message });
-    notes.push("Could not make lineups."); // detail is in the log line above, never in the note
+    notes.push("Could not make lineups: the engine hit an unexpected error; the detail is in the server log or the browser console."); // detail is in the log line above, never in the note
     const cash = args?.settings?.mode === "cash" ? { mode: "cash", basis: null } : {}; // Cash mode job 2b, 2026-10-17
     return { lineups: [], exposure: emptyExposure(), notes, bends: [], ...cash };
   }
@@ -777,7 +778,8 @@ function lockedQbRefuses(cand, st, opts) {
 }
 
 /** RULES.md D73: a quarterback's stack entry (`entries`: [id, entry] pairs) saved under any row of his DraftKings key; of
- *  several, the last in key order, as qbStackPrepare keeps it (number-string ids sort numerically: the higher id wins). */
+ *  several, the last in the order the map holds them, as qbStackPrepare keeps it (whole-number ids come first in ascending order, so the
+ *  higher id wins among them; any other id keeps the order it was sent in). */
 export function qbEntryByKey(entries, keyOf, qbId) {
   return [...entries].filter(([id]) => keyOf(id) === keyOf(qbId)).map(([, e]) => e).pop();
 }
@@ -867,7 +869,16 @@ function bendLineup(c, forced, lst, n, vary = null) {
     return { why };
   }
   const dropped = pick.dropAll ? forced : pick.drop ? [pick.drop] : [];
-  return { players: pick.best, label: bendLabel(pick, d.trials), dropped };
+  let label = bendLabel(pick, d.trials);
+  if (pick.kind === "minForce") {
+    // A Min man the bent search takes on his own is not bent in this lineup: only those absent are named, none means no bend.
+    const absent = dropped.filter((id) => !pick.best.some((p) => p.key === c.st.keyOfId.get(id)));
+    if (absent.length < dropped.length) {
+      const names = absent.map((id) => c.st.byId.get(id)?.name ?? id);
+      label = !absent.length ? null : names.length === 1 ? `the Min % on ${names[0]}` : `the Min % players ${listNames(names)}`;
+    }
+  }
+  return { players: pick.best, label, dropped };
 }
 
 /**
@@ -1746,8 +1757,16 @@ function diagnose(rows, settings, slate, existingCount, prevKeys, opts, pin = nu
   const nameOf = (id) => rowOf.get(id)?.name ?? id;
   const focusId = pin ?? opts.locks.find((id) => rowOf.has(id) && rowPos(rowOf.get(id)) === "QB") ?? null;
   const focusKey = focusId === null ? null : dkKeyOf(rowOf.get(focusId), focusId);
-  const entries = focusKey === null ? opts.qbStacks
-    : new Map([...opts.qbStacks].filter(([id]) => rowOf.has(id) && dkKeyOf(rowOf.get(id), id) === focusKey));
+  // D73: of a quarterback's twin rows holding entries only the last is in effect (qbEntryByKey), so only that one is relaxed or kept.
+  const effective = new Map();
+  for (const [id, e] of opts.qbStacks) {
+    const key = rowOf.has(id) ? dkKeyOf(rowOf.get(id), id) : `id:${id}`;
+    effective.delete(key);
+    effective.set(key, [id, e]);
+  }
+  const live = new Map(effective.values());
+  const entries = focusKey === null ? live
+    : new Map([...live].filter(([id]) => rowOf.has(id) && dkKeyOf(rowOf.get(id), id) === focusKey));
   // D73 (amended 2026-10-17): a side the focused QB sets ignores the global, so relaxing the global does not help him.
   const focusSets = (sets) => focusKey !== null && [...entries.values()].some(sets);
   const forced = soft ? soft.forced : [];
@@ -1755,7 +1774,7 @@ function diagnose(rows, settings, slate, existingCount, prevKeys, opts, pin = nu
   // D74: caps count only this batch's lineups (prevKeys holds the saved ones first, then the batch so far).
   const batchCounts = new Map();
   for (const keys of prevKeys.slice(existingCount)) for (const k of keys) batchCounts.set(k, (batchCounts.get(k) ?? 0) + 1);
-  const others = Object.fromEntries([...opts.qbStacks].filter(([id]) => !entries.has(id)));
+  const others = Object.fromEntries([...live].filter(([id]) => !entries.has(id)));
   const trials = bendTrials({
     forced: lowestScoreFirst(forced, (id) => objectiveScore(rowOf.get(id), num(rowOf.get(id)?.proj) ?? 0, opts.objective)).map((id) => ({ id, name: nameOf(id) })),
     rules: RULE_KEYS.filter((key) => opts.rules[key]).map((key) => ({

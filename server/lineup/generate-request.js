@@ -6,10 +6,12 @@
 // Pure and browser-safe: no node modules, no network, no storage, no logging. tools/publish.mjs copies it, unchanged,
 // to out/server/lineup/ beside the engine and privacy-scans it.
 import {
-  RULE_KEYS, LEGACY_RULE_KEYS, OBJECTIVES, STACK_OWN_MAX, STACK_OPP_MAX, pctToLineups, minLineups, dkKeyOf, minOutReason, pairBreak,
+  RULE_KEYS, LEGACY_RULE_KEYS, STACK_OWN_MAX, STACK_OPP_MAX, pctToLineups, minLineups, dkKeyOf, minOutReason, pairBreak,
   lockedQbBlocksRow, qbEntryByKey
 } from "./multi.js";
 import { retiredObjectiveNote } from "./optimize.js";
+import { OBJECTIVES } from "./objectives.js";
+import { validateIdArray } from "./id-checks.js";
 import { CEILING_REMOVED_SENTENCE } from "./objective.js";
 import { validateQbStacks } from "./qb-stacks.js";
 import { slotsFull, lockedSlotWords, minSlotProblem } from "./soft.js";
@@ -44,17 +46,8 @@ const GENERATE_MAX_UNIQUE = 8;
 
 export const isPlainObject = (v) => typeof v === "object" && v !== null && !Array.isArray(v);
 
-// Ids as strings or numbers; anything else is refused, so a typo'd body never quietly rosters or excludes a player.
-export function validateIdArray(value, name) {
-  if (value === undefined || value === null) return { ids: [] };
-  if (!Array.isArray(value)) return { error: `${name} must be an array of player ids` };
-  for (const item of value) {
-    if (typeof item !== "string" && typeof item !== "number") {
-      return { error: `${name} must contain only player id strings or numbers` };
-    }
-  }
-  return { ids: value };
-}
+// The one id-array check lives in id-checks.js (shared with the Showdown checks); re-exported for the Showdown request.
+export { validateIdArray };
 
 // One maximum-exposure value: {pct: 0-100} (of the new lineups, rounded up, D74) or {count}; a bare number is refused
 // (1 could mean 100% or one lineup). Null or omitted means no cap. Returns an error string or null.

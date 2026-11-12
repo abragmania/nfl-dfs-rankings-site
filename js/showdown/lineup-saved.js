@@ -21,8 +21,10 @@ import { playerFigures } from "./lineup-meter.js";
 export const SALARY_CAP = 50000;
 export const FLEX_COUNT = 5;
 
+// A man by his FLEX id (row.id), else by his Captain id (row.cptId): a Captain slot saved by the engine names him by the Captain id.
 export function findRow(board, id) {
-  return (board?.rows ?? []).find((r) => String(r.id) === String(id));
+  const rows = board?.rows ?? [];
+  return rows.find((r) => String(r.id) === String(id)) ?? rows.find((r) => r.cptId != null && r.cptId !== "" && String(r.cptId) === String(id));
 }
 
 function formatSavedAt(iso) {

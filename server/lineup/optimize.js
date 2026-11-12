@@ -21,7 +21,8 @@ import { rowIsOut } from "../rank/sidelined.js"; // pure: the public site runs t
 import { countsTowardStack } from "./stack-rules.js";
 import { retiredObjectiveNote } from "./objective.js"; // pure; the note's one copy, re-exported so every importer keeps working
 import { BUILD_CEILING_MS, singleBuildCeilingSentence } from "./build-control.js"; // pure leaf: the ten minute limit and its sentence
-import { bestClassicExact, OBJECTIVES } from "./multi.js"; // the exact search (Adam 2026-11-02); multi.js imports nothing from this file
+import { bestClassicExact } from "./multi.js"; // the exact search (Adam 2026-11-02); multi.js imports nothing from this file
+import { OBJECTIVES } from "./objectives.js";
 import { oneGameSentence } from "./dk-entries.js"; // pure; the one copy of DraftKings' two-games sentence
 
 export { retiredObjectiveNote };

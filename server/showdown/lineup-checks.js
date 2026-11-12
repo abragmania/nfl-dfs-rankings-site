@@ -3,8 +3,9 @@
 // snapshot, so both refuse with the same messages and save the same snapshot. The lineup-name check is the classic
 // one (server/lineups/validate.js validateLineupName).
 //
-// Pure and browser-safe: no node: module, no file, no config read. tools/publish.mjs copies it, unchanged, to
-// out/server/showdown/ and privacy-scans it.
+// Pure and browser-safe: no node: module, no file, no config read; its one import is the import-free leaf
+// ../lineup/id-checks.js. tools/publish.mjs copies it, unchanged, to out/server/showdown/ and privacy-scans it.
+import { validateIdArray } from "../lineup/id-checks.js";
 
 /** What a showdown with no known week answers when asked to keep a lineup: the app's route and the site say the same. */
 export const WEEK_UNKNOWN_MESSAGE = "This showdown's week is not known yet; re-upload once the week resolves.";
@@ -46,15 +47,6 @@ export function staleModeError(value) {
 
 const SHOWDOWN_SLOT_NAMES = new Set(["CPT", "FLEX"]);
 const MAX_FLEX = 5;
-
-function validateIdArray(value, name) {
-  if (value === undefined || value === null) return { ids: [] };
-  if (!Array.isArray(value)) return { error: `${name} must be an array of player ids` };
-  for (const item of value) {
-    if (typeof item !== "string" && typeof item !== "number") return { error: `${name} must contain only player id strings or numbers` };
-  }
-  return { ids: value };
-}
 
 /**
  * The body of POST .../lineup/optimize ({objective, locks, excludes, includes}, all optional) -> {objective, locks,

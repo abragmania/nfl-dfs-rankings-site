@@ -290,11 +290,13 @@ export function uniqueSavedName(wanted, taken, stem = "Lineup") {
   return `${stem} ${n}`;
 }
 
-/** The board mode a lineup is built in, for its saved build record: "twogun" or "current", null where the board has no mode switch.
- *  "current" here means any board that is not TwoGun only (Our sources or a custom mix): the server's build check accepts only these two
- *  words, so a custom board is labelled on screen by builtInText, not by this stored value. */
+/** The board mode a lineup is built in, for its saved build record: "twogun", "custom" (the Sources page ticks match neither) or
+ *  "current" (Our sources), null where the board has no mode switch (P23). A record saved earlier with "current" for a custom board
+ *  still reads: "current" stays a valid word everywhere it is read. */
 export function boardModeOf(board) {
-  return board?.mode ? (isTwoGunMode(board) ? "twogun" : "current") : null;
+  if (!board?.mode) return null;
+  if (isTwoGunMode(board)) return "twogun";
+  return board.mode.active === "custom" ? "custom" : "current";
 }
 
 /** The active slate's key: "main", or the second slate's key (D57). */

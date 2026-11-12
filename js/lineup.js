@@ -22,6 +22,7 @@
 // only it assigns), storage, the entry points tabs.js imports, the builder and saved-lineup actions, and the wiring.
 // lineup-view.js holds every piece of panel markup; lineup-optimizer.js holds cash mode, the request/validation helpers
 // and the Optimizer actions. Every name this file exported before is still exported from here.
+// The mutable `state` and `opt` are imported only by: app.js (opt), lineup-left-out-panel.js, lineup-memory-sync.js, lineup-pool.js, look-lineups.js, lineup-view.js, lineup-optimizer.js (tests/lineup-state-importers.test.mjs fails on any other).
 import { store, FLEX_POS, defaultDirFor, activeSlateRows } from "./state.js";
 import { storableClassicFilters } from "./memory.js";
 import { showBand } from "./show-band.js"; // A12, A15: a Load brings the whole band into view
@@ -456,7 +457,10 @@ export function computeTotals(rowById) {
     else totalOwn += row.own;
   }
   // ChatGPT wish d, Adam 2026-10-17: the total is the sum of the slot projections as shown (totals.js).
-  return { filled, salaryUsed, salaryLeft: SALARY_CAP - salaryUsed, totalProj: shownTotal(projs) ?? 0, totalOwn: ownUnknown ? null : totalOwn };
+  // G62: a missing projection makes the total missing (null), never 0 or a partial sum; nothing placed stays 0.
+  const projKnown = projs.every((v) => typeof v === "number" && Number.isFinite(v));
+  const totalProj = !projs.length ? 0 : projKnown ? shownTotal(projs) : null;
+  return { filled, salaryUsed, salaryLeft: SALARY_CAP - salaryUsed, totalProj, totalOwn: ownUnknown ? null : totalOwn };
 }
 
 /** First empty slot legal for `pos`: its own slot(s) first, then FLEX for RB/WR/TE. -1 if none is free. */

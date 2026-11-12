@@ -3,18 +3,21 @@
 // and the public site's device lineups (site-src/site-lineups.js buildDeviceLineup; DECISIONS.md D69). One copy,
 // so both refuse with the same messages; the saved snapshot is always what the board showed at save time.
 //
-// Pure and browser-safe: its one import is the engine's objective names (server/lineup/multi.js, which the site copies too).
+// Pure and browser-safe: its one import is the engine's objective names (server/lineup/objectives.js, a leaf with no import).
 // tools/publish.mjs copies it, unchanged, to out/server/lineups/ and privacy-scans it.
-import { OBJECTIVES } from "../lineup/multi.js";
+import { OBJECTIVES } from "../lineup/objectives.js";
 
-const LINEUP_SLOT_NAMES = new Set(["QB", "RB", "WR", "TE", "FLEX", "DST"]);
+// The classic roster, a slot name repeated once per seat (public/js/lineup.js LINEUP_SLOTS): QB, RB x2, WR x3, TE, FLEX, DST.
+const LINEUP_SLOT_COUNTS = Object.freeze({ QB: 1, RB: 2, WR: 3, TE: 1, FLEX: 1, DST: 1 });
+const LINEUP_SLOT_NAMES = new Set(Object.keys(LINEUP_SLOT_COUNTS));
 
 // Validates the POSTed {slots}: a non-empty array of {slot, playerId} objects, slot one of the six
-// roster-slot names, playerId a string/number, and no playerId repeated. Unknown-player checking happens
+// roster-slot names used no more often than the roster has seats, playerId a string/number, and no playerId repeated. Unknown-player checking happens
 // after this, once the current board is loaded, since that's the only place that knows what's on it.
 export function validateLineupSlots(value) {
   if (!Array.isArray(value) || value.length === 0) return { error: "slots must be a non-empty array" };
   const seen = new Set();
+  const counts = new Map();
   const slots = [];
   for (const item of value) {
     if (typeof item !== "object" || item === null || Array.isArray(item)) {
@@ -30,6 +33,10 @@ export function validateLineupSlots(value) {
     const playerId = String(item.playerId);
     if (seen.has(playerId)) return { error: `duplicate player ${playerId}` };
     seen.add(playerId);
+    // The roster has this many of each slot (LINEUP_SLOT_COUNTS); a partly filled lineup may save fewer, never more.
+    const used = (counts.get(slot) ?? 0) + 1;
+    counts.set(slot, used);
+    if (used > LINEUP_SLOT_COUNTS[slot]) return { error: `a lineup has at most ${LINEUP_SLOT_COUNTS[slot]} ${slot} slot${LINEUP_SLOT_COUNTS[slot] === 1 ? "" : "s"}, so ${slot} is named too many times` };
     slots.push({ slot, playerId });
   }
   return { slots };
@@ -56,11 +63,11 @@ export function validateLineupMode(value) {
 
 // Optional saved-lineup `build` record (ChatGPT wish g, Adam 2026-10-17): where the lineup came from, so the Saved tab
 // orders by build. {kind: "batch" (made by the Optimizer; id = one stamp per Go, shared by every lineup saved from it) or
-// "hand" (manual builder; no id), boardMode "current" | "twogun", objective (batch only), totalCeil (batch only: a ceiling
+// "hand" (manual builder; no id), boardMode "current" | "twogun" | "custom", objective (batch only), totalCeil (batch only: a ceiling
 // total an older save stored, still accepted and kept, never shown or written now), edited (true only: an older save whose players
 // were replaced by hand; nothing sets it or shows it now)}. Omitted stays omitted; the stored copy holds only these keys.
 const BUILD_KEYS = new Set(["kind", "id", "boardMode", "objective", "totalCeil", "edited"]);
-const BUILD_MODES = new Set(["current", "twogun"]);
+const BUILD_MODES = new Set(["current", "twogun", "custom"]); // "custom": a board on custom source weights (P23); older saves hold only the first two
 // The engine's own objective names (multi.js OBJECTIVES) plus the retired ones an older saved lineup may still carry
 // ("ceil" since optimizer standard A21, 2026-11-03: a stored ceiling build still loads and saves; nothing shows or makes a new one).
 const RETIRED_BUILD_OBJECTIVES = Object.freeze(["lev", "projMinusOwn", "ceil"]);
@@ -91,7 +98,7 @@ export function validateLineupBuild(value, { objectives = OBJECTIVES, projection
   if (kind === "batch" && !(typeof id === "string" && BUILD_ID.test(id))) return { error: "build.id must be 1 to 40 letters, digits, - or _" };
   if (kind === "hand" && (id !== undefined || objective !== undefined || totalCeil !== undefined || edited !== undefined)) return { error: "a build by hand has no id, objective, ceiling total or edited flag" };
   if (edited !== undefined && totalCeil !== undefined) return { error: "build.edited and build.totalCeil cannot both be set" };
-  if (boardMode !== undefined && !BUILD_MODES.has(boardMode)) return { error: "build.boardMode must be current or twogun" };
+  if (boardMode !== undefined && !BUILD_MODES.has(boardMode)) return { error: "build.boardMode must be current, twogun or custom" };
   if (objective !== undefined && !allowedObjectives.has(objective)) return { error: `build.objective must be one of ${[...allowedObjectives].join(", ")}` };
   if (edited !== undefined && edited !== true) return { error: "build.edited must be true" };
   if (totalCeil !== undefined && totalCeil !== null && !(typeof totalCeil === "number" && Number.isFinite(totalCeil) && totalCeil >= 0 && totalCeil <= CEIL_TOTAL_MAX)) {
@@ -104,6 +111,27 @@ export function validateLineupBuild(value, { objectives = OBJECTIVES, projection
   if (totalCeil !== undefined) build.totalCeil = totalCeil;
   if (edited === true) build.edited = true;
   return figuresKey === null ? { build } : { build, figuresKey };
+}
+
+/**
+ * Pure: `entry` with `patch` applied, the one copy of the edit both store.js updateLineup (the app's file) and
+ * site-lineups.js updateDeviceLineup (the visitor's browser) use. `patch.name` must already be resolved (blank -> "Lineup N")
+ * by the caller; name, slots, salaryUsed, totalProj are replaced when defined, slate and mode set when a non-empty string,
+ * tag set when a non-empty string and removed when null; updatedAt is stamped when any field is given. The input is never mutated.
+ */
+export function applyLineupPatch(entry, patch) {
+  const next = { ...entry };
+  const { name, slots, salaryUsed, totalProj, slate, mode, tag } = patch ?? {};
+  if (name !== undefined) next.name = name;
+  if (slots !== undefined) next.slots = slots;
+  if (salaryUsed !== undefined) next.salaryUsed = salaryUsed;
+  if (totalProj !== undefined) next.totalProj = totalProj;
+  if (typeof slate === "string" && slate !== "") next.slate = slate;
+  if (typeof mode === "string" && mode !== "") next.mode = mode;
+  if (tag === null) delete next.tag;
+  else if (typeof tag === "string" && tag !== "") next.tag = tag;
+  if ([name, slots, salaryUsed, totalProj, slate, mode, tag].some((v) => v !== undefined)) next.updatedAt = new Date().toISOString();
+  return next;
 }
 
 export function lineupModeOf(lineup) {

@@ -2,7 +2,7 @@
 // that describe it, and the Saved tab's As built order. Pure; lineup.js imports it and
 // server/lineups/validate.js validateLineupBuild checks the same record on the way in.
 
-const MODE_WORD = { current: "Current", twogun: "TwoGun" };
+const MODE_WORD = { current: "Current", custom: "Custom", twogun: "TwoGun" }; // "current" also reads the records saved before P23 for a custom board
 // A stored build that was made by ceiling (optimizer standard A21) has no word here, so its card names no objective.
 const OBJECTIVE_WORD = { proj: "projection", lev: "leverage", projMinusOwn: "projection minus ownership" };
 

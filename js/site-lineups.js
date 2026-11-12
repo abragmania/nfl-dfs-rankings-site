@@ -13,7 +13,7 @@
 // A letter tag is unique among this device's lineups of the slate (releaseLineupTag, PROJECT.md Part 4 Entries, Adam
 // 2026-10-17); the baked app lineups are read-only here (D69, D71), so their letters are never cleared.
 import {
-  validateLineupSlots, validateLineupName, validateLineupMode, validateLineupTag, validateLineupBuild, releaseLineupTag, findLineupSlate, buildLineupSnapshot,
+  validateLineupSlots, validateLineupName, validateLineupMode, validateLineupTag, validateLineupBuild, releaseLineupTag, findLineupSlate, buildLineupSnapshot, applyLineupPatch,
 } from "../server/lineups/validate.js";
 import { DUPLICATE_CODE, findDuplicate, duplicateAfterEdit, duplicateMessage } from "../server/lineups/duplicate.js";
 
@@ -204,16 +204,7 @@ export function updateDeviceLineup(storage, season, week, id, patch) {
     const list = readKey(storage, key);
     const idx = list.findIndex((l) => l.id === id);
     if (idx === -1) continue;
-    const { name, slots, salaryUsed, totalProj, slate, tag } = patch ?? {};
-    const entry = { ...list[idx] };
-    if (name !== undefined) entry.name = name;
-    if (slots !== undefined) entry.slots = slots;
-    if (salaryUsed !== undefined) entry.salaryUsed = salaryUsed;
-    if (totalProj !== undefined) entry.totalProj = totalProj;
-    if (typeof slate === "string" && slate !== "") entry.slate = slate;
-    if (tag === null) delete entry.tag;
-    else if (typeof tag === "string" && tag !== "") entry.tag = tag;
-    if ([name, slots, salaryUsed, totalProj, slate, tag].some((v) => v !== undefined)) entry.updatedAt = new Date().toISOString();
+    const entry = applyLineupPatch(list[idx], patch); // validate.js: the one copy of the edit, shared with store.js updateLineup
     const destKey = typeof entry.slate === "string" && entry.slate !== "" ? storageKey(season, week, entry.slate) : key;
     if (destKey === key) {
       const next = [...list];

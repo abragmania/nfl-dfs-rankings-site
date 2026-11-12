@@ -294,7 +294,7 @@ export function percentNote(posPct, maxes, mins, asked, made) {
   const players = [...maxes.map((p) => `${p.name} ${p.pct}%`), ...mins.map((p) => `${p.name} Min ${p.pct}%`)];
   const shown = players.length > 5 ? [...players.slice(0, 5), `${players.length - 5} more players`] : players;
   const all = [...Object.entries(posPct).map(([pos, p]) => `${pos} ${p}%`), ...shown];
-  return all.length ? `The percentage caps (${all.join(", ")}) were sized for the ${asked} lineups asked for, not the ${made} made.` : null;
+  return all.length ? `The percentage caps (${all.join(", ")}) were sized for the ${asked} ${asked === 1 ? "lineup" : "lineups"} asked for, not the ${made} made.` : null;
 }
 
 /** One closing note per Min % player short of his Min: a pool reason (`out`) always, the rest after a full batch. */

@@ -12,7 +12,10 @@ import { shownTotal } from "./totals.js";
  *  classic's is lineupLabel. */
 export function lineupOptionLabel(lineup, numbers = null, nameOf = lineupLabel) {
   const name = numbers ? nameOf(lineup, numbers) : String(lineup?.name ?? "").trim() || "Lineup";
-  const proj = dec1(shownTotal((lineup?.slots ?? []).map((s) => s?.proj)) ?? lineup?.totalProj); // ChatGPT wish d, Adam 2026-10-17: the sum of the saved players' shown projections
+  const projs = (lineup?.slots ?? []).map((s) => s?.proj);
+  const known = projs.filter((v) => typeof v === "number" && Number.isFinite(v)).length;
+  const gap = known > 0 && known < projs.length; // G62: some slots shown and one without a projection makes the total missing, never a partial sum (no slot figure at all: the stored total, as before)
+  const proj = gap ? null : dec1(shownTotal(projs) ?? lineup?.totalProj); // ChatGPT wish d, Adam 2026-10-17: the sum of the saved players' shown projections
   const cash = lineupModeOf(lineup) === "cash" ? "$ Cash · " : ""; // Cash mode job 3b, 2026-10-17: the one browser mode rule (lineup-cash.js, through entries-plan.js)
   return `${cash}${name} · ${proj == null ? "no proj" : `${proj} proj`} · ${money(lineup?.salaryUsed)}`;
 }

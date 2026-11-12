@@ -223,7 +223,7 @@ export function generateShowdownLineups(args) {
     return runMode(args ?? {}, notes);
   } catch (e) {
     warn("showdown lineup: generate failed", { error: e && e.message });
-    notes.push(`Could not make lineups: ${e && e.message ? e.message : "unexpected error"}.`);
+    notes.push("Could not make lineups: the engine hit an unexpected error; the detail is in the server log or the browser console."); // detail is in the log line above, never in the note
     return { lineups: [], exposure: [], notes, bends: [], problems: [], ruleWarnings: [], failed: true };
   }
 }
@@ -491,40 +491,55 @@ function build({ rows, settings, existing, boardMode, onLineup, deadline: deadli
     if (variance) factors = lineupFactors(board.rowOfPerson.keys(), savedCount + n, variance, posOfPerson); // saved lineups move the draws, so a build after a save is no near-clone
     const steer = captainSteer({ people: includeSet, board, pool, poolIds, maxes, counts, left: count - n, captainLocked: lockedCpt.length > 0 });
     const forced = dueFor(n, steer);
-    for (const id of forced) bentKeys.delete(id);
+    // The plain pass (steer off, after the steered one failed) has its own due men: a Captain row the steer left out is due again.
+    const plainForced = steer.size ? dueFor(n, new Set()) : forced;
     // Bend, least change first (BEND_ORDER); the first setting that lets a lineup through is the one relaxed. Every
     // trial runs under `st`, the includes' look-ahead or none: steered bends come before the plain solve (solveSteered).
     const bend = (st) => {
+      const due = st.size ? forced : plainForced;
       const blocking = pool.filter((c) => capped(c) && !st.has(c.id)); // a row the steer leaves out cannot help this trial
       const trials = {
-        minForce: () => forced.length
-          ? Array.from({ length: forced.length }, (_, i) => forced.length - 1 - i).map((k) => ({
-            label: `the Min % on ${listNames(forced.slice(k).map((id) => board.byCand.get(id).name))}`,
-            run: () => solve({ forced: forced.slice(0, k), steer: st }),
-            drop: forced.slice(k)
+        minForce: () => due.length
+          ? Array.from({ length: due.length }, (_, i) => due.length - 1 - i).map((k) => ({
+            label: `the Min % on ${listNames(due.slice(k).map((id) => board.byCand.get(id).name))}`,
+            run: () => solve({ forced: due.slice(0, k), steer: st }),
+            drop: due.slice(k)
           })) : [],
         playerMax: () => (blocking.length > 6
-          ? [{ label: "the players' Max % settings", run: () => solve({ forced, capsOff: new Set(blocking.map((c) => c.id)), steer: st }) }]
+          ? [{ label: "the players' Max % settings", run: () => solve({ forced: due, capsOff: new Set(blocking.map((c) => c.id)), steer: st }) }]
           : blocking.map((c) => ({
             label: `the ${roleWord(c)} Max % of ${maxes.get(c.id).pct}% on ${c.name}`,
-            run: () => solve({ forced, capsOff: new Set([c.id]), steer: st })
+            run: () => solve({ forced: due, capsOff: new Set([c.id]), steer: st })
           }))),
         minUnique: () => (priors.length && minUnique > 1
           ? Array.from({ length: minUnique - 1 }, (_, i) => minUnique - 1 - i).map((k) => ({
             label: `minimum unique players (${minUnique}, lowered to ${k} for this lineup)`,
-            run: () => solve({ forced, uniq: k, steer: st })
+            run: () => solve({ forced: due, uniq: k, steer: st })
           })) : [])
       };
       for (const kind of BEND_ORDER) {
         for (const t of trials[kind]()) {
           const r = t.run();
-          if (r.best) return { result: r, bent: t.label, dropped: t.drop ?? [] };
+          if (r.best) {
+            // A dropped Min man the bent search takes on his own is not bent in this lineup: only those absent are named, none means no bend.
+            const absent = (t.drop ?? []).filter((id) => !r.best.some((c) => c.id === id));
+            const joined = t.drop && absent.length < t.drop.length;
+            return { result: r, bent: joined ? (absent.length ? `the Min % on ${listNames(absent.map((id) => board.byCand.get(id).name))}` : null) : t.label, dropped: t.drop ?? [] };
+          }
           if (r.timedOut) return { result: r, bent: null, dropped: [] };
         }
       }
       return null;
     };
-    const { result, bent, dropped } = solveSteered(solve, forced, steer, bend);
+    let plainRan = false; // the plain pass is the one whose solve runs with no steer (solveSteered)
+    const { result, bent, dropped } = solveSteered((a) => {
+      if (!a.steer?.size) plainRan = true;
+      return solve(a);
+    }, forced, steer, bend, plainForced);
+    // Forced again, a man's older bend gives way (unmetMinNotes): only the men a pass that ran forced. The steered pass
+    // runs first whenever there is a steer; the plain pass only after it found nothing.
+    if (steer.size) for (const id of forced) bentKeys.delete(id);
+    if (plainRan) for (const id of plainForced) bentKeys.delete(id);
     // The ten minute limit (the page-thread fallback only): the lineup in hand is not proven best, so it is dropped; the finished ones are returned.
     const ceilingNote = () => stopSentence("ceiling", lineups.length, count, BUILD_CEILING_MS);
     if (!result.best) {
@@ -544,8 +559,9 @@ function build({ rows, settings, existing, boardMode, onLineup, deadline: deadli
       if (ranOut && !result.timedOut) notes.splice(noteFrom, notes.length - noteFrom, ceilingNote()); // the diagnosis above ran into the deadline: its note would be wrong
       break;
     }
-    // A dropped Min man waits two lineups unless he is out of slack (soft.js's rule for the classic Min %).
-    for (const id of dropped) {
+    // A dropped Min man waits two lineups unless he is out of slack (soft.js's rule for the classic Min %); one the lineup
+    // took anyway in the same row (Captain or FLEX) was not bent and stays due, as classic does (multi.js buildBatch).
+    for (const id of dropped.filter((d) => !result.best.some((c) => c.id === d))) {
       bentOut.add(id);
       bentKeys.add(id);
       easedUntil.set(id, n + 2);

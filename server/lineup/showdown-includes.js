@@ -157,18 +157,20 @@ export const STEERED_BEND_WORDS = "to keep the included men's Captain spots for 
  *  bend this lineup so that a later lineup need not bend or fail; its label says so (STEERED_BEND_WORDS). The steered pass
  *  only ever ends with a lineup: a steered solve or bend that finds nothing falls through to the plain pass. With no steer: the
  *  plain solve, then its bends. `solve`: the engine's solve({forced, steer}); `bend(steer)`: the engine's bends
- *  (BEND_ORDER) under that steer, {result, bent, dropped} when one let a lineup through, else null.
+ *  (BEND_ORDER) under that steer, {result, bent, dropped} when one let a lineup through, else null. `forced`: the Min men
+ *  due with the steer on; `plainForced`: those due with it off (a Captain row the steer left out is due again), used by
+ *  the plain pass.
  *  Returns {result, bent, dropped}; result.best is null when nothing was found. */
-export function solveSteered(solve, forced, steer, bend = () => null) {
+export function solveSteered(solve, forced, steer, bend = () => null, plainForced = forced) {
   let last = null;
   for (const st of steer.size ? [steer, new Set()] : [new Set()]) {
     const steered = st.size > 0;
-    last = solve({ forced, steer: st });
+    last = solve({ forced: steered ? forced : plainForced, steer: st });
     if (last.best || last.timedOut) return { result: last, bent: null, dropped: [] }; // timedOut: the ten minute limit, nothing more is tried
     const bentResult = bend(st);
     if (bentResult && !steered) return bentResult;
     if (bentResult?.result?.timedOut) return { result: bentResult.result, bent: null, dropped: [] };
-    if (bentResult?.result?.best) return { ...bentResult, bent: `${bentResult.bent} ${STEERED_BEND_WORDS}` };
+    if (bentResult?.result?.best) return { ...bentResult, bent: bentResult.bent === null ? null : `${bentResult.bent} ${STEERED_BEND_WORDS}` };
   }
   return { result: last, bent: null, dropped: [] };
 }
