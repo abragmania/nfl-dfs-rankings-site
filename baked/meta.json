@@ -1,5 +1,5 @@
 {
-  "publishedAt": "2026-11-12T21:50:49.538Z",
+  "publishedAt": "2026-11-12T22:08:28.348Z",
   "season": 2026,
   "week": 9,
   "boardGeneratedAt": "2026-11-12T21:15:06.314Z",
@@ -8,7 +8,7 @@
   "showdowns": [
     "2026-w10-WASNYG"
   ],
-  "sourceCommit": "2d32ec72b34cb1f5478c21a9e3570a3d4adc58f9",
+  "sourceCommit": "12f7bd978eb835753201336d0c60e8f7119dc578",
   "appCommit": "14a2b6235dde58a57ecfe96ad7bb8ab86b05b885",
   "machine": "desktop",
   "matchups": false

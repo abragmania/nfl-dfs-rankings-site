@@ -110,7 +110,7 @@ export function statusBadgeHtml(row, word = row?.status) {
   const notes = [(row?.injury?.comment ?? "").trim(), why ? `TwoGun${row.tg.tag ? ` [${row.tg.tag}]` : ""}: ${why}` : "", playsOnHisWord].filter(Boolean).join(" ");
   const title = (head) => escapeHtml(notes ? `${head}. ${notes}` : head);
   const revived = revivedStatusTitle(row, info?.label ?? raw);
-  if (revived) return `<span class="status-badge status-revived" title="${title(revived)}">${escapeHtml(info?.short ?? raw)}</span>`;
+  if (revived) return ""; // Adam 11-12: a man he typed back in shows no status badge at all (temporary, until the injury source order ships)
   if (info) return `<span class="status-badge ${info.cls}" title="${title(info.label)}">${escapeHtml(info.short)}</span>`;
   return `<span class="status-badge status-other" title="${title(raw)}">${escapeHtml(raw)}</span>`;
 }
