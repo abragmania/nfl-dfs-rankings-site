@@ -54,6 +54,23 @@ export function adjustScrollPanels() {
     let reserve = 16;
     const legend = panelEl.parentElement?.querySelector(".table-legend");
     if (legend) reserve += legend.getBoundingClientRect().height + 8;
-    snapPanelMaxHeight(panelEl, top, reserve);
+    snapPanelMaxHeight(panelEl, top, reserve + sourcesPageBelow(panelEl));
   });
+}
+
+/**
+ * The room the Sources page keeps below its per-player table (mock B): what follows the table inside its panel (the paste foot) and the page's
+ * bottom row of cards (Data as of, Shown not chosen, Notes, which sit after the panel in the page's grid), so the table's height leaves them on
+ * screen. 0 for any other table. The one copy: showdown/tabs.js fitScrollPanel reads it too.
+ */
+export function sourcesPageBelow(panelEl) {
+  const panel = panelEl.closest?.("#projections-panel, #ownership-panel, #sd-projections-panel, #sd-ownership-panel");
+  if (!panel) return 0;
+  let below = 0;
+  for (let el = panelEl; el && el !== panel; el = el.parentElement) {
+    for (let s = el.nextElementSibling; s; s = s.nextElementSibling) below += s.getBoundingClientRect().height;
+  }
+  const row = [...panel.parentElement.querySelectorAll(".sp-asof, .sp-shown, .sp-notes")].filter((c) => c.getClientRects().length > 0);
+  if (row.length) below += Math.max(...row.map((c) => c.getBoundingClientRect().height)) + 24; // + the grid's row gap and the page's bottom padding
+  return below;
 }

@@ -44,7 +44,8 @@ export function dataAsOfHtml(board, { games = null, lines = [] } = {}) {
   const stamps = boardStamps(board, { games });
   const rows = stamps.map((s) => `<tr${s.missing ? ` class="stamp-missing"` : ""} title="${escapeHtml(s.title)}"><th>${escapeHtml(s.label)}</th><td>${escapeHtml(clock12(s.text))}</td></tr>`).join("");
   const notes = lines.flatMap(noteLines).map((l) => `<li>${escapeHtml(l)}</li>`).join("");
-  return `<section class="sp-asof" aria-label="Data as of"><h3 class="sp-asof-title">Data as of</h3><table class="sp-asof-stamps"><tbody>${rows}</tbody></table>${notes ? `<ul class="sp-asof-notes">${notes}</ul>` : ""}</section>`;
+  // Mock B (Adam 12:44 PM 11-12): two cards in the page's bottom row, the stamps and the notes (counts, coverage, injury lines).
+  return `<section class="sp-asof" aria-label="Data as of"><div class="sp-ch"><h3 class="sp-asof-title">Data as of</h3></div><table class="sp-asof-stamps"><tbody>${rows}</tbody></table></section>${notes ? `<section class="sp-notes" aria-label="Notes"><div class="sp-ch"><h3 class="sp-asof-title">Notes</h3></div><ul class="sp-asof-notes">${notes}</ul></section>` : ""}`;
 }
 
 /** The main view's one short line: the injury report or the figures' pull when it is a saved copy or missing ("Injuries: saved copy"), else "". */

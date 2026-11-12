@@ -23,6 +23,7 @@ import {
   postMode,
 } from "./js/api.js";
 import { modeStampText, twoGunCoverageText, renderPills, renderSlateLine, wireUpload, wireRefresh, wireThemeToggle, wireThemeSwitch, secondSlateSavedText, renderModeBox, uploadStatusSetter, entriesUploadedHandler, paintSourcesLink, wireSourcesLink, wireTrackedLink } from "./js/header.js";
+import { wirePullNow } from "./js/pull-now.js";
 import { uploadEntriesText, setUploadRouter } from "./js/entries-wire.js"; // Adam 2026-10-18: one upload for every DraftKings export
 import { showdownKeyFromHash, showdownRowById, showdownBoardAsOf, showdownBoardNow } from "./js/showdown/view.js";
 import { configureShowdown, setRouteDkFile, uploadShowdownText, uploadShowdownEntriesText, renderModeRowNow, renderShowdownTabNow, loadShowdownList, applyMode } from "./js/app-showdown.js";
@@ -543,6 +544,7 @@ wireThemeToggle(document.getElementById("sd-theme-toggle-btn"), { onChange: () =
 wireSourcesLink(el.sourcesBtn, { onOpen: onSourcesOpen });
 // The Tracked button sits on both headers (main slate and Showdown); both are in index.html, so both are wired here.
 wireTrackedLink(document.getElementById("tracked-btn"));
+wirePullNow({ btn: document.getElementById("pull-now-btn"), infoEl: document.getElementById("pull-info") }); // the Pull now button (Adam 11-06)
 wireTrackedLink(document.getElementById("sd-tracked-btn"), showdownKeyFromHash); // ?from= brings the page's back link to this game
 
 wireRefresh({ refreshBtn: el.refreshBtn, statusEl: el.status }, {

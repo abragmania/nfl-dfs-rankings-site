@@ -75,6 +75,44 @@ async function showPublished() {
   }
 }
 
+// D71: a control the site cannot run keeps its place, disabled, with a sentence that it runs in the app (the pattern of the Showdown
+// upload note and the "apply to every game" button). Header chips carry the sentence as their hover; the paste boxes carry it as a
+// note inside the box. Idempotent: the app redraws these panels, so the observer below marks them again.
+export const UPLOAD_SENTENCE = "Uploading a DraftKings CSV runs in the app.";
+export const SHOWDOWN_UPLOAD_SENTENCE = "Uploading a showdown CSV runs in the app.";
+export const REFRESH_SENTENCE = "Refreshing the sources runs in the app.";
+export const PASTE_SENTENCE = "Pasting a FantasyPros table runs in the app.";
+
+function lockControl(el, sentence) {
+  if (el.dataset?.appOnly === "1") return;
+  el.dataset.appOnly = "1";
+  el.title = sentence;
+  el.setAttribute("aria-disabled", "true");
+  el.classList.add("site-app-only");
+  if (el.tagName === "BUTTON") el.disabled = true;
+  el.querySelectorAll("input").forEach((input) => { input.disabled = true; });
+}
+
+export function markAppOnlyControls(root = document) {
+  root.querySelectorAll(".header .upload-btn:not([data-app-only])").forEach((el) => lockControl(el, UPLOAD_SENTENCE));
+  root.querySelectorAll(".mode-upload-tile:not([data-app-only])").forEach((el) => lockControl(el, SHOWDOWN_UPLOAD_SENTENCE));
+  root.querySelectorAll("#refresh-btn:not([data-app-only]), #sd-refresh-btn:not([data-app-only])").forEach((el) => lockControl(el, REFRESH_SENTENCE));
+  root.querySelectorAll(".paste-box:not([data-app-only])").forEach((box) => {
+    box.dataset.appOnly = "1";
+    box.querySelectorAll("select, button, textarea").forEach((c) => { c.disabled = true; });
+    const note = document.createElement("p");
+    note.className = "tab-note site-app-only-note";
+    note.textContent = PASTE_SENTENCE;
+    box.append(note);
+  });
+}
+
+function watchAppOnlyControls() {
+  if (!document.body || typeof MutationObserver === "undefined") return;
+  markAppOnlyControls();
+  new MutationObserver(() => markAppOnlyControls()).observe(document.body, { childList: true, subtree: true });
+}
+
 // Capture phase on the document so these run before the table's own delegated handlers.
 const BLOCKED = "[data-action='lineup-rename-start']:not([data-id^='device-']), [data-action='sd-rename-start']:not([data-id^='device-'])";
 document.addEventListener(
@@ -89,3 +127,4 @@ document.addEventListener(
 );
 
 showPublished();
+watchAppOnlyControls();

@@ -230,6 +230,17 @@ export function postRefresh() {
   return readOnly();
 }
 
+// Pull now (D71): the button keeps its place on the site, disabled, with this sentence; the cloud job and a working button come later.
+const PULL_SENTENCE ="Pulling runs in the app.";
+
+export function postPullNow() {
+  return readOnly();
+}
+
+export async function getPullStatus() {
+  return { ok: true, site: true, sentence: PULL_SENTENCE, running: null, last: null };
+}
+
 export async function getMode() {
   return { ok: true, mode: await activeMode() };
 }

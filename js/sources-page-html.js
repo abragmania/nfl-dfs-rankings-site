@@ -127,6 +127,23 @@ function rowHtml(kind, s, share, view) {
   return `${row}${err ? `<tr class="sp-err-row"><td></td><td colspan="7" class="sp-err" role="alert">${esc(err)}</td></tr>` : ""}${um ? `<tr class="sp-um-row"><td></td><td colspan="7">${um}</td></tr>` : ""}`;
 }
 
+// The preset segmented control (Custom lit and not clickable when the ticks match neither). A page that cannot tell which preset is in
+// force (no `preset` in its data) draws no preset control rather than a wrong one.
+function presetSegHtml(data, view) {
+  if (data.preset == null) return "";
+  const btn = (p) => `<button type="button" class="sp-seg-btn${data.preset === p.key ? " active" : ""}" data-sp="preset" data-preset="${p.key}"${view.ro ? " disabled" : ""} aria-pressed="${data.preset === p.key}">${esc(p.label)}</button>`;
+  const custom = data.preset === "custom" ? `<button type="button" class="sp-seg-btn active" disabled aria-pressed="true" title="The ticks below match neither preset.">Custom</button>` : "";
+  return `<span class="sp-seg" role="group" aria-label="Preset">${PRESETS.map(btn).join("")}${custom}</span>`;
+}
+
+/** The "Figures" preset control for the first card's header (mock B, Adam 12:44 PM 11-12); "" without a preset. A refusal shows beside it. */
+export function presetsHtml(data, view) {
+  const seg = presetSegHtml(data, view);
+  if (!seg) return "";
+  const err = view.errors.get("preset");
+  return `<div class="sp-figures"><span class="sp-gaps-label">Figures</span>${seg}${err ? `<span class="sp-err" role="alert">${esc(err)}</span>` : ""}</div>`;
+}
+
 /** The two-way "Players these sources miss" toggle; `gaps` is "backup" or "blank". */
 export function gapsHtml(kind, gaps, view) {
   const btn = (value, label) => `<button type="button" class="sp-seg-btn${gaps === value ? " active" : ""}" data-sp="gaps" data-kind="${esc(kind)}" data-gaps="${value}"${view.ro ? " disabled" : ""} aria-pressed="${gaps === value}">${label}</button>`;
@@ -147,33 +164,37 @@ export function methodHtml(sec, open = false) {
   return `<details class="sp-method sp-recipe-box" data-recipe="${esc(sec.kind)}"${open ? " open" : ""}><summary title="${title}">${esc(sec.method)}</summary><p class="sp-recipe">${esc(sec.recipe)}</p></details>`;
 }
 
-/** One section's box: the table (its title in the header row), then the method note and the gaps toggle on one line. "" for a section with no sources (👁 finding 2). */
-export function sectionHtml(sec, view) {
+/**
+ * One section's card (mock B): its title and, at the right of the header, `extra` (the Figures presets on the first card) and the gaps toggle;
+ * the table; then the method note. "" for a section with no sources (👁 finding 2).
+ */
+export function sectionHtml(sec, view, extra = "") {
   if (!sec.sources?.length) return "";
   const shares = sharePercents(sec.sources, new Map([...view.drafts].filter(([k]) => k.startsWith(`${sec.kind}/`)).map(([k, v]) => [k.slice(sec.kind.length + 1), v])));
-  const head = `<th></th><th class="sp-th-title"><h2 class="sp-h">${esc(sec.title)}</h2></th>${HEAD_CELLS.map((h) => `<th>${esc(h)}</th>`).join("")}`;
+  const head = `<th></th><th class="sp-th-title">Source</th>${HEAD_CELLS.map((h) => `<th>${esc(h)}</th>`).join("")}`;
   const rows = sec.sources.map((s) => rowHtml(sec.kind, s, shares.get(s.id), view)).join("");
   const method = methodHtml(sec, Boolean(view.openRecipes?.has(sec.kind)));
   const gaps = sec.gaps ? gapsHtml(sec.kind, sec.gaps, view) : "";
-  // The floated gaps toggle follows an inline method note (it sits at the end of the note's last line). A note with the recipe behind it
-  // is a block, so the toggle goes first there and the note's summary runs beside it on the same line (👁 round 2, V1).
-  const boxed = Boolean(sec.method && sec.recipe);
+  const right = `${extra}${gaps}`;
   return `<section class="sp-panel" data-kind="${esc(sec.kind)}">
+    <div class="sp-ch"><h2 class="sp-h">${esc(sec.title)}</h2>${right ? `<div class="sp-ch-r">${right}</div>` : ""}</div>
     <table class="sp-table">${COLGROUP}<thead><tr>${head}</tr></thead><tbody>${rows}</tbody></table>
-    ${method || gaps ? `<div class="sp-foot">${boxed ? `${gaps}${method}` : `${method}${gaps}`}</div>` : ""}
+    ${method ? `<div class="sp-foot">${method}</div>` : ""}
   </section>`;
 }
 
-/** The header line: title, the preset segmented control (Custom lit and not clickable when the ticks match neither) and the quiet line. */
-export function headerHtml(data, view) {
-  const btn = (p) => `<button type="button" class="sp-seg-btn${data.preset === p.key ? " active" : ""}" data-sp="preset" data-preset="${p.key}"${view.ro ? " disabled" : ""} aria-pressed="${data.preset === p.key}">${esc(p.label)}</button>`;
-  const custom = data.preset === "custom" ? `<button type="button" class="sp-seg-btn active" disabled aria-pressed="true" title="The ticks below match neither preset.">Custom</button>` : "";
-  const err = view.errors.get("preset");
-  // A page that cannot tell which preset is in force (no `preset` in its data) draws no preset control rather than a wrong one.
-  const presets = data.preset == null ? "" : `<span class="sp-seg" role="group" aria-label="Preset">${PRESETS.map(btn).join("")}${custom}</span>`;
+/**
+ * The header line. By default (the old form, kept for its tests): title, the preset control, the default pill and the quiet line. With
+ * `{ inline: false }` (the page, mock B): no title and no preset control (they sit in the first card's header); only the default pill, the
+ * quiet line and a preset refusal, and "" when there is none.
+ */
+export function headerHtml(data, view, { inline = true } = {}) {
   // A Showdown game with no choices saved reads its default (server/sources/showdown-default.js): data.defaulted { preset, why }.
   const defaulted = defaultedPillHtml(data.defaulted);
-  return `<div class="sp-head"><h1 class="sp-title">Sources</h1>${presets}${defaulted}${(data.quiet ?? quietLine()) ? `<span class="sp-quiet">${esc(data.quiet ?? quietLine())}</span>` : ""}${err ? `<span class="sp-err" role="alert">${esc(err)}</span>` : ""}</div>`;
+  const quiet = (data.quiet ?? quietLine()) ? `<span class="sp-quiet">${esc(data.quiet ?? quietLine())}</span>` : "";
+  if (!inline) return defaulted || quiet ? `<div class="sp-head">${defaulted}${quiet}</div>` : "";
+  const err = view.errors.get("preset");
+  return `<div class="sp-head"><h1 class="sp-title">Sources</h1>${presetSegHtml(data, view)}${defaulted}${quiet}${err ? `<span class="sp-err" role="alert">${esc(err)}</span>` : ""}</div>`;
 }
 
 /** The pill's words for a game reading its default: "default (TwoGun only)" or "default (Our sources)". */
@@ -252,8 +273,9 @@ function slimItemHtml(sec, view) {
 
 export function shownOnlyHtml(list) {
   if (!list?.length) return "";
-  const items = list.map((s) => `<span class="sp-shown-item" title="${esc(s.note ?? "")}"><span class="sp-slim-name">${esc(s.label)}</span>${pulledHtml(s.lastPulled)} ${pillHtml(s.status, s.note)}</span>`).join("");
-  return `<div class="sp-shown"><span class="sp-slim-title">Shown, not chosen</span>${items}</div>`;
+  // Mock B: a card of its own at the foot of the page, one row per source: name, pulled, status.
+  const items = list.map((s) => `<tr class="sp-shown-item" title="${esc(s.note ?? "")}"><td class="sp-slim-name">${esc(s.label)}</td><td class="sp-shown-pulled">${pulledHtml(s.lastPulled)}</td><td class="sp-shown-status">${pillHtml(s.status, s.note)}</td></tr>`).join("");
+  return `<section class="sp-shown"><div class="sp-ch"><h2 class="sp-h sp-slim-title">Shown, not chosen</h2></div><table class="sp-shown-table"><tbody>${items}</tbody></table></section>`;
 }
 
 /** The whole controls area for one selection. `view`: { ro, errors: Map, drafts: Map, savedKey, openRecipes?: Set of section kinds whose recipe is open }. */
@@ -264,16 +286,12 @@ export function selectionHtml(data, view) {
   // A section with no sources draws nothing at all (👁 finding 2), so it never leaves an empty box or column.
   const full = data.sections.filter((s) => !SLIM_KINDS.has(s.kind) && s.sources?.length);
   const slim = data.sections.filter((s) => SLIM_KINDS.has(s.kind) && s.sources?.length);
-  const col = (secs) => `<div class="sp-col">${secs.map((s) => sectionHtml(s, view)).join("")}</div>`;
-  // Classic: Projections | Ownership side by side. Showdown (👁 finding 1): Projections across the full width, then Ownership FLEX |
-  // Ownership Captain side by side, so the two ownership boxes are not stacked beside a shorter Projections box.
-  const showdown = full.some((s) => s.kind === "sdOwnFlex" || s.kind === "sdOwnCpt");
+  // Mock B (Adam 12:44 PM 11-12), classic and Showdown alike: the Projections card at the left with the Figures presets in its header, the
+  // ownership card (classic) or the FLEX and Captain cards (Showdown) stacked at its right.
   const [first, ...rest] = full;
-  const boxes = !first ? ""
-    : showdown && first.kind === "projection"
-      ? `<div class="sp-wide">${sectionHtml(first, view)}</div>${rest.length ? `<div class="sp-cols">${rest.map((s) => col([s])).join("")}</div>` : ""}`
-      : `<div class="sp-cols">${col([first])}${rest.length ? col(rest) : ""}</div>`;
-  return `${headerHtml(data, view)}${scopeLineHtml(data, view)}${note}${boardNote}${localNoteHtml(data.siteLocal?.changed, view)}
+  const boxes = !first ? (presetsHtml(data, view) ? `<div class="sp-head">${presetsHtml(data, view)}</div>` : "") // no card to carry the presets: they still show
+    : `<div class="sp-top${rest.length ? "" : " sp-top-solo"}">${sectionHtml(first, view, presetsHtml(data, view))}${rest.length ? `<div class="sp-stack">${rest.map((s) => sectionHtml(s, view)).join("")}</div>` : ""}</div>`;
+  return `${headerHtml(data, view, { inline: false })}${scopeLineHtml(data, view)}${note}${boardNote}${localNoteHtml(data.siteLocal?.changed, view)}
     ${boxes}
     ${slim.length ? `<div class="sp-slim">${slim.map((s) => slimItemHtml(s, view)).join("")}</div>` : ""}
     ${shownOnlyHtml(data.shownOnly)}`;

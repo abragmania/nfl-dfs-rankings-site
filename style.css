@@ -280,6 +280,10 @@ html, body {
   color: var(--text-dim);
   white-space: nowrap;
 }
+/* Pull now with its "Last pull ...: ok" line under it in small type, so the line takes no width from the header's left group. */
+.pull-group { display: inline-flex; flex-direction: column; align-items: center; gap: 1px; }
+.pull-group .upload-info { font-size: 10.5px; line-height: 1.1; width: 0; display: flex; justify-content: center; white-space: nowrap; } /* centred under the button, adding nothing to the header's width */
+.pull-group .upload-info:empty { display: none; }
 
 .refresh-btn,
 .sources-btn {
@@ -2321,13 +2325,20 @@ tr.cmp-held > td.ex-f { opacity: 1; }
    one wraps, and the whole sentence is the hover. */
 .sources-page { display: flex; flex-direction: column; gap: var(--sp-2); }
 /* Item 7 (Adam 2:48 PM 11-11): Data as of, the board's stamps and counts moved off the main views; a short table and terse lines. */
-.sp-asof { display: flex; flex-wrap: wrap; align-items: flex-start; gap: var(--sp-1) var(--sp-4); font-size: 12px; color: var(--text-muted); }
-.sp-asof-title { flex: 0 0 100%; margin: 0; font-size: 13px; color: var(--text); }
-.sp-asof-stamps { border-collapse: collapse; }
-.sp-asof-stamps th { text-align: left; font-weight: 600; color: var(--text-dim); padding: 0 var(--sp-2) 0 0; }
-.sp-asof-stamps td { padding: 0; font-variant-numeric: tabular-nums; }
+/* Mock B: Data as of, Shown not chosen and Notes are three cards in the page's bottom row (the grid rules at the end of this section). */
+.sp-asof, .sp-notes, .sp-shown { background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; padding-bottom: 6px; min-width: 0; font-size: var(--fs-sm); color: var(--text-muted); }
+.sp-asof-title { margin: 0; font-size: var(--fs-md); font-weight: 700; color: var(--text); }
+.sp-asof-stamps { border-collapse: collapse; margin: 4px 18px 0; }
+.sp-asof-stamps th { text-align: left; font-weight: 400; color: var(--text-dim); padding: 2px var(--sp-4) 2px 0; width: 90px; }
+.sp-asof-stamps td { padding: 2px 0; font-variant-numeric: tabular-nums; color: var(--text-muted); }
 .sp-asof-stamps tr.stamp-missing td { color: var(--danger); }
-.sp-asof-notes { margin: 0; padding-left: 1.1em; }
+.sp-asof-notes { margin: 4px 0 0; padding: 0 18px 0 36px; display: flex; flex-direction: column; gap: 2px; }
+.sp-shown-table { width: 100%; border-collapse: collapse; }
+.sp-shown-table td { padding: 5px 12px; border-bottom: 1px solid var(--border); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.sp-shown-table tr:last-child td { border-bottom: 0; }
+.sp-shown-table td:first-child { padding-left: 18px; font-weight: 600; color: var(--text); }
+.sp-shown-table td.sp-shown-pulled { text-align: right; }
+.sp-shown-table td.sp-shown-status { padding-right: 18px; width: 90px; }
 .sd-stamps .stale-line, #sd-stamps .stale-line { color: var(--amber); font-size: 12px; }
 .sp-controls { display: flex; flex-direction: column; gap: var(--sp-2); min-width: 0; }
 .sp-head { display: flex; align-items: center; flex-wrap: wrap; gap: var(--sp-2) var(--sp-4); }
@@ -2347,14 +2358,25 @@ tr.cmp-held > td.ex-f { opacity: 1; }
 .sp-seg-btn:disabled:not(.active) { cursor: default; opacity: 0.55; }
 /* Two columns at both detected sizes; one column when the window is narrower than 1100px. Each box is as tall as its own table and note
    (👁 round 4, V2: held to one height, opening one box's recipe made the other box grow and left an empty band under its table). */
-.sp-cols { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: var(--sp-2); align-items: start; }
-.sp-col { display: flex; flex-direction: column; gap: var(--sp-2); min-width: 0; }
-@media (max-width: 1100px) { .sp-cols { grid-template-columns: minmax(0, 1fr); } }
-.sp-panel { display: flex; flex-direction: column; background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 8px; padding: 2px var(--sp-1) 4px; min-width: 0; overflow-x: auto; }
+/* Mock B (Adam 12:44 PM 11-12): the Projections card at the left, the ownership card(s) stacked at its right; one column under 1100px. */
+.sp-top { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: var(--sp-2); align-items: start; }
+/* The Sources page is wider than the other screens (its two source cards need about 1800px to show every column whole). */
+:is(#classic-main, #showdown-main):has(> .sources-panel:not([hidden])) { max-width: min(100vw, 2000px); }
+.sp-top-solo { grid-template-columns: minmax(0, 1fr); }
+.sp-stack { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--sp-2); min-width: 0; }
+@media (max-width: 1100px) { .sp-top { grid-template-columns: minmax(0, 1fr); } }
+.sp-panel { display: flex; flex-direction: column; background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 8px; padding: 0 0 4px; min-width: 0; overflow-x: auto; }
+/* One card header for every card of the page (the title at the left, its controls at the right). */
+.sp-ch { display: flex; align-items: center; gap: var(--sp-3); min-height: 44px; padding: 6px 18px; background: var(--bg-elevated-2); border-bottom: 1px solid var(--border); flex: 0 0 auto; }
+.sp-ch .sp-h { font-size: var(--fs-md); font-weight: 700; white-space: nowrap; }
+.sp-ch-r { margin-left: auto; display: flex; align-items: center; flex-wrap: wrap; justify-content: flex-end; gap: var(--sp-1) var(--sp-3); font-size: var(--fs-sm); color: var(--text-muted); }
+.sp-figures { display: flex; align-items: center; gap: var(--sp-2); font-size: var(--fs-sm); color: var(--text-muted); }
 /* One set of column widths for every choice table (sources-page-html.js COLGROUP), so tables side by side or stacked line up column for column
    (👁 finding 6); the name column takes the rest, never less than the table's min-width leaves it. */
-.sp-table { --w-tick: 26px; --w-weight: 54px; --w-share: 44px; --w-pulled: 84px; --w-posted: 200px; --w-cov: 70px; --w-status: 96px;
-  width: 100%; min-width: 700px; table-layout: fixed; border-collapse: collapse; font-size: var(--fs-sm); }
+.sp-table { --w-tick: 44px; --w-weight: 80px; --w-share: 72px; --w-pulled: 120px; --w-posted: 190px; --w-cov: 100px; --w-status: 124px;
+  width: 100%; min-width: 900px; table-layout: fixed; border-collapse: collapse; font-size: var(--fs-sm); }
+/* The cards at the right: the same columns, a little tighter. Every column holds its header and its figure whole (nothing is cut with an ellipsis); a card too narrow for them scrolls sideways instead. */
+.sp-stack .sp-table { --w-tick: 40px; --w-posted: 184px; min-width: 890px; }
 .sp-w-tick { width: var(--w-tick); }
 .sp-w-name { width: var(--w-name, auto); }
 .sp-w-weight { width: var(--w-weight); }
@@ -2363,19 +2385,17 @@ tr.cmp-held > td.ex-f { opacity: 1; }
 .sp-w-posted { width: var(--w-posted); }
 .sp-w-cov { width: var(--w-cov); }
 .sp-w-status { width: var(--w-status); }
-/* Showdown's Projections box spans the page, but its table stops where its columns read well (👁 round 2, finding 7), as classic's tables do:
-   the name and Posted columns get fixed widths here (300px holds the long TwoGun stamp on one line) and the table is their sum. */
-.sp-wide .sp-table { --w-name: 220px; --w-posted: 300px; min-width: 0;
-  width: calc(var(--w-tick) + var(--w-name) + var(--w-weight) + var(--w-share) + var(--w-pulled) + var(--w-posted) + var(--w-cov) + var(--w-status)); }
-.sp-table th { text-align: left; padding: 3px 4px; color: var(--text-muted); font-weight: 600; border-bottom: 1px solid var(--border); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.sp-table th.sp-th-title { color: var(--text); }
-.sp-table td { padding: 0 4px; height: 24px; border-bottom: 1px solid var(--border); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sp-table th { text-align: left; padding: 6px 12px; font-size: 11.5px; text-transform: uppercase; letter-spacing: 0.8px; color: var(--text-muted); font-weight: 600; border-bottom: 1px solid var(--border); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sp-table th.sp-th-title { color: var(--text-muted); padding-left: 0; }
+.sp-table td { padding: 0 12px; height: 34px; border-bottom: 1px solid var(--border); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sp-table td.sp-c-tick, .sp-table th:first-child { padding-left: 18px; padding-right: 0; }
+.sp-table th:last-child, .sp-table td:last-child { padding-right: 18px; }
 /* A name wraps to a second line rather than being cut (👁 round 2, findings 2 and 3); the whole text stays the hover. A source's own Posted
    stamp never wraps (👁 round 4, V1: "...12:42 PM" / "GMT" made one row 33px against 17px); the column is wide enough for the longest one seen. */
-.sp-table td.sp-c-name { white-space: normal; text-overflow: clip; line-height: 1.2; }
+.sp-table td.sp-c-name { white-space: nowrap; text-overflow: clip; line-height: 1.2; padding-left: 0; }
 .sp-table td.sp-c-posted { white-space: nowrap; text-overflow: ellipsis; }
 .sp-table tbody tr:last-child td { border-bottom: 0; }
-.sp-table th:nth-child(3), .sp-table th:nth-child(4), .sp-table th:nth-child(7), .sp-table td.sp-c-weight, .sp-table td.sp-c-share, .sp-table td.sp-c-cov { text-align: right; font-variant-numeric: tabular-nums; }
+.sp-table :is(th:nth-child(n+3):nth-child(-n+7), td.sp-c-weight, td.sp-c-share, td.sp-c-pulled, td.sp-c-posted, td.sp-c-cov) { text-align: right; font-variant-numeric: tabular-nums; }
 /* Last pulled in tabular figures, so the times line up down the column (👁 finding 11). */
 .sp-table td.sp-c-pulled { font-variant-numeric: tabular-nums; }
 .sp-c-name { font-weight: 600; color: var(--text); }
@@ -2387,7 +2407,7 @@ tr.cmp-held > td.ex-f { opacity: 1; }
 .sp-tick-box:disabled { cursor: not-allowed; opacity: 0.4; }
 /* The weight is a control to grab: a boxed number field in the app's input tokens (👁 finding 8), sunk into the box so it reads in dark; no
    spin arrows (the up and down keys still step it by 0.25); its live share is the next column. */
-.sp-weight-input { width: 46px; box-sizing: border-box; text-align: right; font-variant-numeric: tabular-nums; background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 2px 6px; font-size: var(--fs-sm); font-weight: 600; -moz-appearance: textfield; appearance: textfield; }
+.sp-weight-input { width: 44px; box-sizing: border-box; text-align: center; font-variant-numeric: tabular-nums; background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 2px 6px; font-size: var(--fs-sm); font-weight: 600; -moz-appearance: textfield; appearance: textfield; }
 .sp-weight-input:hover:not(:disabled), .sp-weight-input:focus { border-color: var(--accent); }
 .sp-weight-input:focus { outline: 2px solid rgba(var(--accent-rgb), 0.45); outline-offset: 0; }
 .sp-weight-input::-webkit-inner-spin-button, .sp-weight-input::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
@@ -2404,6 +2424,9 @@ tr.cmp-held > td.ex-f { opacity: 1; }
 .sp-pill-failed { background: rgba(var(--danger-rgb), 0.2); border-color: rgba(var(--danger-rgb), 0.6); }
 .sp-pill-failed::before { background: var(--danger); }
 .sp-pill-none { background: var(--bg-elevated-2); color: var(--text-muted); }
+/* Mock B: a status is a dot and its word, aligned down the column, no pill (the default-choices note keeps its pill). */
+:is(.sp-c-status, .sp-shown-status) .sp-pill { background: none; border: 0; padding: 0; gap: 7px; font-size: inherit; font-weight: 400; }
+:is(.sp-c-status, .sp-shown-status) .sp-pill::before { width: 8px; height: 8px; }
 /* "saved": a check that shows when a row has just been saved and fades out. */
 .sp-c-status { position: relative; }
 .sp-saved { position: absolute; right: 0; top: 50%; margin-top: -9px; line-height: 18px; color: var(--success); font-weight: 700; opacity: 0; }
@@ -2418,11 +2441,11 @@ tr.cmp-held > td.ex-f { opacity: 1; }
 .sp-row:has(+ .sp-um-row) td, .sp-err-row:has(+ .sp-um-row) td { border-bottom: 0; }
 .sp-local { display: flex; align-items: center; flex-wrap: wrap; gap: var(--sp-2); }
 /* The foot of a box: the method note (the short note fits one line; a longer one wraps; the whole sentence is the hover) and the gaps toggle at its right. */
-.sp-foot { display: flow-root; margin-top: auto; padding-top: 4px; }
+.sp-foot { display: flow-root; margin-top: auto; padding: 4px 18px 0; }
 /* The method is never cut (👁 round 2, finding 8): the short note fits one line; a longer one wraps; the whole sentence is the hover. It runs inline and the gaps toggle floats right after it, so the toggle sits at
    the end of the method's last line when there is room (the Showdown Projections box: one line; a half-filled last line), else on the line below. */
 .sp-method { display: inline; margin: 0; font-size: 12px; line-height: 1.4; color: var(--text-dim); }
-.sp-gaps { float: right; display: flex; align-items: center; gap: var(--sp-2); margin: 0 0 0 var(--sp-3); font-size: var(--fs-sm); color: var(--text-muted); white-space: nowrap; }
+.sp-gaps { display: flex; align-items: center; gap: var(--sp-2); font-size: var(--fs-sm); color: var(--text-muted); white-space: nowrap; }
 .sp-gaps .sp-seg-btn { padding: 2px 10px; }
 /* The method note with the board's recipe behind it (sources-page-html.js methodHtml): a block that comes after the floated gaps toggle, so
    the closed disclosure's summary runs on the toggle's line (👁 round 2, V1); opened, the recipe wraps beside the toggle and under it. */
@@ -2430,15 +2453,15 @@ tr.cmp-held > td.ex-f { opacity: 1; }
 .sp-recipe-box > summary { cursor: pointer; }
 .sp-recipe-box > summary:hover { color: var(--text-muted); }
 .sp-recipe { margin: 0 0 2px; line-height: 1.4; white-space: normal; }
-.sp-slim, .sp-shown { display: flex; align-items: center; flex-wrap: wrap; gap: var(--sp-1) var(--sp-4); font-size: var(--fs-sm); }
+.sp-slim { display: flex; align-items: center; flex-wrap: wrap; gap: var(--sp-1) var(--sp-4); font-size: var(--fs-sm); }
 .sp-slim { padding: 4px var(--sp-3); background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 8px; }
 .sp-slim .sp-seg-btn { padding: 2px 8px; }
-.sp-shown { color: var(--text-muted); padding: 0 var(--sp-1); }
-.sp-slim-item, .sp-slim-src, .sp-shown-item { display: inline-flex; align-items: center; gap: var(--sp-2); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.sp-slim-item, .sp-slim-src { display: inline-flex; align-items: center; gap: var(--sp-2); white-space: nowrap; font-variant-numeric: tabular-nums; }
 .sp-slim-title { font-weight: 700; color: var(--text); }
 .sp-slim-name { color: var(--text-muted); }
 .sp-slim-meta { display: inline-flex; align-items: center; gap: var(--sp-2); color: var(--text-muted); }
-.sp-players-head { display: flex; align-items: center; gap: var(--sp-3); padding-top: var(--sp-2); border-top: 1px solid var(--border); }
+/* Mock B: "Players" with its Projections | Ownership switch is the header of the card the per-player table fills (the grid rules below put the table's panel directly under it). */
+.sp-players-head { display: flex; align-items: center; gap: var(--sp-3); height: 44px; padding: 0 18px; background: var(--bg-elevated-2); border: 1px solid var(--border); border-radius: 8px 8px 0 0; }
 /* An unused source's column in the per-player tables (classic and Showdown; tabs.js UNUSED_COL): dimmed, never a "(not used)" word (👁 finding 7). */
 .source-value-table th.sv-unused, .source-value-table td.sv-unused { color: var(--text-dim); font-weight: 400; }
 /* The classic per-player tables' headers stay on one line (👁 finding 7); the table scrolls sideways in its panel instead. */
@@ -2448,11 +2471,54 @@ tr.cmp-held > td.ex-f { opacity: 1; }
 #ownership-panel .source-value-table.sv-classic th { white-space: normal; }
 .sp-players-head .sp-h { margin: 0; }
 /* Under the Sources page the closed paste box is one slim line, so the player rows start higher (👁 finding 1); opened, it is the usual box. */
-:is(#projections-panel, #sd-projections-panel) .paste-box { padding: 6px var(--sp-3); margin-bottom: var(--sp-2); }
+/* Mock B: the paste box is the foot of the Players card, one slim line when closed. */
+:is(#projections-panel, #sd-projections-panel) .paste-box { background: none; border: 0; border-top: 1px solid var(--border); border-radius: 0; padding: 8px 18px; margin: 0; }
+:is(#projections-panel, #sd-projections-panel) .paste-box summary { font-size: var(--fs-sm); font-weight: 600; }
 :is(#projections-panel, #sd-projections-panel) .paste-box:not([open]) summary { margin-bottom: 0; }
 :is(#projections-panel, #sd-projections-panel) .sd-kicker-paste { margin-top: 0; }
+
+/* ---- Mock B's page grid (Adam 12:44 PM 11-12). While a Sources page shows, its <main> is a three-column grid and the page's pieces (the top
+   row of source cards, the Players card, the bottom row of three cards) are its direct items: the Sources panel, its page and its two hosts
+   are display:contents, and `order` sets the sequence the markup does not have (the per-player table's panel is a sibling of the Sources
+   panel, not inside it). Everything else in the <main> spans the row. ---- */
+:is(#classic-main, #showdown-main):has(> .sources-panel:not([hidden])) { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.4fr); column-gap: var(--sp-2); row-gap: var(--sp-2); align-content: start; }
+:is(#classic-main, #showdown-main):has(> .sources-panel:not([hidden])) > * { grid-column: 1 / -1; }
+.sources-panel:not([hidden]), .sources-panel:not([hidden]) :is(.sources-page, .sp-controls, .sp-asof-host) { display: contents; }
+.sources-panel:not([hidden]) :is(.sp-head, .sp-note, .sp-local) { order: 1; grid-column: 1 / -1; }
+.sources-panel:not([hidden]) .sp-top { order: 2; grid-column: 1 / -1; }
+.sources-panel:not([hidden]) .sp-slim { order: 3; grid-column: 1 / -1; }
+.sources-panel:not([hidden]) .sp-players-head { order: 4; grid-column: 1 / -1; margin-bottom: calc(-1 * var(--sp-2)); }
+:is(#projections-panel, #ownership-panel, #sd-projections-panel, #sd-ownership-panel):not([hidden]) { order: 5; position: relative; background: var(--bg-elevated); border: 1px solid var(--border); border-top: 0; border-radius: 0 0 8px 8px; }
+/* "dense": the Shown card (after the two others in the markup) goes back into the row's middle column instead of starting a row of its own. */
+:is(#classic-main, #showdown-main):has(> .sources-panel:not([hidden])) { grid-auto-flow: row dense; }
+.sources-panel:not([hidden]) .sp-asof { order: 6; grid-column: 1; }
+.sources-panel:not([hidden]) .sp-shown { order: 6; grid-column: 2; }
+.sources-panel:not([hidden]) .sp-notes { order: 6; grid-column: 3; }
+/* The header at 1920 to 2100 wide (look.css makes it one nowrap row whose stamps shrink to an ellipsis): it wraps to a second row instead, and the stamps keep their full text. */
+@media (min-width: 1900px) {
+  header.nl#classic-header .top { flex-wrap: wrap; }
+  header.nl#classic-header .top .stamps { flex: 0 0 auto; overflow: visible; }
+  header.nl#classic-header .top .stamps span { flex: 0 0 auto; overflow: visible; text-overflow: clip; }
+}
+/* The "N shown / Show all players" note rides in the Players card's header, at its right. */
+:is(#projections-panel, #ownership-panel, #sd-projections-panel, #sd-ownership-panel) .tab-note:has([data-action="show-all"]) { position: absolute; top: -44px; right: 18px; height: 44px; margin: 0; display: flex; align-items: center; }
+:is(#projections-panel, #ownership-panel, #sd-projections-panel, #sd-ownership-panel) .tab-note { margin-left: 18px; margin-right: 18px; }
+/* The per-player table: full width of its card, tighter columns, figures right-aligned, the blend's column bold, headers in the cards' small capitals. */
+:is(#projections-panel, #ownership-panel, #sd-projections-panel, #sd-ownership-panel) .tab-table-wrap:not(.is-expanded):has(> .source-value-table.sd-fit) { width: 100%; }
+:is(#projections-panel, #ownership-panel, #sd-projections-panel, #sd-ownership-panel) .source-value-table:is(.sd-fit, .sv-classic) { width: 100%; }
+:is(#ownership-panel) .source-value-table.sv-classic th[data-col^="src:"] { width: auto; }
+:is(#projections-panel, #ownership-panel, #sd-projections-panel, #sd-ownership-panel) .tab-table-group,
+:is(#projections-panel, #ownership-panel, #sd-projections-panel, #sd-ownership-panel) .tab-table-wrap:not(.is-expanded):has(> .source-value-table.sv-classic) { width: 100%; }
+:is(#projections-panel, #ownership-panel, #sd-projections-panel, #sd-ownership-panel) .source-value-table :is(th, td) { padding: 3px 14px; }
+:is(#projections-panel, #ownership-panel, #sd-projections-panel, #sd-ownership-panel) .source-value-table :is(th, td):first-child { padding-left: 18px; min-width: 0; }
+:is(#projections-panel, #ownership-panel, #sd-projections-panel, #sd-ownership-panel) .source-value-table :is(th, td):last-child { padding-right: 18px; }
+:is(#projections-panel, #ownership-panel, #sd-projections-panel, #sd-ownership-panel) .source-value-table th { font-size: 11.5px; text-transform: uppercase; letter-spacing: 0.8px; }
+:is(#projections-panel, #ownership-panel, #sd-projections-panel, #sd-ownership-panel) .source-value-table :is(th, td):not(:first-child) { text-align: right; font-variant-numeric: tabular-nums; }
+:is(#projections-panel, #ownership-panel, #sd-projections-panel, #sd-ownership-panel) .source-value-table :is(th, td).sd-kind { text-align: left; }
+:is(#projections-panel, #ownership-panel, #sd-projections-panel, #sd-ownership-panel) .source-value-table td:nth-child(2):not(.sd-kind) { color: var(--text); font-weight: 700; }
+:is(#projections-panel, #ownership-panel, #sd-projections-panel, #sd-ownership-panel) .source-value-table .sd-pos { min-width: 34px; font-size: 11px; line-height: 16px; padding: 0 6px; margin: 0 0 0 4px; }
 /* The per-player table under the page keeps a usable height even when the choice tables above it take most of a short window; the page scrolls instead. */
-#projections-panel .scroll-panel, #ownership-panel .scroll-panel, #sd-projections-panel .scroll-panel, #sd-ownership-panel .scroll-panel { min-height: 320px; }
+#projections-panel .scroll-panel, #ownership-panel .scroll-panel, #sd-projections-panel .scroll-panel, #sd-ownership-panel .scroll-panel { min-height: 160px; } /* mock B: the table gives way so the bottom row of cards stays on screen (scroll-panels.js sourcesPageBelow) */
 /* The Showdown Projections and Ownership tables (public/js/showdown/tabs.js): as wide as their columns (like classic's Projections table), left-aligned;
    every column after Player is a right-aligned number, except a Kind column, which is words. */
 .tab-table-wrap:not(.is-expanded):has(> .source-value-table.sd-fit) { width: fit-content; max-width: 100%; }

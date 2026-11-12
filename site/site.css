@@ -35,20 +35,21 @@
   text-decoration: underline;
 }
 
-/* Header and mode row: Upload CSV, upload info, Refresh (classic and showdown) and Upload Showdown CSV. */
-.is-site .upload-btn,
-.is-site #upload-info,
-.is-site #refresh-btn,
-.is-site #sd-refresh-btn,
-.is-site .mode-upload-tile {
+/* Header and mode row: Upload CSV, Refresh (classic and showdown) and Upload Showdown CSV keep their place, disabled, with the
+   "runs in the app" sentence as their hover (site.js markAppOnlyControls, D71). The upload info line only ever holds text an
+   upload writes, so it stays hidden. */
+.is-site #upload-info {
   display: none !important;
 }
+.is-site .site-app-only {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
 
-/* Projections and Ownership tabs: FantasyPros paste boxes (classic and showdown kicker) and the Enabled tick boxes.
-   The weight boxes are shown and work in the browser (site-src/site-weights.js). */
-.is-site .paste-box,
-.is-site .source-enabled {
-  display: none !important;
+/* Projections and Ownership tabs: the FantasyPros paste boxes (classic and showdown kicker) keep their place, disabled, with the
+   sentence inside the box. The weight boxes are shown and work in the browser (site-src/site-weights.js). */
+.is-site .paste-box .site-app-only-note {
+  margin: var(--sp-2) 0 0;
 }
 
 /* Showdown's Build, Save and Save-as box are shown and run in the visitor's browser (D71, site-src/

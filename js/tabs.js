@@ -9,6 +9,7 @@ import { store, passesProjFloor, CLASSIC_PROJ_FLOOR, activeSlateRows, sortRows }
 import { showAllToggleHtml, wireShowAllButtons } from "./filterbar.js";
 import { sourceFailedMarkerHtml, sortArrowHtml, sortArrowText } from "./table.js";
 import { playerLineHtml } from "./player-row.js";
+import { posPillHtml } from "./showdown/table.js"; // the coloured position badge the Showdown lists wear, on the classic Players tables too (mock B)
 import { injuryUnmatchedHtml } from "./unmatched.js";
 import { sourceIsTicked } from "./sources-page-html.js"; // the one tick predicate (the Sources page and the Showdown tables use it too)
 
@@ -134,6 +135,8 @@ export function renderProjectionsPanel(container, board, callbacks) {
   container.innerHTML = `
     ${tabNotesHtml(board.tabNotes?.projections, board)}
     ${injuryUnmatchedHtml(board.unmatched?.bySource?.["espn-injuries"], escapeHtml)}
+    ${floorNoteHtml(activeSlateRows(board), floorRows(activeSlateRows(board)))}
+    <div class="tab-table-group"><div class="tab-table-wrap scroll-panel"><table class="source-value-table sv-classic"><thead></thead><tbody></tbody></table></div></div>
     <details class="paste-box">
       <summary>Paste a FantasyPros table</summary>
       <div class="paste-box-controls">
@@ -143,8 +146,6 @@ export function renderProjectionsPanel(container, board, callbacks) {
       <textarea id="paste-text" rows="8" placeholder="Paste the whole FantasyPros page for this position here"></textarea>
       <div id="paste-result" class="paste-result">${lastPasteResultText ? escapeHtml(lastPasteResultText) : ""}</div>
     </details>
-    ${floorNoteHtml(activeSlateRows(board), floorRows(activeSlateRows(board)))}
-    <div class="tab-table-group"><div class="tab-table-wrap scroll-panel"><table class="source-value-table sv-classic"><thead></thead><tbody></tbody></table></div></div>
   `;
 
   wireShowAllButtons(container);
@@ -254,7 +255,7 @@ export function sortableBodyHtml(rows, cols, sort, valueOf, covMark = () => "") 
           const v = valueOf(r, c.key);
           // D80: the shared row; "main" keeps the red OUT tag (Adam 2026-10-15). The cell carries data-card-id so the name opens his card (2026-10-18).
           // Adam 2026-10-18 Q10: the full matchup pill shows here too (the shared row's default).
-          if (c.key === "player") return `<td data-card-id="${escapeHtml(String(r.id))}"><span class="player-cell">${playerLineHtml(r, { tag: "main" })}</span></td>`;
+          if (c.key === "player") return `<td data-card-id="${escapeHtml(String(r.id))}"><span class="player-cell">${playerLineHtml(r, { tag: "main", pos: true, posHtml: posPillHtml })}</span></td>`;
           if (c.key === "cov") return `<td>${v == null ? "—" : `${Math.round(v * 100)}%`}${covMark(r)}</td>`;
           return `<td${c.cls ? ` class="${escapeHtml(c.cls)}"` : ""}>${v == null ? "—" : dec1(v)}</td>`;
         })

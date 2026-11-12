@@ -16,7 +16,7 @@ import { sdShowAll, sdShowAllFlag } from "./show-all.js"; // C24: the Showdown's
 import { sortableHeadHtml, unusedColumn, onSitePage, isSourcesTab } from "../tabs.js"; // the classic sortable header and its dimmed unused-source column
 import { sourceIsTicked } from "../sources-page-html.js"; // the one tick predicate the Sources page and this table share
 import { injuryUnmatchedHtml } from "../unmatched.js";
-import { snapPanelMaxHeight } from "../scroll-panels.js"; // the classic tables' sizing step
+import { snapPanelMaxHeight, sourcesPageBelow } from "../scroll-panels.js"; // the classic tables' sizing step
 
 // Fits the table's scroll box to the room below its top edge, as app.js adjustScrollPanels does for classic's tables (the last whole row that
 // fits), so the page does not scroll beside the box. Needed here because the Sources page reads its selection after the first draw and then
@@ -24,7 +24,7 @@ import { snapPanelMaxHeight } from "../scroll-panels.js"; // the classic tables'
 function fitScrollPanel(container) {
   if (typeof window === "undefined") return;
   const panel = container.querySelector?.(".scroll-panel");
-  if (panel) snapPanelMaxHeight(panel, panel.getBoundingClientRect().top, 16);
+  if (panel) snapPanelMaxHeight(panel, panel.getBoundingClientRect().top, 16 + sourcesPageBelow(panel));
 }
 
 // Adam 2026-10-26 3:22 PM: the Rankings tab is gone, folded into the Optimizer (its game line, filter bar and table are the Optimizer
@@ -148,14 +148,6 @@ export function renderShowdownProjectionsPanel(container, board, callbacks) {
   const parts = projectionTableParts(rows, sources, projState.sort, selection);
   const dash = allDashNote(rows.length > 0 && rows.every((r) => r.proj == null), [selection ?? []]);
   container.innerHTML = `
-    <details class="paste-box sd-kicker-paste">
-      <summary>Paste the FantasyPros kicker page</summary>
-      <textarea id="sd-kicker-paste-text" rows="8" placeholder="Paste the whole FantasyPros kicker page here"></textarea>
-      <div class="paste-box-controls">
-        <button type="button" id="sd-kicker-paste-submit">Submit</button>
-      </div>
-      <div id="sd-kicker-paste-result" class="paste-result">${sdPasteResultText ? escapeHtml(sdPasteResultText) : ""}</div>
-    </details>
     <p class="tab-note">${showAllToggleHtml(sdShowAll(), `data-action="show-all"`)}</p>${"" /* item 7: the "Blended from … every column sorts." sentence is deleted */}
     ${dash ? `<p class="tab-note sd-all-dash">${escapeHtml(dash)}</p>` : ""}
     ${injuryUnmatchedHtml(board.unmatched?.injuries, escapeHtml)}
@@ -165,6 +157,14 @@ export function renderShowdownProjectionsPanel(container, board, callbacks) {
         <tbody>${parts.body}</tbody>
       </table>
     </div>
+    <details class="paste-box sd-kicker-paste">
+      <summary>Paste the FantasyPros kicker page</summary>
+      <textarea id="sd-kicker-paste-text" rows="8" placeholder="Paste the whole FantasyPros kicker page here"></textarea>
+      <div class="paste-box-controls">
+        <button type="button" id="sd-kicker-paste-submit">Submit</button>
+      </div>
+      <div id="sd-kicker-paste-result" class="paste-result">${sdPasteResultText ? escapeHtml(sdPasteResultText) : ""}</div>
+    </details>
   `;
   wireShowAllButtons(container, sdShowAllFlag);
   fitScrollPanel(container);
