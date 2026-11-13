@@ -6,12 +6,13 @@
 // cells carry the star and the typed Proj and Own editors through `hooks` (B2, B3; showdown/pool-edit.js).
 import { escapeHtml, money, dec1, dec2, pct1 } from "../format.js";
 import { rowIsOut } from "../table.js";
+import { adamTouched } from "../out.js"; // the pool keeps a man Adam marked In / Out or typed a projection on listed, so his edit is never out of reach
 import { playerLineHtml, showPos } from "../player-row.js";
 import { sdShowAll } from "./show-all.js";
 
 /** The rows a Showdown list shows: every man with the Showdown's own `Show all players` on (C24: not classic's switch), else without the men listed out (D45). */
-export function shownRows(rows, showAll = sdShowAll()) {
-  return showAll ? rows : rows.filter((row) => !rowIsOut(row));
+export function shownRows(rows, showAll = sdShowAll(), { keepTouched = false } = {}) {
+  return showAll ? rows : rows.filter((row) => !rowIsOut(row) || (keepTouched && adamTouched(row)));
 }
 
 // The standard's order (A1: Player, Sal, Proj, Own, Val); the Lev and CPT Lev columns are gone (A2, 2026-11-03).

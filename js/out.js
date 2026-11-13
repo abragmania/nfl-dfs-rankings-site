@@ -1,6 +1,6 @@
-import { rowIsOut as serverRowIsOut, statusSetting, twogunCallsOut, inNeedsNumber, TYPE_A_PROJECTION } from "../server/rank/sidelined.js";
+import { rowIsOut as serverRowIsOut, statusSetting, twogunCallsOut, inNeedsNumber, TYPE_A_PROJECTION, unusedTypedProj, adamTouched } from "../server/rank/sidelined.js";
 
-export { twogunCallsOut, inNeedsNumber, TYPE_A_PROJECTION }; // the page reads the server's pure tests through this one module (it is the page module the site build rewrites)
+export { twogunCallsOut, inNeedsNumber, TYPE_A_PROJECTION, unusedTypedProj, adamTouched }; // the page reads the server's pure tests through this one module (it is the page module the site build rewrites)
 
 // TwoGun's callText already starts with its own "[lean] " tag; the tag is printed once, so that prefix is dropped.
 export const untagged =(text) => (text ? String(text).replace(/^\[[^\]]*\]\s*/, "") : "");

@@ -44,7 +44,7 @@ function twogunNumber(row) {
 function legitHide(row) {
   if (statusSetting(row) === "out") return "Adam's Out";
   if (isSidelined(row.salaryStatus)) return "DraftKings' status";
-  if (rowIsInactive(row)) return "game-day inactive"; // the one test (sidelined.js): ESPN Out, comment inactive, entry dated the game's own day
+  if (rowIsInactive(row)) return "game-day inactive or ruled out for this game"; // the one test (sidelined.js rowIsInactive: a dated inactive, or a weekday "ruled out" after the team's previous game)
   if (twogunCallsOut(row)) return "TwoGun's own out call"; // counted only where his call is in use (src.status "twogun")
   return null;
 }

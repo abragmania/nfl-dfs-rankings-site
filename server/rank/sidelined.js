@@ -100,10 +100,51 @@ export const INACTIVE_WINDOW_MS = 3 * 60 * 60 * 1000;
 // "was inactive", "were inactive", "inactive for Week 9 / last week": a note about a past game, not tonight's list.
 const OLD_INACTIVE = /\b(?:was|were|had been|been)\s+(?:a\s+)?(?:healthy\s+)?inactive\b|\binactive\s+(?:for|in|during|against|vs\.?)\s+(?:week\s*\d+|last\s+week|the\s+(?:previous|last)\b)/i;
 
-/** isGameDayInactive off a board row (row.injury with its date, and the row's DraftKings kickoff). */
+/** How long before this game's kickoff a weekday "ruled out" entry may be dated (D45: the entry must also follow the team's previous game). */
+export const RULED_OUT_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
+/** A game is over this long after its kickoff: an entry inside it is about that game, never the next (conservative, 4 hours). */
+const GAME_LENGTH_MS = 4 * 60 * 60 * 1000;
+// "was ruled out" is a past tense note; "ruled out last week / Week 9 / the previous game" names another game.
+const OLD_RULED_OUT = /\b(?:was|were|had been|being)\s+ruled\s+out\b|\bruled\s+out\b[^.!?]*\b(?:last\s+week|week\s*\d+|the\s+(?:previous|last)\b|earlier\s+this)/i;
+const WEEKDAYS = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"];
+const ET_WEEKDAY = new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", weekday: "long" });
+
+/** The sentence of `text` that says "ruled out", or null. */
+function ruledOutSentence(text) {
+  return String(text ?? "").split(/(?<=[.!?])\s+(?=[A-Z])/).find((s) => /\bruled\s+out\b/i.test(s)) ?? null;
+}
+
+/** A weekday "ruled out" (D45): an ESPN Out whose comment says the coach or team ruled the man out, dated after the team's previous game (previousGameUtc, from the DraftKings
+ *  salary files, plus the game's length) and within RULED_OUT_WINDOW_MS before this game's DraftKings kickoff. A bare Out tag, "was ruled out", "ruled out last week / Week N",
+ *  a weekday that is not this game's, an entry with no date, a game whose previous game is unknown (not guessed) and a Sleeper tag are not. Pure. */
+export function isRuledOutForGame({ source = null, status = null, comment = null, commentLong = null, date = null, kickoffUtc = null, previousGameUtc = null } = {}) {
+  if (source !== ESPN_FEED || String(status ?? "").trim().toUpperCase() !== "OUT") return false;
+  const sentence = ruledOutSentence(`${comment ?? ""} ${commentLong ?? ""}`);
+  if (!sentence || OLD_RULED_OUT.test(sentence)) return false;
+  const entry = typeof date === "string" ? Date.parse(date) : NaN;
+  const kickoff = typeof kickoffUtc === "string" ? Date.parse(kickoffUtc) : NaN;
+  const previous = typeof previousGameUtc === "string" ? Date.parse(previousGameUtc) : NaN;
+  if (!Number.isFinite(entry) || !Number.isFinite(kickoff) || !Number.isFinite(previous)) return false;
+  if (!(entry <= kickoff && kickoff - entry <= RULED_OUT_WINDOW_MS && entry > previous + GAME_LENGTH_MS)) return false;
+  const named = WEEKDAYS.filter((d) => new RegExp(`\\b${d}\\b`, "i").test(sentence));
+  return named.length === 0 || named.includes(ET_WEEKDAY.format(new Date(kickoff)).toLowerCase());
+}
+
+/** What a feed entry may hide a man by (the one copy): "inactive" (isGameDayInactive), "ruled-out" (isRuledOutForGame) or null. */
+export function feedHideKind(entry) {
+  if (isGameDayInactive(entry)) return "inactive";
+  return isRuledOutForGame(entry) ? "ruled-out" : null;
+}
+
+/** feedHideKind off a board row (row.injury with its date, the row's DraftKings kickoff and the team's previous game, row.prevGameUtc). Hide decision and self-check read this. */
 export function rowIsInactive(row) {
+  return rowHideKind(row) !== null;
+}
+
+/** "inactive", "ruled-out" or null: which feed rule hides this row (for the words a hide is said in). */
+export function rowHideKind(row) {
   const i = row?.injury;
-  return Boolean(i) && isGameDayInactive({ source: i.source, status: i.status, comment: i.comment, commentLong: i.longComment, date: i.date, kickoffUtc: row.kickoffUtc });
+  return i ? feedHideKind({ source: i.source, status: i.status, comment: i.comment, commentLong: i.longComment, date: i.date, kickoffUtc: row.kickoffUtc, previousGameUtc: row.prevGameUtc ?? null }) : null;
 }
 
 /** The outside feed's Out, IR, Doubtful or Inactive word on a man it does not hide (a flag only, injury.flagOnly) and whom nothing else rules out, else null.
@@ -140,7 +181,18 @@ export function flagOnlyNote(rows, uploadedAt) {
   const stamp = uploadStampText(uploadedAt);
   const file = stamp ? `DraftKings' file of ${stamp}` : "DraftKings' file (upload time unknown)";
   const parts = [...byWord].map(([word, list]) => `Flag only (feed says ${word}; ${file} ${list.some((r) => r.salaryStatus) ? "lists no out status" : "lists nothing"}): ${list.map((r) => r.name).join(", ")}.`);
+  // G62: a weekday "ruled out" that could not be taken because the team's previous game is not in the salary files on hand stays a flag, and says why.
+  const unconfirmed = [...byWord.values()].flat().filter(ruledOutUnconfirmed).map((r) => r.name);
+  if (unconfirmed.length) parts.push(`Ruled out in the feed but only a flag, since the team's previous game is not in the salary files on hand: ${unconfirmed.join(", ")}.`);
   return `${parts.join(" ")} Re-upload the salary file to refresh DraftKings' statuses.`;
+}
+
+/** True when the feed's entry says the man was ruled out but nothing on file dates the team's previous game (row.prevGameUtc blank), so isRuledOutForGame could not take it. */
+export function ruledOutUnconfirmed(row) {
+  const i = row?.injury;
+  if (!i || i.source !== ESPN_FEED || String(i.status ?? "").trim().toUpperCase() !== "OUT" || row.prevGameUtc) return false;
+  const sentence = ruledOutSentence(`${i.comment ?? ""} ${i.longComment ?? ""}`);
+  return Boolean(sentence) && !OLD_RULED_OUT.test(sentence);
 }
 
 /** A DraftKings Status word the app reads: a sidelined one ("out"), Questionable ("q"), else "unknown" (counted and noted, never a status), blank null. */
@@ -153,11 +205,12 @@ export function salaryWordKind(word) {
 
 /** What the sources let hide a man (steps 2 and 4): the DraftKings Status column when it lists him out, else the feed's word only
  *  for a game-day inactive. `flagOnly`: the feed has a word that hides no one. Returns { status, by: "salary" | "inactive" | null, flagOnly }. */
-export function injuryRuling({ salaryStatus = null, feedStatus = null, inactive = false } = {}) {
+export function injuryRuling({ salaryStatus = null, feedStatus = null, inactive = false, ruledOut = false } = {}) {
   const dk = salaryWordKind(salaryStatus) && salaryWordKind(salaryStatus) !== "unknown" ? String(salaryStatus).trim() : null; // an unknown word is never turned into a status (counted and noted by the board)
   const word = typeof feedStatus === "string" && feedStatus.trim() ? feedStatus : null;
   if (isSidelined(dk)) return { status: dk, by: "salary", flagOnly: word !== null };
   if (word && inactive && isSidelined(word)) return { status: word, by: "inactive", flagOnly: false };
+  if (word && ruledOut && isSidelined(word)) return { status: word, by: "ruled-out", flagOnly: false }; // a weekday "ruled out" (isRuledOutForGame)
   // DraftKings' word that hides no one (its "Q") is still its status, shown as one; the feed's word then is a flag.
   if (dk) return { status: dk, by: "salary", flagOnly: word !== null };
   return { status: null, by: null, flagOnly: word !== null };
@@ -211,6 +264,18 @@ export function statusWordOf(row) {
 export function isRevived(row) {
   const typed = row?.override?.proj;
   return statusSetting(row) === null && listedSidelined(row) && row?.override?.revive === true && typeof typed === "number" && Number.isFinite(typed) && typed > 0;
+}
+
+/** The projection Adam typed on a man he has marked Out (D45: his Out beats a typed number): kept and shown, not used (the row counts 0). Null when he has no Out on him or typed nothing. */
+export function unusedTypedProj(row) {
+  const typed = row?.override?.proj;
+  return statusSetting(row) === "out" && typeof typed === "number" && Number.isFinite(typed) ? typed : null;
+}
+
+/** True when Adam has marked the man In or Out or typed a projection on him: the pools keep him listed (dimmed when out) so his edit is never out of reach. */
+export function adamTouched(row) {
+  const typed = row?.override?.proj;
+  return statusSetting(row) !== null || (typeof typed === "number" && Number.isFinite(typed));
 }
 
 export function sidelinedIdsOf(rows) {

@@ -7,7 +7,8 @@
 // Live app only (as the meter): the published site and sample mode have no generate route, so nothing here is drawn there.
 import { isSampleMode } from "../api.js";
 import { bumpControlHtml, bumpFigureOnlyHtml, wireBumpButtons, bumpPatch } from "../bump-control.js"; // Adam 2026-10-22: ± bump on the pool rows' projection (its own column since A1)
-import { rowResetHtml, rowResetPatch } from "../row-reset.js"; // B12 (round 3): the row's reset
+import { rowResetPatch } from "../row-reset.js"; // B12 (round 3): the row's reset
+import { resetXHtml } from "../typed-proj.js";
 import { limitsCrossed } from "../limit-cross.js"; // item 18
 import { wireLimitBox, flushOpenLimit, limitRefusals } from "../limit-box.js"; // A3 (round 4): the pool's Min % and Max % boxes save when they close, as classic's do
 import { projEditHtml, ownEditHtml, isTyped, starHtml } from "./pool-edit.js"; // B2, B3: the star, the typed Proj and Own
@@ -421,14 +422,14 @@ export function poolBumpHtml(row, proj, isCpt) {
   if (!optimizerLive()) return null;
   // B12 (round 3): the row's reset x beside the figure, for a man who has a typed number or a bump; the public site cannot write overrides, so it has no editor and no x there (D71).
   const canWrite = supports("overrides");
-  return `${projEditHtml(row, isCpt, bumpFigureOnlyHtml(row, proj, { kind: isCpt ? "cpt" : null }), canWrite)}${canWrite ? rowResetHtml(row) : ""}`;
+  return `${projEditHtml(row, isCpt, bumpFigureOnlyHtml(row, proj, { kind: isCpt ? "cpt" : null }), canWrite)}${canWrite ? resetXHtml(row, "proj") : ""}`; // the classic pool's x and words (typed-proj.js)
 }
 
 /** The Own / CPT Own figure of a pool row as the typed-Own editor (B3), with the row's reset x beside a typed one; null off the live screen. */
 export function poolOwnHtml(row, own, isCpt, text) {
   if (!optimizerLive()) return null;
   const canWrite = supports("overrides");
-  return `${ownEditHtml(row, isCpt, text, canWrite)}${canWrite && isTyped(row, "own", isCpt ? "cpt" : "flex") ? rowResetHtml(row) : ""}`;
+  return `${ownEditHtml(row, isCpt, text, canWrite)}${canWrite && isTyped(row, "own", isCpt ? "cpt" : "flex") ? resetXHtml(row, "own") : ""}`;
 }
 
 /**

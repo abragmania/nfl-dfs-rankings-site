@@ -6,6 +6,10 @@
 // bumped and projBase. This file is the one copy of the pair's and the projection cell's markup and of the click; each pool supplies
 // the request.
 import { escapeHtml, dec1 } from "./format.js";
+import { unusedTypedProj } from "./out.js";
+
+/** The hover on a typed number that Adam's Out is not using (D45). */
+export const UNUSED_TITLE = "Your number, kept but not used while you have him marked Out (he counts 0). Mark him In or Auto to use it.";
 
 export const BUMP_STEP_PCT = 5;
 export const BUMP_MAX_STEPS = 10;
@@ -86,8 +90,11 @@ export function bumpControlHtml(row, { enabled = true, kind = null, title = null
  * figures, cptProj against 1.5x projBase, as the Captain cell shows (🔵 2026-10-22). `none` when there is no figure.
  */
 export function bumpFigureOnlyHtml(row, figure, { kind = null, none = "no proj" } = {}) {
-  if (figure == null || Number.isNaN(Number(figure))) return escapeHtml(none);
   const isCpt = kind === "cpt";
+  // Adam's Out on a man with a typed projection (D45): the number he typed stays in the cell, struck through and marked as not used, so he can see it and edit it; the row counts 0.
+  const unused = unusedTypedProj(row);
+  if (unused !== null) return `<span class="bump-fig proj-unused" title="${escapeHtml(UNUSED_TITLE)}">${dec1(isCpt ? unused * CPT_MULT : unused)}</span>`;
+  if (figure == null || Number.isNaN(Number(figure))) return escapeHtml(none);
   // The bump scales the typed projection when there is one (merge.js), so that is the base the hover names, not the blend's (round 4, item 21).
   const before = row?.override?.proj ?? row?.projBase;
   const base = before == null ? null : isCpt ? Number(before) * CPT_MULT : before;

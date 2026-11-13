@@ -163,7 +163,7 @@ export function poolSort(board) {
 export function poolVisibleRows(board, { filters = poolState.filters, sort = poolSort(board), figures = playerFigures, tab = poolTab() } = {}) {
   const all = board?.rows ?? [];
   const searching = String(filters.search ?? "").trim() !== "";
-  const shown = searching ? all : shownRows(all);
+  const shown = searching ? all : shownRows(all, undefined, { keepTouched: true });
   const base = controls?.rows ? controls.rows(all, shown) : shown;
   const isCpt = tab === "cpt";
   return sortRows(filterRows(base, filters, board?.game, (r) => num(figures(r, isCpt).proj), (r) => num(isCpt ? r.cptSalary : r.salary)), sort.col, sort.dir, (r, c) => poolSortValue(r, c, figures));

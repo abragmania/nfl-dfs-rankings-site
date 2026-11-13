@@ -14,6 +14,7 @@ import { escapeHtml } from "../format.js";
 import { startEdit, takeOpenEditor, showNotSaved } from "../typed-edit.js";
 import { CPT_MULT, BUMP_STEP_PCT, bumpStepsOf } from "../bump-control.js";
 import { statusSwitchClick } from "../status-switch.js"; // Adam 2026-11-12: In / Out / Auto on the badge
+import { typedFigureHtml } from "../typed-proj.js"; // the one typed-number figure span, as the classic pool draws it
 
 const idOf = (row) => String(row?.id ?? "");
 const attr = (v) => escapeHtml(String(v ?? ""));
@@ -67,14 +68,14 @@ export function projPrefill(row, seat, shown) {
 export function projEditHtml(row, isCpt, figureHtml, canWrite) {
   if (!canWrite) return figureHtml;
   const seat = isCpt ? "cpt" : "flex";
-  return `<span class="editable-cell" data-sd-edit="proj" data-seat="${seat}" data-id="${attr(row.id)}"><span class="cell-value${isTyped(row, "proj", seat) ? " is-override" : ""}">${figureHtml}</span></span>`;
+  return `<span class="editable-cell" data-sd-edit="proj" data-seat="${seat}" data-id="${attr(row.id)}">${typedFigureHtml(row, "proj", figureHtml, isTyped(row, "proj", seat))}</span>`;
 }
 
 /** The Own / CPT Own cell around `text` as an editor; a typed number wears the amber emphasis (D54). A man with no Captain row has no editor on the Captain list. */
 export function ownEditHtml(row, isCpt, text, canWrite) {
   const seat = isCpt ? "cpt" : "flex";
   if (!canWrite || !ownTypable(row, seat)) return text;
-  return `<span class="editable-cell" data-sd-edit="own" data-seat="${seat}" data-id="${attr(row.id)}"><span class="cell-value${isTyped(row, "own", seat) ? " is-override" : ""}">${text}</span></span>`;
+  return `<span class="editable-cell" data-sd-edit="own" data-seat="${seat}" data-id="${attr(row.id)}">${typedFigureHtml(row, "own", text, isTyped(row, "own", seat), { hover: false })}</span>`;
 }
 
 /** The star cell's button; on the site a published star shows as a star and nothing else (no write path), an unstarred man shows nothing. */

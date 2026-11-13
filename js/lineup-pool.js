@@ -10,13 +10,14 @@ import { sortableHeadHtml } from "./tabs.js";
 import { gradedCellHtml, rowIsOut, STATUS_INFO, TG_COLUMNS, tgCellHtml, tagsCellHtml, tagsCellTitle, markerHtml, twoGunMarkerTexts, projFlagMarkerHtml, opponentLabel } from "./table.js";
 import { playerTagHtml, teamLogoHtml, showPos } from "./player-row.js";
 import { rowsGradedForView } from "./grade.js";
+import { adamTouched } from "./out.js"; // a man Adam marked In / Out or typed a projection on stays listed under the floor (his edit is never out of reach)
 import { cardNameHtml } from "./lineup-card.js"; // cardNameHtml: the short name a phone shows (style.css, max-width 700px)
 import { paletteForRows } from "./team-palette.js";
 import { teamVars, LOCK_ICON, EXCLUDE_ICON } from "./look-row.js";
 import { bumpControlHtml, bumpFigureOnlyHtml } from "./bump-control.js"; // since A1 the thumbs are their own column, disabled like the star when no write is wired
 import { messageIsFor, rowMessageHtml, TONE_WARN } from "./row-message.js";
 import { poolPicker } from "./lineup-pool-fit.js"; // A18, D3: what a click on each pool row may do, and why a row is greyed
-import { rowResetHtml } from "./row-reset.js"; // B12: the x beside a figure that clears his typed numbers and bump
+import { typedFigureHtml, resetXHtml } from "./typed-proj.js"; // B12: the figure span and the x beside it that clears his typed numbers and bump (shared with the Showdown pool)
 import { statusSwitchHtml } from "./status-switch.js"; // Adam 2026-11-12: In / Out / Auto on the status badge (app.js delegates the clicks)
 import { crossedNoteHtml } from "./limit-cross.js"; // item 18: Min % above Max % is said under the Max box
 import { refusalNoteHtml } from "./limit-box.js"; // item 7: a refused Min % / Max % text is drawn beside its row until the next press
@@ -184,7 +185,7 @@ export function rightColumnHtml(rows, rowById, opts = {}) {
   const wantSet = new Set(cash ? wantIdsFor(slateKeyOf(store.get().board)) : []);
   const slotIds = new Set(state.slots.filter(Boolean).map((s) => String(s.id))); // D3 (round 3 fixes): a man clicked into the lineup stays listed under the floor too, so his click can undo it
   const filtered = filterRows(graded, { ...filters, showAllPlayers: true }).filter(
-    (row) => passesProjFloor(row, filters) || state.locks.has(String(row.id)) || state.excludes.has(String(row.id)) || wantSet.has(String(row.id)) || slotIds.has(String(row.id))
+    (row) => passesProjFloor(row, filters) || adamTouched(row) || state.locks.has(String(row.id)) || state.excludes.has(String(row.id)) || wantSet.has(String(row.id)) || slotIds.has(String(row.id))
   );
   // The columns are Adam's own ticks and order (A17, columns.js), the standard's order until he changes it (A1): star, Player, Sal, Proj, Own, Val,
   // then the row controls, thumbs, Lock, Exclude, Min % and Max % (Cash: its chips in place of Lock, Min % and Max %), then the rest. Headers sort through the
@@ -246,37 +247,18 @@ function poolRowMessageHtml(id) {
 
 // ---- the Proj and Own cells (typed numbers: lineup-pool-edit.js) ----
 
-/** What a Proj or Own reset puts back, in words: a listed-out man goes back to 0 (R82: out = 0), the rest to the blend's or the published number. */
-function backWords(row, field) {
-  const out = field === "proj" && (rowIsOut(row) || (row.flags ?? []).includes("revived"));
-  const base = field === "proj" ? row.projBase : row.ownBase;
-  return out ? `Back to 0 (${outWhy(row)})` : `Back to the original (${base == null ? "none" : dec1(base)})`;
-}
-
-/** The hover on a typed number: his own number, and what it replaces. */
-function typedTitle(row, field) {
-  const out = field === "proj" && (rowIsOut(row) || (row.flags ?? []).includes("revived"));
-  const base = field === "proj" ? row.projBase : row.ownBase;
-  return `Your number. ${out ? `Without it: 0 (${escapeHtml(outWhy(row))})` : `Original: ${base == null ? "none" : escapeHtml(dec1(base))}`}`;
-}
-
-/** Why an out man counts 0, in a few words: his own Out (2026-11-12), else the word he is listed with. */
-function outWhy(row) {
-  if (row.override?.status === "out") return "you marked him Out";
-  return `listed ${STATUS_INFO[String(row.status ?? "").trim().toLowerCase()]?.label || row.status || "injured"}`;
-}
+// The typed-number cell's figure span, hover and reset x are typed-proj.js's, one copy for the classic and the Showdown pool.
 
 /** The inside of the Proj cell: the figure (typed ones coloured, the bump's tint on a bumped one), the flag and TwoGun dots, and the small x that puts the original back. */
 export function projCellInner(row, { canReset = true } = {}) {
-  const typed = row.override?.proj != null;
   const figure = row.proj == null ? "no proj" : bumpFigureOnlyHtml(row, row.proj);
-  return `<span class="cell-value${typed ? " is-override" : ""}"${typed ? ` title="${typedTitle(row, "proj")}"` : ""}>${figure}</span>${projFlagMarkerHtml(row)}${markerHtml(twoGunMarkerTexts(row, "proj"))}${rowResetHtml(row, { disabled: !canReset, title: `${backWords(row, "proj")}. Clears his typed numbers and bump.` })}`; // B12: the x clears his typed numbers and bump
+  return `${typedFigureHtml(row, "proj", figure)}${projFlagMarkerHtml(row)}${markerHtml(twoGunMarkerTexts(row, "proj"))}${resetXHtml(row, "proj", { canReset })}`;
 }
 
 /** The inside of the Own cell: the published or typed figure (a typed one coloured, with the x), a dash for none (D29: the app never estimates one). */
 export function ownCellInner(row, { canReset = true } = {}) {
   const typed = row.override?.own != null;
-  return `<span class="cell-value${typed ? " is-override" : ""}"${typed ? ` title="${typedTitle(row, "own")}"` : ""}>${pct1(row.own) ?? "—"}</span>${markerHtml(twoGunMarkerTexts(row, "own"))}${typed ? rowResetHtml(row, { disabled: !canReset, title: `${backWords(row, "own")}. Clears his typed numbers and bump.` }) : ""}`;
+  return `${typedFigureHtml(row, "own", pct1(row.own) ?? "—")}${markerHtml(twoGunMarkerTexts(row, "own"))}${typed ? resetXHtml(row, "own", { canReset }) : ""}`;
 }
 
 /** Whether a typed or bumped row can be reset (the app's write is wired). */

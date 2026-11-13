@@ -750,6 +750,8 @@ tr:last-child .cell-edit-hint, tr:last-child .cell-edit-error { top: auto; botto
 /* A listed-out player brought back by a typed projection (flag "revived"): muted, not the out colour; the reason is its hover. */
 .status-flag { background: none; border: 1px dashed var(--status-grey); padding: 0 5px; color: var(--text-dim); cursor: default; font-weight: 600; }
 .status-revived { background: none; border: 1px dashed var(--status-grey); padding: 0 5px; color: var(--text-dim); cursor: default; }
+/* A number Adam typed on a man he marked Out (D45): kept and shown, struck through because it is not used while he is Out (bump-control.js UNUSED_TITLE). */
+.proj-unused { text-decoration: line-through; color: var(--text-dim); }
 
 /* Adam 2026-10-15 (TwoGun merge, adjustment 1): "put a red 'OUT' tag or something obvious" beside the name of a
    player ruled out after TwoGun's board, or one TwoGun calls OUT, on every main-slate list (table.js outTagHtml). */
@@ -2683,9 +2685,7 @@ tr.cmp-held > td.ex-f { opacity: 1; }
 @media (prefers-reduced-motion: reduce) { .is-pending { animation: none; } }
 /* Item 14: nothing moves when a box opens or a man is seated. The
    seat tag and padlock have a place of their own that is held whether they are drawn or not, so seating a man shifts no column. */
-.sd-pool-table td .editable-cell .cell-edit-wrap { width: 100%; }
-.sd-pool-table td .editable-cell .cell-edit-input { width: 100%; min-width: 0; padding: 1px 2px; text-align: right; } /* the box takes the width its column already has: opening it moves no column */
-.sd-pool-table td .editable-cell .cell-edit-input::-webkit-inner-spin-button, .sd-pool-table td .editable-cell .cell-edit-input::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+/* The typed-number box is the classic pool's, one set of rules (.cell-edit-input above): Adam 2026-11-13, the same box on both Optimizers; no Showdown-only size or alignment. */
 .sd-pool-table .sd-seat-slot { display: inline-flex; align-items: center; gap: 4px; min-width: 56px; vertical-align: middle; }
 /* Item 19: the Captain columns are gold already, so a typed number there (amber everywhere else) would be gold on gold: it reads as bold body-colour text on a gold wash. */
 .sd-pool-table td.sd-cpt-col .cell-value.is-override { color: var(--text); font-weight: 700; background: rgba(var(--amber-rgb), 0.28); border-radius: 3px; padding: 0 4px; }
