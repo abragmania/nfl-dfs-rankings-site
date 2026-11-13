@@ -33,27 +33,112 @@ export function pickInjuryReport(espnState, sleeperState) {
   return { state: "missing", source: null };
 }
 
+// The source order (step 4): Sleeper's entries carry no date, so no game-day inactive can be read from them and its tags hide no one.
+const SLEEPER_FLAG_NOTE = " Game-day inactives cannot be read; Sleeper's tags are flags only.";
+
 export function injuryReportNote({ state, source }) {
   if (state === "missing") return "ESPN injury report and the Sleeper backup unavailable: injury status unknown, so no one is shown as healthy.";
   if (source === "Sleeper") {
-    return state === "ok"
+    return (state === "ok"
       ? "ESPN injury report unavailable: injury statuses are from Sleeper."
-      : "ESPN injury report unavailable: injury statuses are from a saved Sleeper copy and may be out of date.";
+      : "ESPN injury report unavailable: injury statuses are from a saved Sleeper copy and may be out of date.") + SLEEPER_FLAG_NOTE;
   }
   return state === "stale" ? "ESPN injury report is a saved copy because the live fetch failed: injury statuses may be out of date." : null;
 }
 
 export function entriesInjuryProblem(report) {
   const state = report?.state;
+  if (state === "ok" && report.source === "Sleeper") {
+    return { warning: "Injury status comes from Sleeper, whose tags are flags only (it dates no game-day inactive), so a man ruled out would not show as sidelined; check the lineup's players before you submit." };
+  }
   if (state === "ok") return null;
   if (state === "stale") {
     const from = report.source === "Sleeper" ? "Sleeper" : "ESPN";
-    return { warning: `Injury status comes from a saved ${from} copy because the live fetch failed, so a player ruled out since then would not show as sidelined.` };
+    return { warning: `Injury status comes from a saved ${from} copy because the live fetch failed, so a player ruled out since then would not show as sidelined.${from === "Sleeper" ? " Its tags are flags only." : ""}` };
   }
   if (state === "missing") {
     return { error: "Injury status could not be checked: no injury report is available (ESPN's and the Sleeper backup both failed), so nobody can be confirmed healthy." };
   }
   return { error: "Injury status could not be checked: the board does not say whether it has an injury report." };
+}
+
+// ---- Who is out: the source order (Adam 2026-11-12; PROJECT.md D45 as amended) ----
+// 1. Adam's own In / Out. 2. DraftKings' own Status column (row.salaryStatus) and the game-day inactives may hide a man.
+// 3. TwoGun sets the number; his OUT call counts where his numbers are in use. 4. An outside feed's tag alone (ESPN, the Sleeper
+// backup) is only a flag: row.injury.flagOnly, never a status, a zero or a hide. 5. The 11-02 outAfterStamp path hides only a game-day inactive.
+// No imports: the browser loads this file as it is.
+const ESPN_FEED = "ESPN injuries";
+const ET_DAY = new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit" });
+
+/** The Eastern calendar day ("2026-11-12") of an ISO instant, or null when it does not read. The NFL's game day (the DraftKings kickoff is the source). */
+export function etDay(iso) {
+  const ms = typeof iso === "string" ? Date.parse(iso) : NaN;
+  if (!Number.isFinite(ms)) return null;
+  const p = Object.fromEntries(ET_DAY.formatToParts(new Date(ms)).map((x) => [x.type, x.value]));
+  return `${p.year}-${p.month}-${p.day}`;
+}
+
+/** A game-day inactive (the one copy; hide decision and self-check): an ESPN Out (or Inactive) whose comment says inactive and whose entry
+ *  date falls on the game's own day (Eastern) by the DraftKings kickoff. An old "was inactive for Week 9" note, a Sleeper tag and an entry
+ *  with no date are not. Pure. */
+export function isGameDayInactive({ source = null, status = null, comment = null, commentLong = null, date = null, kickoffUtc = null } = {}) {
+  if (source !== ESPN_FEED) return false;
+  const word = String(status ?? "").trim().toUpperCase();
+  if (word !== "OUT" && word !== "INACTIVE") return false;
+  // ESPN's short comment and its long one are both read: either may carry the word.
+  if (word !== "INACTIVE" && !/\binactive\b/i.test(`${comment ?? ""} ${commentLong ?? ""}`)) return false;
+  const day = etDay(date);
+  return day !== null && day === etDay(kickoffUtc);
+}
+
+/** isGameDayInactive off a board row (row.injury with its date, and the row's DraftKings kickoff). */
+export function rowIsInactive(row) {
+  const i = row?.injury;
+  return Boolean(i) && isGameDayInactive({ source: i.source, status: i.status, comment: i.comment, commentLong: i.longComment, date: i.date, kickoffUtc: row.kickoffUtc });
+}
+
+/** The outside feed's Out, IR, Doubtful or Inactive word on a man it does not hide (a flag only, injury.flagOnly) and whom nothing else rules out, else null.
+ *  The Entries exports warn on it, never refuse (source order, step 4). */
+export function flaggedWordOf(row) {
+  const word = row?.injury?.flagOnly ? String(row.injury.status ?? "").trim() : "";
+  return word && isSidelined(word) && !rowIsOut(row) ? word : null;
+}
+
+/** A DraftKings Status word the app reads: a sidelined one ("out"), Questionable ("q"), else "unknown" (counted and noted, never a status), blank null. */
+export function salaryWordKind(word) {
+  const w = String(word ?? "").trim();
+  if (!w) return null;
+  if (isSidelined(w)) return "out";
+  return /^(q|questionable)$/i.test(w) ? "q" : "unknown";
+}
+
+/** What the sources let hide a man (steps 2 and 4): the DraftKings Status column when it lists him out, else the feed's word only
+ *  for a game-day inactive. `flagOnly`: the feed has a word that hides no one. Returns { status, by: "salary" | "inactive" | null, flagOnly }. */
+export function injuryRuling({ salaryStatus = null, feedStatus = null, inactive = false } = {}) {
+  const dk = salaryWordKind(salaryStatus) && salaryWordKind(salaryStatus) !== "unknown" ? String(salaryStatus).trim() : null; // an unknown word is never turned into a status (counted and noted by the board)
+  const word = typeof feedStatus === "string" && feedStatus.trim() ? feedStatus : null;
+  if (isSidelined(dk)) return { status: dk, by: "salary", flagOnly: word !== null };
+  if (word && inactive && isSidelined(word)) return { status: word, by: "inactive", flagOnly: false };
+  // DraftKings' word that hides no one (its "Q") is still its status, shown as one; the feed's word then is a flag.
+  if (dk) return { status: dk, by: "salary", flagOnly: word !== null };
+  return { status: null, by: null, flagOnly: word !== null };
+}
+
+/** Whether TwoGun's OUT is in use on this row (step 3): his word set the status and src.status says so (classic: select.js applyCall, only while his calls are
+ *  ticked; Showdown: his CSV lists him out). Served Showdown rows carry no tg.call, so the test is the status itself. A tg attached with his calls off is not. */
+export function twogunCallsOut(row) {
+  return row?.src?.status === "twogun" && isSidelined(row?.status);
+}
+
+/** The words for a man Adam marked In who has no number from any source and none typed (his In on a TwoGun-OUT man with no last figure and no backup number). */
+export const TYPE_A_PROJECTION = "Type a projection to play him";
+
+/** True when Adam marked him In but the board has no number for him: the switch's hover and the optimizer's skip reason say TYPE_A_PROJECTION. Pure. */
+export function inNeedsNumber(row) {
+  if (row?.override?.status !== "in") return false;
+  const typed = row.override.proj;
+  if (typeof typed === "number" && Number.isFinite(typed)) return false;
+  return !(typeof row.proj === "number" && Number.isFinite(row.proj)) || Boolean(row.flags?.includes?.("no projection"));
 }
 
 /** Adam's own In / Out for this man (overrides.status, Adam 2026-11-12: "mark players in and out"), read off the merged row: "in", "out" or null (Auto). */

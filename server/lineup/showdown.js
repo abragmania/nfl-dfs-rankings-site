@@ -16,7 +16,7 @@
 import { optimizeLineup, retiredObjectiveNote, failure } from "./optimize.js";
 import { BUILD_CEILING_MS, singleBuildCeilingSentence } from "./build-control.js"; // pure leaf: the ten minute limit and its sentence
 import { objectiveScore, figureOf, FIGURE_BUILDS } from "./objective.js"; // pure; the classic Optimizer's median scoring
-import { rowIsOut } from "../rank/sidelined.js"; // pure
+import { rowIsOut, twogunCallsOut } from "../rank/sidelined.js"; // pure
 import { listNames } from "./soft.js"; // pure; "A, B and C"
 
 export const SHOWDOWN_SLOTS = Object.freeze(["CPT", "FLEX", "FLEX", "FLEX", "FLEX", "FLEX"]);
@@ -136,7 +136,7 @@ export function rosterReason(c, row, objective = "proj") {
   if (!Object.hasOwn(FIGURE_BUILDS, objective)) return rosterable(c) ? null : "other";
   if (num(c.salary) === null || rowIsOut(row)) return "other";
   if (figureOf(row, objective) === null) return "figure";
-  return (c.flags ?? []).includes("revived") && row?.tg?.call === "OUT" ? "other" : null;
+  return (c.flags ?? []).includes("revived") && twogunCallsOut(row) ? "other" : null; // his call counts only where it is in use (rank/sidelined.js)
 }
 
 /** cheapest[i][k] for k = 0..5: the sum of the k lowest salaries among flex[i..] (Infinity when fewer than k are

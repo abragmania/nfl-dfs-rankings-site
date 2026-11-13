@@ -148,7 +148,7 @@ export function overBothIds(byPerson, slatePlayers) {
  * file's ids: a caller enters both of a man's ids; `salaryCap` default 50000). Returns { errors, warnings, salary,
  * teams }; every error and warning is one plain sentence (classic's for the salary and injuries).
  */
-export function validateShowdownEntry(slots, pool, { statusById, sidelinedIds, revived, salaryCap = 50000 } = {}) {
+export function validateShowdownEntry(slots, pool, { statusById, sidelinedIds, revived, flagged, salaryCap = 50000 } = {}) {
   const errors = showdownStructureErrors(slots, pool);
   const warnings = [];
   const known = Array.isArray(slots) ? [...new Set(slots)].filter(id => pool.has(id)) : [];
@@ -166,7 +166,7 @@ export function validateShowdownEntry(slots, pool, { statusById, sidelinedIds, r
       errors.push(`Every player is from one team (${[...teams][0]}); DraftKings needs a player from each team.`);
     }
   }
-  const injuries = injuryNotes(known, pool, { statusById, sidelinedIds, revived });
+  const injuries = injuryNotes(known, pool, { statusById, sidelinedIds, revived, flagged });
   errors.push(...injuries.errors);
   warnings.push(...injuries.warnings);
   return { errors, warnings, salary, teams: [...teams] };

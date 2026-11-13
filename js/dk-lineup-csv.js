@@ -12,7 +12,7 @@ import { showdownFileKeyOf } from "./entries-plan.js";
 import { classicFilePool, kickoffLookup } from "./classic-seat.js";
 import { assignSlots, validateLineup, earliestKickoffMs } from "../server/lineup/dk-entries.js";
 import { validateShowdownEntry } from "../server/lineup/dk-showdown-entries.js";
-import { entriesInjuryProblem, rowIsSidelined, isRevived, statusWordOf } from "../server/rank/sidelined.js";
+import { entriesInjuryProblem, rowIsSidelined, isRevived, statusWordOf, flaggedWordOf } from "../server/rank/sidelined.js";
 
 export const CLASSIC_SEATS = Object.freeze(["QB", "RB", "RB", "WR", "WR", "WR", "TE", "FLEX", "DST"]);
 export const SHOWDOWN_SEATS = Object.freeze(["CPT", "FLEX", "FLEX", "FLEX", "FLEX", "FLEX"]);
@@ -51,14 +51,16 @@ function injuryOptions(men) {
   const statusById = new Map();
   const sidelinedIds = new Set();
   const revived = new Map();
+  const flagged = new Map();
   for (const { row, ids } of men) {
     for (const id of ids) {
       statusById.set(id, statusWordOf(row)); // Adam's own In reads no status, his Out "Out" (2026-11-12)
+      if (flaggedWordOf(row)) flagged.set(id, flaggedWordOf(row)); // an outside feed's Out/IR/Doubtful/Inactive tag: a warning, never a refusal
       if (isRevived(row)) revived.set(id, row.override.proj);
       else if (rowIsSidelined(row)) sidelinedIds.add(id);
     }
   }
-  return { statusById, sidelinedIds, revived };
+  return { statusById, sidelinedIds, revived, flagged };
 }
 
 const lockName = (label) => (/slate$/i.test(label) ? label : `${label} slate`);

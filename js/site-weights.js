@@ -5,6 +5,7 @@
 import { blendProjections, failedPositions, BLEND_FLAGS, projRecipe, filledText } from "../server/rank/blend.js";
 import { ownershipRecipe, ownershipOf } from "../server/rank/ownership-summary.js";
 import { remergeOverrides } from "../server/rank/remerge.js";
+import { isSidelined } from "../server/rank/sidelined.js";
 import { TWOGUN_ID, ticksOnlyTwoGunProjection } from "../server/sources/selection-core.js";
 import { publishedOverrides, STORAGE_UNAVAILABLE_MESSAGE } from "./site-overrides.js";
 
@@ -113,10 +114,11 @@ function projectionPlan(board, { tunable, published, now, weights, his, labels, 
     hisTicked: his.projW > 0
   };
   if (!plan.changed) return plan;
-  // His OUT call keeps his figure out of the blend (select.js prepareRow).
-  const blendIn = new Map(board.rows.map((r) => [r.id, r.tg?.call === "OUT" && r.projBySource && TWOGUN_ID in r.projBySource ? withoutTwogun(r.projBySource) : r.projBySource]));
+  // His OUT call keeps his figure out of the blend, Adam's In keeps it (select.js prepareRow).
+  const blendIn = new Map(board.rows.map((r) => [r.id, r.tg?.call === "OUT" && r.override?.status !== "in" && r.projBySource && TWOGUN_ID in r.projBySource ? withoutTwogun(r.projBySource) : r.projBySource]));
   const players = board.rows.map((r) => ({ id: r.id, pos: r.pos }));
-  const injuryStatus = new Map(board.rows.map((r) => [r.id, r.injury?.status ?? null]));
+  // What the board builder left to hide a man (sidelined.js injuryRuling): DraftKings' own status, or the feed's word when it is a game-day inactive; a feed tag alone is a flag (injury.flagOnly) and counts for nothing.
+  const injuryStatus = new Map(board.rows.map((r) => [r.id, isSidelined(r.salaryStatus) ? r.salaryStatus : r.injury?.flagOnly ? null : r.injury?.status ?? null]));
   const blendWith = (w) => blendProjections(players, blendIn, w, { labels, injuryStatus, injuryReport: state });
   plan.blend = blendWith(plan.ticked);
   plan.backup = plan.backupW && Object.keys(plan.backupW).length ? blendWith(plan.backupW) : null;
@@ -154,7 +156,7 @@ function ownershipText(plan, { labels }, rows) {
 // (the row's srcUsed.own; on a board baked before that field, the sources published above 0) only when every pair's number matches (D29);
 // else each quote shows its card label and no link.
 function quotesOf(row, own, labels) {
-  const out = row.tg?.call === "OUT";
+  const out = row.tg?.call === "OUT" && row.override?.status !== "in"; // Adam's In keeps TwoGun's quote too (select.js)
   const ids = Object.keys(row.ownBySource ?? {}).filter((id) => own.ids.has(id) && !(out && id === TWOGUN_ID));
   const counted = Array.isArray(row.srcUsed?.own) ? row.srcUsed.own : ids.filter((id) => Number(own.publishedOf(id)) !== 0);
   const baked = row.ownAnchor?.parts;
@@ -175,7 +177,7 @@ function rowWith(row, proj, own, labels) {
   if (proj.changed) {
     const ticked = proj.blend.byPlayerId.get(row.id);
     // His OUT call while he is ticked is no gap: the backups never fill him.
-    const fromBackup = Boolean(proj.backup) && ticked.blend === null && !(proj.hisTicked && row.tg?.call === "OUT");
+    const fromBackup = Boolean(proj.backup) && ticked.blend === null && !(proj.hisTicked && row.tg?.call === "OUT" && row.override?.status !== "in");
     const b = fromBackup ? proj.backup.byPlayerId.get(row.id) : ticked;
     const failed = ((fromBackup ? proj.failedForBackup : proj.failedForPos).get(row.pos) ?? []).filter((id) => row.projBySource?.[id] == null).map((id) => `sourceFailed:${id}`);
     out.projBase = b.proj;

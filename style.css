@@ -748,6 +748,7 @@ tr:last-child .cell-edit-hint, tr:last-child .cell-edit-error { top: auto; botto
 .status-doubtful, .status-questionable { background: rgba(var(--amber-rgb), 0.18); color: var(--status-amber); }
 .status-ir, .status-other { background: rgba(var(--status-grey-rgb), 0.18); color: var(--status-grey); }
 /* A listed-out player brought back by a typed projection (flag "revived"): muted, not the out colour; the reason is its hover. */
+.status-flag { background: none; border: 1px dashed var(--status-grey); padding: 0 5px; color: var(--text-dim); cursor: default; font-weight: 600; }
 .status-revived { background: none; border: 1px dashed var(--status-grey); padding: 0 5px; color: var(--text-dim); cursor: default; }
 
 /* Adam 2026-10-15 (TwoGun merge, adjustment 1): "put a red 'OUT' tag or something obvious" beside the name of a

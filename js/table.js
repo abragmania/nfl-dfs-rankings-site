@@ -2,9 +2,9 @@
 // matchup text and the sort arrow. The ranked list that used to draw them (renderTableHead, renderTableBody, the click-to-type wiring) is retired: the Optimizer's pool
 // (lineup-pool.js, optimizer standard C9, C10, C17, round 5) draws these cells and lineup-pool-edit.js wires the typed boxes. Rows with a null projection show "no proj" and stay visible
 // (D27); a player nobody published an ownership number for shows an em dash in Own (still click-to-type, D28); the app never estimates one. There is no Lev column (A2).
-import { escapeHtml, money, dec1, dec2 } from "./format.js";
+import { escapeHtml, money, dec1, dec2, localStamp } from "./format.js";
 import { store } from "./state.js";
-import { twoGunOutReason, rowIsOut, untagged, revivedStatusTitle } from "./out.js";
+import { twoGunOutReason, rowIsOut, untagged, revivedStatusTitle, twogunCallsOut } from "./out.js";
 
 // TwoGun mode only (D25 as amended 2026-10-15: his published figures used as he publishes them): four more columns after Val, each read from row.tg and sortable (state.js sortValue). Current
 // mode never shows them. The Ceil and Ceil/$ columns were removed (optimizer standard A21, 2026-11-03).
@@ -29,14 +29,19 @@ export const YOURS_OUT_TITLE = "You marked him Out: projection 0, hidden like a 
 
 /** R82: the red OUT tag on the Optimizer, keyed on rowIsOut (Out, Doubtful and IR all count). */
 export function lineupOutTagHtml(row) {
-  if (!rowIsOut(row)) return "";
+  if (!rowIsOut(row)) {
+    // A feed tag that hides no one still shows, muted, where the red OUT would sit (lineup cards, slots, saved lineups); his own In / Out and a typed number's revive show none.
+    const mine = row?.override?.status;
+    return row?.injury?.flagOnly && !mine && !(row?.flags ?? []).includes("revived") && String(row.injury.status ?? "").trim() ? feedFlagHtml(row) : "";
+  }
   if (row?.override?.status === "out") return `<span class="out-tag" title="${escapeHtml(YOURS_OUT_TITLE)}">OUT</span>`; // his own Out (2026-11-12)
-  let title = twoGunOutReason(row);
+  let title = twoGunOutReason(row) ?? (twogunCallsOut(row) ? "TwoGun's board lists him out: projection 0." : null); // a served Showdown row carries no tg.call, only the status his word set
   if (!title) {
     const raw = (row.status || row.injury?.status || "").trim();
     const word = raw ? (STATUS_INFO[raw.toLowerCase()]?.label ?? raw) : "out";
     const comment = (row.injury?.comment ?? "").trim();
-    title = `Listed ${word} on the injury report${comment ? `. ${comment}` : "."}`;
+    const byDk = Boolean(row.salaryStatus) && String(row.salaryStatus).trim().toLowerCase() === raw.toLowerCase();
+    title = byDk ? `DraftKings' salary file lists him ${word}.` : `Listed ${word} on the injury report${comment ? `. ${comment}` : "."}`;
   }
   return `<span class="out-tag" title="${escapeHtml(title)}">OUT</span>`;
 }
@@ -110,8 +115,12 @@ export function statusBadgeHtml(row, word = row?.status) {
   const info = STATUS_INFO[raw.toLowerCase()];
   const why = untagged(row?.tg?.callText);
   // A row whose status TwoGun's own call replaced (src.status "twogun") and who is not called OUT: the report's word stays on the badge, with his call beside it.
-  const playsOnHisWord = row?.src?.status === "twogun" && row?.tg?.call !== "OUT" ? "TwoGun lists him as playing." : "";
-  const notes = [(row?.injury?.comment ?? "").trim(), why ? `TwoGun${row.tg.tag ? ` [${row.tg.tag}]` : ""}: ${why}` : "", playsOnHisWord].filter(Boolean).join(" ");
+  const playsOnHisWord = row?.src?.status === "twogun" && !twogunCallsOut(row) ? "TwoGun lists him as playing." : "";
+  // DraftKings' own word names when the salary file was uploaded (the age of the status).
+  const dkWord = String(row?.salaryStatus ?? "").trim();
+  const at = row?.salaryStatusAt ? localStamp(row.salaryStatusAt) : null;
+  const fromDk = dkWord && dkWord.toLowerCase() === raw.toLowerCase() ? `DraftKings' salary file${at ? ` (uploaded ${at.monthDay} ${at.clock} ET)` : ""} lists him ${info?.label ?? raw}.` : "";
+  const notes = [fromDk, (row?.injury?.comment ?? "").trim(), why ? `TwoGun${row.tg.tag ? ` [${row.tg.tag}]` : ""}: ${why}` : "", playsOnHisWord].filter(Boolean).join(" ");
   const title = (head) => escapeHtml(notes ? `${head}. ${notes}` : head);
   const revived = revivedStatusTitle(row, info?.label ?? raw);
   if (revived) return ""; // Adam 11-12: a man he typed back in shows no status badge at all (temporary, until the injury source order ships)
@@ -232,9 +241,22 @@ export function statusTagsHtml(row) {
   const key = (row.status ?? "").trim().toLowerCase();
   const injuryStatus = row.injury?.status;
   const same = injuryStatus && (injuryStatus.toLowerCase() === key || (STATUS_INFO[key] && STATUS_INFO[key].label === STATUS_INFO[injuryStatus.toLowerCase()]?.label));
-  // With a board status of its own, the second (injury report) badge says nothing of TwoGun's call (src left off).
-  const injuryHtml = injuryStatus && !same ? statusBadgeHtml({ ...row, tg: key ? null : row.tg, src: key ? undefined : row.src, injury: key ? { ...row.injury, comment: "" } : row.injury, flags: [] }, injuryStatus) : "";
+  // The outside feed's word, when it is not what the board carries, is only a flag (source order, step 4): muted, never the coloured badge a DraftKings or TwoGun status gets.
+  // With a board status of its own, its badge carries the comment (R7): the flag does not repeat it.
+  const injuryHtml = injuryStatus && !same ? feedFlagHtml(key ? { ...row, injury: { ...row.injury, comment: "" } } : row) : "";
   return `${statusBadgeHtml(row)}${injuryHtml}${unknownStatusHtml(row)}`;
+}
+
+/** The muted flag for an outside feed's tag that hides no one (ESPN's injury report, the Sleeper backup): the short word, dashed and grey; the hover names the feed and its comment. "" when the feed has no word. */
+export function feedFlagHtml(row) {
+  const raw = (row?.injury?.status ?? "").trim();
+  if (!raw) return "";
+  const info = STATUS_INFO[raw.toLowerCase()];
+  const feed = row.injury.source ?? "The injury report";
+  const comment = (row.injury.comment ?? "").trim();
+  const playsOnHisWord = row?.src?.status === "twogun" && !twogunCallsOut(row) ? " TwoGun lists him as playing." : "";
+  const title = `${feed} lists him ${info?.label ?? raw}. Only a flag: it does not hide him or change his projection.${comment ? ` ${comment}` : ""}${playsOnHisWord}`;
+  return `<span class="status-badge status-flag" title="${escapeHtml(title)}">${escapeHtml(info?.short ?? raw)}</span>`;
 }
 
 /** The badge for a status word the injury report used that the app does not read, or "". */

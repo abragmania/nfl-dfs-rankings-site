@@ -16,7 +16,7 @@
 // Lineups are ranked by total projection, then by lower salary, then by the sorted player ids, so ties are settled
 // the same way on every machine. Projections are compared as integers (millionths of a point) so float rounding
 // never decides anything.
-import { rowIsOut, statusSetting, statusWordOf } from "../rank/sidelined.js"; // pure: the public site runs this engine in the browser (D69)
+import { rowIsOut, statusSetting, statusWordOf, inNeedsNumber, twogunCallsOut, TYPE_A_PROJECTION } from "../rank/sidelined.js"; // pure: the public site runs this engine in the browser (D69)
 import { assignSlots } from "./dk-entries.js";
 import { warn } from "../lib/log.js";
 import { BUILD_CEILING_MS, stopSentence } from "./build-control.js"; // pure leaf: the one ten minute limit
@@ -362,6 +362,7 @@ function rowFlags(row, pos, opts) {
     proj, overridden, game, projMissing,
     // Cash mode job 2b, 2026-10-17: in a median build medianOf alone decides (noCeiling below: no figure), never the projection.
     noProjection: opts.objective !== "median" && projMissing,
+    needsNumber: inNeedsNumber(row), // Adam's In with no number from any source: the skip reason says to type one
     sidelined: rowIsOut(row),
     avoided: game !== null && opts.avoidGames.has(game),
     unstarredQb: opts.rules.starredQbOnly && pos === "QB" && !row.starred,
@@ -369,7 +370,7 @@ function rowFlags(row, pos, opts) {
     // ChatGPT wish r, Adam 2026-10-17 (D25, D27): a listed-out player brought back by a typed projection stays in a median
     // build on his own published median; he is left out (unless locked) only when he has none or TwoGun calls him OUT.
     // revivedOut is the reason ("noCeiling", meaning no figure, or "calledOut") or false.
-    revivedOut: figureBuild && flags.includes("revived") && (figure === null || (row.tg && row.tg.call) === "OUT")
+    revivedOut: figureBuild && flags.includes("revived") && (figure === null || twogunCallsOut(row))
       ? (figure === null ? "noCeiling" : "calledOut") : false,
     lateOut: outAfterStamp(flags) && statusSetting(row) !== "in" // Adam's own In clears it (2026-11-12)
   };
@@ -731,7 +732,7 @@ export function minOutReason(row, id, opts) {
   const f = rowFlags(row, pos, opts);
   if (f.lateOut) return "he was ruled out after TwoGun's board was made";
   if (f.sidelined) return statusSetting(row) === "out" ? "you marked him Out" : `he is listed ${statusWordOf(row) ?? "injured"}`;
-  if (f.noProjection) return "he has no projection";
+  if (f.noProjection) return f.needsNumber ? `he has no projection. ${TYPE_A_PROJECTION}` : "he has no projection";
   if (f.avoided) return "his game is set to avoid";
   if (f.unstarredQb) return "he is not starred";
   // No median branch: its two callers (minEntries, generate-request.js minPctError) never run with the median objective, since a Min % is refused in cash.

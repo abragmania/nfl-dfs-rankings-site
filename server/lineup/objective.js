@@ -1,6 +1,7 @@
 // The Optimizer's objective helpers (moved out of multi.js, cash mode job 1, 2026-10-17; plan CQ6): the number a lineup
 // maximises, per player. Pure and browser-safe: the public site runs the engine in the browser (D69), so no node: imports.
 // The Ceiling objective was removed 2026-11-03 (optimizer standard A21): the feed keeps TwoGun's ceilings, nothing here reads them.
+import { TYPE_A_PROJECTION } from "../rank/sidelined.js"; // pure; the words for Adam's In on a man with no number
 import { medianOf } from "./cash.js"; // pure; the cash build's median (cash mode job 1, 2026-10-17)
 
 /**
@@ -38,10 +39,10 @@ export function figureOf(row, objective) {
 }
 
 /** Why an unlocked player is kept out of the pool, the first that holds (rowFlags' reasons), for keptOutNote. */
-export function keptOutReason({ lateOut, sidelined, noProjection, avoided, unstarredQb }) {
+export function keptOutReason({ lateOut, sidelined, noProjection, needsNumber, avoided, unstarredQb }) {
   if (lateOut) return "ruled out after TwoGun's board";
   if (sidelined) return "listed out";
-  if (noProjection) return "no projection";
+  if (noProjection) return needsNumber ? `no projection (${TYPE_A_PROJECTION})` : "no projection"; // needsNumber: Adam marked him In
   if (avoided) return "in a game set to avoid";
   if (unstarredQb) return "quarterbacks not starred";
   return "kept out";

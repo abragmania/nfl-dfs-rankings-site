@@ -373,7 +373,7 @@ export function assignSlots(playerIds, pool, kickoffById) {
  * flags as injured), `salaryCap` (default 50000).
  * Returns { errors, warnings, salary, games }; every error and warning is one plain sentence.
  */
-export function validateLineup(slots, pool, { statusById, sidelinedIds, revived, salaryCap = 50000 } = {}) {
+export function validateLineup(slots, pool, { statusById, sidelinedIds, revived, flagged, salaryCap = 50000 } = {}) {
   const errors = structureErrors(slots, pool);
   const warnings = [];
   const ids = Array.isArray(slots) ? [...new Set(slots)] : [];
@@ -398,7 +398,7 @@ export function validateLineup(slots, pool, { statusById, sidelinedIds, revived,
     }
   }
 
-  addNotes(errors, warnings, injuryNotes(known, pool, { statusById, sidelinedIds, revived }));
+  addNotes(errors, warnings, injuryNotes(known, pool, { statusById, sidelinedIds, revived, flagged }));
   return { errors, warnings, salary, games: [...games] };
 }
 
@@ -430,8 +430,9 @@ export function salaryNotes(salary, salaryCap = 50000) {
 }
 
 /** The injury sentences for `ids` (validateLineup's, shared with Showdown; options as validateLineup's, keyed by the
- *  file's ids): sidelined is an error, questionable or revived (typed in after he was ruled out) a warning. */
-export function injuryNotes(ids, pool, { statusById, sidelinedIds, revived } = {}) {
+ *  file's ids): sidelined is an error; questionable, revived (typed in after he was ruled out) or `flagged` (id -> an outside feed's Out, IR,
+ *  Doubtful or Inactive tag, which is only a flag and hides no one, rank/sidelined.js) a warning, never a refusal. */
+export function injuryNotes(ids, pool, { statusById, sidelinedIds, revived, flagged } = {}) {
   const errors = [];
   const warnings = [];
   for (const id of ids) {
@@ -444,6 +445,8 @@ export function injuryNotes(ids, pool, { statusById, sidelinedIds, revived } = {
       errors.push(`${describe(pool, id)} is sidelined${statusText ? ` (status ${statusText})` : " (flagged injured on the board)"}.`);
     } else if (["Q", "QUESTIONABLE"].includes(statusText.toUpperCase())) {
       warnings.push(`${describe(pool, id)} is listed questionable.`);
+    } else if (lookup(flagged, id)) {
+      warnings.push(`${describe(pool, id)} is listed ${String(lookup(flagged, id)).trim()} by an outside injury feed, which is only a flag (it does not rule him out); check his status before you submit.`);
     }
   }
   return { errors, warnings };

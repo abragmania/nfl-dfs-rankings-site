@@ -7,6 +7,7 @@ import { escapeHtml, money, dec1, pct1, localStamp, textColourFor, logoFor } fro
 import { TEAM_BY_ABBR } from "./teams-data.js";
 import { opponentLabel, statusTagsHtml, lineupOutTagHtml } from "./table.js";
 import { gameLogTableHtml } from "./player-card-log.js";
+import { twogunCallsOut } from "./out.js";
 import { bumpStepsOf, bumpPctText } from "./bump-control.js";
 
 const dash = "—";
@@ -163,7 +164,8 @@ function showdownFigureLine(what, ids, board, half) {
 function zeroedLine(row) {
   const before = row?.override?.proj ?? row?.projBase;
   if (!(row?.proj === 0 && before !== 0)) return null;
-  const by = row.injury?.source ?? (row.src?.status === "twogun" ? "TwoGun" : null);
+  const dk = row.salaryStatus && String(row.salaryStatus).trim().toLowerCase() === String(row.status ?? "").trim().toLowerCase();
+  const by = dk ? "DraftKings" : twogunCallsOut(row) ? "TwoGun" : row.injury?.source ?? (row.src?.status === "twogun" ? "TwoGun" : null);
   return `Projection: set to 0: listed out${by ? ` by ${by}` : ""}`;
 }
 

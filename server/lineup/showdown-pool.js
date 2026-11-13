@@ -5,14 +5,14 @@
 import { rosterReason, scoreFor } from "./showdown.js";
 import { keptSidelinedNote, noSourceProjectionNote } from "./multi.js"; // the classic Optimizer's own sentences for a man kept because he is locked
 import { ceilingNotes, FIGURE_BUILDS } from "./objective.js";
-import { rowIsOut, statusSetting, statusWordOf } from "../rank/sidelined.js"; // pure: the public site runs this engine in the browser (D69)
+import { rowIsOut, statusSetting, statusWordOf, inNeedsNumber, TYPE_A_PROJECTION } from "../rank/sidelined.js"; // pure: the public site runs this engine in the browser (D69)
 
 const num = (v) => (typeof v === "number" && Number.isFinite(v) ? v : null);
 
 /** Why a candidate is not in the pool (showdown.js rosterable), in a few words for a note. */
 export function outReason(c, row, objective) {
   if (rosterReason(c, row, objective) === "figure") return `he has no TwoGun ${FIGURE_BUILDS[objective]}`;
-  if (!(num(c.proj) > 0) || (num(c.override?.proj) === null && (c.flags ?? []).includes("no projection"))) return "he has no projection above 0";
+  if (!(num(c.proj) > 0) || (num(c.override?.proj) === null && (c.flags ?? []).includes("no projection"))) return inNeedsNumber(row) ? `he has no projection above 0. ${TYPE_A_PROJECTION}` : "he has no projection above 0"; // Adam's In with no number: type one
   return "he has no price in the salary file";
 }
 

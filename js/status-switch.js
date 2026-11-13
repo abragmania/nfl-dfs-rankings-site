@@ -5,7 +5,7 @@
 // Markup, the cycle and the write's wiring only; the writes are the callers' (app.js, showdown/pool-edit-ctx.js, the Sources page).
 import { escapeHtml } from "./format.js";
 import { rowIsOut, STATUS_INFO } from "./table.js";
-import { untagged } from "./out.js";
+import { untagged, twogunCallsOut, inNeedsNumber, TYPE_A_PROJECTION } from "./out.js";
 
 const attr = (v) => escapeHtml(String(v ?? ""));
 
@@ -42,8 +42,10 @@ export function sourceStatusWord(row) {
     return s ? STATUS_INFO[s.toLowerCase()]?.label ?? s : "";
   };
   add(label(row?.status));
-  add(label(row?.injury?.status));
-  if (row?.tg?.call === "OUT") add("TwoGun: OUT");
+  // An outside feed's word that is not what the board carries is only a flag (source order, step 4); it is said so.
+  const feed = label(row?.injury?.status);
+  add(feed && feed !== label(row?.status) ? `${feed} (${row.injury.source ?? "feed"}, flag only)` : feed);
+  if (twogunCallsOut(row) && row?.tg?.call === "OUT") add("TwoGun: OUT");
   if ((row?.flags ?? []).includes("outAfterStamp")) add("Ruled out after TwoGun's board");
   if (!words.length && (row?.flags ?? []).includes("injured")) add("Injured");
   return words.join(" · ");
@@ -58,7 +60,7 @@ function switchTitle(row, next) {
   const why = untagged(row?.injury?.comment ?? "").replace(/[.\s]+$/, ""); // the sentence's own period is added below
   const head = now ? `You marked him ${WORD[now]}${said ? ` (sources: ${said})` : ""}.` : said ? `Listed ${said}${why ? `. ${why}` : ""}. Auto: the sources decide.` : "Auto: no source lists him.";
   const click = next === null ? "Click: back to Auto." : `Click: mark him ${WORD[next]}.`;
-  return `${head} ${click}`;
+  return `${head}${inNeedsNumber(row) ? ` ${TYPE_A_PROJECTION}.` : ""} ${click}`; // In with no number from any source (his In on a TwoGun-OUT man with no figure)
 }
 
 /** His own setting as a small pill (IN green, OUT red); "" for Auto. */

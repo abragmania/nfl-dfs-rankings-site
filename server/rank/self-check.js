@@ -5,17 +5,18 @@
 // { id, name, rule, line, figures }, `line` the plain-English sentence the foot of the board prints; `notes` are counts of what the
 // check set aside without calling it a board failure (G62). Three checks:
 //   1. hidden-by-lower-source: the source order is DraftKings' own status and the game-day inactives list may hide a man, TwoGun sets
-//      the number, and an outside feed's tag (ESPN, the Sleeper backup) alone is only a flag. A man TwoGun projects who is hidden or
-//      zeroed with an outside feed's tag as the only reason is a failure. Not failures: Adam's own Out (override.status), a status
-//      in DraftKings' file (row.salaryStatus), a game-day inactive (status INACTIVE or the feed's comment says inactive; this is also
-//      the only hide the 11-02 outAfterStamp rule may make), TwoGun's own OUT call, and a feed tag set aside by injury-ignore.json
-//      (that record never reaches the row, so there is nothing to find). Adam's In removes the hide (rowIsOut).
+//      the number, and an outside feed's tag (ESPN, the Sleeper backup) alone is only a flag (row.injury.flagOnly). A man TwoGun projects
+//      who is hidden or zeroed with an outside feed's tag as the only reason is a failure; the builders no longer make one, so this is the
+//      guard. Not failures: Adam's own Out (override.status), a status in DraftKings' file (row.salaryStatus), a game-day inactive
+//      (sidelined.js rowIsInactive: an ESPN Out whose comment says inactive, dated the game's own day; also the only hide the 11-02
+//      outAfterStamp rule may make), and TwoGun's own OUT call where it is in use (row.src.status "twogun").
+//      Adam's In removes the hide (rowIsOut).
 //   2. projection-follows-inputs: a shown projection is the typed number, else the chosen source number (row.projBase), times the
 //      +-5% bump steps, within rounding; a man listed out shows 0; with only TwoGun ticked a TwoGun-sourced number is his published one.
 //   3. past-ceiling: a projection not typed by Adam is not above the row's ceiling (row.ceiling, or TwoGun's row.tg.ceil when his
 //      number is the one shown). A ceiling of 0 is a blank. A man whose own published projection is above his own published ceiling
 //      is the source disagreeing with itself: counted in notes, not a failure.
-import { rowIsOut, statusSetting, isSidelined } from "./sidelined.js";
+import { rowIsOut, statusSetting, isSidelined, rowIsInactive, twogunCallsOut } from "./sidelined.js";
 import { bumpFactor } from "../overrides/merge.js";
 
 const TWOGUN = "twogun";
@@ -26,13 +27,6 @@ const SRC_LABEL = { espn: "ESPN", sleeper: "Sleeper" };
 const num = (v) => (typeof v === "number" && Number.isFinite(v) ? v : null);
 const fmt = (n) => String(Math.round(n * 100) / 100);
 const differs = (a, b) => Math.abs(a - b) > TOLERANCE;
-
-/** A game-day inactive: the feed's status says INACTIVE or its comment does (ESPN files them as Out with the comment "inactive"). */
-function isGameDayInactive(row) {
-  const words = [row.status, row.injury?.status];
-  if (words.some((w) => String(w ?? "").trim().toUpperCase() === "INACTIVE")) return true;
-  return /\binactive\b/i.test(String(row.injury?.comment ?? ""));
-}
 
 /** The label of the outside feed that holds the row's tag ("ESPN", "Sleeper", or a generic phrase). */
 function feedLabel(row) {
@@ -50,8 +44,8 @@ function twogunNumber(row) {
 function legitHide(row) {
   if (statusSetting(row) === "out") return "Adam's Out";
   if (isSidelined(row.salaryStatus)) return "DraftKings' status";
-  if (isGameDayInactive(row)) return "game-day inactive";
-  if (row.tg?.call === "OUT") return "TwoGun's own out call";
+  if (rowIsInactive(row)) return "game-day inactive"; // the one test (sidelined.js): ESPN Out, comment inactive, entry dated the game's own day
+  if (twogunCallsOut(row)) return "TwoGun's own out call"; // counted only where his call is in use (src.status "twogun")
   return null;
 }
 
