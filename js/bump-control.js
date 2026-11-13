@@ -93,7 +93,10 @@ export function bumpFigureOnlyHtml(row, figure, { kind = null, none = "no proj" 
   const isCpt = kind === "cpt";
   // Adam's Out on a man with a typed projection (D45): the number he typed stays in the cell, struck through and marked as not used, so he can see it and edit it; the row counts 0.
   const unused = unusedTypedProj(row);
-  if (unused !== null) return `<span class="bump-fig proj-unused" title="${escapeHtml(UNUSED_TITLE)}">${dec1(isCpt ? unused * CPT_MULT : unused)}</span>`;
+  if (unused !== null) { // the figure that will play when he is In: his number with his ± bump, x1.5 on the Captain list
+    const played = unused * (1 + (BUMP_STEP_PCT / 100) * bumpStepsOf(row));
+    return `<span class="bump-fig proj-unused" title="${escapeHtml(UNUSED_TITLE)}">${dec1(isCpt ? played * CPT_MULT : played)}</span>`;
+  }
   if (figure == null || Number.isNaN(Number(figure))) return escapeHtml(none);
   // The bump scales the typed projection when there is one (merge.js), so that is the base the hover names, not the blend's (round 4, item 21).
   const before = row?.override?.proj ?? row?.projBase;

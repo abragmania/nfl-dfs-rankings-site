@@ -1,6 +1,6 @@
-import { rowIsOut as serverRowIsOut, statusSetting, twogunCallsOut, inNeedsNumber, TYPE_A_PROJECTION, unusedTypedProj, adamTouched } from "../server/rank/sidelined.js";
+import { rowIsOut as serverRowIsOut, statusSetting, twogunCallsOut, inNeedsNumber, TYPE_A_PROJECTION, unusedTypedProj, adamTouched, projWithoutOut } from "../server/rank/sidelined.js";
 
-export { twogunCallsOut, inNeedsNumber, TYPE_A_PROJECTION, unusedTypedProj, adamTouched }; // the page reads the server's pure tests through this one module (it is the page module the site build rewrites)
+export { twogunCallsOut, inNeedsNumber, TYPE_A_PROJECTION, unusedTypedProj, adamTouched, projWithoutOut }; // the page reads the server's pure tests through this one module (it is the page module the site build rewrites)
 
 // TwoGun's callText already starts with its own "[lean] " tag; the tag is printed once, so that prefix is dropped.
 export const untagged =(text) => (text ? String(text).replace(/^\[[^\]]*\]\s*/, "") : "");
@@ -12,6 +12,7 @@ export function twoGunOutReason(row) {
   if (flags.includes("outAfterStamp")) {
     parts.push("Ruled out after TwoGun's board was made (the injury report now lists him out). Projection 0.");
   }
+  if (row?.tg?.heldOut) parts.push(row.tg.heldOut); // he quoted the same word and called PLAY; the weekday "ruled out" note still holds him (overlay.js ruledOutHeldWords)
   // His call counts only where it is in use (source order, step 3): tg is attached with his calls off too, and then it is no reason.
   if (row?.tg?.call === "OUT" && twogunCallsOut(row)) {
     const tag = row.tg.tag ? ` [${row.tg.tag}]` : "";

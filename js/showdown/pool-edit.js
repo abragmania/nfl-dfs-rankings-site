@@ -14,6 +14,7 @@ import { escapeHtml } from "../format.js";
 import { startEdit, takeOpenEditor, showNotSaved } from "../typed-edit.js";
 import { CPT_MULT, BUMP_STEP_PCT, bumpStepsOf } from "../bump-control.js";
 import { statusSwitchClick } from "../status-switch.js"; // Adam 2026-11-12: In / Out / Auto on the badge
+import { rowIsOut, projWithoutOut } from "../out.js";
 import { typedFigureHtml } from "../typed-proj.js"; // the one typed-number figure span, as the classic pool draws it
 
 const idOf = (row) => String(row?.id ?? "");
@@ -58,6 +59,10 @@ export function prefillOf(row, shown) {
 export function projPrefill(row, seat, shown) {
   const typed = row?.override?.proj;
   if (typed != null && Number.isFinite(Number(typed))) return seat === "cpt" ? Number(typed) * CPT_MULT : Number(typed);
+  if (rowIsOut(row)) { // an out man's figure is 0: the box opens on what he would have without the Out (TwoGun's or the blend, bump removed), never 0
+    const base = projWithoutOut(row);
+    return base === null ? null : seat === "cpt" ? base * CPT_MULT : base;
+  }
   return prefillOf(row, shown);
 }
 
