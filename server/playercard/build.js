@@ -119,7 +119,12 @@ export function buildCard(row, files) {
   const abbr = ndcAbbr(who.team);
   const early = precheck(who);
   if (early) return early;
-  const source = { name: "NFLDepthCharts", teamFile: fileMeta(files.team, teamFileUrl(abbr)), gamelog: files.gamelog ? fileMeta(files.gamelog, gamelogUrl(abbr)) : null };
+  const source = { name: "NFLDepthCharts", teamFile: files.team ? fileMeta(files.team, teamFileUrl(abbr)) : null, gamelog: files.gamelog ? fileMeta(files.gamelog, gamelogUrl(abbr)) : null };
+  // G68: a team file that failed with no saved copy drops only its own part. The game log is keyed by NFL player id and
+  // carries no names, so without the team file the man cannot be matched (never guessed): the card says which file is missing.
+  if (!files.team) {
+    return { found: false, reason: "TEAM_FILE_MISSING", message: files.teamError ?? "The NFLDepthCharts team file could not be read.", source };
+  }
   const hit = resolvePlayer(who, files.team.data);
   if (!hit.found) return { ...hit, source };
   const p = hit.player;

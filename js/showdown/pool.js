@@ -392,7 +392,7 @@ export function poolBodyHtml(board, rows, placement, figures = playerFigures, ta
       const p = picks.get(String(row.id));
       const why = !p.action && p.short ? ` · <span class="blk-why">${escapeHtml(p.short)}</span>` : "";
       const extra = `<span class="sd-seat-slot">${seatTagHtml(placedSeat(placement, row.id))}${controls?.lockIcon?.(row) ?? ""}</span>`;
-      return `${playerWhoHtml(row, { nameHtml: cardNameHtml(row), tagWrap: controls?.statusTag ? (tag) => controls.statusTag(row, tag) : undefined, extra, why })}${messageIsFor(placement?.message, row.id) ? rowMessageHtml(placement.message.text, placement.message.tone) : ""}`;
+      return `${playerWhoHtml(row, { nameHtml: cardNameHtml(row), tagWrap: controls?.statusTag ? (tag) => controls.statusTag(row, tag) : undefined, extra, why, game: board?.game })}${messageIsFor(placement?.message, row.id) ? rowMessageHtml(placement.message.text, placement.message.tone) : ""}`;
     },
     valueCell: (row) => poolValueHtml(row, figures),
     // A man seated in the lineup, on either list, has his row tinted (the classic pool's `inl`), kept apart from a lock (the icon, C20), beside the Optimizer's own look (excluded: `excl`), each class once.

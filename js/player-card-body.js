@@ -231,7 +231,7 @@ export function sourceLineHtml(data, stale = []) {
   const s = data?.source;
   if (!s) return `<div class="pc-source">Source: NFLDepthCharts.</div>`;
   const staleMark = (flag) => (flag ? ` <span class="pc-stale" title="NFLDepthCharts could not be reached, so the last saved copy is shown">saved copy, not refreshed</span>` : "");
-  const team = `team file as of ${escapeHtml(stampText(s.teamFile?.asOf))}${staleMark(s.teamFile?.stale)}`;
+  const team = s.teamFile ? `team file as of ${escapeHtml(stampText(s.teamFile.asOf))}${staleMark(s.teamFile.stale)}` : "team file not available"; // G68
   const log = s.gamelog ? `, game log as of ${escapeHtml(stampText(s.gamelog.asOf))}${staleMark(s.gamelog.stale)}` : "";
   const link = s.link ? ` <a class="pc-link" href="${escapeHtml(s.link)}" target="_blank" rel="noopener noreferrer">His page there</a>` : "";
   return `<div class="pc-source">Source: NFLDepthCharts ${team}${log}.${link}</div>`;

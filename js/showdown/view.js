@@ -14,7 +14,7 @@ import { deleteShowdownOverrides, putShowdownOverrides, optimizerLive, optimizer
 import { delegateStatusClicks, statusPatch } from "../status-switch.js"; // Adam 2026-11-12: the Sources page's Player status card
 import { makeTabBoards, otherTab, tabWord } from "./tab-boards.js"; // Part F: the GPP and Cash tabs' own boards
 import { renderPills, renderSlateLine, paintSourcesLink, wireSourcesLink, modePillHtml } from "../header.js";
-import { isSourcesTab, sourcesTabToOpen } from "../tabs.js";
+import { isSourcesTab, sourcesTabToOpen, onSitePage } from "../tabs.js";
 import { renderSourcesPage, sectionSources } from "../sources-page.js";
 import { escapeHtml } from "../format.js";
 import { gameTileHtml } from "./game-tile.js"; // the one game tile, the classic strip's
@@ -115,7 +115,20 @@ const els = {
   entriesPanel: document.getElementById("sd-entries-panel"),
   lineupsPanel: document.getElementById("sd-lineups-panel"), // the Lineups tab (lineups-screen.js)
   emptyState: document.getElementById("sd-empty-state"),
+  foot: document.getElementById("sd-foot-note"), // the page's foot: the details of a board the site could not read (G64)
 };
+
+const MISSING_ON_SITE = "This game's board is not on the site.";
+/** The site has no copy of this game's board: a hash for a game that was never published reads a baked file that is not there (status 404). The app's own errors are never this. */
+const boardMissingOnSite = (message) => onSitePage() && /\(status 404\)/.test(String(message ?? ""));
+const footLines = [];
+function setFoot(text) { // "" clears; a sentence is added once (the GPP read and the Cash read of one game can both fail)
+  if (!els.foot) return;
+  if (!text) footLines.length = 0;
+  else if (!footLines.includes(text)) footLines.push(text);
+  els.foot.textContent = footLines.length ? `Details: ${footLines.join(" · ")}` : "";
+  els.foot.hidden = !footLines.length;
+}
 
 // --------------------------------------------------------------------------------------------------------
 // Filter (the state and the one call that applies it live in pool.js; the pure filter and sort in board-shape.js)
@@ -148,7 +161,9 @@ function renderEmpty() {
   for (const p of [els.sourcesPanel, els.projectionsPanel, els.ownershipPanel, els.lineupPanel, els.lineupsPanel, els.entriesPanel]) if (p) p.hidden = true;
   if (els.stamps) els.stamps.innerHTML = "";
   if (els.slateLine) els.slateLine.textContent = "";
-  els.emptyState.textContent = state.loading ? "Loading the showdown board…" : state.error ?? "Could not load this showdown.";
+  const missing = !state.loading && boardMissingOnSite(state.error);
+  els.emptyState.textContent = state.loading ? "Loading the showdown board…" : missing ? MISSING_ON_SITE : state.error ?? "Could not load this showdown.";
+  if (missing) setFoot(state.error);
 }
 
 // Drawn on a board load, a tab switch, a chip click or Clear filters, never on a keystroke: the typed boxes only patch the pool
@@ -258,10 +273,15 @@ const tabBoards = makeTabBoards({
     state.boardKey = key;
     state.error = null;
     state.loading = false;
+    setFoot(""); // a board landed: the earlier read details are over
     render();
     if (first) boardShownHook?.(key); // a game's first board: the shared top bar's switch names it (app-showdown.js)
   },
   fail: (text) => {
+    if (!state.board && onSitePage()) { // no board on screen on the site (a game never published): the read errors go to the foot, never the main view
+      setFoot(text);
+      return;
+    }
     els.status.textContent = text;
     els.status.className = "status error";
   },
@@ -327,6 +347,7 @@ async function loadBoard(key) {
   if (state.boardKey !== key) {
     state.board = null;
     state.error = null;
+    setFoot("");
   }
   state.loading = true;
   render();
@@ -382,7 +403,7 @@ const tabCounts = () => ({ lineups: keptCount(state.boardKey) });
 
 function render() {
   state.activeTab = shownShowdownTab(state.activeTab); // a retired key ("rankings") or a tab not drawn here opens the Optimizer
-  document.body.classList.toggle("nl-page", state.activeTab === "lineup" && Boolean(state.board)); // the Optimizer tab is in the approved look's page (the classic's; style.css keeps the app's own page for the other tabs)
+  document.body.classList.toggle("nl-page", state.activeTab === "lineup" || !state.board); // no board (loading, or one the site does not have): the classic look's page too; the Optimizer tab is in the approved look's page (the classic's; style.css keeps the app's own page for the other tabs)
   if (isSourcesTab(state.activeTab)) state.lastSourcesTab = state.activeTab;
   renderShowdownTabs(els.tabs, state.activeTab, onTabClick, tabCounts());
   paintSourcesLink(els.sourcesBtn, isSourcesTab(state.activeTab));

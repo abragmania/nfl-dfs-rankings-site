@@ -75,8 +75,8 @@ export function bandHeadHtml(v) {
   return `<div class="sd-opt-head" id="sd-opt-head">${panelHeadHtml(v.mode, { error: v.error, errorTone: v.errorTone ?? "error" })}${v.formError ? statusLineHtml(v.formError, "warn", "opt-form-error") : ""}</div>`;
 }
 
-/** The settings (the classic's `.set4` row): Lineups to make, Min unique players, Max per team and Build by, then the Variance % row, the rule rows and the held-men line. The Cash tab draws the GPP-only pieces
- *  invisible in their places, so the two tabs' panels are the same height and a tab switch moves nothing below them (A15). Its own element, #sd-opt-panel. */
+/** The settings (the classic's `.set4` row): Lineups to make, Min unique players, Max per team and Build by, then the Variance % row, the rule rows and the held-men line. The Cash tab leaves the GPP-only pieces
+ *  out (three settings in a three-column grid, no Variance row), so its panel is shorter than GPP's (2026-11-13, over A15's same-height rule). Its own element, #sd-opt-panel. */
 export function bandBoxesHtml(v) {
   const cash = v.mode === "cash";
   const status = statusLineText(v.ms, v.board, v.seated ?? []);
@@ -90,13 +90,13 @@ export function bandBoxesHtml(v) {
     ? (cashMode === "twogun" ? `<span class="cash-basis" title="Fixed in cash: TwoGun is this game's only projection source">${escapeHtml(cashBasisText(cashMode))}</span>` : `<input value="Projection" readonly tabindex="-1" />`)
     : hasMedians ? objectiveChipsHtml(v.ms.objective, v.board) : `<input value="Projection" readonly tabindex="-1" />`;
   const uniqueBox = numberBoxHtml(`type="number" min="1" max="${MAX_UNIQUE}" id="sd-opt-min-unique" value="${escapeHtml(v.ms.minUnique)}" aria-label="Minimum unique players between lineups"`, `Maximum ${MAX_UNIQUE}`, "opt-unit-note");
-  const row = `<div class="set4">
+  const row = `<div class="set4${cash ? " set3" : ""}">
       <label title="${cash ? "The best first, then the next best" : "Around the pool's locks and includes"}">Lineups to make${countBox}</label>
-      ${cash ? `<label class="sd-opt-ghost" aria-hidden="true">Min unique players<input tabindex="-1" disabled /></label>` : `<label title="Between any two lineups, maximum ${MAX_UNIQUE}">Min unique players${uniqueBox}</label>`}
+      ${cash ? "" : `<label title="Between any two lineups, maximum ${MAX_UNIQUE}">Min unique players${uniqueBox}</label>`}
       <label title="Every team, the Captain's included (5 is DraftKings' rule)">Max per team${teamSelectHtml(v.ms.maxPerTeam)}</label>
       <div class="setc">Build by${buildBy}</div>
     </div>`;
-  const variance = cash ? `<div class="opt-var-line sd-opt-ghost" aria-hidden="true">${varianceRowHtml(null, SHOWDOWN_VARIANCE_POSITIONS, null)}</div>` : sdVarianceRowHtml(v.variancePos);
+  const variance = cash ? "" : sdVarianceRowHtml(v.variancePos); // Cash has no Variance row and takes no height (2026-11-13)
   return `<div class="sd-opt-panel" id="sd-opt-panel">${row}${variance}${ruleRowsHtml()}${lockLine}</div>`;
 }
 

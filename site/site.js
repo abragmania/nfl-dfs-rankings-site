@@ -35,6 +35,16 @@ export function matchupsTabLink(meta) {
   return { className: "site-matchups-tab", text: "Matchups →", href: "matchups.html" };
 }
 
+// G68: a part the publish left out (meta.leftOut: [{part, reason, kept}]) is named at the foot of the page, with whether the
+// site still shows that part's last published copy (kept true), has none (false) or it is unknown (null). [] when nothing was left out.
+export function siteFootNotes(meta) {
+  if (!Array.isArray(meta?.leftOut)) return [];
+  return meta.leftOut.filter((l) => l && typeof l.part === "string").map((l) => {
+    const after = l.kept === true ? " The site still shows its last published copy." : l.kept === false ? " The site has no earlier copy of it." : "";
+    return `${l.part} not updated in this publish: ${l.reason ?? "it did not pass its check"}.${after}`;
+  });
+}
+
 // The app redraws the tab buttons (it replaces the whole nav's contents) on every tab change, which would wipe a
 // link added once; so each tab nav is watched and the link put back at its end whenever it is missing.
 function addMatchupsTab(link) {
@@ -70,6 +80,12 @@ async function showPublished() {
     }
     const link = matchupsTabLink(meta);
     if (link) addMatchupsTab(link);
+    for (const text of siteFootNotes(meta)) {
+      const el = document.createElement("p");
+      el.className = "site-foot-note";
+      el.textContent = text;
+      document.body.append(el);
+    }
   } catch (e) {
     /* no meta file: the page still works, it just has no stamp */
   }

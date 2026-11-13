@@ -373,7 +373,7 @@ function syncPageLook() {
   paintThemeSwitch(); // the one Dark | Light switch is in the shared top bar
   if (showdownKeyFromHash()) return; // a Showdown draws its own page look (showdown/view.js render): its Optimizer tab is in the approved look too
   const tab = shownTab(store.get().activeTab);
-  document.body.classList.toggle("nl-page", tab === "lineup" || tab === "lineups");
+  document.body.classList.toggle("nl-page", tab === "lineup" || tab === "lineups" || tab === "showdown"); // the Showdown landing is in the classic look too (2026-11-13)
 }
 
 function renderEmptyState({ loading, boardError }) {

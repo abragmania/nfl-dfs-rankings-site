@@ -24,26 +24,34 @@ export function injuryReportState(card) {
   return "missing";
 }
 
-/** R82: which source a board uses. */
-export function pickInjuryReport(espnState, sleeperState) {
-  if (espnState === "ok") return { state: "ok", source: "ESPN injuries" };
-  if (sleeperState === "ok") return { state: "ok", source: "Sleeper" };
-  if (espnState === "stale") return { state: "stale", source: "ESPN injuries" };
-  if (sleeperState === "stale") return { state: "stale", source: "Sleeper" };
-  return { state: "missing", source: null };
+/** R82, G68: the injury report is judged per feed. `source` is the lead feed (ESPN while its live or saved entries exist, else Sleeper) and `state` that feed's own
+ *  state; `parts` keeps both feeds' states, because ESPN's saved entries stand until ESPN is read again and Sleeper fills only the men ESPN has no word on
+ *  (the board does the per-man merge). `ages`: { espn, sleeper } age sentences of a saved copy, carried for the note. */
+export function pickInjuryReport(espnState, sleeperState, ages = {}) {
+  const parts = { espn: espnState ?? "missing", sleeper: sleeperState ?? "missing" };
+  const ageFor = (which) => (typeof ages?.[which] === "string" && ages[which] ? { [`${which}Age`]: ages[which] } : {});
+  if (espnState === "ok") return { state: "ok", source: "ESPN injuries", parts };
+  if (espnState === "stale") return { state: "stale", source: "ESPN injuries", parts, ...ageFor("espn"), ...ageFor("sleeper") };
+  if (sleeperState === "ok") return { state: "ok", source: "Sleeper", parts };
+  if (sleeperState === "stale") return { state: "stale", source: "Sleeper", parts, ...ageFor("sleeper") };
+  return { state: "missing", source: null, parts };
 }
 
 // The source order (step 4): Sleeper's entries carry no date, so no game-day inactive can be read from them and its tags hide no one.
 const SLEEPER_FLAG_NOTE = " Game-day inactives cannot be read; Sleeper's tags are flags only.";
 
-export function injuryReportNote({ state, source }) {
+export function injuryReportNote({ state, source, parts = null, espnAge = null, sleeperAge = null }) {
   if (state === "missing") return "ESPN injury report and the Sleeper backup unavailable: injury status unknown, so no one is shown as healthy.";
   if (source === "Sleeper") {
     return (state === "ok"
       ? "ESPN injury report unavailable: injury statuses are from Sleeper."
-      : "ESPN injury report unavailable: injury statuses are from a saved Sleeper copy and may be out of date.") + SLEEPER_FLAG_NOTE;
+      : `ESPN injury report unavailable: injury statuses are from a saved Sleeper copy${sleeperAge ? ` (${sleeperAge})` : ""} and may be out of date.`) + SLEEPER_FLAG_NOTE;
   }
-  return state === "stale" ? "ESPN injury report is a saved copy because the live fetch failed: injury statuses may be out of date." : null;
+  if (state !== "stale") return null;
+  // G68: ESPN's saved entries stand (with their age) until ESPN is read again; Sleeper's part is named on its own.
+  const espn = `ESPN injury report is a saved copy${espnAge ? ` (${espnAge})` : ""} because the live fetch failed: injury statuses may be out of date.`;
+  const sleeper = parts?.sleeper === "ok" ? "Sleeper fills only the men ESPN has no word on" : parts?.sleeper === "stale" ? `Sleeper fills only the men ESPN has no word on (from a saved Sleeper copy${sleeperAge ? `, ${sleeperAge}` : ""})` : null;
+  return sleeper ? `${espn} ${sleeper}; its tags are flags only.` : espn;
 }
 
 export function entriesInjuryProblem(report) {

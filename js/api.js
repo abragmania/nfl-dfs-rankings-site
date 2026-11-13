@@ -112,9 +112,11 @@ export async function getPlayerCard(id, sd = null) {
     ndcFile(teamFileUrl(abbr), teamFileProblem, { abbr, season }),
     ndcFile(gamelogUrl(abbr), gamelogProblem, { abbr, season }),
   ]);
-  if (team.status === "rejected") return siteError("SOURCE_UNAVAILABLE", `NFLDepthCharts' team file for ${abbr} could not be read: ${team.reason.message}`);
+  // G68: a team file that cannot be read drops only its own part; with the game log also unreadable there is nothing to show.
+  if (team.status === "rejected" && gamelog.status === "rejected") return siteError("SOURCE_UNAVAILABLE", `NFLDepthCharts' team file for ${abbr} could not be read: ${team.reason.message}`);
   return done(buildCard(row, {
-    team: team.value,
+    team: team.status === "fulfilled" ? team.value : null,
+    teamError: team.status === "rejected" ? `NFLDepthCharts' team file for ${abbr} could not be read: ${team.reason.message}` : null,
     gamelog: gamelog.status === "fulfilled" ? gamelog.value : null,
     gamelogError: gamelog.status === "rejected" ? `NFLDepthCharts' game-log file for ${abbr} could not be read: ${gamelog.reason.message}` : null,
   }));

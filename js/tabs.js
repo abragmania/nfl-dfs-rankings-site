@@ -35,10 +35,13 @@ function floorNoteHtml(allRows, shownRows) {
 
 const TABS = [
   { key: "lineup", label: "Optimizer" }, // DECISIONS.md D70: "Optimizer" (was "Lineup Builder"); the first tab since Rankings folded into it (step 4)
-  { key: "showdown", label: "Showdown" }, // ChatGPT wish t, Adam 2026-10-17: a second door to the Showdown boards, in the app and on the site
-  { key: "entries", label: "Entries" }, // rules repo 2026-10-17: Entries is its own tab (was a section under the Optimizer); app-only, see visibleTabs
   { key: "lineups", label: "Lineups" }, // Adam 2026-11-08: the Optimizer panel showing only its results (New and Saved lineups), app and site; app.js adds #lineup-panel.lineups-only
+  { key: "entries", label: "Entries" }, // rules repo 2026-10-17: Entries is its own tab (was a section under the Optimizer); app-only, see visibleTabs
 ];
+
+// The Showdown tab is no longer drawn (2026-11-13: the Main slate / Showdown switch in the one top bar is the door, the same order on both screens: Optimizer | Lineups | Entries | Sources);
+// its page (showdown-tab.js) stays reachable by its key, a remembered one included.
+const HIDDEN_TAB_KEYS = Object.freeze(["showdown"]);
 
 // Tab keys that are no longer drawn, and the tab each one opens instead (Adam 2026-10-18, Optimizer-first step 3: the Favorites
 // tab goes and its old key opens the Optimizer); step 4 retires "rankings" the same way, as Rankings folds into the Optimizer.
@@ -72,7 +75,7 @@ export function visibleTabs(onSite = onSitePage()) {
  *  Optimizer (an Entries tab left over on the site; rules repo 2026-10-17). */
 export function shownTab(activeTab, tabs = visibleTabs()) {
   const key = Object.prototype.hasOwnProperty.call(RETIRED_TABS, activeTab) ? RETIRED_TABS[activeTab] : activeTab;
-  return tabs.some((t) => t.key === key) || isSourcesTab(key) ? key : "lineup";
+  return tabs.some((t) => t.key === key) || isSourcesTab(key) || HIDDEN_TAB_KEYS.includes(key) ? key : "lineup";
 }
 
 /** `lineupsCount`: the lineups built on the Lineups tab (the approved look's count beside its label), or null for none. */

@@ -73,7 +73,7 @@ body:not(.nl-page) #classic-header{padding:0 var(--sp-5)}
 .nl .opt .lo-sub{margin-left:8px;color:var(--dim);font-size:11px}
 .nl .hint2{padding:0 16px 8px;font-size:11.5px;color:var(--dim)}
 .nl .hint2:empty,.nl .opt-lockinfo:empty{display:none}
-.nl .work{grid-template-columns:minmax(0,1fr) 700px}
+.nl .work{grid-template-columns:minmax(0,1400px) 700px;justify-content:start} /* the pool stops at 1400px on a wide window, as the Showdown's does (its own cap below) */
 .nl .opt{align-self:start;position:sticky;top:var(--tabs-h,0px);max-height:calc(100vh - var(--tabs-h,0px) - 8px);overflow-y:auto}
 .nl #lineups.opt{position:static;max-height:none;overflow:visible}
 .nl .opt .lu.wk{position:static;padding:0 16px 6px;border-bottom:0}
@@ -411,7 +411,7 @@ html[data-theme="light"] .nl .vtabs button.on,html[data-theme="light"] .nl .vtab
   .nl .opt .lo .crow{grid-template-columns:30px 20px minmax(0,1fr) 54px 40px 46px}
   .nl .opt .lo .way{padding-left:0}
   .nl .lo .xf{grid-column:1/-1!important;justify-self:end;margin-top:2px}
-  .nl .set4{grid-template-columns:1fr 1fr}
+  .nl .set4,.nl .set4.set3{grid-template-columns:1fr 1fr}
   .nl .set4 label:nth-child(2){border-right:0}
   .nl .opt .act .two{flex-wrap:wrap}
   .nl .opt .act .savebox{flex:1 1 100%}
@@ -437,7 +437,7 @@ body.nl-page #showdown-main{max-width:none;padding:0;width:auto}
 .nl .sd-filterbar .sd-filter-note{color:var(--am);font-size:11px}
 .nl #sd-columns-slot .colpop{left:auto;right:0} /* the Columns button is at the bar's right edge: its list opens leftwards, inside the window */
 /* The work area: the pool beside the Optimizer panel, which sticks under the shared bar and the filter bar. */
-.nl .work.sd-work{grid-template-columns:minmax(0,1fr) minmax(520px,900px)}
+.nl .work.sd-work{grid-template-columns:minmax(0,1080px) minmax(520px,900px);justify-content:start} /* the pool stops at 1080px on a wide window: a longer Player column is empty space, so the rest stays free on the right */
 .nl .sd-work .opt{top:var(--filterbar-h,0px);max-height:calc(100vh - var(--filterbar-h,0px) - 8px)}
 @media (max-width:1830px){.nl .work.sd-work{grid-template-columns:minmax(0,1fr)}} /* a laptop: the panel above the pool, as on the classic screen (board.css) */
 /* The pool's ids (#sd-thead, #sd-tbody) get the classic pool's id-keyed rules (board.css, above): widths, the sticky head and the cell type. */
@@ -448,6 +448,24 @@ body.nl-page #showdown-main{max-width:none;padding:0;width:auto}
 .nl #sd-tbody .l2,.nl #sd-tbody .pos,.nl #sd-tbody .st{font-family:"Space Grotesk",sans-serif}
 .nl #sd-tbody tr.pk td.pl .l2{white-space:nowrap}
 .nl .sd-pool-table td.lineup-pool-empty{white-space:normal}
+/* The Showdown landing (showdown-tab.js) and the empty states (a board loading, or one the site does not have), in the classic look; the page's foot note (#sd-foot-note) is the quiet line at the bottom. */
+.nl#showdown-panel{padding:14px 0}
+.nl#showdown-panel .opt-title{display:block;margin:0 0 4px;font:700 16px "Space Grotesk",sans-serif;color:var(--tx)}
+.nl#showdown-panel .tab-note{margin:0 0 8px;font-size:11.5px;color:var(--mu)}
+.nl .sd-game-tiles{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0 12px}
+.nl .sd-game-tile{background:var(--p2);border:1px solid var(--ln);border-radius:0;padding:4px 10px;font:700 12px "JetBrains Mono",monospace;color:var(--mu);white-space:nowrap;cursor:pointer}
+.nl .sd-game-tile:hover{border-color:var(--am);color:var(--tx)}
+.nl .sd-game-loaded{border-color:var(--am);color:var(--am)}
+.nl .sd-game-missing{border-style:dashed}
+.nl .sd-game-tile.selected{background:var(--am);border-color:var(--am);color:#000}
+.nl .sd-loaded-mark{color:var(--mu);font-weight:400}
+.nl#showdown-panel .empty-state,.nl#sd-empty-state{max-width:760px;margin:8px 0 0;padding:14px 16px;text-align:left;background:var(--p);border:1px solid var(--ln);border-radius:0;color:var(--mu);font-size:13px}
+.nl#showdown-panel .empty-state p{margin:0 0 8px;color:var(--tx)}
+.nl#showdown-panel .empty-state .tab-note{margin:8px 0 0}
+.nl#showdown-panel .upload-btn{display:inline-block;margin:0;background:none;border:1px solid var(--ln);border-radius:0;padding:4px 10px;font:700 12px "JetBrains Mono",monospace;color:var(--mu);cursor:pointer}
+.nl#showdown-panel .upload-btn:hover{border-color:var(--am);color:var(--tx)}
+.nl.storage-foot{padding:14px 0 0;font-size:11.5px;color:var(--dim)}
+.nl.storage-foot[hidden]{display:none}
 @media (max-width:1300px){
   .nl #sd-tbody td.pl,.nl #sd-thead th.pl{position:sticky;left:var(--plleft,0px);z-index:1}
   .nl #sd-tbody td.pl{background-color:var(--p)}.nl #sd-thead th.pl{background-color:var(--p2);z-index:3}
@@ -468,7 +486,7 @@ body.nl-page #showdown-main{max-width:none;padding:0;width:auto}
 .nl .set4 .seg{margin-top:2px;height:24px}
 .nl .set4 .seg button{flex:1;padding:0 6px;font-size:12.5px}
 .nl .set4 .cash-basis{display:block;margin-top:5px;font-size:12px;color:var(--tx);white-space:normal}
-.nl .sd-opt-ghost{visibility:hidden}
+.nl .set4.set3{grid-template-columns:repeat(3,1fr)} /* the Cash tab: three settings (no Min unique players, no Variance row), so no empty cell or band */
 .nl .sd-opt .sd-setop{cursor:default}
 .nl .sd-opt .sd-setop:hover{color:var(--mu)}
 .nl .sd-opt .opt-lockinfo{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}

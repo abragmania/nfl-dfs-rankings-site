@@ -98,7 +98,7 @@
     <div id="sources-panel" class="panel sources-panel" hidden></div>
     <div id="projections-panel" class="panel" hidden></div>
     <div id="ownership-panel" class="panel" hidden></div>
-    <div id="showdown-panel" class="panel" hidden></div>
+    <div id="showdown-panel" class="panel nl" hidden></div>
     <div id="entries-panel" class="panel" hidden></div>
     <div id="empty-state" class="empty-state" hidden></div>
   </main>
@@ -126,7 +126,9 @@
     <div id="sd-projections-panel" class="panel" hidden></div>
     <div id="sd-ownership-panel" class="panel" hidden></div>
     <div id="sd-entries-panel" class="panel" hidden></div>
-    <div id="sd-empty-state" class="empty-state" hidden></div>
+    <div id="sd-empty-state" class="empty-state nl" hidden></div>
+    <!-- The details of a board that could not be read (the foot of the page, never the main view); filled by showdown/view.js, hidden when empty. -->
+    <p id="sd-foot-note" class="storage-foot nl" hidden></p>
   </main>
 
   <!-- The page's foot: a setting the browser could not read and reset to defaults (storage-damage.js); hidden when none. -->

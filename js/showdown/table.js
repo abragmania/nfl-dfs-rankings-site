@@ -8,6 +8,7 @@ import { adamTouched } from "../out.js"; // the pool keeps a man Adam marked In 
 import { playerLineHtml, showPos, teamLogoHtml } from "../player-row.js";
 import { cardNameHtml } from "../lineup-card.js";
 import { sdShowAll } from "./show-all.js";
+import { rowWithGame } from "./lineup-slots.js";
 
 /** The rows a Showdown list shows: every man with the Showdown's own `Show all players` on (C24: not classic's switch), else without the men listed out (D45). */
 export function shownRows(rows, showAll = sdShowAll(), { keepTouched = false } = {}) {
@@ -90,10 +91,10 @@ function projCellHtml(value, row, extraTitlePrefix = "") {
 
 /** The Player cell's inside, the classic pool's (lineup-pool.js): logo, name with his In / Out switch (`tagWrap(tag)` draws the switch's place; null keeps the tag) and position on the first line, team and opponent on the second.
  *  `extra`: what follows the position on the first line (the seat tag and padlock); `why`: the few words of a greyed row's reason after the matchup. */
-export function playerWhoHtml(row, { nameHtml = cardNameHtml(row), tagWrap, extra = "", why = "" } = {}) {
+export function playerWhoHtml(row, { nameHtml = cardNameHtml(row), tagWrap, extra = "", why = "", game = null } = {}) {
   const tag = outTagHtml(row) || statusTagsHtml(row);
   const tagInner = typeof tagWrap === "function" ? tagWrap(tag) ?? tag : tag;
-  const opp = opponentLabel(row);
+  const opp = opponentLabel(rowWithGame(row, game)); // `game`: the board's game, so the second line reads `WAS · @NYG` / `NYG · v WAS` as classic's does (the one helper, opponentLabel)
   return `<div class="who">${teamLogoHtml(row.team, "logo", 24)}<div class="whot"><div class="l1"><span class="name player-name" title="${escapeHtml(row.name ?? "")}">${nameHtml}</span>${tagInner}${row.pos ? `<span class="pos">${escapeHtml(row.pos)}</span>` : ""}${extra}</div><div class="l2">${escapeHtml(row.team ?? "")}${opp ? ` · ${escapeHtml(opp)}` : ""}${why}</div></div></div>`;
 }
 
