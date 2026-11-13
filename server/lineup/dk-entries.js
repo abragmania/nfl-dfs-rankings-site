@@ -445,8 +445,12 @@ export function injuryNotes(ids, pool, { statusById, sidelinedIds, revived, flag
       errors.push(`${describe(pool, id)} is sidelined${statusText ? ` (status ${statusText})` : " (flagged injured on the board)"}.`);
     } else if (["Q", "QUESTIONABLE"].includes(statusText.toUpperCase())) {
       warnings.push(`${describe(pool, id)} is listed questionable.`);
-    } else if (lookup(flagged, id)) {
-      warnings.push(`${describe(pool, id)} is listed ${String(lookup(flagged, id)).trim()} by an outside injury feed, which is only a flag (it does not rule him out); check his status before you submit.`);
+    }
+    // Not else-if: a DraftKings Q man whom the feed lists Out gets both sentences. Both exports (classic, Showdown) call this one function.
+    if (typed === undefined || typed === null) {
+      if (!(isSidelined(statusText) || inSet(sidelinedIds, id)) && lookup(flagged, id)) {
+        warnings.push(`${describe(pool, id)} is listed ${String(lookup(flagged, id)).trim()} by an outside injury feed, which is only a flag (it does not rule him out); check his status before you submit.`);
+      }
     }
   }
   return { errors, warnings };

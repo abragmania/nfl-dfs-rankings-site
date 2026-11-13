@@ -5,7 +5,7 @@
 // Not expected to play (R82). "Questionable" is deliberately absent.
 const SIDELINED = new Set([
   "OUT", "O", "INACTIVE", "IR", "INJURED RESERVE", "DOUBTFUL", "D",
-  "SUSPENDED", "SUSPENSION", "PUP", "PHYSICALLY UNABLE TO PERFORM", "NFI", "NON-FOOTBALL INJURY"
+  "SUSPENDED", "SUSP", "SUSPENSION", "PUP", "PHYSICALLY UNABLE TO PERFORM", "NFI", "NON-FOOTBALL INJURY"
 ]);
 
 /** True when a status string means the player is not expected to play. Null or blank is never sidelined. */
@@ -79,17 +79,26 @@ export function etDay(iso) {
 }
 
 /** A game-day inactive (the one copy; hide decision and self-check): an ESPN Out (or Inactive) whose comment says inactive and whose entry
- *  date falls on the game's own day (Eastern) by the DraftKings kickoff. An old "was inactive for Week 9" note, a Sleeper tag and an entry
- *  with no date are not. Pure. */
+ *  is dated within INACTIVE_WINDOW_MS before the DraftKings kickoff. An old "was inactive for Week 9" note, a Sleeper tag, an entry
+ *  with no date and one posted days before or after the game are not. Pure. */
 export function isGameDayInactive({ source = null, status = null, comment = null, commentLong = null, date = null, kickoffUtc = null } = {}) {
   if (source !== ESPN_FEED) return false;
   const word = String(status ?? "").trim().toUpperCase();
   if (word !== "OUT" && word !== "INACTIVE") return false;
   // ESPN's short comment and its long one are both read: either may carry the word.
-  if (word !== "INACTIVE" && !/\binactive\b/i.test(`${comment ?? ""} ${commentLong ?? ""}`)) return false;
-  const day = etDay(date);
-  return day !== null && day === etDay(kickoffUtc);
+  const text = `${comment ?? ""} ${commentLong ?? ""}`;
+  if (word !== "INACTIVE" && (!/\binactive\b/i.test(text) || OLD_INACTIVE.test(text))) return false;
+  // The entry must be posted in the window before this game's kickoff: ESPN posts the inactives about 90 minutes before (the real WAS@NYG ones were 71 to 88).
+  const entry = typeof date === "string" ? Date.parse(date) : NaN;
+  const kickoff = typeof kickoffUtc === "string" ? Date.parse(kickoffUtc) : NaN;
+  if (!Number.isFinite(entry) || !Number.isFinite(kickoff)) return false;
+  return entry <= kickoff && kickoff - entry <= INACTIVE_WINDOW_MS;
 }
+
+/** How long before kickoff an ESPN inactive entry may be dated and still count (the real ones were 71 to 88 minutes before). */
+export const INACTIVE_WINDOW_MS = 3 * 60 * 60 * 1000;
+// "was inactive", "were inactive", "inactive for Week 9 / last week": a note about a past game, not tonight's list.
+const OLD_INACTIVE = /\b(?:was|were|had been|been)\s+(?:a\s+)?(?:healthy\s+)?inactive\b|\binactive\s+(?:for|in|during|against|vs\.?)\s+(?:week\s*\d+|last\s+week|the\s+(?:previous|last)\b)/i;
 
 /** isGameDayInactive off a board row (row.injury with its date, and the row's DraftKings kickoff). */
 export function rowIsInactive(row) {
@@ -102,6 +111,36 @@ export function rowIsInactive(row) {
 export function flaggedWordOf(row) {
   const word = row?.injury?.flagOnly ? String(row.injury.status ?? "").trim() : "";
   return word && isSidelined(word) && !rowIsOut(row) ? word : null;
+}
+
+const UPLOAD_STAMP = new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", weekday: "short", hour: "numeric", minute: "2-digit", hour12: true });
+
+/** "Tue 11:02 AM" (Eastern) from an ISO instant, or null. */
+export function uploadStampText(iso) {
+  const ms = typeof iso === "string" ? Date.parse(iso) : NaN;
+  if (!Number.isFinite(ms)) return null;
+  const p = Object.fromEntries(UPLOAD_STAMP.formatToParts(new Date(ms)).map((x) => [x.type, x.value]));
+  return `${p.weekday} ${p.hour}:${p.minute} ${String(p.dayPeriod).toUpperCase()}`;
+}
+
+/**
+ * The foot-of-board sentence (G62) naming every man an outside feed lists Out, IR, Doubtful or Inactive whom nothing hides (a flag only), by feed word, with when
+ * DraftKings' statuses were uploaded: a man ruled out after the upload is hidden only if a re-upload brings DraftKings' word. Null when there is none. Pure.
+ * Example: "Flag only (feed says Out; DraftKings' file of Tue 11:02 AM lists nothing): Colson Yankoff, Lucas Patrick. Re-upload the salary file to refresh DraftKings' statuses."
+ */
+export function flagOnlyNote(rows, uploadedAt) {
+  const byWord = new Map();
+  for (const r of rows ?? []) {
+    const word = flaggedWordOf(r);
+    if (!word) continue;
+    if (!byWord.has(word)) byWord.set(word, []);
+    byWord.get(word).push(r);
+  }
+  if (!byWord.size) return null;
+  const stamp = uploadStampText(uploadedAt);
+  const file = stamp ? `DraftKings' file of ${stamp}` : "DraftKings' file (upload time unknown)";
+  const parts = [...byWord].map(([word, list]) => `Flag only (feed says ${word}; ${file} ${list.some((r) => r.salaryStatus) ? "lists no out status" : "lists nothing"}): ${list.map((r) => r.name).join(", ")}.`);
+  return `${parts.join(" ")} Re-upload the salary file to refresh DraftKings' statuses.`;
 }
 
 /** A DraftKings Status word the app reads: a sidelined one ("out"), Questionable ("q"), else "unknown" (counted and noted, never a status), blank null. */
