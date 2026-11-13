@@ -14,7 +14,7 @@
 // field table, built once per board object (zFor), weighed by the curves, with the gap measured against the field's best
 // legal lineup (no excludes). Adam's excludes never change the table, Z or any copies (the field does not know them); they
 // change only the displayed best possible lineup, as in the Optimizer.
-import { rowIsOut } from "../rank/sidelined.js";
+import { rowIsOut, statusSetting, statusWordOf } from "../rank/sidelined.js";
 import { TWOGUN_ID } from "../sources/selection-core.js";
 import { lineupRows, boardTwoGun } from "./lineup-rows.js"; // the board path's rows and what this game's ticks say about TwoGun (Adam 2026-10-20)
 import { staleModeError } from "./lineup-checks.js"; // the old mode field's refusal, shared with Build and Generate
@@ -228,7 +228,8 @@ export function projectionHalf(rows, { tp = null, generatedAt = null, board = nu
 /** The hover sentence for a man counted as 0 because the injury report lists him out (D45), TwoGun's own figure named:
  *  one decimal, from the unrounded figures, exactly as the slots and lists print them (format.js dec1). */
 function countsAsZeroNote(row, theirs) {
-  return `${row.name} is listed ${sidelinedWord(row)} by the injury report, so he counts as 0; ${theirs === null ? "TwoGun has no projection for him" : `TwoGun projects ${theirs.toFixed(1)} at FLEX (${(theirs * CPT_MULTIPLIER).toFixed(1)} as Captain)`}.`;
+  const why = statusSetting(row) === "out" ? `${row.name}: you marked him Out` : `${row.name} is listed ${sidelinedWord({ status: statusWordOf(row) })} by the injury report`;
+  return `${why}, so he counts as 0; ${theirs === null ? "TwoGun has no projection for him" : `TwoGun projects ${theirs.toFixed(1)} at FLEX (${(theirs * CPT_MULTIPLIER).toFixed(1)} as Captain)`}.`;
 }
 
 /**

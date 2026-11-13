@@ -227,6 +227,7 @@ export function tagsCellTitle(row) {
 export function statusTagsHtml(row) {
   // Adam's own In / Out (2026-11-12): In shows no badge at all, Out his own O.
   if (row?.override?.status === "in") return "";
+  if ((row?.flags ?? []).includes("revived")) return ""; // a man his typed number brought back shows no badge: not the report's second one, not an unknown word
   if (row?.override?.status === "out") return `<span class="status-badge status-out" title="${escapeHtml(YOURS_OUT_TITLE)}">O</span>`;
   const key = (row.status ?? "").trim().toLowerCase();
   const injuryStatus = row.injury?.status;

@@ -16,7 +16,7 @@
 // Lineups are ranked by total projection, then by lower salary, then by the sorted player ids, so ties are settled
 // the same way on every machine. Projections are compared as integers (millionths of a point) so float rounding
 // never decides anything.
-import { rowIsOut, statusSetting } from "../rank/sidelined.js"; // pure: the public site runs this engine in the browser (D69)
+import { rowIsOut, statusSetting, statusWordOf } from "../rank/sidelined.js"; // pure: the public site runs this engine in the browser (D69)
 import { assignSlots } from "./dk-entries.js";
 import { warn } from "../lib/log.js";
 import { BUILD_CEILING_MS, stopSentence } from "./build-control.js"; // pure leaf: the one ten minute limit
@@ -131,8 +131,10 @@ function idsOfExisting(item) {
 }
 
 /** The note for a man the board lists out who is kept because he is locked ("Locked"; the showdown Optimizer says it of an
- *  included man too, word "Included"). One copy: showdown-pool.js keptNotes (Generate and Build) uses it. `status`: his listed status. */
-export function keptSidelinedNote(name, status, word = "Locked") {
+ *  included man too, word "Included"). One copy: showdown-pool.js keptNotes (Generate and Build) uses it. `status`: his listed status (statusWordOf(row));
+ *  `markedOut`: Adam's own Out set him out, so the note says he did, not the injury report. */
+export function keptSidelinedNote(name, status, word = "Locked", markedOut = false) {
+  if (markedOut) return `${word} ${name}: you marked him Out; he is kept because he is ${word.toLowerCase()}.`;
   return `${word} ${name} is listed ${status ?? "injured"}; he is kept because he is ${word.toLowerCase()}.`;
 }
 
@@ -728,7 +730,7 @@ export function minOutReason(row, id, opts) {
   if (!pos || salary === null || salary < 0) return "he has no salary or position a classic lineup can use";
   const f = rowFlags(row, pos, opts);
   if (f.lateOut) return "he was ruled out after TwoGun's board was made";
-  if (f.sidelined) return `he is listed ${row.status ?? "injured"}`;
+  if (f.sidelined) return statusSetting(row) === "out" ? "you marked him Out" : `he is listed ${statusWordOf(row) ?? "injured"}`;
   if (f.noProjection) return "he has no projection";
   if (f.avoided) return "his game is set to avoid";
   if (f.unstarredQb) return "he is not starred";
@@ -1055,7 +1057,7 @@ function prepare(rows, opts, notes) {
     if (locked) {
       // A late-out row also carries "injured", so the late-out note is checked first.
       if (lateOut) notes.push(`Locked ${name} was ruled out after TwoGun's board was made; he is kept because he is locked.`);
-      else if (sidelined) notes.push(keptSidelinedNote(name, row.status));
+      else if (sidelined) notes.push(keptSidelinedNote(name, statusWordOf(row), "Locked", statusSetting(row) === "out"));
       if (noProjection) notes.push(noSourceProjectionNote(name));
       if (noCeiling) notes.push(`Locked ${name} has no TwoGun ${figureWord} and counts as 0 in this ${figureWord} build.`);
       if (avoided) notes.push(`Locked ${name} plays in ${game}, a game set to avoid; he is kept because he is locked.`);

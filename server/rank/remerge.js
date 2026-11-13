@@ -4,7 +4,7 @@
 // write plus a handful of in-memory array passes.
 // Pure (no node modules, no file reads), so the public site can run the same remerge in the visitor's browser
 // (DECISIONS.md D71).
-import { mergeOverridesIntoRows } from "../overrides/merge.js";
+import { mergeOverridesIntoRows, statusNote } from "../overrides/merge.js";
 import { computeValue } from "./value-core.js";
 import { computeTags } from "./tags-core.js";
 import { buildGames } from "./games.js";
@@ -81,11 +81,12 @@ export function remergeOverrides(previousBoard, full, overrides, generatedAt = n
     ...(prevTabNotes.favorites ?? []),
     ...(prevTabNotes.ownership ?? []).filter((n) => !onProjections.has(n))
   ]);
-  const notes = (previousBoard.notes ?? []).filter((n) => !staleOverrideNotes.has(n));
+  const inOutNote = statusNote(baseRows, overrides); // G62: In / Out settings the merge could not use, recomputed from these overrides
+  const notes = [...(previousBoard.notes ?? []).filter((n) => !staleOverrideNotes.has(n)), ...(inOutNote ? [inOutNote] : [])];
   const tabNotes = {
     projections: [...(prevTabNotes.projections ?? [])],
-    ownership: (prevTabNotes.ownership ?? []).filter((n) => !staleOverrideNotes.has(n)),
-    favorites: []
+    ownership: [...(prevTabNotes.ownership ?? []).filter((n) => !staleOverrideNotes.has(n)), ...(inOutNote ? [inOutNote] : [])],
+    favorites: inOutNote ? [inOutNote] : []
   };
   return withSelfCheck({ ...previousBoard, generatedAt, rows, games, ownership, notes, tabNotes }); // G65: the remerged board checks itself
 }

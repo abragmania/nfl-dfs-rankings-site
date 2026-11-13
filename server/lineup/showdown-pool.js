@@ -5,7 +5,7 @@
 import { rosterReason, scoreFor } from "./showdown.js";
 import { keptSidelinedNote, noSourceProjectionNote } from "./multi.js"; // the classic Optimizer's own sentences for a man kept because he is locked
 import { ceilingNotes, FIGURE_BUILDS } from "./objective.js";
-import { rowIsOut } from "../rank/sidelined.js"; // pure: the public site runs this engine in the browser (D69)
+import { rowIsOut, statusSetting, statusWordOf } from "../rank/sidelined.js"; // pure: the public site runs this engine in the browser (D69)
 
 const num = (v) => (typeof v === "number" && Number.isFinite(v) ? v : null);
 
@@ -40,7 +40,7 @@ const noOwnProjection = (row) => num(row?.proj) === null || (num(row?.override?.
 export function keptNotes(word, c, row, { why = null, objective = "proj", boardMode } = {}) {
   const out = [];
   const figure = Object.hasOwn(FIGURE_BUILDS, objective) ? FIGURE_BUILDS[objective] : null;
-  if (rowIsOut(row)) out.push(keptSidelinedNote(c.name, row.status, word));
+  if (rowIsOut(row)) out.push(keptSidelinedNote(c.name, statusWordOf(row), word, statusSetting(row) === "out"));
   if (objective === "proj" && boardMode === "twogun" && num(c.proj) === null) out.push(noTwoGunProjectionNote(c.name, word));
   if (objective === "proj" && boardMode !== "twogun" && noOwnProjection(row)) out.push(noSourceProjectionNote(c.name, word));
   if (why === "figure") out.push(`${word} ${c.name} has no TwoGun ${figure} and counts as 0 in this ${figure} build.`);
@@ -57,7 +57,7 @@ export function lockedOutBuildNotes(board, lockIds) {
     if (!c || seen.has(c.personId)) continue;
     seen.add(c.personId);
     const row = board.rowOfPerson.get(c.personId);
-    if (rowIsOut(row)) out.push(keptSidelinedNote(c.name, row.status));
+    if (rowIsOut(row)) out.push(keptSidelinedNote(c.name, statusWordOf(row), "Locked", statusSetting(row) === "out"));
   }
   return out;
 }

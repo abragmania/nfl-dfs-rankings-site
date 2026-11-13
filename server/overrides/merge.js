@@ -281,6 +281,20 @@ export function resetAll(current) {
 }
 
 /**
+ * G62: what the merge could not use of Adam's stored In / Out, as one board-note sentence (or null when all of it was used): entries a file read dropped
+ * for a value other than "in" or "out" (overrides.statusDropped, set by store.js readOverrides) and settings for an id not on these rows. Pure.
+ */
+export function statusNote(rows, overrides) {
+  const onSlate = new Set((rows ?? []).map((r) => String(r.id)));
+  const strays = Object.keys(overrides?.status ?? {}).filter((id) => !onSlate.has(String(id))).length;
+  const dropped = Number.isInteger(overrides?.statusDropped) ? overrides.statusDropped : 0;
+  const parts = [];
+  if (dropped) parts.push(`${dropped} saved In / Out setting${dropped === 1 ? " was" : "s were"} not "in" or "out" and ${dropped === 1 ? "was" : "were"} dropped`);
+  if (strays) parts.push(`${strays} saved In / Out setting${strays === 1 ? " is" : "s are"} for a player not on this slate and not used`);
+  return parts.length ? `${parts.join("; ")}.` : null;
+}
+
+/**
  * Merges overrides onto board rows without adding or dropping any row (PROJECT.md D27). Each returned
  * row keeps its original fields plus projBase, ownBase (the pre-override values), proj/own replaced by
  * the override when present, override: {proj, own} (null when not overridden), and starred; the stored notes are kept in the file but no longer sent on the rows.
@@ -300,7 +314,7 @@ export function mergeOverridesIntoRows(rows, overrides) {
     const hasOwn = Object.prototype.hasOwnProperty.call(own, row.id);
     const setting = Object.prototype.hasOwnProperty.call(status, row.id) && STATUS_VALUES.includes(status[row.id]) ? status[row.id] : null;
     // A typed number always wins (Adam 2026-11-12): above 0 on a man the sources list out, it revives him in every mode, whenever it was typed; his own Out wins over it.
-    const marked = hasProj && setting !== "out" && isFiniteNum(proj[row.id]) && proj[row.id] > 0 && (revive.has(row.id) || listedSidelined(row));
+    const marked = hasProj && setting !== "out" && isFiniteNum(proj[row.id]) && proj[row.id] > 0 && listedSidelined(row);
     const steps = Object.prototype.hasOwnProperty.call(bump, row.id) && hasSteps(bump[row.id]) ? bump[row.id] : 0;
     const chosen = hasProj ? proj[row.id] : row.proj;
     const out = {

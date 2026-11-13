@@ -23,7 +23,7 @@
 // site-lineups.js). Saved data that is not well formed is ignored entry by entry; a write the browser refuses is a
 // plain refusal and the board is left as it was. `storage` is passed in (the page's localStorage or a test double);
 // null means unavailable. Pure apart from that: no network, no page.
-import { applyOverrideChanges, validateOverrides, mergeOverridesIntoRows, assertShowdownWriteIds, BUMP_MAX_STEPS, STATUS_VALUES } from "../server/overrides/merge.js";
+import { applyOverrideChanges, validateOverrides, mergeOverridesIntoRows, assertShowdownWriteIds, assertIdsOnSlate, BUMP_MAX_STEPS, STATUS_VALUES } from "../server/overrides/merge.js";
 import { remergeOverrides } from "../server/rank/remerge.js";
 import { withSelfCheck } from "../server/rank/self-check.js";
 import { sidelinedIdsOf, zeroOutRows, rowIsOut, statusWordOf } from "../server/rank/sidelined.js";
@@ -288,6 +288,14 @@ function write(storage, season, week, board, slate, nextFrom, adapter = CLASSIC)
 
 /** PUT /api/overrides: `changes` is the route's body ({proj?, own?, stars?, notes?}). */
 export function putEdits(storage, season, week, board, slate, changes, adapter = CLASSIC) {
+  // The app's route checks (merge.js assertIdsOnSlate): a bad In / Out value or an id not on the board is refused and nothing is kept. A Showdown game's overlay makes its own check first (putShowdownEdits).
+  if (adapter === CLASSIC) {
+    try {
+      assertIdsOnSlate(changes, (board?.rows ?? []).map((r) => r.id));
+    } catch (e) {
+      return { error: { code: e.code ?? "OVERRIDES_INVALID", message: e.message } };
+    }
+  }
   return write(storage, season, week, board, slate, (edits, published) => recordChanges(edits, isObject(changes) ? changes : {}, published, sidelinedIdsOf(board?.rows)), adapter);
 }
 

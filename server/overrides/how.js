@@ -1,7 +1,7 @@
 // The sentence a served Showdown row carries for Adam's typed projection and his ± bump (moved verbatim out of server/rank/select-showdown.js in round 4, item 7, so the public site's
 // Showdown overlay writes the same sentence without importing the whole selection engine, whose TwoGun overlay holds the publish guard's own path patterns). Pure and browser-safe.
 import { BUMP_PCT } from "./merge.js";
-import { rowIsOut } from "../rank/sidelined.js";
+import { rowIsOut, statusSetting } from "../rank/sidelined.js";
 import { toNumber } from "../rank/value-core.js";
 import { fmt } from "../showdown/offence-how.js";
 
@@ -16,6 +16,8 @@ export function overrideHow(r) {
   const out = rowIsOut(r); // zeroed: the override sentence keeps naming the 0 he projects, as it always has
   const base = toNumber(r.projBase); // null when no source projected him: "replaces no projection", never "the base 0"
   const parts = hasTyped ? [`Adam's override ${fmt(Number(out ? r.proj : typed))} replaces ${base === null ? "no projection" : `the base ${fmt(base)}`}.`] : [];
+  // His own Out beats a typed number: say he is marked Out, not that an override of 0 replaces the base.
+  if (hasTyped && statusSetting(r) === "out") parts[0] = `You marked him Out, so he projects 0; the typed ${fmt(Number(typed))} is not used.`;
   const steps = r.override?.bump;
   const from = Number(hasTyped ? typed : r.projBase);
   if (Number.isInteger(steps) && steps !== 0 && Number.isFinite(from) && typeof r.proj === "number" && !out) {
