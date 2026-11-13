@@ -30,7 +30,7 @@ export function injuryReportState(card) {
 export function pickInjuryReport(espnState, sleeperState, ages = {}) {
   const parts = { espn: espnState ?? "missing", sleeper: sleeperState ?? "missing" };
   const ageFor = (which) => (typeof ages?.[which] === "string" && ages[which] ? { [`${which}Age`]: ages[which] } : {});
-  if (espnState === "ok") return { state: "ok", source: "ESPN injuries", parts };
+  if (espnState === "ok") return { state: "ok", source: "ESPN injuries", parts, ...(sleeperState === "stale" ? ageFor("sleeper") : {}) };
   if (espnState === "stale") return { state: "stale", source: "ESPN injuries", parts, ...ageFor("espn"), ...ageFor("sleeper") };
   if (sleeperState === "ok") return { state: "ok", source: "Sleeper", parts };
   if (sleeperState === "stale") return { state: "stale", source: "Sleeper", parts, ...ageFor("sleeper") };
@@ -47,11 +47,28 @@ export function injuryReportNote({ state, source, parts = null, espnAge = null, 
       ? "ESPN injury report unavailable: injury statuses are from Sleeper."
       : `ESPN injury report unavailable: injury statuses are from a saved Sleeper copy${sleeperAge ? ` (${sleeperAge})` : ""} and may be out of date.`) + SLEEPER_FLAG_NOTE;
   }
-  if (state !== "stale") return null;
-  // G68: ESPN's saved entries stand (with their age) until ESPN is read again; Sleeper's part is named on its own.
-  const espn = `ESPN injury report is a saved copy${espnAge ? ` (${espnAge})` : ""} because the live fetch failed: injury statuses may be out of date.`;
+  // G68: ESPN's saved entries stand (with when they were saved) until ESPN is read again; Sleeper's part is named on its own, a saved Sleeper copy even beside a live ESPN.
   const sleeper = parts?.sleeper === "ok" ? "Sleeper fills only the men ESPN has no word on" : parts?.sleeper === "stale" ? `Sleeper fills only the men ESPN has no word on (from a saved Sleeper copy${sleeperAge ? `, ${sleeperAge}` : ""})` : null;
+  if (state !== "stale") return parts?.sleeper === "stale" ? `${sleeper}; its tags are flags only.` : null;
+  const espn = `ESPN injury report is a saved copy${espnAge ? ` (${espnAge})` : ""} because the live fetch failed: injury statuses may be out of date.`;
   return sleeper ? `${espn} ${sleeper}; its tags are flags only.` : espn;
+}
+
+/** G68, D45: Sleeper's sidelined word on a man ESPN holds a record on, when it differs from ESPN's word, as row.injury.otherFeed ({ source: "Sleeper", status });
+ *  else null. Both words are kept: ESPN's stands on the row, Sleeper's is a flag only and never hides. Pure. */
+export function otherFeedOf(espnWord, sleeperWord) {
+  const s = typeof sleeperWord === "string" ? sleeperWord.trim() : "";
+  if (!s || !isSidelined(s)) return null;
+  if (String(espnWord ?? "").trim().toUpperCase() === s.toUpperCase()) return null;
+  return { source: "Sleeper", status: s };
+}
+
+/** G68: the injury note's line naming each man the two feeds disagree on, e.g. "Sleeper disagrees: Jared Goff Out (ESPN saved copy: Questionable)."; null when none.
+ *  `conflicts`: [{ name, sleeper, espn }] (espn null when ESPN's record carries no word); `espnStale`: ESPN's part is its saved copy. Pure. */
+export function feedConflictNote(conflicts, espnStale) {
+  if (!conflicts?.length) return null;
+  const feed = espnStale ? "ESPN saved copy" : "ESPN";
+  return `Sleeper disagrees: ${conflicts.map((c) => `${c.name} ${c.sleeper} (${feed}: ${c.espn ?? "no designation"})`).join(", ")}. Sleeper's word is a flag only; ESPN's stands.`;
 }
 
 export function entriesInjuryProblem(report) {
