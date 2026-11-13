@@ -1,6 +1,6 @@
 // The working lineup's totals (moved unchanged out of ./lineup.js to keep that file under its cap, PROJECT.md Watch "SPLITS"; lineup.js re-exports both).
-import { escapeHtml } from "../format.js";
-import { lineupTotals, lineupTotalsHtml } from "../lineup-totals.js"; // A11
+import { lookTotals } from "../look-adapter.js";
+import { lookCapHtml } from "../look-row.js"; // the classic working lineup's totals line, the one copy (2026-11-13)
 import { findRow, SALARY_CAP, FLEX_COUNT } from "./lineup-saved.js";
 import { showdownPerSpotText, shownTotal } from "../totals.js";
 import { playerFigures } from "./lineup-meter.js";
@@ -36,8 +36,8 @@ export function computeTotals(board, picked = state, figures = playerFigures) {
   return { salaryUsed, salaryLeft: salaryUsed === null ? null : SALARY_CAP - salaryUsed, totalProj, filled: entries.length };
 }
 
-/** A11: the working lineup's `Salary used`, `Salary left`, `Proj` and `Own` under the last slot, from the first man (lineup-totals.js): empty reads $0, the full cap and dashes;
- *  a board that has not loaded reads dashes with the reason; a placed man no longer on the board makes every figure that needs him a dash. Salary per open spot follows (Adam 2026-10-18). */
+/** A11: the working lineup's `Salary used`, `Salary left`, `Proj`, `Own`, `Value` and `Per open slot` under the last slot, from the first man (look-row.js lookCapHtml, the classic's line): empty reads $0, the full cap and dashes;
+ *  a board that has not loaded reads dashes with the reason; a placed man no longer on the board makes every figure that needs him a dash. Salary per open spot follows (Adam 2026-10-18), the Captain's 1.5x counted. */
 export function workingTotalsHtml(board, picked = state, figures = playerFigures) {
   const entries = [];
   if (picked.cpt) entries.push({ id: picked.cpt.id, cpt: true });
@@ -49,7 +49,9 @@ export function workingTotalsHtml(board, picked = state, figures = playerFigures
     return { salary: cpt ? row.cptSalary : row.salary, proj: f.proj, own: f.notOnBoard ? null : f.own };
   });
   const notLoaded = (board?.rows ?? []).length ? null : "the board has not loaded";
-  const t = computeTotals(board, picked, figures);
-  const perSpot = t.salaryLeft === null ? null : showdownPerSpotText(t.salaryLeft, !picked.cpt, FLEX_COUNT - (picked.flex ?? []).filter(Boolean).length);
-  return lineupTotalsHtml(lineupTotals(men, { cap: SALARY_CAP, notLoaded }), { cap: SALARY_CAP, attrs: " data-working-totals", extra: perSpot ? escapeHtml(perSpot) : "" });
+  const t = notLoaded ? { used: null, left: null, proj: null, own: null, value: null, over: false, fillPct: 0 } : lookTotals(men, { cap: SALARY_CAP, seats: FLEX_COUNT + 1 });
+  const why = notLoaded ?? (entries.length ? "a man in this lineup has no figure or is no longer on this board" : "no man in this lineup yet");
+  const left = computeTotals(board, picked, figures).salaryLeft;
+  const perSpot = left === null ? null : showdownPerSpotText(left, !picked.cpt, FLEX_COUNT - (picked.flex ?? []).filter(Boolean).length);
+  return lookCapHtml(t, { cap: SALARY_CAP, why, perOpen: perSpot, perOpenTitle: perSpot ?? "", attrs: "data-working-totals" });
 }

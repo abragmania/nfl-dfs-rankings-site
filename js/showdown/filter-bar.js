@@ -6,7 +6,8 @@
 import { escapeHtml } from "../format.js";
 import { showAllToggleHtml, wireShowAllButtons, favoritesChipLabel, RESET_ALL_QUESTION, showButtonError } from "../filterbar.js";
 import { askInline, anchorHtml } from "../confirm-inline.js";
-import { poolState, resetPoolFilters } from "./pool.js";
+import { columnsButtonHtml, wireColumns } from "../columns.js";
+import { poolState, resetPoolFilters, poolTabsHtml, wirePoolTabs, poolColumnSetup, setPoolOnly, poolOnlyView } from "./pool.js";
 import { sdShowAllFlag } from "./show-all.js";
 
 // Position chips, same six positions the showdown board actually carries (server/showdown/board.js rows:
@@ -18,42 +19,49 @@ export const SD_POSITION_CHIPS = ["All", "QB", "RB", "WR", "TE", "K", "DST"];
  *  one Reset all overrides button, off when no man has a typed number or a bump; null draws none (the public site cannot write overrides, D71, and sample mode
  *  refuses every write). `starred`: how many men on the board are starred (the chip's number, as classic's, D53). Pure. The two wrappers do nothing on a wide window
  *  (display: contents); under 600px each is one sideways-scrolling line (style.css). */
-export function filterBarHtml(f, game, showAll, reset = null, starred = null) {
+export function filterBarHtml(f, game, showAll, reset = null, starred = null, marks = null) {
   const g = game ?? {};
   const num = (v) => (v == null ? "" : escapeHtml(String(v)));
-  const posChipsHtml = SD_POSITION_CHIPS.map(
-    (pos) => `<button type="button" class="chip pos-chip sd-pos-chip${pos === f.pos ? " active" : ""}" data-pos-filter="${pos}" data-pos="${pos}">${pos}</button>`
-  ).join("");
+  const chip = (attrs, label, on) => `<button type="button" class="chip pos-chip${on ? " active" : ""}" ${attrs}>${label}</button>`;
+  const posChipsHtml = SD_POSITION_CHIPS.map((pos) => chip(`data-pos-filter="${pos}" data-pos="${pos}"`, pos, pos === f.pos)).join("");
+  const teamChipsHtml = [["both", "Both"], ["away", g.away ?? "Away"], ["home", g.home ?? "Home"]].map(([key, label]) => chip(`data-team-filter="${key}"`, escapeHtml(label), f.team === key)).join("");
+  // The Locked and Excluded chips (classic's): a click narrows the pool to those men; drawn where a lock or an exclude can be set (`marks` = {locked, excluded, only}), their numbers kept by paintMarkChips.
+  const marksHtml = marks
+    ? `<button type="button" id="sd-locked-only-toggle" class="chip locked${marks.only === "locked" ? " on" : ""}" title="Show only the locked men">Locked<b id="sd-locked-count">${marks.locked}</b></button><button type="button" id="sd-excluded-only-toggle" class="chip excluded${marks.only === "excluded" ? " on" : ""}" title="Show only the excluded men">Excluded<b id="sd-excluded-count">${marks.excluded}</b></button>`
+    : "";
+  // The classic filter bar's two rows (filterbar.js): the pool's Captain | FLEX switch, positions, teams, Locked / Excluded / Starred, search, the count and Columns; then salary, Min Proj, Clear filters, Show all players and Reset all overrides.
   return `
-    <div class="filter-row">
-      <div class="sd-filter-chips">
-        <div class="chip-group">
-          <button type="button" class="chip pos-chip${f.team === "both" ? " active" : ""}" data-team-filter="both">Both</button>
-          <button type="button" class="chip pos-chip${f.team === "away" ? " active" : ""}" data-team-filter="away">${escapeHtml(g.away ?? "Away")}</button>
-          <button type="button" class="chip pos-chip${f.team === "home" ? " active" : ""}" data-team-filter="home">${escapeHtml(g.home ?? "Home")}</button>
-        </div>
-        <div class="chip-group" id="sd-pos-chips">${posChipsHtml}</div>
-      </div>
-      <div class="sd-filter-inputs">
-        <div class="filter-search">
-          <input id="sd-search" type="search" placeholder="Search players" aria-label="Search players" value="${num(f.search)}" />
-        </div>
-        <div class="filter-salary">
-          <label>Salary <input id="sd-min-salary" type="number" step="100" placeholder="min" aria-label="Min salary" value="${num(f.minSalary)}" /></label>
-          <span>-</span>
-          <label><input id="sd-max-salary" type="number" step="100" placeholder="max" aria-label="Max salary" value="${num(f.maxSalary)}" /></label>
-          <span id="sd-salary-note" class="sd-filter-note" role="status" hidden>Min is above Max</span>
-        </div>
-        <div class="filter-salary">
-          <label>Min Proj <input id="sd-min-proj" type="number" step="1" placeholder="any" aria-label="Min Proj" value="${num(f.minProj)}" /></label>
-        </div>
-      </div>
-      <button type="button" id="sd-starred-toggle" class="chip toggle-chip${f.starredOnly ? " active" : ""}" aria-pressed="${Boolean(f.starredOnly)}">${favoritesChipLabel(starred)}</button>
+    <div class="tools">
+      ${poolTabsHtml()}
+      <div class="tabs" id="sd-pos-chips">${posChipsHtml}</div>
+      <div class="tabs" id="sd-team-chips">${teamChipsHtml}</div>
+      <div class="chips">${marksHtml}<button type="button" id="sd-starred-toggle" class="chip starred toggle-chip${f.starredOnly ? " active" : ""}" aria-pressed="${Boolean(f.starredOnly)}">${favoritesChipLabel(starred)}</button></div>
+      <input id="sd-search" class="search" type="search" placeholder="Search players" aria-label="Search players" value="${num(f.search)}" />
+      <span id="sd-filter-count" class="cnt filter-count"></span>
+      <span id="sd-columns-slot" class="colslot">${columnsButtonHtml()}</span>
+    </div>
+    <div class="fil">
+      <label>Min salary<input id="sd-min-salary" class="search salb" type="number" step="100" placeholder="min" aria-label="Min salary" value="${num(f.minSalary)}" /></label>
+      <label>Max salary<input id="sd-max-salary" class="search salb" type="number" step="100" placeholder="max" aria-label="Max salary" value="${num(f.maxSalary)}" /></label>
+      <label>Min Proj<input id="sd-min-proj" class="search salb" type="number" step="1" placeholder="any" aria-label="Min Proj" value="${num(f.minProj)}" /></label>
+      <span id="sd-salary-note" class="sd-filter-note" role="status" hidden>Min is above Max</span>
+      <button type="button" id="sd-clear-filters-btn" class="chip">Clear filters</button>
       ${showAllToggleHtml(showAll, `data-action="show-all"`)}
-      <span id="sd-filter-count" class="filter-count"></span>
-      <button type="button" id="sd-clear-filters-btn" class="link-btn">Clear filters</button>
-      ${reset ? anchorHtml(`<button type="button" id="sd-reset-overrides-btn" class="reset-btn"${reset.enabled ? "" : " disabled"}>Reset all overrides</button>`) : ""}
+      ${reset ? anchorHtml(`<button type="button" id="sd-reset-overrides-btn" class="chip ovr reset-btn"${reset.enabled ? "" : " disabled"}>Reset all overrides</button>`) : ""}
     </div>`;
+}
+
+/** The Locked and Excluded chips' numbers and on look, after each draw of the pool (classic's paintPoolOnlyChips): `counts` = {locked, excluded}, `only` the chip that is on ("locked", "excluded" or null). A bar with no such chips (off the live app) is left alone. */
+export function paintMarkChips(bar, { locked = 0, excluded = 0 } = {}, only = null) {
+  const set = (id, n, on) => {
+    const chipEl = bar?.querySelector?.(id);
+    if (!chipEl) return;
+    chipEl.classList?.toggle("on", Boolean(on));
+    const b = chipEl.querySelector("b");
+    if (b) b.textContent = String(n);
+  };
+  set("#sd-locked-only-toggle", locked, only === "locked");
+  set("#sd-excluded-only-toggle", excluded, only === "excluded");
 }
 
 /**
@@ -64,6 +72,16 @@ export function filterBarHtml(f, game, showAll, reset = null, starred = null) {
  */
 export function wireFilterBar(bar, deps) {
   wireShowAllButtons(bar, sdShowAllFlag); // the Showdown's own switch (C24); it redraws the screen through show-all.js's listener (view.js)
+  wirePoolTabs(bar, () => deps.repaint()); // the Captain | FLEX switch: the tab's figures and columns are drawn by the pool
+  wireColumns(bar, { ...poolColumnSetup(), onChange: () => deps.repaint() }); // A17: the Columns button; a tick or a move repaints the pool's head and body
+  // Locked and Excluded narrow the pool to those men (or back, on the same chip); a deliberate click, so the bar is drawn again with the pool.
+  for (const [id, kind] of [["#sd-locked-only-toggle", "locked"], ["#sd-excluded-only-toggle", "excluded"]]) {
+    bar.querySelector(id)?.addEventListener("click", () => {
+      setPoolOnly(poolOnlyView() === kind ? null : kind);
+      deps.rebuild();
+      deps.repaint();
+    });
+  }
   bar.querySelectorAll("[data-team-filter]").forEach((btn) => {
     btn.addEventListener("click", () => {
       poolState.filters.team = btn.dataset.teamFilter;

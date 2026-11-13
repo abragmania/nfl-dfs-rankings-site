@@ -12,7 +12,7 @@
 // this device's own copy (site-src/showdown-api.js, site-overrides.js): `canWrite` is true where supports("overrides") is.
 import { escapeHtml } from "../format.js";
 import { startEdit, takeOpenEditor, showNotSaved } from "../typed-edit.js";
-import { CPT_MULT, BUMP_STEP_PCT, bumpStepsOf } from "../bump-control.js";
+import { CPT_MULT, bumpStepsOf, bumpUnscaled } from "../bump-control.js";
 import { statusSwitchClick } from "../status-switch.js"; // Adam 2026-11-12: In / Out / Auto on the badge
 import { rowIsOut, projWithoutOut } from "../out.js";
 import { typedFigureHtml } from "../typed-proj.js"; // the one typed-number figure span, as the classic pool draws it
@@ -51,7 +51,7 @@ export const starPatch = (row) => ({ stars: { [idOf(row)]: !row?.starred } });
 export function prefillOf(row, shown) {
   if (shown == null || !Number.isFinite(shown)) return null;
   const steps = bumpStepsOf(row);
-  return steps ? shown / (1 + (BUMP_STEP_PCT / 100) * steps) : shown;
+  return steps ? bumpUnscaled(shown, steps) : shown;
 }
 
 /** What a Proj box opens on (round 4, item 5): the number he typed (times 1.5 on the Captain list) when there is one, even if the row reads him as 0 (his own Out),

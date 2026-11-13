@@ -287,7 +287,7 @@ function repaintStrip() {
   const el = host?.querySelector?.(".sd-meter");
   if (!el) {
     const html = meterStripHtml();
-    const slots = html ? host?.querySelector?.(".lineup-slots") : null;
+    const slots = html ? host?.querySelector?.("[data-working-totals]") : null; // the strip sits right under the working lineup's totals line
     if (!slots?.insertAdjacentHTML) return;
     slots.insertAdjacentHTML("afterend", html);
     const added = host.querySelector(".sd-meter");

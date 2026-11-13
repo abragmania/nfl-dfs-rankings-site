@@ -22,7 +22,7 @@ import {
   postProjectionsPaste,
   postMode,
 } from "./js/api.js";
-import { modeStampText, twoGunCoverageText, renderPills, renderSlateLine, wireUpload, wireRefresh, wireThemeToggle, wireThemeSwitch, secondSlateSavedText, renderModeBox, uploadStatusSetter, entriesUploadedHandler, paintSourcesLink, wireSourcesLink, wireTrackedLink } from "./js/header.js";
+import { modeStampText, twoGunCoverageText, renderPills, renderSlateLine, wireUpload, wireRefresh, wireThemeSwitch, secondSlateSavedText, renderModeBox, uploadStatusSetter, entriesUploadedHandler, paintSourcesLink, wireSourcesLink, wireTrackedLink } from "./js/header.js";
 import { wirePullNow } from "./js/pull-now.js";
 import { uploadEntriesText, setUploadRouter } from "./js/entries-wire.js"; // Adam 2026-10-18: one upload for every DraftKings export
 import { showdownKeyFromHash, showdownRowById, showdownBoardAsOf, showdownBoardNow } from "./js/showdown/view.js";
@@ -52,7 +52,6 @@ const el = {
   modeRow: document.getElementById("mode-row"),
   classicHeader: document.getElementById("classic-header"),
   classicMain: document.getElementById("classic-main"),
-  showdownHeader: document.getElementById("showdown-header"),
   showdownMain: document.getElementById("showdown-main"),
   slateLine: document.getElementById("slate-line"),
   pillsRow: document.getElementById("pills-row"),
@@ -371,9 +370,10 @@ function renderSlateChrome() {
 
 /** The approved look's page (dark background, full width) belongs to the classic Optimizer and Lineups tabs; Entries, Sources and the Showdown screens keep the app's own page (style.css). */
 function syncPageLook() {
+  paintThemeSwitch(); // the one Dark | Light switch is in the shared top bar
+  if (showdownKeyFromHash()) return; // a Showdown draws its own page look (showdown/view.js render): its Optimizer tab is in the approved look too
   const tab = shownTab(store.get().activeTab);
-  document.body.classList.toggle("nl-page", !showdownKeyFromHash() && (tab === "lineup" || tab === "lineups"));
-  paintThemeSwitch(); // the Showdown header's button sets the same choice
+  document.body.classList.toggle("nl-page", tab === "lineup" || tab === "lineups");
 }
 
 function renderEmptyState({ loading, boardError }) {
@@ -492,10 +492,10 @@ function syncFilterbarHeight() {
   const sticky = !el.lineupPanel.hidden && poolTop.isConnected && getComputedStyle(poolTop).position === "sticky";
   const notice = document.getElementById("build-notice");
   const { bar, total } = stickyHeights({ sticky, barHeight: el.filterbar.getBoundingClientRect().height, noticeShown: Boolean(notice) && !notice.hidden, noticeHeight: notice?.getBoundingClientRect().height }); // A15: the build notice is a layer of the stack, so the head and the band sit under it too
-  // The top bar is sticky at the top of the window, so every layer under it starts at its height (--tabs-h).
+  // The top bar is sticky at the top of the window, so every layer under it starts at its height (--tabs-h); it is the same bar on a Showdown (showdown/view.js sets the same value).
   const sticks = getComputedStyle(el.classicHeader).position === "sticky";
   const tabsH = sticks ? el.classicHeader.getBoundingClientRect().height : 0;
-  if (tabsH || !sticks) document.documentElement.style.setProperty("--tabs-h", `${tabsH}px`); // 0 and sticking = this header is hidden (a Showdown is on screen, which keeps --tabs-h itself)
+  document.documentElement.style.setProperty("--tabs-h", `${tabsH}px`);
   el.lineupPanel.style.setProperty("--filterbar-bar-h", `${bar + tabsH}px`);
   el.lineupPanel.style.setProperty("--filterbar-h", `${total + tabsH}px`);
 }
@@ -546,7 +546,6 @@ setRouteDkFile(handleFile);
 setUploadRouter(handleFile);
 
 const paintThemeSwitch = wireThemeSwitch(document.getElementById("theme-switch"), { onChange: () => store.set({}) }); // C15: the team logos come in the theme's variant, so every list is drawn again on a switch
-wireThemeToggle(document.getElementById("sd-theme-toggle-btn"), { onChange: () => store.set({}) }); // B9: the Showdown header's switch is the same choice; the Showdown screen draws again through the same store signal (showdown/view.js)
 wireSourcesLink(el.sourcesBtn, { onOpen: onSourcesOpen });
 // The Tracked button sits on both headers (main slate and Showdown); both are in index.html, so both are wired here.
 wireTrackedLink(document.getElementById("tracked-btn"));

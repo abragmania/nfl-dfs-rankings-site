@@ -111,15 +111,15 @@ export function salaryFileName(slate, slateKey = null) {
 }
 
 // The stamps of the classic top bar (Season, Week, Salaries, Cap): the slate's own season and week, its salary file's name (the main slate's or the second slate on screen, D57) and DraftKings' cap.
-export function renderSlateLine(container, slate, { slateKey = null, cap = 50000 } = {}) {
+export function renderSlateLine(container, slate, { slateKey = null, cap = 50000, file = true } = {}) { // `file` false: a Showdown's bar names no salary file (its game is the switch's tile)
   if (!slate) {
     container.textContent = "No slate loaded";
     return;
   }
   const part = (label, value, cls = "") => `<span${cls ? ` class="${cls}"` : ""}>${label}<b>${escapeHtml(String(value))}</b></span>`;
   const line = [part("Season", slate.season ?? "?"), part("Week", slate.week ?? "?")];
-  const file = salaryFileName(slate, slateKey);
-  if (file) line.push(part("Salaries", file));
+  const fileName = file ? salaryFileName(slate, slateKey) : null;
+  if (fileName) line.push(part("Salaries", fileName));
   line.push(part("Cap", `$${Number(cap).toLocaleString("en-US")}`, "lock"));
   // A7: ?sample=1 shows the frozen dev fixture board; the page says so, and api.js refuses every write.
   container.innerHTML = `${isSampleMode() ? `<span class="sample-tag" title="Sample data from the dev fixture board. Stars, typed numbers and every other change are refused; nothing reaches the server.">SAMPLE DATA · nothing is saved</span>` : ""}${line.join("")}`;

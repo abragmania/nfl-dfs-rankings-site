@@ -287,7 +287,7 @@ const buildNotice = createNoticeController({
   jumpResults: () => jumpToResults(noticeCtx?.container),
   jumpBuild: () => {
     try {
-      noticeCtx?.container?.querySelector?.(".opt-footer")?.scrollIntoView?.({ block: "center", behavior: "smooth" });
+      noticeCtx?.container?.querySelector?.(".sd-opt-go")?.scrollIntoView?.({ block: "center", behavior: "smooth" });
     } catch (e) {
       console.warn("Show Build row: the row could not be scrolled into view", e); // a convenience only; the row is on the page either way
     }
@@ -351,7 +351,8 @@ export function optimizerBandBoxesHtml(board) {
  *  `board`: the served board (its reading names the cash basis, its rows whether Median can be built). */
 export function optimizerGoRowHtml(board) {
   if (!optimizerLive()) return "";
-  return V.goRowHtml({ summary: S.summaryText(modeState(), opt.ks.mode, board, opt.ks.variancePos), generating: showing(), busy: showing() || opt.saving, formError: opt.formError, canStop: canStopShowdownLineupGenerate(), below: opt.buildingBelow, stopping: opt.stopping, stopError: opt.stopError, done: opt.doneNote && Boolean(opt.results) });
+  const n = S.requestCount(modeState().count, opt.ks.mode);
+  return V.goRowHtml({ summary: S.summaryText(modeState(), opt.ks.mode, board, opt.ks.variancePos), words: `Build ${n} ${opt.ks.mode === "cash" ? "Cash" : "GPP"} lineup${n === 1 ? "" : "s"}`, generating: showing(), busy: showing() || opt.saving, formError: opt.formError, canStop: canStopShowdownLineupGenerate(), below: opt.buildingBelow, stopping: opt.stopping, stopError: opt.stopError, done: opt.doneNote && Boolean(opt.results) });
 }
 
 /** Where the batch's cards used to be drawn: now one button, `N lineups built: open Lineups` (N = the newest kept build of this tab's mode), and, for a build that made nothing, its sentence and notes; the cards are on the Lineups tab
@@ -448,6 +449,7 @@ export const poolControls = {
   // Excluded from every lineup dims the row (a Captain-only exclude leaves the row as it is: he can still be FLEX); a lock is the icon beside the name, not a tint (C20).
   rowClass: (row, tab) => (optimizerLive() ? V.poolRowClass(row, tab === "cpt" ? "cpt" : "flex", modeState()) : ""), // C21: a man excluded as Captain dims on the Captain list as a FLEX-excluded man does on FLEX
   lockIcon: (row) => (optimizerLive() ? V.poolLockIconHtml(row, modeState()) : ""),
+  marked: (row, which) => optimizerLive() && V.poolMarked(row, which, modeState()), // the filter bar's Locked and Excluded chips narrow the pool to these men
   excluded: (row, tab) => optimizerLive() && S.excludeState(modeState(), row, tab === "cpt" ? "cpt" : "flex").on, // A18: an excluded man's row on that list is greyed (seat-picker.js)
   thumbs: (row, isCpt = false) => poolThumbsHtml(row, isCpt), // the ± pair (Adam 2026-10-22), in its own column; one pair per man moves both his figures
   projCell: (row, proj, isCpt = false) => poolBumpHtml(row, proj, isCpt), // the Proj figure (FLEX tab) or the CPT proj figure (Captain tab) with the bump's tint
@@ -596,7 +598,9 @@ function wireBand(root, ctx) {
     el?.addEventListener("input", () => {
       setModeState({ ...modeState(), [field]: el.value });
       if (field === "count") {
-        syncCountNote(el); // `Minimum 1` beside the box while it is below 1
+        syncCountNote(el, S.MAX_COUNT); // `Minimum 1` beside the box while it is below 1, else `Maximum 150`
+        const goBtn = ctx.container.querySelector("#sd-opt-go-btn");
+        if (goBtn && !opt.generating) { const n = S.requestCount(el.value, opt.ks.mode); goBtn.textContent = `Build ${n} ${opt.ks.mode === "cash" ? "Cash" : "GPP"} lineup${n === 1 ? "" : "s"}`; } // the button names the count the box holds, as classic's
         if (opt.formError === COUNT_MIN_SENTENCE && !countBelowMin(el.value)) clearFormError(ctx.container);
       }
       refreshLines(ctx.container, ctx.board);

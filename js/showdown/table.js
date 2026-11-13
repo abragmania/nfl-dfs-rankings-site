@@ -1,13 +1,12 @@
-// Showdown Rankings table (D39/D40), since 2026-10-26 the Optimizer's player pool (pool.js; the Rankings tab is retired). Visual target: the hosted sheet built by
-// data/showdown/2026-w03-ATLGB/build-sheet.mjs — same dark palette and type as the rest of the app, same
-// nine columns (no Lev, standard A2): Player (team chip, position, status pill), Sal, CPT Sal (gold), Proj, CPT Proj (gold),
-// Own, CPT Own (gold), Val (one column — Captain value is identical to FLEX value since Captain price and points are both
-// 1.5x); words per optimizer standard D1, 2026-11-03. The pool's
-// cells carry the star and the typed Proj and Own editors through `hooks` (B2, B3; showdown/pool-edit.js).
+// Showdown Rankings table (D39/D40), since 2026-10-26 the Optimizer's player pool (pool.js; the Rankings tab is retired). Since 2026-11-13 its rows and cells are the classic pool's (lineup-pool.js rightRowHtml:
+// td.ctl, td.pl with .who / .l1 / .l2, td.num.sal, td.num.proj, td.num.bar.own, td.num.bar.val, td.bmp, td.lim), so the one look sheet (public/look/) draws both pools. Same columns as before
+// (no Lev, standard A2): Player, Sal, CPT Sal, Proj, CPT Proj, Own, CPT Own, Val (one column: Captain value is identical to FLEX value since Captain price and points are both 1.5x);
+// words per optimizer standard D1, 2026-11-03. The pool's cells carry the star and the typed Proj and Own editors through `hooks` (B2, B3; showdown/pool-edit.js).
 import { escapeHtml, money, dec1, dec2, pct1 } from "../format.js";
-import { rowIsOut } from "../table.js";
+import { rowIsOut, opponentLabel, outTagHtml, statusTagsHtml } from "../table.js";
 import { adamTouched } from "../out.js"; // the pool keeps a man Adam marked In / Out or typed a projection on listed, so his edit is never out of reach
-import { playerLineHtml, showPos } from "../player-row.js";
+import { playerLineHtml, showPos, teamLogoHtml } from "../player-row.js";
+import { cardNameHtml } from "../lineup-card.js";
 import { sdShowAll } from "./show-all.js";
 
 /** The rows a Showdown list shows: every man with the Showdown's own `Show all players` on (C24: not classic's switch), else without the men listed out (D45). */
@@ -28,8 +27,8 @@ export const SD_COLUMNS = [
 ];
 
 // One colour per position (D41), same six tokens used by the position filter chips (public/style.css
-// .sd-pos-<pos>) so the pill and the chip always match. Exported for lineup.js, which shows the same
-// position pill in the Lineup Builder pool and slots (👁/brief: same colour everywhere it appears).
+// .sd-pos-<pos>) so the pill and the chip always match. Exported for the exposure tables, the swaps and the cards, which show the same
+// position pill (👁/brief: same colour everywhere it appears).
 const POS_PILL_CLASS = { QB: "sd-pos-qb", RB: "sd-pos-rb", WR: "sd-pos-wr", TE: "sd-pos-te", K: "sd-pos-k", DST: "sd-pos-dst" };
 export function posPillHtml(pos) {
   const label = pos ?? "";
@@ -39,11 +38,8 @@ export function posPillHtml(pos) {
 
 export const SD_POS_FILTER = "FLEX";
 export const SD_PILL = false; // D80: a Showdown row has no home/away or totals, only a bare opponent code, so no pill
-// The one Showdown player line (the pool, the Captain and FLEX lists, the slots and the saved rows all draw it). tag "main": the O, D, IR and Q badges as on classic Rankings (Adam 2026-10-18); a caller's own tag wins.
+// The one Showdown player line (the Sources page's tables, the saved rows). tag "main": the O, D, IR and Q badges as on classic Rankings (Adam 2026-10-18); a caller's own tag wins.
 export const sdLine = (row, opts = {}) => playerLineHtml(row, { pos: showPos(SD_POS_FILTER), posHtml: posPillHtml, pill: SD_PILL, tag: "main", ...opts });
-function playerCellHtml(row) {
-  return `<div class="player-cell">${sdLine(row)}</div>`;
-}
 
 /** The Val cell's inside: `row.value` with its grade (row.valueGrade) as the grade's colour, a dash when there is none. */
 export function gradedValueHtml(row) {
@@ -92,16 +88,13 @@ function projCellHtml(value, row, extraTitlePrefix = "") {
 // (`playerCell(row)`), the bumped figure in the Proj cell or, on the Captain tab, the CPT proj cell (`projCell(row, proj, isCpt)`), the Val cell (`valueCell(row)`), a class on the row (`rowClass(row)`) and the row controls' cells
 // (`ctlCell(row, key)`), and the row's own attributes (`rowAttrs(row)`: the pool's click, keyboard stop and title). Without hooks a row is drawn as the retired Rankings tab drew it.
 
-/** The head row's cells (sortable, the sorted one marked with its arrow, the Captain columns gold), without the <tr>. `rowspan`: the
- *  rows each cell spans (the pool's head has a second row of sub-heads under its control groups). */
-export function showdownHeadCellsHtml(sort, cols = SD_COLUMNS, { rowspan = 1 } = {}) {
-  const span = rowspan > 1 ? ` rowspan="${rowspan}"` : "";
-  return cols.map((c) => {
-    const arrow = sort.col === c.key ? (sort.dir === "asc" ? " ▲" : " ▼") : ""; // a no-break space: the pool's heads wrap at their spaces, never before the arrow
-    const cls = `sortable${sort.col === c.key ? " sorted" : ""}${c.gold ? " sd-cpt-col" : ""}`;
-    const titleAttr = c.title ? ` title="${escapeHtml(c.title)}"` : "";
-    return `<th data-col="${c.key}" class="${cls}"${span}${titleAttr}>${escapeHtml(c.label)}${arrow}</th>`;
-  }).join("");
+/** The Player cell's inside, the classic pool's (lineup-pool.js): logo, name with his In / Out switch (`tagWrap(tag)` draws the switch's place; null keeps the tag) and position on the first line, team and opponent on the second.
+ *  `extra`: what follows the position on the first line (the seat tag and padlock); `why`: the few words of a greyed row's reason after the matchup. */
+export function playerWhoHtml(row, { nameHtml = cardNameHtml(row), tagWrap, extra = "", why = "" } = {}) {
+  const tag = outTagHtml(row) || statusTagsHtml(row);
+  const tagInner = typeof tagWrap === "function" ? tagWrap(tag) ?? tag : tag;
+  const opp = opponentLabel(row);
+  return `<div class="who">${teamLogoHtml(row.team, "logo", 24)}<div class="whot"><div class="l1"><span class="name player-name" title="${escapeHtml(row.name ?? "")}">${nameHtml}</span>${tagInner}${row.pos ? `<span class="pos">${escapeHtml(row.pos)}</span>` : ""}${extra}</div><div class="l2">${escapeHtml(row.team ?? "")}${opp ? ` · ${escapeHtml(opp)}` : ""}${why}</div></div></div>`;
 }
 
 // A pool figure's hover (the retired Captain | FLEX lists' rule, D41): the board's projHow (a Captain's with its 1.5x line) plus what TwoGun
@@ -111,7 +104,7 @@ function hookedProjHtml(row, isCpt, h) {
   const f = h.figures(row, isCpt);
   const base = projTitleText(f.proj, row, isCpt ? "Captain: 1.5x price, 1.5x points. " : "");
   const title = f.projNote ? `${base}${base && !/\s$/.test(base) ? " " : ""}${f.projNote}` : base;
-  const inner = (h.projCell ? h.projCell(row, f.proj, isCpt) : null) ??(f.proj == null ? "no proj" : dec1(f.proj));
+  const inner = (h.projCell ? h.projCell(row, f.proj, isCpt) : null) ?? (f.proj == null ? "no proj" : dec1(f.proj));
   return `<span title="${escapeHtml(title)}">${inner}</span>`;
 }
 
@@ -123,28 +116,35 @@ function hookedOwnHtml(row, isCpt, h) {
   return `<span title="${escapeHtml(title)}">${inner}</span>`;
 }
 
+/** The Own cell: the classic cell (the figure under a small bar, scaled as classic's: 30% fills it); a missing figure has no bar. */
+function ownBarCellHtml(valueNum, innerHtml) {
+  const n = typeof valueNum === "number" && Number.isFinite(valueNum) ? valueNum : null;
+  const bar = n === null ? `<span class="b off"></span>` : `<span class="b"><i style="width:${Math.min(100, (n / 30) * 100).toFixed(0)}%"></i></span>`;
+  return `<td class="num bar own">${bar}<span class="v">${innerHtml}</span></td>`;
+}
+
 function cellHtml(row, key, h) {
   const hooked = typeof h.figures === "function";
   switch (key) {
-    case "star": return `<td class="lineup-star-col">${h.starCell ? h.starCell(row) : ""}</td>`; // B2: the pool's star button
-    case "player": return `<td class="sd-name-cell">${h.playerCell ? h.playerCell(row) : playerCellHtml(row)}</td>`;
-    case "salary": return `<td>${money(row.salary)}</td>`;
-    case "cptSalary": return `<td class="sd-cpt-col">${money(row.cptSalary)}</td>`;
-    case "proj": return `<td>${hooked ? hookedProjHtml(row, false, h) : projCellHtml(row.proj, row)}</td>`;
-    case "cptProj": return `<td class="sd-cpt-col">${hooked ? hookedProjHtml(row, true, h) : projCellHtml(row.cptProj, row, `Captain: 1.5x price, 1.5x points. `)}</td>`;
-    case "value": return `<td>${h.valueCell ? h.valueCell(row) : gradedValueHtml(row)}</td>`;
-    case "ownFlex": return `<td>${hooked ? hookedOwnHtml(row, false, h) : ownCellHtml(row.ownFlex, row.ownHow)}</td>`;
-    case "ownCpt": return `<td class="sd-cpt-col">${hooked ? hookedOwnHtml(row, true, h) : ownCellHtml(row.ownCpt, row.ownHow)}</td>`;
+    case "star": return `<td class="ctl">${h.starCell ? h.starCell(row) : ""}</td>`; // B2: the pool's star button
+    case "player": return `<td class="pl">${h.playerCell ? h.playerCell(row) : playerWhoHtml(row)}</td>`;
+    case "salary": return `<td class="num sal">${money(row.salary)}</td>`;
+    case "cptSalary": return `<td class="num sal">${money(row.cptSalary)}</td>`;
+    case "proj": return `<td class="num proj">${hooked ? hookedProjHtml(row, false, h) : projCellHtml(row.proj, row)}</td>`;
+    case "cptProj": return `<td class="num proj">${hooked ? hookedProjHtml(row, true, h) : projCellHtml(row.cptProj, row, `Captain: 1.5x price, 1.5x points. `)}</td>`;
+    case "value": return `<td class="num bar val"><span class="v">${h.valueCell ? h.valueCell(row) : gradedValueHtml(row)}</span></td>`;
+    case "ownFlex": return hooked ? ownBarCellHtml(h.figures(row, false).own, hookedOwnHtml(row, false, h)) : ownBarCellHtml(row.ownFlex, ownCellHtml(row.ownFlex, row.ownHow));
+    case "ownCpt": return hooked ? ownBarCellHtml(h.figures(row, true).own, hookedOwnHtml(row, true, h)) : ownBarCellHtml(row.ownCpt, ownCellHtml(row.ownCpt, row.ownHow));
     default: return h.ctlCell ? h.ctlCell(row, key) : "<td></td>"; // the pool's row controls (pool.js controlCellHtml)
   }
 }
 
-/** One row of the table: the columns `cols` (SD_COLUMNS by default) and the pool's `hooks` (above; none draws the Rankings row). */
+/** One row of the table: the columns `cols` (SD_COLUMNS by default) and the pool's `hooks` (above; none draws the Rankings row). The row is the classic pool's: `team` (the tint and stripe), `row-dimmed` for a listed-out man. */
 export function showdownRowHtml(row, hooks = {}, cols = SD_COLUMNS) {
   const dimmed = rowIsOut(row);
   const extra = String(hooks.rowClass?.(row) ?? "").trim();
   return `
-    <tr class="rank-row${dimmed ? " row-dimmed" : ""}${extra ? ` ${extra}` : ""}" data-id="${escapeHtml(String(row.id))}"${hooks.rowAttrs?.(row) ?? ""}>
-      ${cols.map((c) => cellHtml(row, c.key, hooks)).join("\n      ")}${hooks.fillCell ? `<td class="sd-fill"></td>` : ""}
+    <tr class="team${dimmed ? " row-dimmed" : ""}${extra ? ` ${extra}` : ""}" data-id="${escapeHtml(String(row.id))}"${hooks.rowAttrs?.(row) ?? ""}>
+      ${cols.map((c) => cellHtml(row, c.key, hooks)).join("\n      ")}
     </tr>`;
 }

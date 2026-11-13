@@ -63,7 +63,7 @@ export function tierOf(value, sortedDesc) {
   return value >= sortedDesc[Math.min(5, sortedDesc.length - 1)] ? "t-lit" : "t-soft";
 }
 
-function weatherText(game) {
+export function weatherText(game) { // the Showdown's game tile (showdown/game-tile.js) reads it too
   if (game.roof === "indoor") return "indoor";
   if (game.roof === "unknown") return "roof unknown";
   const w = game.weather;
@@ -75,7 +75,7 @@ function weatherText(game) {
   return parts.join(" · ");
 }
 
-function sideHtml(abbr, implied, lineMissing, spread, tiers) {
+export function sideHtml(abbr, implied, lineMissing, spread, tiers) { // one copy of a team's line in a game tile; the Showdown's tile draws it too
   const t = TEAM_BY_ABBR[abbr];
   const logo = logoFor(t);
   const text = lineMissing || implied == null ? "—" : implied.toFixed(1);

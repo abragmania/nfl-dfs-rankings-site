@@ -2,7 +2,7 @@
 // Showdown pool uses: Enter saves, a click away saves, Esc cancels, the hint `Enter saves, Esc cancels` sits under the box, `Not saved` says a refused number, an emptied number box cancels. The pool is redrawn by innerHTML, so one delegated click listener on its mount serves every redraw, and a box that is open when a redraw comes is taken out first and put back with its
 // text and focus (takePoolEdit, restorePoolEdit): its removal is never read as a click away. The writes are app.js's (lineup-pool.js poolWriters: onEditValue).
 import { startEdit, takeOpenEditor, showNotSaved, carryNotSaved, dropHeldNotSaved } from "./typed-edit.js";
-import { bumpStepsOf, BUMP_STEP_PCT } from "./bump-control.js";
+import { bumpStepsOf, bumpUnscaled } from "./bump-control.js";
 import { rowIsOut, projWithoutOut } from "./out.js";
 import { poolWriters, projCellInner, ownCellInner } from "./lineup-pool.js";
 
@@ -18,7 +18,7 @@ export function projPrefill(row) {
   if (rowIsOut(row)) return projWithoutOut(row); // an out man's figure is 0: the box opens on what he would have without the Out (TwoGun's or the blend, bump removed), never 0
   if (row?.proj == null || !Number.isFinite(Number(row.proj))) return null;
   const steps = bumpStepsOf(row);
-  return steps ? Number(row.proj) / (1 + (BUMP_STEP_PCT / 100) * steps) : Number(row.proj);
+  return steps ? bumpUnscaled(Number(row.proj), steps) : Number(row.proj);
 }
 
 const innerFor = (row, field) => (field === "proj" ? projCellInner(row, { canReset: Boolean(poolWriters()?.onBump) }) : ownCellInner(row, { canReset: Boolean(poolWriters()?.onBump) }));

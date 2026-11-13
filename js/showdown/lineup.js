@@ -6,7 +6,7 @@
 // locks and excludes and replaced the placed men, is folded into it). The Optimizer's band heads the left column, its Build row ends it, and its batch is
 // drawn full width below both columns, above the swaps and the saved lineups.
 import { getShowdownLineups, postShowdownLineup, deleteShowdownLineup } from "./api.js";
-import { poolHtml, poolVisibleRows, paintPool, wirePool, wirePoolTabs, setPoolControls, POOL_PICK_SKIP } from "./pool.js"; // the one player pool, the Rankings table with both roles on each row (Adam 2026-10-26)
+import { poolHtml, poolVisibleRows, paintPool, wirePool, setPoolControls, POOL_PICK_SKIP } from "./pool.js"; // the one player pool, the Rankings table with both roles on each row (Adam 2026-10-26)
 import { wirePick, wirePickRows, SLOT_PICK_SKIP } from "../pick-rows.js"; // click-to-pick, the one wiring classic's Optimizer shares (D81)
 // The Showdown Optimizer (Adam 2026-10-19, sketch A): its band over the builder, its Make row under it, its batch full width below, its controls on the pool rows.
 import { syncOptimizer, optimizerState, optimizerLive, optimizerBandHeadHtml, optimizerBandBoxesHtml, optimizerGoRowHtml, optimizerResultsBlockHtml, optimizerExcludes, releaseAllLocks, releaseSeatLock, setOptimizerMode, poolControls, wirePoolControls, wireOptimizer, refreshBuildNotice, optimizerTabFor } from "./optimizer.js";
@@ -20,7 +20,7 @@ import { takeOpenLimit, restoreOpenLimit, limitRefusals, dropOlderLimitRefusals,
 import { handBuild } from "../lineup-builds.js";
 import { statusBlockHtml, messageRowShown as messageRowShownIn, BUILD_STATUS_ID } from "./lineup-status.js"; // A14: the status block and the click's message beside its pool row
 import { requestFailureText } from "./read-json.js";
-import { controlsHtml as controlsMarkup } from "./lineup-look.js"; // the two-row controls (Adam 2026-10-18 9:09 PM)
+import { lineupHeadHtml, saveRowHtml } from "./lineup-look.js"; // the working lineup's head and the Save row, the classic panel's (2026-11-13)
 import { slotsHtml as slotsMarkup, repaintSlots } from "./lineup-slots.js"; // the six slots' markup and figure repaint (Adam 2026-10-21 Q3 option A split)
 export { slotPlayerHtml } from "./lineup-slots.js"; // tests import it from here
 // The saved-lineups view lives in ./lineup-saved.js (state stays here); the two pure helpers keep their old exports from this module.
@@ -43,8 +43,7 @@ import { isAlreadySavedAnswer, alreadySavedText, loadedText } from "../save-outc
 import { wireStaleMessages } from "../stale-messages.js"; // item 17: a one-shot message goes at the next click on any control
 import { wireSavedActions } from "./lineups-saved-wire.js"; // A12: Download DK CSV for the saved lineups ticked, rename, the letter, Delete and Load: the saved cards' wiring, on the Lineups tab
 // The working lineup, its click rules, Lock/Unlock, Clear lineup and the saved-or-not question: ./seats.js (split out to keep this file under its cap).
-import { state, setSeatBoard, reseatStoredLocks, pickPoolRow, lineupPicks, listPlacement, lockSeat, unlockSeat, clearCaptain, clearFlex, clearAll, clearAllHasContent, workingUnsaved, rowIdOf, lockedSeatPositions, swapLockRefusal } from "./seats.js";
-export { pickPoolRow, lineupPicks };
+import { state, setSeatBoard, reseatStoredLocks, pickPoolRow, lineupPicks, listPlacement, lockSeat, unlockSeat, clearCaptain, clearFlex, clearAll, clearAllHasContent, workingUnsaved, rowIdOf, lockedSeatPositions, swapLockRefusal } from "./seats.js";export { pickPoolRow, lineupPicks };
 
 let lastContainer = null;
 let lastBoard = null;
@@ -242,9 +241,17 @@ function repaintLineupRead() {
 
 const slotsHtml = (board) => slotsMarkup(board, state); // the placed slots go in as parameters (lineup-slots.js)
 
-function controlsHtml() {
+/** The working lineup (the classic's `.lu.wk`): its head, the six slots, the totals line and the meter strip under it. */
+function lineupHtml(board) {
+  const filled = (state.cpt ? 1 : 0) + state.flex.filter(Boolean).length;
+  const head = lineupHeadHtml({ mode: optimizerLive() ? optimizerState().ks.mode : null, filled, seats: FLEX_COUNT + 1, locked: lockedSeatPositions().size, confirm: state.confirm });
+  return `<div class="lu wk" id="sd-lineup-wk">${head}${slotsHtml(board)}${workingTotalsHtml(board)}${meterStripHtml()}</div>`;
+}
+
+/** The Build row and the Save row, the panel's `.act` (the Build row is "" off the live app). */
+function actHtml(board) {
   const hasAnySlot = Boolean(state.cpt) || state.flex.some(Boolean);
-  return controlsMarkup({ saving: state.saving, saveName: state.saveName, hasAnySlot, confirm: state.confirm, mode: optimizerLive() ? optimizerState().ks.mode : null });
+  return `<div class="act">${optimizerGoRowHtml(board)}${saveRowHtml({ saving: state.saving, saveName: state.saveName, hasAnySlot })}</div>`;
 }
 
 // The status block under the slots and the click's message beside its pool row (standard A14): lineup-status.js.
@@ -311,28 +318,23 @@ export function lineupsHands(board, key) {
 
 // `poolRows`: the pool's rows (pool.js poolVisibleRows), read once per draw so the filter bar's count is the same list.
 function panelHtml(board, poolRows) {
-  // The Optimizer (sketch A, Adam 2026-10-19): its band head, the Pool and Build boxes and the Build row (optimizer standard A15, round 5: no sticky Make row, so it ends the settings in the page's
-  // flow, as classic's does) sit above the two columns, so the left column holds only the lineup: the controls, the six slots, the totals, the meter and the status line, which stick under the filter
-  // bar as a band at 1760px and wider while the pool runs down the page beside them (style.css). The player pool is the right column (Adam 2026-10-26: the Rankings table as the pool, its filter
-  // bar above the builder, view.js), then the batch, its cards four across (Adam 2026-10-19 11:17 PM: "generated lineups should go 4 across"). Off the live app the Optimizer's pieces are
-  // empty, as before. Adam 2026-10-26 3:59 PM: "i like the list to the side of the optimizer not beneath": the pool is beside the lineup on the live app and the public site alike; under 1760px
-  // of window it stacks under the lineup (style.css .sd-pool-col).
+  // The classic Optimizer screen (Adam 2026-11-13 10:11 AM, the approved mock-up): the ranked pool on the left (its filter bar is above the work area, view.js) and the Optimizer panel on the right: its head with the GPP | Cash
+  // switch, the settings (Lineups to make, Min unique players, Max per team, Build by, Variance %, the rule rows), the working lineup (Captain then five FLEX, the totals line, the meter strip), the Build row and
+  // the Save row, the status line and the one button where the batch's cards were. The Cash tab's Left out panel, the lineup read and the swaps stay under both (full width). Off the live app the Optimizer's pieces are empty and the panel is the lineup alone.
+  const head = optimizerLive() ? optimizerBandHeadHtml(board) : `<div class="oh"><h3>Lineup</h3></div>`;
   return `
-    ${optimizerBandHeadHtml(board)}
-    ${optimizerBandBoxesHtml(board)}
-    ${optimizerGoRowHtml(board)}
-    <div class="lineup-layout sd-pool-layout">
-      <div class="lineup-left${optimizerLive() ? " sd-opt-left" : ""}">
-        ${controlsHtml()}
-        <div class="lineup-slots">${slotsHtml(board)}</div>
-        ${workingTotalsHtml(board)}
-        ${meterStripHtml()}
-        <div id="${BUILD_STATUS_ID}">${buildStatusHtml(board, messageRowShown(poolRows))}</div>
-      </div>
-      <div class="lineup-right sd-pool-col">${poolHtml(board, listPlacement(), poolRows)}</div>
+    <div class="work sd-work">
+      ${poolHtml(board, listPlacement(), poolRows)}
+      <aside class="opt sd-opt phone-open" id="sd-opt">
+        ${head}
+        ${optimizerBandBoxesHtml(board)}
+        ${lineupHtml(board)}
+        ${actHtml(board)}
+        <div id="${BUILD_STATUS_ID}" class="act-status">${buildStatusHtml(board, messageRowShown(poolRows))}</div>
+        ${optimizerResultsBlockHtml(board, state.savedLineups, state.confirm)}
+      </aside>
     </div>
     ${leftOutPanelHtml(board)}<div id="sd-read-holder">${lineupReadOf(board)}</div>
-    ${optimizerResultsBlockHtml(board, state.savedLineups, state.confirm)}
     ${swapsPanelHtml()}`;
 }
 
@@ -413,10 +415,7 @@ function wire(container, board, key) {
   container.querySelectorAll("[data-action='clear-flex']").forEach((el) => onSlot(el, () => clearFlex(Number(el.dataset.flex))));
   wireRowButtons(container, board);
   const pool = container.querySelector("#sd-pool");
-  if (pool) {
-    wirePool(pool, poolCtx(board));
-    wirePoolTabs(pool, poolCtx(board));
-  }
+  if (pool) wirePool(pool, poolCtx(board)); // the Captain | FLEX switch and Columns are in the filter bar (filter-bar.js)
   container.querySelector("#sd-lineup-save-btn")?.addEventListener("click", () => {
     const nameInput = container.querySelector("#sd-lineup-save-name");
     doSaveLineup(key, nameInput ? nameInput.value : "");

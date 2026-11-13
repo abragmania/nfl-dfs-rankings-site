@@ -9,10 +9,12 @@
 // count both read, so the two always agree. lineup.js owns the lineup and draws this pool in its panel; this file draws, sorts and wires.
 import { escapeHtml, pct1 } from "../format.js";
 import { rowMessageHtml, messageIsFor } from "../row-message.js";
-import { shortName, cardNameHtml, teamColours, teamColourStyle } from "../lineup-card.js"; // the cards' one name shortener (👁 V-N1: a tagged row's name; 👁 V1: every name on a phone)
+import { shortName, cardNameHtml } from "../lineup-card.js"; // the cards' one name shortener (👁 V-N1: a tagged row's name; 👁 V1: every name on a phone)
+import { teamVars } from "../look-row.js"; // the classic pool's team tint (--t1, --t2)
+import { sortableHeadHtml } from "../tabs.js"; // the classic pool's one sortable head cell
 import { showdownPalette } from "./lineup-look.js";
-import { SHOWDOWN_COLUMNS, loadColumns, shownKeys, columnsButtonHtml, wireColumns } from "../columns.js"; // A17
-import { SD_COLUMNS, showdownHeadCellsHtml, showdownRowHtml, shownRows, sdLine, gradedValueHtml } from "./table.js";
+import { SHOWDOWN_COLUMNS, loadColumns, shownKeys } from "../columns.js"; // A17
+import { SD_COLUMNS, showdownRowHtml, shownRows, playerWhoHtml, gradedValueHtml } from "./table.js";
 import { filterRows, sortRows, sortValue, defaultDirFor, joinWords } from "./board-shape.js";
 import { playerFigures } from "./lineup-meter.js";
 import { readingShortText, halfName, stampText } from "./figures-label.js";
@@ -24,11 +26,18 @@ const START_SORT = Object.freeze({ col: "proj", dir: "desc" }); // the Rankings 
 
 /** The pool's filters (view.js's filter bar writes them), its sort (a header click) and its tab ("flex" or "cpt"; null until first read
  *  from the browser's storage), kept for the page view. */
-export const poolState = { sort: { ...START_SORT }, filters: { ...DEFAULT_POOL_FILTERS }, tab: null };
+export const poolState = { sort: { ...START_SORT }, filters: { ...DEFAULT_POOL_FILTERS }, tab: null, only: null };
 
-/** Clear filters: every filter back to none (the sort stays, as the Rankings tab's Clear filters left it). */
+/** The Locked and Excluded chips of the filter bar (classic's, lineup-pool.js poolOnly): the table shows only those men ("locked", "excluded") or everyone (null). Page-only, never remembered. */
+export const poolOnlyView = () => poolState.only;
+export function setPoolOnly(next) {
+  poolState.only = next === "locked" || next === "excluded" ? next : null;
+}
+
+/** Clear filters: every filter back to none, the Locked and Excluded chips off (the sort stays, as the Rankings tab's Clear filters left it). */
 export function resetPoolFilters() {
   poolState.filters = { ...DEFAULT_POOL_FILTERS };
+  poolState.only = null;
 }
 
 /** Test hook: the start sort, no filters and the tab read afresh. */
@@ -40,7 +49,7 @@ export function resetPoolState() {
 
 // The Optimizer's additions (optimizer.js poolControls): {live(), mode(), available(tab), rows(all, shown), capCell(row, kind, which) (Min % or Max %),
 // button(row, kind, action) ("lock", "include" or "exclude"), lockIcon(row), thumbs(row, isCpt), rowClass(row, tab), projCell(row, proj, isCpt), ownCell(row, own, isCpt, text),
-// starCell(row), readTab(), writeTab(tab)}, each optional; none set (or not live) leaves the pool its own rows with no controls.
+// starCell(row), marked(row, "locked" | "excluded") (the Locked and Excluded chips), readTab(), writeTab(tab)}, each optional; none set (or not live) leaves the pool its own rows with no controls.
 let controls = null;
 export function setPoolControls(next) {
   controls = next && typeof next === "object" ? next : null;
@@ -102,7 +111,7 @@ const PICK_TITLES = Object.freeze({
 
 /** A click inside one of these is that control's own (the ± bump, a Min / Max box, lock, In, exclude, the name's card popup) or the padding
  *  around it, not a pick (lineup.js passes it to the shared pick-rows.js wirePickRows). */
-export const POOL_PICK_SKIP = "button, a, input, select, textarea, label, .player-name, .bump-ctl, .lineup-thumbs-cell, .sd-pool-btn, .sd-pool-in, .lineup-min-cell, .lineup-max-cell, .lineup-star-col, [data-sd-edit]";
+export const POOL_PICK_SKIP = "button, a, input, select, textarea, label, .player-name, .bump-ctl, .ctl, .bmp, .lim, [data-sd-edit]"; // classic's own list (lineup-pool.js CLASSIC_POOL_PICK_SKIP) plus the Showdown's typed-number cell
 
 const num = (v) => (typeof v === "number" && Number.isFinite(v) ? v : null);
 
@@ -160,14 +169,26 @@ export function poolSort(board) {
  * filter bar's filters (team, position, search, Starred only, and the salary range and `Min Proj` on the figures of the list on screen: the Captain list's price and
  * Captain projection, C24; board-shape.js filterRows), sorted by the pool's sort on the figures the cells show.
  */
-export function poolVisibleRows(board, { filters = poolState.filters, sort = poolSort(board), figures = playerFigures, tab = poolTab() } = {}) {
+export function poolVisibleRows(board, { filters = poolState.filters, sort = poolSort(board), figures = playerFigures, tab = poolTab(), only = poolState.only } = {}) {
   const all = board?.rows ?? [];
   const searching = String(filters.search ?? "").trim() !== "";
   const shown = searching ? all : shownRows(all, undefined, { keepTouched: true });
-  const base = controls?.rows ? controls.rows(all, shown) : shown;
   const isCpt = tab === "cpt";
+  // The Locked and Excluded chips (classic's): only the men the chip names, whatever the other filters say (a pick is never hidden by a filter, lineup-pool.js).
+  if (only && controls?.marked) return sortRows(all.filter((r) => controls.marked(r, only)), sort.col, sort.dir, (r, c) => poolSortValue(r, c, figures));
+  const base = controls?.rows ? controls.rows(all, shown) : shown;
   return sortRows(filterRows(base, filters, board?.game, (r) => num(figures(r, isCpt).proj), (r) => num(isCpt ? r.cptSalary : r.salary)), sort.col, sort.dir, (r, c) => poolSortValue(r, c, figures));
 }
+
+/** The Locked and Excluded chips' numbers ({locked, excluded}: the men of `board` locked or excluded on the tab on screen); zeros off the live app. */
+export function poolMarkCounts(board) {
+  const rows = board?.rows ?? [];
+  const n = (kind) => (controls?.marked ? rows.filter((r) => controls.marked(r, kind)).length : 0);
+  return { locked: n("locked"), excluded: n("excluded") };
+}
+
+/** Whether the Locked and Excluded chips are drawn: the live app, where a lock or an exclude can be set. */
+export const poolMarksLive = () => controls?.live?.() === true;
 
 /** The filter bar's count: "49 of 55 players". */
 export function poolCountText(shown, total) {
@@ -284,13 +305,17 @@ export function poolColumns(board, tab = poolTab()) {
   return shownKeys(loadColumns(defs, scope), poolAvailableKeys(tab)).map((k) => (FIGURE_KEYS.has(k) ? SD_BY_KEY.get(TAB_FIGURES[tab][k]) : SD_BY_KEY.get(k) ?? CONTROL_COLUMNS[k]));
 }
 
-/** The head: the sortable Rankings heads, plain heads for the controls, then the ownership totals row (over the whole board). */
+// The classic pool's head classes (look.css `#thead th.k-*` sets each column's width): one per Columns key.
+const HEAD_CLS = Object.freeze({ player: "pl", salary: "num k-sal", cptSalary: "num k-sal", proj: "num k-proj", cptProj: "num k-proj", ownFlex: "num k-own", ownCpt: "num k-own", value: "num k-val" });
+const CTL_HEAD_CLS = Object.freeze({ star: "ctl k-star", thumbs: "bmp k-thumbs", in: "ctl k-lock", lock: "ctl k-lock", exclude: "ctl k-excl", min_pct: "lim k-lim", max_pct: "lim k-lim", cpt_min_pct: "lim k-lim", cpt_max_pct: "lim k-lim", captain: "ctl k-excl" });
+
+/** The head, the classic pool's (lineup-pool.js poolHeadHtml): the sortable figure heads, plain heads for the controls. */
 export function poolHeadHtml(board, sort = poolSort(board), tab = poolTab()) {
   const cols = poolColumns(board, tab);
   const cells = cols.map((c) => (c.ctl
-    ? `<th class="sd-pool-ctl sd-pool-ctl-${c.key}${c.key === "star" ? " lineup-star-col" : ""}${c.gold ? " sd-cpt-col" : ""}${c.key === "min_pct" || c.key === "cpt_min_pct" ? " lineup-min-head" : c.key === "max_pct" || c.key === "cpt_max_pct" ? " lineup-max-head" : ""}" title="${escapeHtml(c.title)}">${escapeHtml(c.label)}</th>`
-    : showdownHeadCellsHtml(sort, [c]))).join("");
-  return `<tr>${cells}${FILL_HEAD}</tr>`; // item 7 (G64, lead 3:10 PM 11-11): the Own totals row is the Sources page's Data as of line now (ownTotalsLine)
+    ? `<th class="${CTL_HEAD_CLS[c.key] ?? "ctl"}" title="${escapeHtml(c.title)}">${escapeHtml(c.label)}</th>`
+    : sortableHeadHtml([{ key: c.key, label: c.label, cls: HEAD_CLS[c.key] }], sort).replace(/^<tr>|<\/tr>$/g, "").replace(/ (?=[▲▼])/, " "))).join(""); // a no-break space before the arrow: the pool's heads wrap at their spaces, never before it
+  return `<tr>${cells}</tr>`; // item 7 (G64, lead 3:10 PM 11-11): the Own totals row is the Sources page's Data as of line now (ownTotalsLine)
 }
 
 /** Where he sits in the lineup, whichever list is on screen: "cpt", "flex" or null (lineup.js keeps the placement as { cptId, flexIds }, strings). C21: both lists mark the whole lineup. */
@@ -310,15 +335,15 @@ export function seatTagHtml(seat) {
 function controlCellHtml(row, key, tab) {
   const btn = (kind, action) => controls?.button?.(row, kind, action) ?? "";
   switch (key) {
-    case "thumbs": return `<td class="lineup-thumbs-cell">${controls?.thumbs?.(row, tab === "cpt") ?? ""}</td>`;
-    case "in": return `<td class="sd-pool-in">${btn("flex", "include")}</td>`;
+    case "thumbs": return `<td class="bmp">${controls?.thumbs?.(row, tab === "cpt") ?? ""}</td>`;
+    case "in": return `<td class="ctl">${btn("flex", "include")}</td>`;
     case "lock":
-    case "exclude": return `<td class="sd-pool-btn">${btn(tab, key)}</td>`;
+    case "exclude": return `<td class="ctl">${btn(tab, key)}</td>`;
     case "min_pct":
     case "max_pct": return controls?.capCell?.(row, tab, key === "min_pct" ? "min" : "max") ?? "<td></td>";
     case "cpt_min_pct": // C21: the Captain list's own boxes (the same limits), on the FLEX list
     case "cpt_max_pct": return controls?.capCell?.(row, "cpt", key === "cpt_min_pct" ? "min" : "max") ?? "<td></td>";
-    case "captain": return `<td class="sd-pool-btn sd-pool-capt sd-cpt-col">${btn("cpt", "lock")}${btn("cpt", "exclude")}</td>`;
+    case "captain": return `<td class="ctl">${btn("cpt", "lock")}${btn("cpt", "exclude")}</td>`;
     default: return "<td></td>";
   }
 }
@@ -352,7 +377,7 @@ export function emptyPoolText(board, filters = poolState.filters) {
 export function poolBodyHtml(board, rows, placement, figures = playerFigures, tab = poolTab(), palette = showdownPalette(board)) {
   const cols = poolColumns(board, tab);
   if (!rows.length) {
-    return `<tr class="sd-pool-empty-row"><td class="sd-pool-empty" colspan="${cols.length + 1}">${escapeHtml(emptyPoolText(board, poolState.filters))}</td></tr>`;
+    return `<tr class="sd-pool-empty-row"><td class="lineup-pool-empty" colspan="${cols.length}">${escapeHtml(emptyPoolText(board, poolState.filters))}</td></tr>`;
   }
   const picks = new Map(rows.map((r) => [String(r.id), pickOf(placement, r, tab)]));
   const hooks = {
@@ -363,21 +388,18 @@ export function poolBodyHtml(board, rows, placement, figures = playerFigures, ta
     // The Player cell names him in full and, for a phone, the cards' short name too (style.css shows one; 👁 V1: no name cut mid-word); then the seat tag of a man in
     // the lineup on either list (C21), a lock icon for a man locked in either seat (C20). A click's refusal (placement.message, lineup.js) is drawn under the name of the
     // row that was clicked (row-message.js, standard A14).
-    playerCell: (row) => { // a greyed row says why under his name in a few words (seat-picker.js `short`), the sentence on hover, as classic's pool does
+    playerCell: (row) => { // a greyed row says why after his matchup in a few words (seat-picker.js `short`), the sentence on hover, as classic's pool does
       const p = picks.get(String(row.id));
-      const why = !p.action && p.short ? `<span class="sd-blk-why">${escapeHtml(p.short)}</span>` : "";
-      return `<div class="player-cell">${sdLine(row, { nameHtml: cardNameHtml(row), tagWrap: controls?.statusTag ? (tag) => controls.statusTag(row, tag) : undefined })}<span class="sd-seat-slot">${seatTagHtml(placedSeat(placement, row.id))}${controls?.lockIcon?.(row) ?? ""}</span></div>${why}${messageIsFor(placement?.message, row.id) ? rowMessageHtml(placement.message.text, placement.message.tone) : ""}`;
+      const why = !p.action && p.short ? ` · <span class="blk-why">${escapeHtml(p.short)}</span>` : "";
+      const extra = `<span class="sd-seat-slot">${seatTagHtml(placedSeat(placement, row.id))}${controls?.lockIcon?.(row) ?? ""}</span>`;
+      return `${playerWhoHtml(row, { nameHtml: cardNameHtml(row), tagWrap: controls?.statusTag ? (tag) => controls.statusTag(row, tag) : undefined, extra, why })}${messageIsFor(placement?.message, row.id) ? rowMessageHtml(placement.message.text, placement.message.tone) : ""}`;
     },
     valueCell: (row) => poolValueHtml(row, figures),
-    // A man seated in the lineup, on either list, has his row tinted (the builder's), kept apart from a lock (the icon, C20), beside the Optimizer's own look (excluded), each class once.
-    // A row that cannot be clicked is greyed instead of a pick row (A18); the lookup is made once per row and shared by the class and the attributes.
-    rowClass: (row) => [...new Set([placedSeat(placement, row.id) ? "sd-row-seated" : "", picks.get(String(row.id)).action ? "sd-pool-pick" : "sd-row-greyed", ...String(controls?.rowClass?.(row, tab) ?? "").trim().split(/\s+/)].filter(Boolean))].join(" "),
-    rowAttrs: (row) => {
-      const c = teamColours(palette, row.team);
-      return `${pickAttrsHtml(picks.get(String(row.id)))} style="${teamColourStyle(c)}"`;
-    },
+    // A man seated in the lineup, on either list, has his row tinted (the classic pool's `inl`), kept apart from a lock (the icon, C20), beside the Optimizer's own look (excluded: `excl`), each class once.
+    // A row that cannot be clicked is greyed (`blk`) instead of a pick row (`pk`, A18); the lookup is made once per row and shared by the class and the attributes.
+    rowClass: (row) => [...new Set([placedSeat(placement, row.id) ? "inl" : "", picks.get(String(row.id)).action ? "pk" : "blk", ...String(controls?.rowClass?.(row, tab) ?? "").trim().split(/\s+/)].filter(Boolean))].join(" "),
+    rowAttrs: (row) => `${pickAttrsHtml(picks.get(String(row.id)))} style="${teamVars(row.team, palette)}"`,
     ctlCell: (row, key) => controlCellHtml(row, key, tab),
-    fillCell: true, // the empty last column (FILL_HEAD)
   };
   return rows.map((r) => showdownRowHtml(r, hooks, cols)).join("");
 }
@@ -438,25 +460,19 @@ export function poolLegendText(board) {
   return [sourceSentence, HOVER_WORDS].filter(Boolean).join(" · ");
 }
 
-/** The Captain | FLEX switch beside the heading: the Sources page's Players switch (sources-page-html.js playersHeadHtml, the .sp-seg
- *  rules), the tab on screen marked active. */
+/** The Captain | FLEX switch, first in the filter bar (classic's `.tabs` segment), the tab on screen marked active. */
 export function poolTabsHtml(active = poolTab()) {
-  const btns = POOL_TABS.map((t) => `<button type="button" class="sp-seg-btn${t.key === active ? " active" : ""}" data-pool-tab="${t.key}" aria-pressed="${t.key === active}">${t.label}</button>`).join("");
-  return `<span class="sp-seg sd-pool-tabs" role="group" aria-label="Player pool list">${btns}</span>`;
+  const btns = POOL_TABS.map((t) => `<button type="button" class="${t.key === active ? "active on" : ""}" data-pool-tab="${t.key}" aria-pressed="${t.key === active}">${t.label}</button>`).join("");
+  return `<div class="tabs sd-pool-tabs" id="sd-pool-tabs" role="group" aria-label="Player pool list" title="Pool">${btns}</div>`;
 }
 
-/** The whole pool: heading and figures words, the table (no scroll box since A15: the page scrolls and the head sticks under the filter bar), the legend.
+/** The whole pool, the classic pool's markup (lineup-pool.js rightColumnHtml): the table in its box (no scroll box since A15: the page scrolls and the head sticks under the filter bar), the legend.
  *  `rows`: poolVisibleRows(board), computed once by the caller so the filter bar's count reads the same list. */
 export function poolHtml(board, placement, rows) {
   return `
-    <section id="sd-pool" class="sd-pool">
-      <div class="sd-pool-head">
-        <h3 class="lineup-right-title">Player pool</h3>
-        ${poolTabsHtml()}
-        ${columnsButtonHtml()}${"" /* item 7: "Figures: TwoGun only" is the Sources page's Data as of line */}
-      </div>
-      <div class="sd-pool-wrap">
-        <table id="sd-table" class="sd-pool-table">
+    <section id="sd-pool" class="sd-pool pool">
+      <div class="tbl" id="sd-pool-tbl">
+        <table id="sd-table" class="lineup-pool-table sd-pool-table">
           <thead id="sd-thead">${poolHeadHtml(board)}</thead>
           <tbody id="sd-tbody">${poolBodyHtml(board, rows, placement)}</tbody>
         </table>
@@ -491,20 +507,19 @@ export function wirePool(poolEl, ctx) {
   });
 }
 
-/** Wires the Captain | FLEX switch once per full draw (it lives outside the head and body a repaint replaces): a click picks the tab,
- *  marks the buttons and repaints the pool (ctx.repaint). */
-export function wirePoolTabs(poolEl, ctx) {
-  wireColumns(poolEl, { ...poolColumnSetup(), onChange: () => ctx.repaint() }); // A17: the Columns button beside the tabs; a tick or a move repaints the head and body
-  const buttons = [...poolEl.querySelectorAll("[data-pool-tab]")];
+/** Wires the Captain | FLEX switch in the filter bar (filter-bar.js calls it once per draw of the bar): a click picks the tab, marks the buttons and repaints the pool (`repaint`). */
+export function wirePoolTabs(barEl, repaint) {
+  const buttons = [...barEl.querySelectorAll("[data-pool-tab]")];
   buttons.forEach((btn) => {
     btn.addEventListener("click", () => {
       if (!setPoolTab(btn.dataset.poolTab)) return;
       buttons.forEach((b) => {
         const on = b.dataset.poolTab === poolTab();
         b.classList.toggle("active", on);
+        b.classList.toggle("on", on);
         b.setAttribute("aria-pressed", String(on));
       });
-      ctx.repaint();
+      repaint();
     });
   });
 }

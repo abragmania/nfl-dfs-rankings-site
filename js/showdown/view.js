@@ -13,10 +13,11 @@ import { stickyHeights } from "../build-notice.js"; // A15: the sticky stack's h
 import { deleteShowdownOverrides, putShowdownOverrides, optimizerLive, optimizerTabFor, setTabSwitchGate } from "./optimizer.js";
 import { delegateStatusClicks, statusPatch } from "../status-switch.js"; // Adam 2026-11-12: the Sources page's Player status card
 import { makeTabBoards, otherTab, tabWord } from "./tab-boards.js"; // Part F: the GPP and Cash tabs' own boards
-import { renderPills, kickoffDateAndClock, paintSourcesLink, wireSourcesLink, modePillHtml } from "../header.js";
+import { renderPills, renderSlateLine, paintSourcesLink, wireSourcesLink, modePillHtml } from "../header.js";
 import { isSourcesTab, sourcesTabToOpen } from "../tabs.js";
 import { renderSourcesPage, sectionSources } from "../sources-page.js";
-import { escapeHtml, dec1 } from "../format.js";
+import { escapeHtml } from "../format.js";
+import { gameTileHtml } from "./game-tile.js"; // the one game tile, the classic strip's
 import { store } from "../state.js";
 import { sdShowAll, setSdShowAll, onSdShowAllChange } from "./show-all.js"; // C24: the Showdown's own Show all players
 import { staleLineText, savedCopiesLine, selfCheckLines } from "../data-as-of.js"; // item 7: one short stale line under the game line; Board, Injuries, Pulled and Lock are on the Sources page
@@ -27,11 +28,11 @@ import { renderShowdownTabs, renderShowdownProjectionsPanel, renderShowdownOwner
 import { keptCount, onKeptChange } from "./lineups-store.js"; // the Lineups tab's count and its redraw when a build is kept
 import { setTabOpener } from "./lineups-nav.js";
 import { repaintShowdownPool } from "./lineup.js";
-import { poolState, poolCountText, poolNoteText, ownTotalsLine } from "./pool.js";
+import { poolState, poolCountText, poolNoteText, ownTotalsLine, poolMarkCounts, poolMarksLive, poolOnlyView } from "./pool.js";
 import { restoreView } from "./view-memory.js"; // A9: the pool's filters and sort per game
-import { filterBarHtml, wireFilterBar, takeBarFocus, restoreBarFocus, tabResetQuestion } from "./filter-bar.js"; // the filter bar above the builder (team and position chips, search, salary range, Min Proj)
-import { figuresPillHtml } from "./figures-label.js"; // the header pill naming the sources this game's board reads (Adam 2026-10-20)
-import { normalizeBoard, teamFullName } from "./board-shape.js"; // the board's pure shaping (moved for the 600-line cap)
+import { filterBarHtml, wireFilterBar, takeBarFocus, restoreBarFocus, tabResetQuestion, paintMarkChips } from "./filter-bar.js"; // the filter bar above the builder (the classic bar's rows: pool switch, team and position chips, search, salary range, Min Proj)
+import { figuresPillHtml } from "./figures-label.js"; // the pill naming the sources this game's board reads (Adam 2026-10-20), kept in the header's hidden source-state box
+import { normalizeBoard } from "./board-shape.js"; // the board's pure shaping (moved for the 600-line cap)
 
 const state = {
   activeTab: "lineup", // the Optimizer (the Rankings tab is retired, tabs.js RETIRED_SHOWDOWN_TABS)
@@ -80,6 +81,16 @@ export function showdownRowById(id) {
   const row = found; // the board's row, as Build counts him (a typed number always wins, Adam 2026-11-12)
   return row.gameId || !g?.away || !g?.home ? row : { ...row, gameId: `${g.away}@${g.home}` }; // the board row's figures on every tab, as the Lineup tab's slots show them
 }
+let boardShownHook = null;
+/** app-showdown.js registers what runs when a game's first board lands (the top bar's Main slate / Showdown switch is drawn again, naming the game). */
+export function setBoardShownHook(fn) {
+  boardShownHook = typeof fn === "function" ? fn : null;
+}
+/** The game of the board on screen as the switch names it ("WAS@NYG"), or null before a board is read. */
+export const showdownGameLabel = () => {
+  const g = state.board?.game;
+  return g?.gameId ?? (g?.away && g?.home ? `${g.away}@${g.home}` : null);
+};
 export const showdownBoardAsOf = () => state.board?.generatedAt ?? null;
 export const showdownBoardNow = () => state.board ?? null; // the player card names the board's own source lines (A8)
 
@@ -89,7 +100,8 @@ const els = {
   sourcesPanel: document.getElementById("sd-sources-panel"),
   sourcesBtn: document.getElementById("sd-sources-btn"),
   salaryBtn: document.getElementById("sd-salary-btn"),
-  band: document.getElementById("sd-band"),
+  slateLine: document.getElementById("sd-slate-line"), // Season, Week and Cap of this game's slate, in the shared header
+  header: document.getElementById("classic-header"),
   pillsRow: document.getElementById("sd-pills-row"),
   figuresPill: document.getElementById("sd-figures-pill"),
   refreshBtn: document.getElementById("sd-refresh-btn"),
@@ -117,45 +129,25 @@ const typedFilters = makeFilterDebounce({ apply: (patch) => { Object.assign(pool
 function setPoolCount(shown, total) {
   const countEl = els.filterbar?.querySelector("#sd-filter-count");
   if (countEl) countEl.textContent = poolCountText(shown, total);
+  paintMarkChips(els.filterbar, poolMarkCounts(state.board), poolOnlyView()); // the Locked and Excluded chips follow the same draw
 }
 
 // --------------------------------------------------------------------------------------------------------
 // Render
 // --------------------------------------------------------------------------------------------------------
 
-function renderBand() {
-  const g = state.board?.game ?? {};
-  const away = teamFullName(g.away);
-  const home = teamFullName(g.home);
-  const when = kickoffDateAndClock(g.kickoffEt);
-  els.band.innerHTML = `<span class="sd-band-text">SHOWDOWN &middot; ${escapeHtml(away)} at ${escapeHtml(home)}${when ? ` &middot; ${escapeHtml(when)} ET` : ""}</span>`;
-}
-
-// Four small boxes at the top of the Optimizer tab (once above the Rankings table; 👁 visual-qa: like the hosted sheet's Total/Line/implied
-// boxes), built from payload.game — never re-derived, just the numbers the board already computed.
+// The game's one tile at the top of the Optimizer tab (the classic game strip's tile, game-tile.js: kickoff, total, the two teams with spread and implied total), built from payload.game
+// — never re-derived, just the numbers the board already computed.
 function renderGameLine() {
   if (!els.gameline) return;
-  const g = state.board?.game;
-  if (!g) {
-    els.gameline.innerHTML = "";
-    return;
-  }
-  const total = g.total != null ? dec1(g.total) : "—";
-  const line = g.favorite && g.spread != null ? `${g.favorite} -${dec1(Math.abs(g.spread))}` : "—";
-  const awayImplied = g.implied?.[g.away] != null ? dec1(g.implied[g.away]) : "—";
-  const homeImplied = g.implied?.[g.home] != null ? dec1(g.implied[g.home]) : "—";
-  els.gameline.innerHTML = `
-    <div class="sd-gameline-box"><span class="sd-gameline-label">Total</span><span class="sd-gameline-value">${escapeHtml(total)}</span></div>
-    <div class="sd-gameline-box"><span class="sd-gameline-label">Line</span><span class="sd-gameline-value">${escapeHtml(line)}</span></div>
-    <div class="sd-gameline-box"><span class="sd-gameline-label">${escapeHtml(g.away ?? "Away")} implied</span><span class="sd-gameline-value">${escapeHtml(awayImplied)}</span></div>
-    <div class="sd-gameline-box"><span class="sd-gameline-label">${escapeHtml(g.home ?? "Home")} implied</span><span class="sd-gameline-value">${escapeHtml(homeImplied)}</span></div>`;
+  els.gameline.innerHTML = gameTileHtml(state.board?.game);
 }
 
 function renderEmpty() {
   els.emptyState.hidden = false;
   for (const p of [els.sourcesPanel, els.projectionsPanel, els.ownershipPanel, els.lineupPanel, els.lineupsPanel, els.entriesPanel]) if (p) p.hidden = true;
-  els.band.innerHTML = "";
   if (els.stamps) els.stamps.innerHTML = "";
+  if (els.slateLine) els.slateLine.textContent = "";
   els.emptyState.textContent = state.loading ? "Loading the showdown board…" : state.error ?? "Could not load this showdown.";
 }
 
@@ -166,7 +158,8 @@ function renderFilterBar() {
   typedFilters.flush();
   const focused = takeBarFocus(els.filterbar); // item 9: a board answer redraws the bar while he is typing in a box; the box keeps the keyboard and its caret
   const starred = (state.board?.rows ?? []).filter((r) => r.starred).length; // every starred man of the game, unfiltered (D53)
-  els.filterbar.innerHTML = filterBarHtml(poolState.filters, state.board?.game, sdShowAll(), resetButton(), starred);
+  const marks = poolMarksLive() ? { ...poolMarkCounts(state.board), only: poolOnlyView() } : null; // the Locked and Excluded chips: only where a lock or an exclude can be set
+  els.filterbar.innerHTML = filterBarHtml(poolState.filters, state.board?.game, sdShowAll(), resetButton(), starred, marks);
   wireFilterBar(els.filterbar, {
     typed: typedFilters,
     rebuild: renderFilterBar,
@@ -209,9 +202,10 @@ function syncFilterbarHeight() {
   const sticky = !els.lineupPanel.hidden && getComputedStyle(els.filterbar).position === "sticky";
   const notice = document.getElementById("sd-build-notice");
   const { bar, total } = stickyHeights({ sticky, barHeight: els.filterbar.getBoundingClientRect().height, noticeShown: Boolean(notice) && !notice.hidden, noticeHeight: notice?.getBoundingClientRect().height }); // A15: the build notice is a layer of the stack, so the head and the band sit under it too
-  // The tab row (#sd-tabs) is sticky at the top of the window, so every layer under it starts at its height (--tabs-h, style.css #showdown-main > .tabs), as classic's.
-  const tabsH = els.tabs?.getBoundingClientRect().height ?? 0;
-  if (tabsH) document.documentElement.style.setProperty("--tabs-h", `${tabsH}px`); // 0 = this main is hidden (classic is on screen and keeps it)
+  // The shared top bar (#classic-header: brand, stamps, tabs, the slate switch) is sticky at the top of the window, so every layer under it starts at its height (--tabs-h), as on the classic page.
+  const sticks = Boolean(els.header) && getComputedStyle(els.header).position === "sticky"; // a phone's bar scrolls away with the page
+  const tabsH = sticks ? els.header.getBoundingClientRect().height : 0;
+  document.documentElement.style.setProperty("--tabs-h", `${tabsH}px`);
   els.lineupPanel.style.setProperty("--filterbar-bar-h", `${bar + tabsH}px`);
   els.lineupPanel.style.setProperty("--filterbar-h", `${total + tabsH}px`);
 }
@@ -220,7 +214,7 @@ if (typeof ResizeObserver !== "undefined") {
   const ro = new ResizeObserver(syncFilterbarHeight);
   const notice = document.getElementById("sd-build-notice");
   if (notice) ro.observe(notice);
-  if (els.tabs) ro.observe(els.tabs);
+  if (els.header) ro.observe(els.header);
 }
 
 // After each draw of the Optimizer's part (lineup.js calls it on its own redraws too): the pool's Expand bar (expand.js), its height
@@ -259,11 +253,13 @@ const tabBoards = makeTabBoards({
   shape: normalizeBoard,
   shownTab,
   show: (board, _tab, key) => {
+    const first = state.boardKey !== key;
     state.board = board;
     state.boardKey = key;
     state.error = null;
     state.loading = false;
     render();
+    if (first) boardShownHook?.(key); // a game's first board: the shared top bar's switch names it (app-showdown.js)
   },
   fail: (text) => {
     els.status.textContent = text;
@@ -386,6 +382,7 @@ const tabCounts = () => ({ lineups: keptCount(state.boardKey) });
 
 function render() {
   state.activeTab = shownShowdownTab(state.activeTab); // a retired key ("rankings") or a tab not drawn here opens the Optimizer
+  document.body.classList.toggle("nl-page", state.activeTab === "lineup" && Boolean(state.board)); // the Optimizer tab is in the approved look's page (the classic's; style.css keeps the app's own page for the other tabs)
   if (isSourcesTab(state.activeTab)) state.lastSourcesTab = state.activeTab;
   renderShowdownTabs(els.tabs, state.activeTab, onTabClick, tabCounts());
   paintSourcesLink(els.sourcesBtn, isSourcesTab(state.activeTab));
@@ -403,8 +400,8 @@ function render() {
   if (els.lineupsPanel) els.lineupsPanel.hidden = state.activeTab !== "lineups";
   els.entriesPanel.hidden = state.activeTab !== "entries";
 
-  // The gold band and stale/failed source pills show on both tabs and the Sources view (brief).
-  renderBand();
+  // The header's stamps are this game's slate; the stale/failed source pills are source state (the Sources page's Data as of shows them).
+  if (els.slateLine) renderSlateLine(els.slateLine, state.board.slate, { file: false });
   renderPills(els.pillsRow, { staleIds: state.board.stale ?? [], sources: state.board.sources ?? null, warnings: [], injuryReport: state.board.injuryReport });
 
   if (state.activeTab === "lineup") {

@@ -12,6 +12,11 @@ import { unusedTypedProj } from "./out.js";
 export const UNUSED_TITLE = "Your number, kept but not used while you have him marked Out (he counts 0). Mark him In or Auto to use it.";
 
 export const BUMP_STEP_PCT = 5;
+
+/** `v` bumped by `steps`: the server's exact expression (server/overrides/merge.js scaled: (v * (100 + 5 x steps)) / 100), so a struck typed number and the figure that plays when he is In agree to the digit. */
+export const bumpScaled = (v, steps) => (v * (100 + BUMP_STEP_PCT * (steps || 0))) / 100;
+/** The figure before the bump: what a box opens on, so Enter does not bump it twice (the server scales a typed number again). */
+export const bumpUnscaled = (v, steps) => (v * 100) / (100 + BUMP_STEP_PCT * (steps || 0));
 export const BUMP_MAX_STEPS = 10;
 const MINUS = "−"; // a real minus sign, never a hyphen
 const THUMB_PATH = "M1 21h4V9H1v12zm22-11c0-1.1-.9-2-2-2h-6.31l.95-4.57.03-.32c0-.41-.17-.79-.44-1.06L14.17 1 7.59 7.59C7.22 7.95 7 8.45 7 9v10c0 1.1.9 2 2 2h9c.83 0 1.54-.5 1.84-1.22l3.02-7.05c.09-.23.14-.47.14-.73v-2z"; // Material thumb_up, 24x24
@@ -94,7 +99,7 @@ export function bumpFigureOnlyHtml(row, figure, { kind = null, none = "no proj" 
   // Adam's Out on a man with a typed projection (D45): the number he typed stays in the cell, struck through and marked as not used, so he can see it and edit it; the row counts 0.
   const unused = unusedTypedProj(row);
   if (unused !== null) { // the figure that will play when he is In: his number with his ± bump, x1.5 on the Captain list
-    const played = unused * (1 + (BUMP_STEP_PCT / 100) * bumpStepsOf(row));
+    const played = bumpScaled(unused, bumpStepsOf(row));
     return `<span class="bump-fig proj-unused" title="${escapeHtml(UNUSED_TITLE)}">${dec1(isCpt ? played * CPT_MULT : played)}</span>`;
   }
   if (figure == null || Number.isNaN(Number(figure))) return escapeHtml(none);

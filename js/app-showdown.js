@@ -2,7 +2,7 @@
 import { store, slateKeyFromHashString } from "./state.js";
 import { renderModeRow } from "./header.js";
 import { getShowdowns, postShowdownUpload } from "./showdown/api.js";
-import { renderShowdownView, showdownKeyFromHash, forceReloadShowdown, showUploadPills, openShowdownTab } from "./showdown/view.js";
+import { renderShowdownView, showdownKeyFromHash, forceReloadShowdown, showUploadPills, openShowdownTab, setBoardShownHook, showdownGameLabel } from "./showdown/view.js";
 import { uploadShowdownEntries, setShowdownEntriesUploadRouter } from "./showdown/entries.js";
 import { renderShowdownTab } from "./showdown-tab.js";
 import { shownTab, onSitePage } from "./tabs.js";
@@ -17,6 +17,7 @@ let syncPageLook;
 
 export function configureShowdown(ctx) {
   ({ el, renderFilterBarNow, renderDynamic, renderSlateChrome, syncPageLook } = ctx);
+  setBoardShownHook(() => renderModeRowNow());
 }
 
 // ---------------------------------------------------------------------------------------------------
@@ -84,10 +85,13 @@ export async function uploadShowdownEntriesText(text) {
 }
 
 export function renderModeRowNow() {
+  const activeKey = showdownKeyFromHash();
+  // The live list leaves out a played game (D30), and a game of another week is in neither list, but the one on screen always has its tile in the switch, so the switch shows where he is.
+  const onScreen = !activeKey || showdownList.some((s) => s.key === activeKey) ? [] : [showdownPlayed.find((p) => p?.key === activeKey) ?? { key: activeKey, gameId: showdownGameLabel() }];
   renderModeRow(el.modeRow, {
     mainLabel: mainSlateLabel(),
-    showdowns: showdownList,
-    activeKey: showdownKeyFromHash(),
+    showdowns: [...showdownList, ...onScreen],
+    activeKey,
     slates: store.get().board?.slates ?? [],
     activeSlateKey: store.get().activeSlateKey,
     onSelectMain: () => {
@@ -141,16 +145,10 @@ export async function loadShowdownList() {
 export function applyMode() {
   const key = showdownKeyFromHash();
   const isShowdown = Boolean(key);
-  el.classicHeader.hidden = isShowdown;
+  // One top bar for both screens (2026-11-13): it stays; look.css hides each piece marked data-only for the other screen (body[data-view]). The Main slate / Showdown switch (#mode-row) is in it for both.
+  document.body.dataset.view = isShowdown ? "showdown" : "classic";
   el.classicMain.hidden = isShowdown;
-  el.showdownHeader.hidden = !isShowdown;
   el.showdownMain.hidden = !isShowdown;
-  // The classic top bar holds the slate tiles (the approved look); a Showdown shows them above its own header, as before.
-  const slates = document.getElementById("top-slates");
-  if (slates && el.modeRow) {
-    if (isShowdown && el.modeRow.parentElement === slates) el.classicHeader.parentElement.insertBefore(el.modeRow, el.classicHeader);
-    else if (!isShowdown && el.modeRow.parentElement !== slates) slates.append(el.modeRow);
-  }
   // Second slates (D57): "#slate=<key>" keeps the classic app on screen and picks which slate's players it
   // lists; any other hash (none, or a showdown's) is the main slate. A team or game filter names main-slate
   // games, so both are cleared on a switch rather than left hiding every player of the new slate.

@@ -1,5 +1,13 @@
 // The Optimizer's settings panel pieces (lineup.js optimizerControlsHtml): pure markup, titled groups of label-and-control rows.
 import { escapeHtml } from "./format.js";
+import { statusToneClass } from "./row-message.js";
+
+/** The Optimizer panel's title and the GPP | Cash switch (each tab keeps its own settings and lineup, Part F), the one copy the classic and the Showdown panel share; a refused Build's sentence (`error`, in `errorTone`) under them. */
+export function panelHeadHtml(mode, { error = null, errorTone } = {}) {
+  const seg = [["gpp", "GPP", "Tournament lineups: this tab's own settings, lineup and lineups"], ["cash", "Cash", "Cash-game lineups: this tab's own settings, lineup and lineups"]]
+    .map(([k, label, title]) => `<button type="button" role="tab" class="${mode === k ? "on" : ""}" data-opt-mode="${k}" aria-selected="${mode === k}" title="${escapeHtml(title)}">${label}</button>`).join("");
+  return `<div class="oh"><h3>Optimizer</h3><div class="seg" role="tablist" aria-label="Lineup type">${seg}</div></div>${error ? `<div class="hint2"><span class="${statusToneClass(errorTone).trim()} opt-go-error">${escapeHtml(error)}</span></div>` : ""}`;
+}
 
 // `hintCls`: an extra class on the hint line (ChatGPT wish k, Adam 2026-10-17: "opt-warn" colours the starred-QB count at 0).
 // `titleOnly` (item 7, G64): the hint is the row's hover, never a visible line.

@@ -38,57 +38,41 @@
   </script>
 </head>
 <body>
-  <!-- Mode row (Showdown, D39/D40): sits above the classic game strip and everything else, visually
-       separate from the classic header, so switching between the main slate and a loaded showdown is
-       always one click away regardless of which tab or mode is currently showing. Populated by
-       public/js/header.js's renderModeRow, called from app.js. -->
-  <div id="mode-row" class="mode-row"></div>
-
-  <!-- The classic top bar (the approved look, PROJECT.md Part 4 item 5): brand, slate stamps, the tabs, then the slate tiles (#mode-row, moved in here while the main slate is on screen), the TwoGun switch, Upload, Tracked, Refresh and Dark | Light. -->
+  <!-- The one top bar (the approved look, PROJECT.md Part 4 item 5; the Showdown screen shares it since 2026-11-13): brand, slate stamps, the tabs, then the Main slate / Showdown switch (#mode-row, in #top-slates: the main slate's
+       tile, any second slate's and one tile per loaded showdown, with Upload Showdown CSV), the TwoGun switch, the buttons and Dark | Light. Each piece marks which screen it belongs to (data-only: look.css hides it on the other
+       one; app-showdown.js applyMode sets body[data-view]). -->
   <header class="nl" id="classic-header">
     <div class="top">
-      <div class="brand"><span class="mk"></span>NFL DFS<small class="mode-tag">DraftKings classic</small></div>
-      <div id="slate-line" class="stamps slate-line">Loading...</div>
-      <div class="vtabs"><nav id="tabs"></nav><button id="sources-btn" class="tab-btn" type="button" title="Which sources feed the projections and ownership, their weights, and when each was last pulled">Sources</button></div>
+      <div class="brand"><span class="mk"></span>NFL DFS<small class="mode-tag" data-only="classic">DraftKings classic</small></div>
+      <div id="slate-line" class="stamps slate-line" data-only="classic">Loading...</div>
+      <div id="sd-slate-line" class="stamps slate-line" data-only="showdown"></div>
+      <div class="vtabs"><nav id="tabs" data-only="classic"></nav><nav id="sd-tabs" data-only="showdown"></nav><button id="sources-btn" class="tab-btn" type="button" data-only="classic" title="Which sources feed the projections and ownership, their weights, and when each was last pulled">Sources</button><button id="sd-sources-btn" class="tab-btn" type="button" data-only="showdown" title="Which sources feed the projections and ownership, their weights, and when each was last pulled">Sources</button></div>
       <span class="grow"></span>
-      <div id="top-slates"></div>
-      <div id="tg-mode" class="tg-mode" hidden></div>
+      <div id="top-slates"><div id="mode-row" class="mode-row"></div></div>
+      <div id="tg-mode" class="tg-mode" data-only="classic" hidden></div>
       <div class="header-actions">
-        <label class="chip upload-btn">
+        <label class="chip upload-btn" data-only="classic">
           Upload DraftKings CSV
           <input id="csv-input" type="file" accept=".csv,text/csv" hidden />
         </label>
-        <span id="upload-info" class="upload-info"></span>
-        <button id="tracked-btn" class="chip" type="button" title="The DFS players you track: contest entrants, the RotoGrinders top 100 and your marks">Tracked</button>
-        <button id="refresh-btn" class="chip" type="button">Refresh</button>
-        <span class="pull-group"><button id="pull-now-btn" class="chip" type="button" title="Runs the TwoGun pulls, a refresh, the save and the site publish">Pull now</button>
+        <span id="upload-info" class="upload-info" data-only="classic"></span>
+        <button id="sd-salary-btn" class="chip" type="button" data-only="showdown" title="How much of the $50,000 cap contest lineups spent">Salary used</button>
+        <button id="tracked-btn" class="chip" type="button" data-only="classic" title="The DFS players you track: contest entrants, the RotoGrinders top 100 and your marks">Tracked</button>
+        <button id="sd-tracked-btn" class="chip" type="button" data-only="showdown" title="The DFS players you track: contest entrants, the RotoGrinders top 100 and your marks">Tracked</button>
+        <button id="refresh-btn" class="chip" type="button" data-only="classic">Refresh</button>
+        <button id="sd-refresh-btn" class="chip" type="button" data-only="showdown">Refresh</button>
+        <span class="pull-group" data-only="classic"><button id="pull-now-btn" class="chip" type="button" title="Runs the TwoGun pulls, a refresh, the save and the site publish">Pull now</button>
         <span id="pull-info" class="upload-info"></span></span>
       </div>
       <div class="themes" id="theme-switch" role="group" aria-label="Theme"><button type="button" data-theme-set="dark">Dark</button><button type="button" data-theme-set="light">Light</button></div>
     </div>
     <!-- The row under the bar: the source pills and, beside them, the TwoGun status pill (header.js renderModeBox puts it in #tg-pill). Hidden when empty. -->
-    <div class="header-sub">
+    <div class="header-sub" data-only="classic">
       <div id="pills-row" class="pills-row"></div>
       <div id="tg-pill" class="tg-pill" hidden></div>
     </div>
-  </header>
-
-  <!-- Showdown header (D39/D40): hidden while the classic slate is showing; public/js/showdown/view.js
-       fills #sd-band with the gold "SHOWDOWN · <away team name> at <home team name> · <kickoff>" band and
-       shows it on both showdown tabs and the Sources view. -->
-  <header class="header sd-header" id="showdown-header" hidden>
-    <div class="header-top">
-      <div id="sd-band" class="sd-band"></div>
-      <div class="header-actions">
-        <button id="sd-salary-btn" class="sources-btn" type="button" title="How much of the $50,000 cap contest lineups spent">Salary used</button>
-        <button id="sd-tracked-btn" class="sources-btn" type="button" title="The DFS players you track: contest entrants, the RotoGrinders top 100 and your marks">Tracked</button>
-        <button id="sd-sources-btn" class="sources-btn" type="button" title="Which sources feed the projections and ownership, their weights, and when each was last pulled">Sources</button>
-        <button id="sd-refresh-btn" class="refresh-btn" type="button">Refresh</button>
-        <button id="sd-theme-toggle-btn" class="theme-toggle-btn" type="button" title="Switch theme"></button>
-      </div>
-    </div>
-    <!-- The row under the band: the source pills and, beside them, the pill naming the sources this game's board reads (showdown/view.js, figures-label.js). -->
-    <div class="header-sub">
+    <!-- A Showdown's source pills and the pill naming the sources its board reads (showdown/view.js, figures-label.js): source state, which the Sources page's Data as of shows (item 7, G64); not drawn in the bar. -->
+    <div id="sd-source-state" hidden>
       <div id="sd-pills-row" class="pills-row"></div>
       <div id="sd-figures-pill" class="tg-pill" hidden></div>
     </div>
@@ -125,16 +109,14 @@
   <main class="main" id="showdown-main" hidden>
     <div id="sd-status" class="status"></div>
 
-    <nav id="sd-tabs" class="tabs"></nav>
-
-    <!-- The Optimizer tab, the Showdown's main screen (Adam 2026-10-26: the Rankings tab folded in here, D81, as classic's #lineup-panel).
-         The game line and the filter bar (sticky) are drawn by showdown/view.js; #sd-lineup-mount is the only part showdown/lineup.js
-         redraws (the builder, the player pool with #sd-table, #sd-thead, #sd-tbody and #sd-legend, the batch and the saved lineups),
-         so a redraw never replaces a filter box Adam is typing in. -->
-    <div id="sd-lineup-panel" class="panel sd-lineup-panel">
-      <div id="sd-gameline" class="sd-gameline"></div>
+    <!-- The Optimizer tab, the Showdown's main screen (Adam 2026-10-26: the Rankings tab folded in here, D81, as classic's #lineup-panel; since 2026-11-13 in the classic look: .nl).
+         The game tile, the one quiet line and the filter bar (sticky) are drawn by showdown/view.js; #sd-lineup-mount is the only part showdown/lineup.js
+         redraws (the pool with #sd-table, #sd-thead, #sd-tbody and #sd-legend, the Optimizer panel, the lineup read and the swaps),
+         so a redraw never replaces a filter box Adam is typing in. The tab row is in the shared top bar (#sd-tabs). -->
+    <div id="sd-lineup-panel" class="panel nl sd-lineup-panel">
+      <div id="sd-gameline"></div>
       <div id="sd-stamps" class="stamps-host"></div>
-      <div id="sd-filterbar" class="sd-filterbar"></div>
+      <div id="sd-filterbar" class="fbar sd-filterbar"></div>
       <div id="sd-build-notice" class="build-notice" hidden></div>
       <div id="sd-lineup-mount" class="sd-lineup-mount"></div>
     </div>

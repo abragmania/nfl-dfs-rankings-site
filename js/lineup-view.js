@@ -8,14 +8,14 @@ import { contrarianRead, contrarianHtml, contrarianMan, readBasisFor, ownFor } f
 import { OPT_POSITIONS } from "./lineup-exposure.js";
 import { statusLineHtml, statusToneClass, TONE_WARN, TONE_NOTICE } from "./row-message.js";
 import { paletteForRows } from "./team-palette.js";
-import { settingRowHtml, settingChipsRowHtml, activeRulesSummary, switchButtonHtml, switchCheckboxHtml, numberBoxHtml, ruleOn, countNote } from "./lineup-settings.js";
+import { panelHeadHtml as sharedPanelHead, settingRowHtml, settingChipsRowHtml, activeRulesSummary, switchButtonHtml, switchCheckboxHtml, numberBoxHtml, ruleOn, countNote } from "./lineup-settings.js";
 import { listedQbs, qbStacksPayload, qbListHtml, qbPanelsHtml, defaultsApply, SPREAD_HINT } from "./lineup-qb-stacks.js";
 import { cashHeadLine, boardHasMedians } from "./lineup-cash.js";
 import { leftOutPanelHtml } from "./lineup-left-out-panel.js"; // Part F: the Cash tab's Left out panel, under Build
 import { rightColumnHtml, poolMessageShown } from "./lineup-pool.js"; // the pool: the Optimizer's one player table (C9, C10, C17)
 import { confirmHtml, anchorHtml, CLEAR_QUESTION, DELETE_QUESTION, REPLACE_QUESTION } from "./confirm-inline.js"; // B13, C11, A12: the confirms beside their buttons
 import { lookMan, lookTotals, projText, ownText, NO_FIGURE } from "./look-adapter.js";
-import { lookRowHtml, lookEmptyRowHtml, padlockHtml } from "./look-row.js";
+import { lookRowHtml, lookEmptyRowHtml, padlockHtml, lookCapHtml } from "./look-row.js";
 import { lineupsScreenHtml } from "./look-lineups.js";
 import { varianceRowHtml, variancePosSettings, varianceSummary, CLASSIC_VARIANCE_POSITIONS } from "./variance-pos.js"; // GPP variance per position (Adam 2026-11-11)
 import {
@@ -64,12 +64,8 @@ function phoneToggleHtml() {
   return `<button type="button" class="opt-phone-toggle" data-setop="phone-panel" aria-expanded="${open}">${open ? "Close the Optimizer" : `Open the Optimizer · ${filled} of ${LINEUP_SLOTS.length} seats filled · Build here`}<span>${open ? "▾" : "▸"}</span></button>`;
 }
 
-/** The panel's title and the GPP | Cash switch (each tab keeps its own settings and lineup, Part F); a refused Build's sentence beside them. */
-function panelHeadHtml() {
-  const seg = [["gpp", "GPP", "Tournament lineups: this tab's own settings, lineup and lineups"], ["cash", "Cash", "Cash-game lineups: this tab's own settings, lineup and lineups"]]
-    .map(([k, label, title]) => `<button type="button" role="tab" class="${opt.mode === k ? "on" : ""}" data-opt-mode="${k}" aria-selected="${opt.mode === k}" title="${escapeHtml(title)}">${label}</button>`).join("");
-  return `<div class="oh"><h3>Optimizer</h3><div class="seg" role="tablist" aria-label="Lineup type">${seg}</div></div>${opt.error ? `<div class="hint2"><span class="${statusToneClass(opt.errorTone).trim()} opt-go-error">${escapeHtml(opt.error)}</span></div>` : ""}`;
-}
+/** The panel's title and the GPP | Cash switch (lineup-settings.js, the one copy the Showdown panel draws too); a refused Build's sentence beside them. */
+const panelHeadHtml = () => sharedPanelHead(opt.mode, { error: opt.error, errorTone: opt.errorTone });
 
 // ---- the settings ----
 
@@ -191,15 +187,12 @@ function workingLineupHtml(rowById, board) {
 /** The working lineup's one totals line (the approved look): Salary left, Per open slot, Salary used, Proj, Value, Own at card-footer size; a figure a man lacks is a dash, never zero. Then the GPP own-vs-field read. */
 function totalsHtml(men, board, filled) {
   const t = board ? lookTotals(men, { cap: SALARY_CAP, seats: LINEUP_SLOTS.length }) : { used: null, left: null, proj: null, own: null, value: null, perOpen: null, over: false, fillPct: 0 };
-  const dash = (why) => `<span class="miss" title="${escapeHtml(why)}">${NO_FIGURE}</span>`;
   const why = board ? (filled ? "a man in this lineup has no figure or is no longer on this slate" : "no man in this lineup yet") : "the board has not loaded";
-  const money0 = (v) => (v === null ? dash(why) : money(v));
-  const left = t.over ? `<span class="overcap">Salary left <b>−${money(-t.left)}</b></span>` : `<span>Salary left <b>${money0(t.left)}</b></span>`;
   const basis = readBasisFor(board);
   const read = opt.mode === "cash" ? null : contrarianRead(state.slots.filter(Boolean).map((s) => { const r = store.get().board?.rows?.find((x) => String(x.id) === String(s.id)); return contrarianMan(r, "a man not on this slate", ownFor(r, basis)); }), basis);
   const readLine = read?.ok ? contrarianHtml(read) : ""; // C2: nothing until the lineup can be read (all nine men in); item 7 (G64): its explaining sentence is gone, the bar's own ends say it
   const perOpenText = perSpotText(t.left, LINEUP_SLOTS.length - filled) ?? ""; // Adam 2026-10-18: salary per remaining spot; "" when full or over
-  return `<div class="cap"><div class="capbar${t.over ? " over" : ""}"><i style="width:${t.fillPct}%"></i></div><div class="capt"><span>Salary used <b>${money0(t.used)}</b><em class="of">of ${money(SALARY_CAP)}</em></span>${left}<span>Proj <b>${t.proj === null ? dash(why) : escapeHtml(projText(t.proj))}</b></span><span>Own <b>${t.own === null ? dash(why) : escapeHtml(ownText(t.own))}</b></span>${t.perOpen !== null ? `<span class="perop" title="${escapeHtml(perOpenText)}">Per open slot <b>${money(t.perOpen)}</b></span>` : ""}<span class="tval" title="Projection per $1,000 of salary used">Value <b>${t.value === null ? dash(why) : t.value.toFixed(2)}</b></span></div></div>${readLine ? `<div class="lt-read">${readLine}</div>` : ""}`;
+  return `${lookCapHtml(t, { cap: SALARY_CAP, why, perOpen: t.perOpen !== null ? money(t.perOpen) : null, perOpenTitle: perOpenText })}${readLine ? `<div class="lt-read">${readLine}</div>` : ""}`;
 }
 
 // ---- Build, Save, the open-Lineups link ----

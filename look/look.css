@@ -417,3 +417,67 @@ html[data-theme="light"] .nl .vtabs button.on,html[data-theme="light"] .nl .vtab
   .nl .opt .act .savebox{flex:1 1 100%}
   .nl .opt .act .savebox input{flex:1}
 }
+/* ===== The Showdown screen in the classic look (Adam 2026-11-13 10:11 AM, the approved mock-up). It shares the classic's top bar, game tile, filter bar, pool and Optimizer panel; these are the rules its own pieces need. ===== */
+/* One top bar for both screens: each piece names its screen (data-only); app-showdown.js applyMode sets body[data-view]. */
+body[data-view="showdown"] [data-only="classic"],body:not([data-view="showdown"]) [data-only="showdown"]{display:none!important}
+body.nl-page #showdown-main{max-width:none;padding:0;width:auto}
+#sd-status:empty{display:none}
+/* The Main slate / Showdown switch: one segmented control, the screen on view amber; Upload Showdown CSV stands apart. */
+.nl .mode-row-inner{flex-wrap:nowrap;gap:0}
+.nl .mode-tile{background:none}
+.nl .mode-tile.active{background:var(--am);border-color:var(--am);color:#000}
+.nl .mode-tile+.mode-tile:not(.mode-upload-tile){border-left-width:0}
+.nl .mode-upload-tile{margin-left:8px}
+/* The Showdown's one game tile (showdown/game-tile.js) and the quiet line under it. */
+.nl .games.sd-games{grid-template-columns:236px;margin:8px 0}
+.nl .sd-game-tag{margin-left:auto;color:var(--am);font-weight:800;font-size:11px}
+.nl .stamps-host:empty{display:none}
+.nl .stamps-host .stamps-line{margin:0 0 6px;font-size:11px;color:var(--am)}
+.nl #sd-starred-toggle::before{content:"★ "}
+.nl .sd-filterbar .sd-filter-note{color:var(--am);font-size:11px}
+.nl #sd-columns-slot .colpop{left:auto;right:0} /* the Columns button is at the bar's right edge: its list opens leftwards, inside the window */
+/* The work area: the pool beside the Optimizer panel, which sticks under the shared bar and the filter bar. */
+.nl .work.sd-work{grid-template-columns:minmax(0,1fr) minmax(520px,900px)}
+.nl .sd-work .opt{top:var(--filterbar-h,0px);max-height:calc(100vh - var(--filterbar-h,0px) - 8px)}
+@media (max-width:1830px){.nl .work.sd-work{grid-template-columns:minmax(0,1fr)}} /* a laptop: the panel above the pool, as on the classic screen (board.css) */
+/* The pool's ids (#sd-thead, #sd-tbody) get the classic pool's id-keyed rules (board.css, above): widths, the sticky head and the cell type. */
+.nl #sd-thead th:last-child,.nl #sd-tbody td:last-child{width:auto}
+.nl #sd-thead th.k-star{width:36px}.nl #sd-thead th.k-sal{width:68px}.nl #sd-thead th.k-proj{width:64px}.nl #sd-thead th.k-own{width:98px}.nl #sd-thead th.k-val{width:50px}.nl #sd-thead th.k-thumbs{width:68px}.nl #sd-thead th.k-lock{width:44px}.nl #sd-thead th.k-excl{width:56px}.nl #sd-thead th.k-lim{width:48px}
+.nl #sd-thead th{position:sticky;top:calc(var(--filterbar-h,0px) - 1px);z-index:1;box-shadow:inset 0 -1px var(--ln)}
+.nl #sd-tbody td,.nl #sd-tbody .name,.nl #sd-tbody td.proj,.nl #sd-tbody .v,.nl #sd-tbody .bump-fig,.nl #sd-tbody .limb{font-family:"Space Grotesk",sans-serif;font-size:13.5px;font-variant-numeric:tabular-nums}
+.nl #sd-tbody .l2,.nl #sd-tbody .pos,.nl #sd-tbody .st{font-family:"Space Grotesk",sans-serif}
+.nl #sd-tbody tr.pk td.pl .l2{white-space:nowrap}
+.nl .sd-pool-table td.lineup-pool-empty{white-space:normal}
+@media (max-width:1300px){
+  .nl #sd-tbody td.pl,.nl #sd-thead th.pl{position:sticky;left:var(--plleft,0px);z-index:1}
+  .nl #sd-tbody td.pl{background-color:var(--p)}.nl #sd-thead th.pl{background-color:var(--p2);z-index:3}
+  .nl #sd-thead th{top:0}
+}
+/* The pool rows' buttons: the star, Lock, Exclude and In share the classic pool's 24px square. */
+.nl .ctl .row-ico,.nl .ctl .star-btn{width:24px;height:24px;min-width:0;padding:0;border-radius:0;border:1px solid #2a2a30;background:var(--p2);color:var(--mu);display:inline-grid;place-items:center;font-size:11px;font-weight:800;line-height:1}
+.nl .ctl .star-btn{font-size:13px}
+.nl .ctl .row-ico:hover,.nl .ctl .star-btn:hover{color:var(--tx);border-color:var(--am)}
+.nl .ctl .row-ico.sd-row-in.on,.nl .ctl .star-btn.active{border-color:var(--am);color:var(--am);background:#ffb00018}
+.nl .ctl .row-ico:disabled,.nl .ctl .star-btn:disabled{opacity:.4;cursor:default}
+.nl .ctl .star-btn.star-static{border-color:transparent;background:none;cursor:default}
+.nl tr.pk .sd-seat-slot{display:inline-flex;align-items:center;gap:4px}
+.nl .sd-seat-slot:empty{display:none}
+/* The Optimizer panel: the Build by segment and the Cash tab's room-keeping stand-ins; the rule rows are plain lines; the panel is always open on a phone (it has no toggle). */
+.nl .set4 .setc{padding:4px 10px;font-size:11px;color:var(--mu);border-right:1px solid var(--ln);white-space:nowrap}
+.nl .set4 .setc:last-child{border-right:0}
+.nl .set4 .seg{margin-top:2px;height:24px}
+.nl .set4 .seg button{flex:1;padding:0 6px;font-size:12.5px}
+.nl .set4 .cash-basis{display:block;margin-top:5px;font-size:12px;color:var(--tx);white-space:normal}
+.nl .sd-opt-ghost{visibility:hidden}
+.nl .sd-opt .sd-setop{cursor:default}
+.nl .sd-opt .sd-setop:hover{color:var(--mu)}
+.nl .sd-opt .opt-lockinfo{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.nl .sd-opt .act-status:empty{display:none}
+.nl .sd-opt .sd-opt-head .lineup-status{margin:4px 16px}
+.nl .sd-opt .sd-opt-go{margin-bottom:6px}
+.nl .sd-opt .sd-opt-go .lineup-status{margin:0 0 6px}
+.nl .sd-opt .lu.wk .sd-meter{margin-top:8px}
+.nl .sd-opt .lu.wk .wkr.sd-slot:not(.empty)>.sl{background:var(--am);border-color:var(--am);color:#000}
+.nl .sd-opt .lu.wk .wkr.empty .eh{white-space:nowrap}
+.nl .sd-opt .opt-results .opt-sub{font-size:12px;color:var(--mu);padding:2px 0}
+.nl .sd-opt .opt-results .opt-note{font-size:11px;color:var(--mu)}

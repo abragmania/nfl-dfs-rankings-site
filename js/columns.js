@@ -42,14 +42,14 @@ export const SHOWDOWN_COLUMNS = Object.freeze([
   { key: "own", label: "Own" },
   { key: "value", label: "Val" },
   { key: "thumbs", label: "Thumbs" },
-  { key: "in", label: "In" },
+  { key: "in", label: "In", off: true }, // the approved mock-up (2026-11-13) shows the classic pool's columns; In and the Captain pair are offered in the Columns list, off until Adam ticks them
   { key: "lock", label: "Lock" },
   { key: "exclude", label: "Exclude" },
   { key: "min_pct", label: "Min %" },
   { key: "max_pct", label: "Max %" },
   { key: "cpt_min_pct", label: "CPT Min %", off: true }, // C21: the Captain list's Min % and Max % boxes, reachable from the FLEX row (the same limits); off until Adam ticks them
   { key: "cpt_max_pct", label: "CPT Max %", off: true },
-  { key: "captain", label: "Captain lock and exclude" },
+  { key: "captain", label: "Captain lock and exclude", off: true },
 ]);
 
 const keysOf = (defs) => defs.map((c) => c.key);

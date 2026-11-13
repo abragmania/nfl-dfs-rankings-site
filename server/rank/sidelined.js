@@ -106,7 +106,13 @@ export const RULED_OUT_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 /** A game is over this long after its kickoff: an entry inside it is about that game, never the next (conservative, 4 hours). */
 const GAME_LENGTH_MS = 4 * 60 * 60 * 1000;
 // The weekday "ruled out" REQUIRES forward wording that names this game (D45), and refuses anything else: a negation or hedge, a past tense, an in-game exit, the rest of a game, a result, another week or weekday.
-const FORWARD = /\bruled\s+out\b[^.!?]{0,80}?\bfor\b|\bwill\s+not\s+play\b|\bwon't\s+play\b/i;
+const PRACTICE = /\b(?:practice|walkthrough|workouts?|OTAs?|camp)\b/i; // "ruled out for practice" is no game
+// DraftKings' team code -> nickname, frozen (the opponent is named in a note by either, case-sensitively: "NO" the code is never the word "no").
+const NICKNAMES = Object.freeze({
+  ARI: "Cardinals", ATL: "Falcons", BAL: "Ravens", BUF: "Bills", CAR: "Panthers", CHI: "Bears", CIN: "Bengals", CLE: "Browns", DAL: "Cowboys", DEN: "Broncos", DET: "Lions", GB: "Packers",
+  HOU: "Texans", IND: "Colts", JAX: "Jaguars", JAC: "Jaguars", KC: "Chiefs", LAC: "Chargers", LAR: "Rams", LV: "Raiders", MIA: "Dolphins", MIN: "Vikings", NE: "Patriots", NO: "Saints",
+  NYG: "Giants", NYJ: "Jets", PHI: "Eagles", PIT: "Steelers", SEA: "Seahawks", SF: "49ers", TB: "Buccaneers", TEN: "Titans", WAS: "Commanders"
+});
 const HEDGE = /\bnot\b|n't\b|\bnever\b|\bcould\b|\bmay\b|\bmight\b|\blikely\b|\bexpected\s+to\s+be\b/i; // within three words before "ruled"
 const PAST_AUX = /\b(?:was|were|had|being)\b|'d\b/i; // within three words before "ruled"
 const IN_GAME = /\bcarted\b|\bexited\b|\bhelped\s+off\b|\bleft\s+(?:the|Sunday|Monday|Thursday)\b|\brest\s+of\b|\bremainder\b|\breturn(?:s|ed|ing)?\b/i;
@@ -114,35 +120,84 @@ const RESULT = /\b(?:loss|win|defeat|victory)\b/i;
 const WEEKDAYS = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"];
 const ET_WEEKDAY = new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", weekday: "long" });
 
+/** ESPN's short and long comment as one text: joined with ". " when the short one has no closing punctuation, so a sentence never runs into the next (the one copy; decision and row read it). */
+export function joinComments(comment, commentLong) {
+  const a = String(comment ?? "").trim();
+  const b = String(commentLong ?? "").trim();
+  if (!a || !b) return a || b;
+  return /[.!?]["')\]]*$/.test(a) ? `${a} ${b}` : `${a}. ${b}`;
+}
+
+/** The injury object a board row carries for an ESPN record (the one builder: the hide decision reads the same object the row ends up with). `comment` is the short note (else the long one);
+ *  `longComment` rides along only when both exist and differ. */
+export function espnInjuryOf(rec, feedStatus) {
+  return {
+    status: feedStatus,
+    comment: rec.shortComment ?? rec.longComment ?? null,
+    source: ESPN_FEED,
+    date: rec.date ?? null,
+    ...(rec.shortComment && rec.longComment && rec.longComment !== rec.shortComment ? { longComment: rec.longComment } : {})
+  };
+}
+
 /** The sentence of `text` that says "ruled out", or null. */
 function ruledOutSentence(text) {
   return String(text ?? "").split(/(?<=[.!?])\s+(?=[A-Z])/).find((s) => /\bruled\s+out\b/i.test(s)) ?? null;
 }
 
-/** The wording half of the weekday "ruled out": the feed's comment says, going forward, that the man is ruled out AND names this game (this game's weekday, "this week", "tonight", "Week <slate week>"
- *  or the opponent's code `opp`). Refused: a negation or hedge or a past aux within three words before "ruled", an in-game exit, "rest of / remainder / return", a result, a "Week N" that is not
- *  `week`, a weekday that is not the kickoff's. Pure. */
-export function ruledOutWording({ comment = null, commentLong = null, kickoffUtc = null, week = null, opp = null } = {}) {
-  const sentence = ruledOutSentence(`${comment ?? ""} ${commentLong ?? ""}`);
-  if (!sentence || !FORWARD.test(sentence) || IN_GAME.test(sentence) || RESULT.test(sentence)) return false;
-  const lead = sentence.slice(0, sentence.search(/\bruled\s+out\b/i)).trim().split(/\s+/).slice(-3).join(" ");
+const plain = (s) => String(s ?? "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+
+/** Whether the sentence is about THIS man (his last name, `lastName`, a lastKey): within the five words before "ruled", or in the words right after "ruled out" (before its "for"); and no other
+ *  "Name (injury)" sits between his name and "ruled". Without a last name, never. */
+function aboutHim(before, after, lastName) {
+  const key = plain(lastName).replace(/[^a-z0-9]/g, "");
+  if (!key) return false;
+  const word = new RegExp(`\\b${key}\\b`);
+  const forAt = after.search(/\bfor\b/i);
+  const straightAfter = (forAt < 0 ? after : after.slice(0, forAt)).trim().split(/\s+/).slice(0, 2).join(" "); // "ruled out Yankoff", "ruled out Colson Yankoff": his name is the object, not a later one in a list
+  if (word.test(plain(straightAfter))) return true;
+  const lastFive = before.trim().split(/\s+/).slice(-5).join(" ");
+  const p = plain(lastFive);
+  const hit = word.exec(p);
+  if (!hit) return false;
+  const between = p.slice(hit.index + key.length).replace(/^\s*\([^)]*\)/, ""); // his own "(injury)" may follow his name; any other parenthesis is another man's
+  return !/[()]/.test(between);
+}
+
+/** The wording half of the weekday "ruled out": the feed's comment says, going forward ("ruled out ... for <game>"), that THIS man (`lastName`, a lastKey) is ruled out AND the clause after "for" names
+ *  this game (this game's weekday, "this week", "tonight", "Week <slate week>", or the opponent's nickname or uppercase code, case-sensitively). Only that clause is read for the game, and it may not be
+ *  practice, a walkthrough, workouts, OTAs or camp. Refused: a negation or hedge or a past aux within three words before "ruled", an in-game exit, "rest of / remainder / return", a result, a
+ *  "Week N" that is not `week`, a weekday that is not the kickoff's. Pure. */
+export function ruledOutWording({ comment = null, commentLong = null, kickoffUtc = null, week = null, opp = null, lastName = null } = {}) {
+  const sentence = ruledOutSentence(joinComments(comment, commentLong));
+  if (!sentence || IN_GAME.test(sentence) || RESULT.test(sentence)) return false;
+  const at = /\bruled\s+out\b/i.exec(sentence);
+  const before = sentence.slice(0, at.index);
+  const after = sentence.slice(at.index + at[0].length);
+  const forHit = /^[^.!?]{0,80}?\bfor\b/i.exec(after); // forward wording: "ruled out ... for"
+  if (!forHit || !aboutHim(before, after, lastName)) return false;
+  const lead = before.trim().split(/\s+/).slice(-3).join(" ");
   if (HEDGE.test(lead) || PAST_AUX.test(lead)) return false;
+  const clause = after.slice(forHit[0].length).split(/[,;:–—]/)[0]; // the game: up to the first comma ("..., coach Y said Friday" is the announcement, not the game)
+  if (PRACTICE.test(clause)) return false;
   const kickoff = typeof kickoffUtc === "string" ? Date.parse(kickoffUtc) : NaN;
-  const weeks = [...sentence.matchAll(/\bweek\s*(\d+)\b/gi)].map((m) => Number(m[1]));
+  const weeks = [...clause.matchAll(/\bweek\s*(\d+)\b/gi)].map((m) => Number(m[1]));
   if (weeks.some((n) => n !== week)) return false;
   const gameDay = Number.isFinite(kickoff) ? ET_WEEKDAY.format(new Date(kickoff)).toLowerCase() : null;
-  const named = WEEKDAYS.filter((d) => new RegExp(`\\b${d}\\b`, "i").test(sentence));
+  const named = WEEKDAYS.filter((d) => new RegExp(`\\b${d}\\b`, "i").test(clause));
   if (named.some((d) => d !== gameDay)) return false;
-  const namesGame = named.length > 0 || weeks.length > 0 || /\bthis\s+week\b|\btonight\b/i.test(sentence) || (Boolean(opp) && new RegExp(`\\b${String(opp).replace(/[^\w]/g, "")}\\b`, "i").test(sentence));
-  return namesGame;
+  const code = String(opp ?? "").toUpperCase().replace(/[^A-Z]/g, "");
+  const nick = NICKNAMES[code];
+  const namesOpp = Boolean(code) && (new RegExp(`\\b${code}\\b`).test(clause) || (nick ? new RegExp(`\\b${nick}\\b`).test(clause) : false));
+  return named.length > 0 || weeks.length > 0 || /\bthis\s+week\b|\btonight\b/i.test(clause) || namesOpp;
 }
 
 /** A weekday "ruled out" (D45): an ESPN Out whose comment passes ruledOutWording, dated after the team's previous game (previousGameUtc, from the DraftKings salary files, plus the game's
  *  length), within RULED_OUT_WINDOW_MS before this game's DraftKings kickoff, and AFTER the salary file's upload (`uploadedAt`: a newer DraftKings file beats an older ESPN note, so the note is
  *  then a flag showing both words). No date, no upload time, an unknown previous game (not guessed) and a Sleeper tag are not. Pure. */
-export function isRuledOutForGame({ source = null, status = null, comment = null, commentLong = null, date = null, kickoffUtc = null, previousGameUtc = null, week = null, opp = null, uploadedAt = null } = {}) {
+export function isRuledOutForGame({ source = null, status = null, comment = null, commentLong = null, date = null, kickoffUtc = null, previousGameUtc = null, week = null, opp = null, uploadedAt = null, lastName = null } = {}) {
   if (source !== ESPN_FEED || String(status ?? "").trim().toUpperCase() !== "OUT") return false;
-  if (!ruledOutWording({ comment, commentLong, kickoffUtc, week, opp })) return false;
+  if (!ruledOutWording({ comment, commentLong, kickoffUtc, week, opp, lastName })) return false;
   const entry = typeof date === "string" ? Date.parse(date) : NaN;
   const kickoff = typeof kickoffUtc === "string" ? Date.parse(kickoffUtc) : NaN;
   const previous = typeof previousGameUtc === "string" ? Date.parse(previousGameUtc) : NaN;
@@ -165,7 +220,7 @@ export function rowIsInactive(row) {
 /** "inactive", "ruled-out" or null: which feed rule hides this row (for the words a hide is said in). */
 export function rowHideKind(row) {
   const i = row?.injury;
-  return i ? feedHideKind({ source: i.source, status: i.status, comment: i.comment, commentLong: i.longComment, date: i.date, kickoffUtc: row.kickoffUtc, previousGameUtc: row.prevGameUtc ?? null, week: row.slateWeek ?? null, opp: row.opp ?? null, uploadedAt: row.slateUploadedAt ?? null }) : null;
+  return i ? feedHideKind({ source: i.source, status: i.status, comment: i.comment, commentLong: i.longComment, date: i.date, kickoffUtc: row.kickoffUtc, previousGameUtc: row.prevGameUtc ?? null, week: row.slateWeek ?? null, opp: row.opp ?? null, uploadedAt: row.slateUploadedAt ?? null, lastName: row.ruleName ?? null }) : null;
 }
 
 /** The outside feed's Out, IR, Doubtful or Inactive word on a man it does not hide (a flag only, injury.flagOnly) and whom nothing else rules out, else null.
@@ -219,10 +274,12 @@ export function flagOnlyNote(rows, uploadedAt) {
 export function ruledOutUnconfirmed(row, uploadedAt = null) {
   const i = row?.injury;
   if (!i || i.source !== ESPN_FEED || String(i.status ?? "").trim().toUpperCase() !== "OUT") return null;
-  if (!ruledOutWording({ comment: i.comment, commentLong: i.longComment, kickoffUtc: row.kickoffUtc, week: row.slateWeek ?? null, opp: row.opp ?? null })) return null;
+  if (!ruledOutWording({ comment: i.comment, commentLong: i.longComment, kickoffUtc: row.kickoffUtc, week: row.slateWeek ?? null, opp: row.opp ?? null, lastName: row.ruleName ?? null })) return null;
   if (!row.prevGameUtc) return `since ${row.prevGameWhy ?? "the team's previous game is not in the salary files on hand"}`;
   const entry = Date.parse(i.date ?? ""), upload = Date.parse(row.slateUploadedAt ?? uploadedAt ?? "");
-  return Number.isFinite(entry) && Number.isFinite(upload) && entry <= upload ? `since DraftKings' newer salary file lists nothing for him (the note is older than the upload)` : null;
+  if (!Number.isFinite(entry)) return "since the note carries no date";
+  if (!Number.isFinite(upload)) return "since the salary file's upload time is unknown";
+  return entry <= upload ? `since DraftKings' newer salary file lists nothing for him (the note is older than the upload)` : null;
 }
 
 /** A DraftKings Status word the app reads: a sidelined one ("out"), Questionable ("q"), else "unknown" (counted and noted, never a status), blank null. */
@@ -302,14 +359,17 @@ export function unusedTypedProj(row) {
   return statusSetting(row) === "out" && typeof typed === "number" && Number.isFinite(typed) ? typed : null;
 }
 
-/** The projection an out man (zeroed) would have without the Out, bump removed, for a box that opens on him: his typed number, else TwoGun's figure, else the blend (projBase); null when none. Pure. */
+/** The projection an out man (zeroed) would have without the Out, bump removed, for a box that opens on him: his typed number, else TwoGun's figure when the board counts his number for him (or there is
+ *  no blend), else the blend (projBase) when above 0; null (a blank box) when none. Pure. */
 export function projWithoutOut(row) {
   const num = (v) => (typeof v === "number" && Number.isFinite(v) ? v : null);
   const typed = num(row?.override?.proj);
   if (typed !== null) return typed;
   const his = num(row?.projBySource?.twogun);
-  if (his !== null && his > 0) return his;
-  return num(row?.projBase);
+  const base = num(row?.projBase);
+  const usesHis = row?.src?.proj === "twogun" || (row?.srcUsed?.proj ?? []).includes("twogun"); // his number is the one the board counts for him (not merely on file)
+  if (his !== null && his > 0 && (usesHis || !(base !== null && base > 0))) return his;
+  return base !== null && base > 0 ? base : null; // a zero blend is no number to open on: blank
 }
 
 /** True when Adam has marked the man In or Out or typed a projection on him: the pools keep him listed (dimmed when out) so his edit is never out of reach. */

@@ -5,9 +5,9 @@
 // optimizerFooterHtml, newLineupsTabHtml, optLineupCardHtml, rightRowHtml); optimizer.js owns the state and the requests.
 import { escapeHtml, dec1 } from "../format.js";
 import { buildingHtml, goLabelHtml, buildingRowClass, BUILDING_LABEL } from "../lineup-stop.js";
-import { statusLineHtml, statusToneClass } from "../row-message.js"; // A14: red only for an error
-import { settingRowHtml, settingGroupHtml, numberBoxHtml, countNote } from "../lineup-settings.js";
-import { cashChipHtml, cashMedianText, unusedCapText, builtInTextCash, modeTabsHtml } from "../lineup-cash.js";
+import { statusLineHtml } from "../row-message.js"; // A14: red only for an error
+import { panelHeadHtml, numberBoxHtml, countNote } from "../lineup-settings.js";
+import { cashMedianText, unusedCapText, builtInTextCash } from "../lineup-cash.js";
 import { lineupTotals, lineupTotalsHtml } from "../lineup-totals.js"; // A11
 import { doneNoteHtml } from "../build-notice.js"; // A15: `Build finished.` beside the Build button
 import { cardPlayerRowHtml, teamColours } from "../lineup-card.js";
@@ -35,112 +35,88 @@ const OBJECTIVE_WORD = { proj: "projection", median: "median" };
 
 // ---------- the heading and the settings ----------
 
-/** Projection | Median. Drawn only on a board whose rows carry TwoGun's medians (bandBoxesHtml), where Median is a real second choice;
+/** Projection | Median, the classic panel's segment (`.seg`, look.css). Drawn only on a board whose rows carry TwoGun's medians (bandBoxesHtml), where Median is a real second choice;
  *  the pressed one is effectiveObjective's. */
 export function objectiveChipsHtml(picked, board) {
   const active = effectiveObjective(picked, board);
-  return OBJECTIVES.map((o) => {
+  const buttons = OBJECTIVES.map((o) => {
     const on = o.value === active;
-    return `<button type="button" class="chip toggle-chip opt-chip${on ? " active" : ""}" data-sd-objective="${o.value}" aria-pressed="${on}" title="${escapeHtml(OBJECTIVE_TITLE[o.value])}">${escapeHtml(o.label)}</button>`;
+    return `<button type="button" class="${on ? "on" : ""}" data-sd-objective="${o.value}" aria-pressed="${on}" title="${escapeHtml(OBJECTIVE_TITLE[o.value])}">${escapeHtml(o.label)}</button>`;
   }).join("");
+  return `<div class="seg opt-chips" role="group" aria-label="Build by">${buttons}</div>`;
 }
 
 /** The Variance % row (GPP tab only; the showdown's one setting, optimizer-state.js): a small box per position, QB RB WR TE DST K, each a percent from 0 to 100
- *  (decimals allowed; blank or 0 is none), blank by default; a box that is not a percent is marked and blocks Build. `variancePos` = {QB: text, ...}. */
+ *  (decimals allowed; blank or 0 is none), blank by default; a box that is not a percent is marked and blocks Build. `variancePos` = {QB: text, ...}. The classic's row (`.opt-var-line`). */
 export function sdVarianceRowHtml(variancePos) {
-  return `<div class="opt-set sd-opt-var">${varianceRowHtml(variancePos, SHOWDOWN_VARIANCE_POSITIONS, "data-sd-var")}</div>`;
+  return `<div class="opt-var-line" id="sd-opt-var">${varianceRowHtml(variancePos, SHOWDOWN_VARIANCE_POSITIONS, "data-sd-var")}</div>`;
 }
 
 function teamSelectHtml(value) {
   const options = TEAM_OPTIONS.map((v) => `<option value="${v}"${String(value) === v ? " selected" : ""}>${v}</option>`).join("");
-  return `<select id="sd-opt-max-team" class="opt-input opt-select" aria-label="Max per team">${options}</select>`;
+  return `<select id="sd-opt-max-team" class="opt-input" aria-label="Max per team">${options}</select>`;
 }
+
+/** The three rule rows of the classic panel (`.setop`, one closed line each), as the Showdown has them: no stack, the Captain's price and points, one man from each team, and no position caps, spread defenses or custom rules (a Showdown has none to set). Plain lines, nothing opens. */
+export const RULE_ROWS = Object.freeze([
+  Object.freeze({ label: "Stack", words: "none" }),
+  Object.freeze({ label: "Rules", words: "CPT counts 1.5x salary and points · at least one from each team" }),
+  Object.freeze({ label: "Position caps, spread defenses, custom rules", words: "none" }),
+]);
+const ruleRowsHtml = () => RULE_ROWS.map((r) => `<div class="setop sd-setop">${escapeHtml(r.label)}<em>${escapeHtml(r.words)}</em></div>`).join("");
 
 /**
- * The Optimizer band in its two pieces (Adam 2026-10-20: "I can't see the main lineup that I'm building"): the head stays at the top
- * of the left column, the Pool and Build boxes sit under the build status line, just above the Make row, so the six slots and the
- * meter are the first thing on screen. `v` = {mode, ms, board, error, formError}.
+ * The Optimizer panel in its three pieces, the classic panel's (lineup-view.js panelHtml): the head (title and the GPP | Cash switch), the settings (one row of four boxes, the Variance % row, the rule rows, the held-men line) and the
+ * Build row (`goRowHtml`, inside the panel's `.act`); lineup.js puts the working lineup between the settings and the Build row. `v` = {mode, ms, board, error, formError}.
  */
 
-/** The head: one line with the tab pair at the top, the title beside it and a refused Make's sentence, then a blocked
- *  Make's sentence. Its own element, #sd-opt-head. */
+/** The head: the panel's title and switch (lineup-settings.js panelHeadHtml, the classic's) and a blocked Make's sentence. Its own element, #sd-opt-head. */
 export function bandHeadHtml(v) {
-  return `
-    <div class="sd-opt-head" id="sd-opt-head">
-      <div class="opt-settings-head sd-opt-tabline">
-        ${modeTabsHtml(v.mode)}
-        <h3 class="opt-title">Settings</h3>
-        ${v.error ? `<span class="${statusToneClass(v.errorTone ?? "error").trim()} opt-go-error">${escapeHtml(v.error)}</span>` : ""}
-      </div>
-      ${v.formError ? statusLineHtml(v.formError, "warn", "opt-form-error") : ""}
-    </div>`;
+  return `<div class="sd-opt-head" id="sd-opt-head">${panelHeadHtml(v.mode, { error: v.error, errorTone: v.errorTone ?? "error" })}${v.formError ? statusLineHtml(v.formError, "warn", "opt-form-error") : ""}</div>`;
 }
 
-/** A row of the other tab's Build box, drawn invisible in its place: the GPP and Cash settings bands are then the same height, so a tab switch moves nothing below them (A15). No controls, hidden from
- *  the keyboard and screen readers. */
-const ghostRowHtml = (label, hint = "") => `<div class="opt-set sd-opt-ghost" aria-hidden="true"><div class="opt-set-main"><span class="opt-set-label">${escapeHtml(label)}</span><span class="opt-set-ctl"></span></div>${hint ? `<div class="opt-set-hint">${escapeHtml(hint)}</div>` : ""}</div>`;
-
-/** The Pool and Build boxes (the included / locked line in Build). Its own element, #sd-opt-panel. */
+/** The settings (the classic's `.set4` row): Lineups to make, Min unique players, Max per team and Build by, then the Variance % row, the rule rows and the held-men line. The Cash tab draws the GPP-only pieces
+ *  invisible in their places, so the two tabs' panels are the same height and a tab switch moves nothing below them (A15). Its own element, #sd-opt-panel. */
 export function bandBoxesHtml(v) {
   const cash = v.mode === "cash";
   const status = statusLineText(v.ms, v.board, v.seated ?? []);
-  const pool = settingRowHtml("Max per team", teamSelectHtml(v.ms.maxPerTeam)); // item 7: the "5 = DraftKings' rule ..." reminder is gone; the rule is enforced
-  // The included / locked line sits at the foot of the Build box, one line: a long list is cut with an ellipsis and its full text is the hover (A15: adding a man never moves the page). optimizer.js refreshLines rewrites it in place.
-  // A15 (round 5): the line keeps its height when it is empty (class is-empty hides its text, not its room), so the first man in does not move the pool and everything under the boxes by a line.
-  const lockLine = `<div class="opt-set-hint opt-lockinfo${status ? "" : " is-empty"}" id="sd-opt-lockinfo" title="${escapeHtml(status)}">${escapeHtml(status)}</div>`;
-  const countRow = settingRowHtml(
-    "Lineups to make",
-    numberBoxHtml(`type="number" min="1" max="${MAX_COUNT}" class="opt-input opt-input-num" id="sd-opt-count" value="${escapeHtml(v.ms.count)}" aria-label="How many lineups"`, countNote(v.ms.count), "opt-unit-note"),
-    cash ? "The best first, then the next best" : "Around the pool's locks and includes",
-    "",
-    { titleOnly: true } // item 7 (G64): hints are hovers, never visible lines
-  );
-  // Cash builds by the board's own reading (board.mode.cashMode): TwoGun's median while TwoGun is this game's only ticked projection source.
-  const cashMode = v.board?.mode?.cashMode;
-  // A13 (round 3): no Build by line while Projection is the only way a build is made (Cash on a board where TwoGun is not the only source); the median basis still says so.
-  // The Build box's rows run two across on a wide window (style.css), and each tab draws the other's rows invisible in their places, so both tabs' bands are the same height.
+  // The included / locked line is one line: a long list is cut with an ellipsis and its full text is the hover (A15). optimizer.js refreshLines rewrites it in place; with nothing held it is empty and takes no room (classic's).
+  const lockLine = `<div class="hint2 opt-lockinfo" id="sd-opt-lockinfo" title="${escapeHtml(status)}">${escapeHtml(status)}</div>`;
+  const countBox = numberBoxHtml(`type="number" min="1" max="${MAX_COUNT}" id="sd-opt-count" value="${escapeHtml(v.ms.count)}" aria-label="How many lineups"`, countNote(v.ms.count, MAX_COUNT), "opt-unit-note");
   const hasMedians = boardHasTg(v.board, "median");
-  const build = cash
-    ? [
-        countRow,
-        ghostRowHtml("Min unique players"),
-        ...(cashMode === "twogun" ? [settingRowHtml("Build by", `<span class="cash-basis">${escapeHtml(cashBasisText(cashMode))}</span>`, "Fixed in cash: TwoGun is this game's only projection source", "", { titleOnly: true })] : hasMedians ? [ghostRowHtml("Build by")] : []),
-        `<div class="opt-set sd-opt-var sd-opt-ghost" aria-hidden="true">${varianceRowHtml(null, SHOWDOWN_VARIANCE_POSITIONS, null)}</div>`, // the GPP row at its own height, invisible and off the keyboard (A15)
-        lockLine,
-      ].join("")
-    : [
-        countRow,
-        settingRowHtml("Min unique players", numberBoxHtml(`type="number" min="1" max="${MAX_UNIQUE}" class="opt-input opt-input-num" id="sd-opt-min-unique" value="${escapeHtml(v.ms.minUnique)}" aria-label="Minimum unique players between lineups"`), "Between any two lineups", "", { titleOnly: true }),
-        // No Build by control while Projection is the only objective (optimizer standard A13, A21): it shows only on a board whose rows carry TwoGun's medians, where Median is the second.
-        ...(hasMedians ? [settingRowHtml("Build by", `<span class="opt-chips">${objectiveChipsHtml(v.ms.objective, v.board)}</span>`)] : []),
-        sdVarianceRowHtml(v.variancePos), // item 7 (G64): the "Each man's Min % and Max % are on the pool rows..." sentence is gone from the Build box; the pool's own column heads say it
-        lockLine,
-      ].join("");
-  return `
-    <div class="opt-panel opt-settings sd-opt-panel" id="sd-opt-panel">
-      <div class="opt-groups opt-groups-cash">
-        ${settingGroupHtml("Pool", pool)}
-        ${settingGroupHtml("Build", build, "", "sd-opt-build")}
-      </div>
+  // Cash builds by the board's own reading (board.mode.cashMode): TwoGun's median while TwoGun is this game's only ticked projection source; GPP offers Median only on a board whose rows carry TwoGun's medians (A13, A21).
+  const cashMode = v.board?.mode?.cashMode;
+  const buildBy = cash
+    ? (cashMode === "twogun" ? `<span class="cash-basis" title="Fixed in cash: TwoGun is this game's only projection source">${escapeHtml(cashBasisText(cashMode))}</span>` : `<input value="Projection" readonly tabindex="-1" />`)
+    : hasMedians ? objectiveChipsHtml(v.ms.objective, v.board) : `<input value="Projection" readonly tabindex="-1" />`;
+  const uniqueBox = numberBoxHtml(`type="number" min="1" max="${MAX_UNIQUE}" id="sd-opt-min-unique" value="${escapeHtml(v.ms.minUnique)}" aria-label="Minimum unique players between lineups"`, `Maximum ${MAX_UNIQUE}`, "opt-unit-note");
+  const row = `<div class="set4">
+      <label title="${cash ? "The best first, then the next best" : "Around the pool's locks and includes"}">Lineups to make${countBox}</label>
+      ${cash ? `<label class="sd-opt-ghost" aria-hidden="true">Min unique players<input tabindex="-1" disabled /></label>` : `<label title="Between any two lineups, maximum ${MAX_UNIQUE}">Min unique players${uniqueBox}</label>`}
+      <label title="Every team, the Captain's included (5 is DraftKings' rule)">Max per team${teamSelectHtml(v.ms.maxPerTeam)}</label>
+      <div class="setc">Build by${buildBy}</div>
     </div>`;
+  const variance = cash ? `<div class="opt-var-line sd-opt-ghost" aria-hidden="true">${varianceRowHtml(null, SHOWDOWN_VARIANCE_POSITIONS, null)}</div>` : sdVarianceRowHtml(v.variancePos);
+  return `<div class="sd-opt-panel" id="sd-opt-panel">${row}${variance}${ruleRowsHtml()}${lockLine}</div>`;
 }
 
-/** The one Build button's words (optimizer standard A13, round 3: Showdown's top Build folded into this one): "Build", "Building..." while out (D15);
- *  the count is in the summary beside it, as classic's. */
-export function goLabel(generating) {
-  return generating ? BUILDING_LABEL : "Build";
+/** The one Build button's words: "Building..." while out (D15), else `words` ("Build 5 GPP lineups", as classic's) or, with none given, "Build". */
+export function goLabel(generating, words = "Build") {
+  return generating ? BUILDING_LABEL : words;
 }
 
-/** The Build row (classic optimizerFooterHtml, 👁 V3): the summary and the button, under the settings boxes; not sticky since A15 (round 5). `done`: a build has ended and its
- *  batch is on screen, so `Build finished.` and the link to it sit beside the button. */
-export function goRowHtml({ summary, generating: showing, busy, formError, canStop = false, below = false, stopping = false, stopError = "", done = false }) {
+/** The Build row (classic's `.gorun`, inside the panel's `.act`; lineup.js adds the Save row after it): the summary (its hover only) and the full-width button; not sticky since A15 (round 5). `done`: a build has ended and its
+ *  batch is on screen, so `Build finished.` and the link to it sit under the button. `words`: the button's idle words. */
+export function goRowHtml({ summary, words, generating: showing, busy, formError, canStop = false, below = false, stopping = false, stopError = "", done = false }) {
   return `
-    <div class="opt-footer sd-opt-go${buildingRowClass({ showing, below })}">
+    <div class="sd-opt-go">
       ${formError ? statusLineHtml(formError, "warn", "opt-form-error-footer") : ""}
-      <span class="opt-summary" id="sd-opt-summary" title="${escapeHtml(summary)}"></span>${"" /* item 7 (G64): the summary repeats the boxes above; the hover only */}
-      ${buildingHtml({ showing, canStop, stopId: "sd-opt-stop-btn", stopping, stopError })}
+      <div class="gorun${buildingRowClass({ showing, below })}">
+        <span class="gomsg opt-summary" id="sd-opt-summary" title="${escapeHtml(summary)}"></span>${"" /* item 7 (G64): the summary repeats the boxes above; the hover only */}
+        ${buildingHtml({ showing, canStop, stopId: "sd-opt-stop-btn", stopping, stopError })}
+        <button type="button" id="sd-opt-go-btn" class="go opt-go"${busy ? " disabled" : ""}>${goLabelHtml({ showing, idle: goLabel(false, words), busy: goLabel(true) })}</button>
+      </div>
       ${done && !showing ? doneNoteHtml("sd-opt-show-results") : ""}
-      <button type="button" id="sd-opt-go-btn" class="lineup-build-btn opt-go opt-go-big"${busy ? " disabled" : ""}>${goLabelHtml({ showing, idle: goLabel(false), busy: goLabel(true) })}</button>
     </div>`;
 }
 
@@ -293,8 +269,8 @@ export function openLineupsHtml(v) {
     if (prov) parts.push(`<div class="opt-note">${escapeHtml(prov)}</div>`);
     parts.push(optNotesHtml(r.notes));
   }
-  if (v.built > 0) parts.push(`<div><button type="button" class="saved-lineup-btn sd-open-lineups" data-action="sd-open-lineups">${v.built} lineup${v.built === 1 ? "" : "s"} built: open Lineups</button></div>`);
-  return parts.length ? `<div class="opt-results sd-opt-results" id="sd-opt-results">${parts.join("")}</div>` : "";
+  if (v.built > 0) parts.push(`<div class="two"><button type="button" class="ol sd-open-lineups" data-action="sd-open-lineups">${v.built} lineup${v.built === 1 ? "" : "s"} built: open Lineups</button></div>`); // classic's `.act .two .ol` button
+  return parts.length ? `<div class="act opt-results sd-opt-results" id="sd-opt-results">${parts.join("")}</div>` : "";
 }
 
 // ---------- the pool ----------
@@ -320,7 +296,7 @@ export function poolCapCell(row, kind, which, ms, mode, parsePct) {
   const bad = Number.isNaN(parsePct(text));
   const seat = kind === "cpt" ? "cpt" : "flex";
   const crossed = which === "max" ? crossedNoteHtml(ms[`${seat}Min`]?.[id] ?? "", text, parsePct) : ""; // item 18: the sentence sits under the Max box
-  return `<td class="${cls}-cell"><input type="text" inputmode="decimal" maxlength="5" class="opt-input ${cls}-input${bad ? " invalid" : ""}" data-sd-cap="${field}" data-id="${escapeHtml(id)}" value="${escapeHtml(text)}" aria-label="${kind === "cpt" ? "Captain" : "FLEX"} ${which === "min" ? "Min %" : "Max %"} for ${escapeHtml(row.name ?? "")}" />${refusalNoteHtml(capSelector(field, id))}${crossed}</td>`;
+  return `<td class="lim ${cls}-cell"><input type="text" inputmode="decimal" maxlength="5" class="limb ${cls}-input${bad ? " invalid" : ""}" data-sd-cap="${field}" data-id="${escapeHtml(id)}" value="${escapeHtml(text)}" aria-label="${kind === "cpt" ? "Captain" : "FLEX"} ${which === "min" ? "Min %" : "Max %"} for ${escapeHtml(row.name ?? "")}" />${refusalNoteHtml(capSelector(field, id))}${crossed}</td>`;
 }
 
 /** The padlock beside a locked man's name (C20: a locked row keeps the tint a seated row has and gets this icon): it names its seat, in the hover (`Locked at Captain`,
@@ -352,7 +328,13 @@ export function poolButtonHtml(row, kind, action, ms) {
   return rowIconButtonHtml({ kind: "exclude", on: ex.on, title: exTitle, attrs, disabled: (kind === "cpt" && ex.whole) || noCpt });
 }
 
-/** The row's look: excluded (dimmed). A lock is not a tint (C20): it is the padlock icon beside the name (poolLockIconHtml). */
+/** The row's look: excluded (dimmed, the classic pool's `excl`). A lock is not a tint (C20): it is the padlock icon beside the name (poolLockIconHtml). */
 export function poolRowClass(row, kind, ms) {
-  return excludeState(ms, row, kind).on ? " lineup-row-excluded" : "";
+  return excludeState(ms, row, kind).on ? " excl" : "";
+}
+
+/** The Locked and Excluded chips' rule (classic's, lineup-pool.js): a man is locked when he is locked in either seat, excluded when excluded in either. */
+export function poolMarked(row, which, ms) {
+  if (which === "locked") return isLocked(ms, row, "cpt") || isLocked(ms, row, "flex");
+  return excludeState(ms, row, "cpt").on || excludeState(ms, row, "flex").on;
 }
