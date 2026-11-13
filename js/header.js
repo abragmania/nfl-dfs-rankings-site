@@ -4,6 +4,7 @@
 import { escapeHtml, localStamp, collapseWarnings, kickoffClockPart } from "./format.js";
 import { uploadCsv, isSampleMode } from "./api.js";
 import { routeDkUpload } from "./dk-csv-kind.js";
+import { noteUnreadable, clearUnreadable } from "./storage-damage.js";
 import { slateTileText } from "./state.js";
 
 // Builds one amber pill per stale-or-failed source id. `sources` may be null/empty (right after an
@@ -73,7 +74,9 @@ export function renderPills(container, { staleIds = [], sources = null, warnings
 const PILLS_OPEN_KEY = "nfldfs.pillsOpen";
 function storedPillsOpen() {
   try {
-    return globalThis.localStorage?.getItem(PILLS_OPEN_KEY) === "1";
+    const v = globalThis.localStorage?.getItem(PILLS_OPEN_KEY);
+    if (v !== null && v !== undefined && v !== "0" && v !== "1") noteUnreadable("Source pills open or closed", PILLS_OPEN_KEY); // a value is there but unusable: named at the page's foot
+    return v === "1";
   } catch (e) {
     return false; // storage blocked: the summary starts closed
   }
@@ -81,6 +84,7 @@ function storedPillsOpen() {
 function storePillsOpen(open) {
   try {
     globalThis.localStorage?.setItem(PILLS_OPEN_KEY, open ? "1" : "0");
+    clearUnreadable(PILLS_OPEN_KEY);
   } catch (e) {
     // storage blocked: not remembered
   }

@@ -2511,3 +2511,6 @@ tr.cmp-held > td.ex-f { opacity: 1; }
   .opt-exp-table :is(th, td):is(.opt-exp-opp, .opt-exp-pos) { display: none; }
   .opt-exp-box { overflow-x: auto; }
 }
+/* The page's foot: a saved setting that could not be read and was reset (storage-damage.js). */
+.storage-foot { padding: 8px 18px 14px; font-size: var(--fs-sm); color: var(--text-muted); }
+.storage-foot[hidden] { display: none; }

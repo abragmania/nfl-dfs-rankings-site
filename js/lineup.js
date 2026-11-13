@@ -25,6 +25,7 @@
 // The mutable `state` and `opt` are imported only by: app.js (opt), lineup-left-out-panel.js, lineup-memory-sync.js, lineup-pool.js, look-lineups.js, lineup-view.js, lineup-optimizer.js (tests/lineup-state-importers.test.mjs fails on any other).
 import { store, FLEX_POS, defaultDirFor, activeSlateRows } from "./state.js";
 import { storableClassicFilters } from "./memory.js";
+import { noteUnreadable, clearUnreadable } from "./storage-damage.js"; // a saved setting the browser cannot read is named at the page's foot
 import { showBand } from "./show-band.js"; // A12, A15: a Load brings the whole band into view
 import { focusOpenRename, wireRenameEnter } from "./rename-focus.js"; // the rename box: focused and selected on open, Enter saves
 import { keepPoolHeadInView, poolAvailableKeys, setPoolOnly, poolOnlyView } from "./lineup-pool.js"; // A15: a filter from far down puts the table back in view
@@ -178,8 +179,11 @@ function loadPersisted() {
     const raw = window.localStorage.getItem(STORAGE_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw);
-    return parsed && typeof parsed === "object" ? parsed : null;
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) return parsed;
+    noteUnreadable("Optimizer choices", STORAGE_KEY); // wrong shape: named at the page's foot
+    return null;
   } catch (e) {
+    if (e instanceof SyntaxError) noteUnreadable("Optimizer choices", STORAGE_KEY); // bad JSON; blocked storage (a different error) is not damage
     return null;
   }
 }
@@ -200,6 +204,7 @@ export function savePersisted() {
         countsV: COUNT_DEFAULTS_VERSION, // D9: a saved state without it that remembers a count of 1 takes the new default once (hydrateFromStorage)
       })
     );
+    clearUnreadable(STORAGE_KEY); // saved again: the damaged copy is replaced
   } catch (e) {
     // localStorage unavailable (private mode, quota, disabled) — state just won't survive a reload.
   }

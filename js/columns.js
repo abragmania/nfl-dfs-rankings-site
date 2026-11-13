@@ -4,6 +4,7 @@
 // ceiling column is offered (A21). The state helpers are pure (tests/columns.test.mjs); columnsControl wires the button and its list.
 // One copy for the classic pool (lineup-view.js) and the Showdown pool (showdown/pool.js).
 import { escapeHtml } from "./format.js";
+import { noteUnreadable, clearUnreadable } from "./storage-damage.js";
 
 /** Classic GPP, in the standard's order (A1): star, name, Sal, Proj, Own, Val, then the row controls, thumbs, lock, exclude, Min %, Max %, then the rest: the columns the retired ranked list had
  *  (C9, C10, C17): Pos (the name cell already carries the position chip, so it starts off), TwoGun's Med, Nuke, 3x% and 4x% (drawn only on a TwoGun board, on by default), Tags (on by default: the tags he researched stay on screen). */
@@ -145,9 +146,21 @@ function browserStorage() {
 /** Reads the remembered state for `scope` (the browser's storage; none or unreadable gives the standard's). `storage` is for tests; left out, the browser's is read inside the try. */
 export function loadColumns(defs, scope, storage) {
   try {
-    return parseColumns(defs, (storage === undefined ? browserStorage() : storage)?.getItem(storeKey(scope)));
+    const text = (storage === undefined ? browserStorage() : storage)?.getItem(storeKey(scope));
+    if (typeof text === "string" && !columnsReadable(text)) noteUnreadable("Column choices", storeKey(scope)); // a value is there but unusable: named at the page's foot
+    return parseColumns(defs, text);
   } catch {
     return defaultColumns(defs); // storage can throw (private browsing)
+  }
+}
+
+/** Whether stored text is a column state (JSON with an order list); anything else is damage. */
+function columnsReadable(text) {
+  try {
+    const p = JSON.parse(text);
+    return p !== null && typeof p === "object" && Array.isArray(p.order);
+  } catch {
+    return false;
   }
 }
 
@@ -155,6 +168,7 @@ function saveColumns(scope, st, storage) {
   try {
     if (st === null) storage?.removeItem(storeKey(scope));
     else storage?.setItem(storeKey(scope), JSON.stringify(st));
+    clearUnreadable(storeKey(scope)); // saved again: the damaged copy is replaced
   } catch {
     // Storage unavailable: the choice holds for this page view only.
   }

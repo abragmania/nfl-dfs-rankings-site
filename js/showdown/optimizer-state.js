@@ -10,6 +10,7 @@
 // exclude by FLEX id takes the man out of every lineup; by Captain id only his Captain spot. An include (Adam 2026-10-19
 // 10:27 PM) is a man's FLEX id: he must be in the lineup at Captain or FLEX and the optimizer picks the role.
 import { parsePct, parseWhole } from "../lineup.js";
+import { noteUnreadable, clearUnreadable } from "../storage-damage.js";
 import { limitsCrossed, crossedSentence } from "../limit-cross.js"; // item 18: Min % above Max % is refused by name
 import { countAfterDefaultsChange, COUNT_DEFAULTS_VERSION } from "../lineup-cash.js";
 import { SHOWDOWN_VARIANCE_POSITIONS, blankVariancePos, cleanVariancePos, variancePosSettings, variancePosProblem, varianceSummary } from "../variance-pos.js"; // GPP variance per position (Adam 2026-11-11)
@@ -79,18 +80,29 @@ export function cleanKeyState(raw) {
 
 /** Every showdown's saved state, {key: state}; {} when storage is empty, blocked or unreadable. */
 export function readAll(getStorage) {
+  let raw;
   try {
-    const raw = getStorage().getItem(STORAGE_KEY);
-    const parsed = raw ? JSON.parse(raw) : null;
-    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
+    raw = getStorage().getItem(STORAGE_KEY);
   } catch (e) {
-    return {}; // storage blocked or unreadable: the settings last for this page view only
+    return {}; // storage blocked: the settings last for this page view only
   }
+  if (!raw) return {};
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (e) {
+    parsed = undefined;
+  }
+  if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) return parsed;
+  noteUnreadable("Showdown optimizer settings", STORAGE_KEY); // a value is there but unusable: named at the page's foot
+  return {};
 }
 
-/** One showdown's state from storage. */
+/** One showdown's state from storage. A showdown's entry that is there but not an object is named (not a missing one). */
 export function readKeyState(getStorage, key) {
-  return cleanKeyState(readAll(getStorage)[key]);
+  const entry = readAll(getStorage)[key];
+  if (entry !== undefined && (entry === null || typeof entry !== "object" || Array.isArray(entry))) noteUnreadable("Showdown optimizer settings", STORAGE_KEY);
+  return cleanKeyState(entry);
 }
 
 /** Saves one showdown's state beside the others; false when storage is blocked (the settings then last for this page view). */
@@ -99,6 +111,7 @@ export function writeKeyState(getStorage, key, keyState) {
     const all = readAll(getStorage);
     all[key] = keyState;
     getStorage().setItem(STORAGE_KEY, JSON.stringify(all));
+    clearUnreadable(STORAGE_KEY); // saved again: the damaged copy is replaced
     return true;
   } catch (e) {
     return false;
@@ -107,10 +120,12 @@ export function writeKeyState(getStorage, key, keyState) {
 
 export const POOL_TAB_KEY = "nfldfs.sdPoolTab.v1"; // the player pool's Captain | FLEX tab (D39): one choice for every showdown, browser-only, never sent to the server
 
-/** The pool tab kept in the browser, "flex" or "cpt"; "flex" when nothing is kept or storage is blocked. */
+/** The pool tab kept in the browser, "flex" or "cpt"; "flex" when nothing is kept or storage is blocked; a stored value that is neither is named at the page's foot. */
 export function readPoolTab(getStorage) {
   try {
-    return getStorage().getItem(POOL_TAB_KEY) === "cpt" ? "cpt" : "flex";
+    const v = getStorage().getItem(POOL_TAB_KEY);
+    if (v !== null && v !== undefined && v !== "cpt" && v !== "flex") noteUnreadable("Showdown pool tab", POOL_TAB_KEY);
+    return v === "cpt" ? "cpt" : "flex";
   } catch (e) {
     return "flex"; // storage blocked or unreadable: the tab lasts for this page view only
   }
@@ -120,6 +135,7 @@ export function readPoolTab(getStorage) {
 export function writePoolTab(getStorage, tab) {
   try {
     getStorage().setItem(POOL_TAB_KEY, tab === "cpt" ? "cpt" : "flex");
+    clearUnreadable(POOL_TAB_KEY);
     return true;
   } catch (e) {
     return false;

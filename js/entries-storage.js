@@ -6,6 +6,22 @@
 import { picksStorageKey, restorePicks, sortStorageKey, restoreSort } from "./entries.js";
 import { classesStorageKey, restoreClasses, groupByContest, effectiveAssignments, ENTRIES_STORAGE_NS } from "./entries-plan.js";
 import { keepStorageKey, restoreKeep } from "./entries-fill.js";
+import { noteUnreadable, clearUnreadable } from "./storage-damage.js";
+
+const KEEP_NAME = "Entries kept rows";
+const CLASSES_NAME = "Entries contest classes";
+const PICKS_NAME = "Entries picks";
+const SORT_NAME = "Entries sort choice";
+
+/** Whether stored picks or class text is a JSON object (restorePicks and restoreClasses give {} for damage and for an empty choice alike, so this tells them apart). */
+function classesReadable(raw) {
+  try {
+    const o = JSON.parse(raw);
+    return o !== null && typeof o === "object" && !Array.isArray(o);
+  } catch {
+    return false;
+  }
+}
 
 /** One tab's storage. `ns`: its namespace; `getSaved()`: the saved lineups now; `lineupsFor(saved, f)`: the file's lineups;
  *  `onBlocked()`: storage threw (private browsing, quota, disabled), so the tab says so once (🔵 2026-10-17). */
@@ -22,6 +38,7 @@ export function createEntriesStorage({ ns = ENTRIES_STORAGE_NS, getSaved, lineup
       return {};
     }
     if (raw === null) return {};
+    if (!classesReadable(raw)) noteUnreadable(PICKS_NAME, picksStorageKey(f.file, ns)); // a value is there but unusable: named at the page's foot
     const saved = getSaved();
     // Before the saved lineups have loaded the list is empty: keep every id; effectiveAssignments drops a stale one.
     const lineups = Array.isArray(saved) && saved.length && f.slate?.key ? lineupsFor(saved, f) : null;
@@ -35,6 +52,7 @@ export function createEntriesStorage({ ns = ENTRIES_STORAGE_NS, getSaved, lineup
     try {
       if (Object.keys(eff).length) window.localStorage.setItem(picksStorageKey(f.file, ns), JSON.stringify(eff));
       else window.localStorage.removeItem(picksStorageKey(f.file, ns));
+      clearUnreadable(picksStorageKey(f.file, ns));
     } catch {
       storageBlocked();
     }
@@ -50,13 +68,17 @@ export function createEntriesStorage({ ns = ENTRIES_STORAGE_NS, getSaved, lineup
       storageBlocked();
       return null;
     }
-    return raw === null ? null : restoreKeep(raw, f.entries);
+    if (raw === null) return null;
+    const kept = restoreKeep(raw, f.entries);
+    if (kept === null) noteUnreadable(KEEP_NAME, keepStorageKey(f.file, ns)); // a value is there but unusable: named at the page's foot
+    return kept;
   }
 
   function storeKeep(fileName, keep) {
     try {
       if (keep && keep.size) window.localStorage.setItem(keepStorageKey(fileName, ns), JSON.stringify([...keep].map(String)));
       else window.localStorage.removeItem(keepStorageKey(fileName, ns));
+      clearUnreadable(keepStorageKey(fileName, ns));
     } catch {
       storageBlocked();
     }
@@ -71,7 +93,9 @@ export function createEntriesStorage({ ns = ENTRIES_STORAGE_NS, getSaved, lineup
       storageBlocked();
       return {};
     }
-    return raw === null ? {} : restoreClasses(raw, groupByContest(f.entries));
+    if (raw === null) return {};
+    if (!classesReadable(raw)) noteUnreadable(CLASSES_NAME, classesStorageKey(f.file, ns)); // a value is there but unusable: named at the page's foot
+    return restoreClasses(raw, groupByContest(f.entries));
   }
 
   function storeClasses(fileName, classes) {
@@ -79,6 +103,7 @@ export function createEntriesStorage({ ns = ENTRIES_STORAGE_NS, getSaved, lineup
     try {
       if (Object.keys(c).length) window.localStorage.setItem(classesStorageKey(fileName, ns), JSON.stringify(c));
       else window.localStorage.removeItem(classesStorageKey(fileName, ns));
+      clearUnreadable(classesStorageKey(fileName, ns));
     } catch {
       storageBlocked();
     }
@@ -87,7 +112,9 @@ export function createEntriesStorage({ ns = ENTRIES_STORAGE_NS, getSaved, lineup
   /** The stored Sort choice ("number" or "letter"), or null when storage threw. */
   function readSort() {
     try {
-      return restoreSort(window.localStorage.getItem(sortStorageKey(ns)));
+      const raw = window.localStorage.getItem(sortStorageKey(ns));
+      if (raw !== null && raw !== "letter" && raw !== "number") noteUnreadable(SORT_NAME, sortStorageKey(ns)); // a value is there but unusable
+      return restoreSort(raw);
     } catch {
       storageBlocked();
       return null;
@@ -97,6 +124,7 @@ export function createEntriesStorage({ ns = ENTRIES_STORAGE_NS, getSaved, lineup
   function storeSort(sortBy) {
     try {
       window.localStorage.setItem(sortStorageKey(ns), sortBy);
+      clearUnreadable(sortStorageKey(ns));
     } catch {
       storageBlocked();
     }

@@ -3,12 +3,14 @@
 // a line that is missing reads "line n/a" and its implied totals a dash, never 0. A toggle hides the bottom line of each tile; the choice is remembered in this browser.
 import { escapeHtml, kickoffClockPart, logoFor } from "./format.js";
 import { TEAM_BY_ABBR } from "./teams-data.js";
+import { noteUnreadable, clearUnreadable } from "./storage-damage.js";
 
 const COLLAPSE_KEY = "dfs.gamestrip.collapsed";
 
 export function getGamestripCollapsed() {
   try {
     const stored = window.localStorage.getItem(COLLAPSE_KEY);
+    if (stored !== null && stored !== "0" && stored !== "1") noteUnreadable("Game strip size", COLLAPSE_KEY); // a value is there but unusable: named at the page's foot
     return stored === null ? false : stored === "1"; // full tiles by default (the approved look)
   } catch {
     return false;
@@ -18,6 +20,7 @@ export function getGamestripCollapsed() {
 export function setGamestripCollapsed(collapsed) {
   try {
     window.localStorage.setItem(COLLAPSE_KEY, collapsed ? "1" : "0");
+    clearUnreadable(COLLAPSE_KEY);
   } catch {
     /* localStorage unavailable (private mode etc.) — the toggle still works for this page load */
   }

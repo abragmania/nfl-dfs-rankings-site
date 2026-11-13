@@ -8,6 +8,7 @@
 // console, updateMemory); a man who is gone, has a new id, or belongs to another week or slate is dropped with a sentence (cleanLineupIds says who), never thrown at and never stood in for; a lock the lineup does
 // not contain is not brought back (GPP's locks are kept only for the men in the slots; Cash's Must may have no slot; Showdown's reseat refuses a lock for a man seated in the other seat, seats.js).
 // Pure helpers first (tests/memory.test.mjs), then the storage.
+import { noteUnreadable, clearUnreadable } from "./storage-damage.js";
 export const MEMORY_KEY = "nfldfs.memory.v1";
 const VERSION = 1;
 
@@ -36,10 +37,22 @@ export function parseMemory(text) {
 
 export const emptyMemory = () => ({ v: VERSION, classic: {}, showdown: {} });
 
+/** Whether stored text is a memory object (JSON, not an array or null); anything else is damage. */
+function memoryReadable(text) {
+  try {
+    return isObject(JSON.parse(text));
+  } catch (e) {
+    return false;
+  }
+}
+
 /** Reads the memory; never throws. `storage` is for tests; left out, the browser's is read inside the try. */
 export function readMemory(storage = browserStorage()) {
   try {
-    return parseMemory(storage?.getItem(MEMORY_KEY));
+    const text = storage?.getItem(MEMORY_KEY);
+    const memory = parseMemory(text);
+    if (typeof text === "string" && !memoryReadable(text)) noteUnreadable("Remembered filters, sorts and lineups", MEMORY_KEY); // a value is there but unusable: named at the page's foot
+    return memory;
   } catch (e) {
     return emptyMemory(); // storage can throw (private browsing)
   }
@@ -96,6 +109,7 @@ export function updateMemory(mutate, storage = browserStorage()) { // a full quo
   }
   try {
     storage.setItem(MEMORY_KEY, JSON.stringify(memory));
+    clearUnreadable(MEMORY_KEY); // saved again: the damaged copy is replaced
     return true;
   } catch (first) {
     const pruned = pruneOldWeeks(memory);
@@ -103,6 +117,7 @@ export function updateMemory(mutate, storage = browserStorage()) { // a full quo
     if (!pruned) return false;
     try {
       storage.setItem(MEMORY_KEY, JSON.stringify(memory));
+      clearUnreadable(MEMORY_KEY);
       return true;
     } catch (second) {
       console.warn("The browser's memory could not be written even after dropping the older weeks; what he set lasts for this page view.", second);
