@@ -37,7 +37,8 @@ import { makeTabBoards, otherTab, tabWord } from "./js/showdown/tab-boards.js"; 
 import { tabResetQuestion } from "./js/showdown/filter-bar.js"; // Part F: Reset all's question names the tab it clears, the same words as Showdown's
 import { renderGameStrip, getGamestripCollapsed, setGamestripCollapsed } from "./js/gamestrip.js";
 import { renderFilterBar, updateFilterSummary, showButtonError, hasAnyOverride } from "./js/filterbar.js";
-import { renderTabs, isSourcesTab, sourcesTabToOpen, shownTab, renderProjectionsPanel, renderOwnershipPanel, renderLineupPanel, renderEntriesPanel } from "./js/tabs.js";
+import { renderTabs, isSourcesTab, sourcesTabToOpen, shownTab, renderProjectionsPanel, renderOwnershipPanel, renderLineupPanel, renderEntriesPanel, INJURIES_TAB } from "./js/tabs.js";
+import { renderInjuriesPanel } from "./js/injuries-tab.js"; // Adam 1:08 PM 11-13: the Injuries tab, where he overrides the D45 hiding
 import { renderSourcesPage, APPLIED_ALL_EVENT } from "./js/sources-page.js"; // the one Sources page (Adam 2026-10-18), shared with the Showdown view
 import { initExpand, syncExpandUi } from "./js/expand.js";
 import { makeFilterDebounce } from "./js/filter-debounce.js";
@@ -62,6 +63,8 @@ const el = {
   tabs: document.getElementById("tabs"),
   sourcesBtn: document.getElementById("sources-btn"), // Adam 2026-10-18: the header link to the Sources view
   sourcesPanel: document.getElementById("sources-panel"),
+  injuriesBtn: document.getElementById("injuries-btn"), // the top bar's Injuries button, beside Sources
+  injuriesPanel: document.getElementById("injuries-panel"),
   slateNote: document.getElementById("slate-note"),
   projectionsPanel: document.getElementById("projections-panel"),
   ownBanner: document.getElementById("own-banner"),
@@ -268,6 +271,7 @@ delegateBumpClicks(el.lineupMount, { rowOf: findRow, onBump: tableCallbacks.onBu
 // Adam 2026-11-12: the pool's In / Out / Auto switch on each status badge, and the Sources page's Player status table; a refusal is said in the status line (writeOnTab) and under his name.
 delegateStatusClicks(el.lineupMount, tableCallbacks.onStatus, (id) => setPoolRowError(id, el.status.textContent));
 delegateStatusClicks(el.sourcesPanel, tableCallbacks.onStatus);
+delegateStatusClicks(el.injuriesPanel, tableCallbacks.onStatus); // the Injuries tab: the same control and the same write
 // B12: the pool's row reset (the x beside a projection that carries a typed number or a bump); a refusal is said under his name in the pool.
 delegateRowReset(el.lineupMount, {
   onReset: async (id) => {
@@ -430,6 +434,7 @@ function renderDynamic() {
   renderTabs(el.tabs, activeTab, onTabClick, { lineupsCount: optimizerLineupsCount() });
   if (isSourcesTab(activeTab)) lastSourcesTab = activeTab;
   paintSourcesLink(el.sourcesBtn, isSourcesTab(activeTab));
+  paintSourcesLink(el.injuriesBtn, activeTab === INJURIES_TAB);
   syncPageLook();
 
   if (!board) {
@@ -440,6 +445,7 @@ function renderDynamic() {
     el.sourcesPanel.hidden = true;
     el.projectionsPanel.hidden = true;
     el.ownershipPanel.hidden = true;
+    el.injuriesPanel.hidden = true;
     el.lineupPanel.hidden = true;
     el.entriesPanel.hidden = true;
     // ChatGPT wish t, Adam 2026-10-17: the Showdown tab needs no main-slate board, so it stands in for the message.
@@ -458,6 +464,7 @@ function renderDynamic() {
   el.sourcesPanel.hidden = !isSourcesTab(activeTab);
   el.projectionsPanel.hidden = activeTab !== "projections";
   el.ownershipPanel.hidden = activeTab !== "ownership";
+  el.injuriesPanel.hidden = activeTab !== INJURIES_TAB;
   el.lineupPanel.hidden = activeTab !== "lineup" && activeTab !== "lineups";
   el.lineupPanel.classList.toggle("lineups-only", activeTab === "lineups"); // the Lineups tab is the Optimizer panel with only its results showing (style.css)
   el.showdownPanel.hidden = activeTab !== "showdown";
@@ -473,6 +480,8 @@ function renderDynamic() {
     renderSourcesPage(el.sourcesPanel, { board, slate: "main", showdown: false, activeKey: activeTab, onPlayersTab: onTabClick, onChanged: repaintAfterSourceSave, asOf, canSetStatus: true });
     if (activeTab === "projections") renderProjectionsPanel(el.projectionsPanel, board, sourceCallbacks);
     else renderOwnershipPanel(el.ownershipPanel, board, sourceCallbacks);
+  } else if (activeTab === INJURIES_TAB) {
+    renderInjuriesPanel(el.injuriesPanel, slateRows, { canWrite: true }); // the slate on screen's men (D57); the write is the pool's (onStatus)
   } else if (activeTab === "showdown") {
     renderShowdownTabNow();
   } else if (activeTab === "entries") {
@@ -547,6 +556,7 @@ setUploadRouter(handleFile);
 
 const paintThemeSwitch = wireThemeSwitch(document.getElementById("theme-switch"), { onChange: () => store.set({}) }); // C15: the team logos come in the theme's variant, so every list is drawn again on a switch
 wireSourcesLink(el.sourcesBtn, { onOpen: onSourcesOpen });
+wireSourcesLink(el.injuriesBtn, { onOpen: () => onTabClick(INJURIES_TAB) });
 // The Tracked button sits on both headers (main slate and Showdown); both are in index.html, so both are wired here.
 wireTrackedLink(document.getElementById("tracked-btn"));
 wirePullNow({ btn: document.getElementById("pull-now-btn"), infoEl: document.getElementById("pull-info") }); // the Pull now button (Adam 11-06)

@@ -767,6 +767,14 @@ tr:hover .st-ghost, .st-sw:focus-visible .st-ghost { opacity: 0.8; }
 .st-counts { font-weight: 700; }
 .st-counts-out { color: var(--status-out); }
 .st-counts-in { color: var(--success); }
+/* The Injuries tab (injuries-tab.js): the Player status table's look, every column whole; the search box in the card head. */
+.inj-table td.st-c-name { width: auto; }
+.inj-table .inj-c-num { text-align: right; font-variant-numeric: tabular-nums; }
+.inj-table .inj-c-src { color: var(--text-muted); }
+.inj-table .inj-c-proj { font-variant-numeric: tabular-nums; }
+.inj-table .inj-missing { color: var(--status-out); font-weight: 600; }
+.inj-search { background: var(--bg-elevated); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 4px 10px; width: 240px; font-size: var(--fs-sm); }
+.inj-search:focus { outline: none; border-color: var(--accent); }
 .sp-status .st-none { padding: 8px 18px; }
 
 /* The classic pool's extra columns (round 5, C9 and C17: what the ranked list had, offered through the Columns list): TwoGun's Med, Nuke, 3x% and 4x% (table.js TG_COLUMNS) on a TwoGun board, Pos and Tags.

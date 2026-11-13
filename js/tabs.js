@@ -54,6 +54,9 @@ export const SOURCE_TABS = Object.freeze([
 ]);
 export const isSourcesTab = (key) => SOURCE_TABS.some((t) => t.key === key);
 
+/** The Injuries tab's key (injuries-tab.js): opened by the top bar's Injuries button beside Sources, on classic and Showdown alike. */
+export const INJURIES_TAB = "injuries";
+
 /** Which table the header's Sources link opens: the one already showing, else the one last shown, else Projections. */
 export function sourcesTabToOpen(current, last) {
   if (isSourcesTab(current)) return current;
@@ -75,7 +78,7 @@ export function visibleTabs(onSite = onSitePage()) {
  *  Optimizer (an Entries tab left over on the site; rules repo 2026-10-17). */
 export function shownTab(activeTab, tabs = visibleTabs()) {
   const key = Object.prototype.hasOwnProperty.call(RETIRED_TABS, activeTab) ? RETIRED_TABS[activeTab] : activeTab;
-  return tabs.some((t) => t.key === key) || isSourcesTab(key) || HIDDEN_TAB_KEYS.includes(key) ? key : "lineup";
+  return tabs.some((t) => t.key === key) || isSourcesTab(key) || key === INJURIES_TAB || HIDDEN_TAB_KEYS.includes(key) ? key : "lineup";
 }
 
 /** `lineupsCount`: the lineups built on the Lineups tab (the approved look's count beside its label), or null for none. */

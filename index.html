@@ -46,7 +46,7 @@
       <div class="brand"><span class="mk"></span>NFL DFS<small class="mode-tag" data-only="classic">DraftKings classic</small></div>
       <div id="slate-line" class="stamps slate-line" data-only="classic">Loading...</div>
       <div id="sd-slate-line" class="stamps slate-line" data-only="showdown"></div>
-      <div class="vtabs"><nav id="tabs" data-only="classic"></nav><nav id="sd-tabs" data-only="showdown"></nav><button id="sources-btn" class="tab-btn" type="button" data-only="classic" title="Which sources feed the projections and ownership, their weights, and when each was last pulled">Sources</button><button id="sd-sources-btn" class="tab-btn" type="button" data-only="showdown" title="Which sources feed the projections and ownership, their weights, and when each was last pulled">Sources</button></div>
+      <div class="vtabs"><nav id="tabs" data-only="classic"></nav><nav id="sd-tabs" data-only="showdown"></nav><button id="sources-btn" class="tab-btn" type="button" data-only="classic" title="Which sources feed the projections and ownership, their weights, and when each was last pulled">Sources</button><button id="sd-sources-btn" class="tab-btn" type="button" data-only="showdown" title="Which sources feed the projections and ownership, their weights, and when each was last pulled">Sources</button><button id="injuries-btn" class="tab-btn" type="button" data-only="classic" title="Who the injury sources tag or hide, and your In / Out for each">Injuries</button><button id="sd-injuries-btn" class="tab-btn" type="button" data-only="showdown" title="Who the injury sources tag or hide, and your In / Out for each">Injuries</button></div>
       <span class="grow"></span>
       <div id="top-slates"><div id="mode-row" class="mode-row"></div></div>
       <div id="tg-mode" class="tg-mode" data-only="classic" hidden></div>
@@ -100,6 +100,8 @@
     <div id="ownership-panel" class="panel" hidden></div>
     <div id="showdown-panel" class="panel nl" hidden></div>
     <div id="entries-panel" class="panel" hidden></div>
+    <!-- The Injuries tab (injuries-tab.js): who the injury sources tag or hide on the slate on screen, and Adam's In / Out for each. -->
+    <div id="injuries-panel" class="panel" hidden></div>
     <div id="empty-state" class="empty-state" hidden></div>
   </main>
 
@@ -125,6 +127,7 @@
     <div id="sd-sources-panel" class="panel sources-panel" hidden></div>
     <div id="sd-projections-panel" class="panel" hidden></div>
     <div id="sd-ownership-panel" class="panel" hidden></div>
+    <div id="sd-injuries-panel" class="panel" hidden></div>
     <div id="sd-entries-panel" class="panel" hidden></div>
     <div id="sd-empty-state" class="empty-state nl" hidden></div>
     <!-- The details of a board that could not be read (the foot of the page, never the main view); filled by showdown/view.js, hidden when empty. -->
@@ -162,6 +165,8 @@
           var onSources = wantTab === "projections" || wantTab === "ownership";
           var panel = scope === "#sd-tabs" ? "#sd-sources-panel" : "#sources-panel";
           var btn = onSources ? document.querySelector(panel + ' [data-tab="' + wantTab + '"]') : document.querySelector(scope + ' [data-tab="' + wantTab + '"]');
+          // "?tab=injuries": the top bar's Injuries button (it sits beside Sources, outside the tab row), once the tab row is drawn.
+          if (wantTab === "injuries") btn = document.querySelector(scope + " .tab-btn") ? document.getElementById(scope === "#sd-tabs" ? "sd-injuries-btn" : "injuries-btn") : null;
           // Clicked on every poll until the switch exists (opening the page twice changes nothing), since app.js may not have wired the button yet.
           if (onSources && !btn) {
             var link = document.getElementById(scope === "#sd-tabs" ? "sd-sources-btn" : "sources-btn");

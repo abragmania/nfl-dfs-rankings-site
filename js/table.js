@@ -34,16 +34,19 @@ export function lineupOutTagHtml(row) {
     const mine = row?.override?.status;
     return row?.injury?.flagOnly && !mine && !(row?.flags ?? []).includes("revived") && String(row.injury.status ?? "").trim() ? feedFlagHtml(row) : "";
   }
-  if (row?.override?.status === "out") return `<span class="out-tag" title="${escapeHtml(YOURS_OUT_TITLE)}">OUT</span>`; // his own Out (2026-11-12)
-  let title = twoGunOutReason(row) ?? (twogunCallsOut(row) ? "TwoGun's board lists him out: projection 0." : null); // a served Showdown row carries no tg.call, only the status his word set
-  if (!title) {
-    const raw = (row.status || row.injury?.status || "").trim();
-    const word = raw ? (STATUS_INFO[raw.toLowerCase()]?.label ?? raw) : "out";
-    const comment = (row.injury?.comment ?? "").trim();
-    const byDk = Boolean(row.salaryStatus) && String(row.salaryStatus).trim().toLowerCase() === raw.toLowerCase();
-    title = byDk ? `DraftKings' salary file lists him ${word}.` : `Listed ${word} on the injury report${comment ? `. ${comment}` : "."}`;
-  }
-  return `<span class="out-tag" title="${escapeHtml(title)}">OUT</span>`;
+  return `<span class="out-tag" title="${escapeHtml(outReasonText(row))}">OUT</span>`;
+}
+
+/** D45: why an out row (rowIsOut) is hidden, in one sentence: the red OUT tag's hover and the Injuries tab's Hidden cell. */
+export function outReasonText(row) {
+  if (row?.override?.status === "out") return YOURS_OUT_TITLE; // his own Out (2026-11-12)
+  const title = twoGunOutReason(row) ?? (twogunCallsOut(row) ? "TwoGun's board lists him out: projection 0." : null); // a served Showdown row carries no tg.call, only the status his word set
+  if (title) return title;
+  const raw = (row.status || row.injury?.status || "").trim();
+  const word = raw ? (STATUS_INFO[raw.toLowerCase()]?.label ?? raw) : "out";
+  const comment = (row.injury?.comment ?? "").trim();
+  const byDk = Boolean(row.salaryStatus) && String(row.salaryStatus).trim().toLowerCase() === raw.toLowerCase();
+  return byDk ? `DraftKings' salary file lists him ${word}.` : `Listed ${word} on the injury report${comment ? `. ${comment}` : "."}`;
 }
 
 // TwoGun-mode markers: the same small amber dot as the A1 marker, its sentences on hover. Nothing shows in current mode

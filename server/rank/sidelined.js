@@ -59,16 +59,28 @@ export function injuryReportNote({ state, source, parts = null, espnAge = null, 
 export function otherFeedOf(espnWord, sleeperWord) {
   const s = typeof sleeperWord === "string" ? sleeperWord.trim() : "";
   if (!s || !isSidelined(s)) return null;
-  if (String(espnWord ?? "").trim().toUpperCase() === s.toUpperCase()) return null;
+  if (feedMeaning(espnWord) === feedMeaning(s)) return null; // "IR" and "Injured Reserve" say the same: no conflict
   return { source: "Sleeper", status: s };
 }
 
-/** G68: the injury note's line naming each man the two feeds disagree on, e.g. "Sleeper disagrees: Jared Goff Out (ESPN saved copy: Questionable)."; null when none.
- *  `conflicts`: [{ name, sleeper, espn }] (espn null when ESPN's record carries no word); `espnStale`: ESPN's part is its saved copy. Pure. */
+// G68: the feeds' spellings of one designation, read as one meaning before two feeds' words are compared.
+const FEED_MEANING = Object.freeze({
+  O: "OUT", OUT: "OUT", D: "DOUBTFUL", DOUBTFUL: "DOUBTFUL", IR: "IR", "INJURED RESERVE": "IR",
+  SUSP: "SUSPENDED", SUSPENDED: "SUSPENDED", SUSPENSION: "SUSPENDED", PUP: "PUP", "PHYSICALLY UNABLE TO PERFORM": "PUP",
+  NFI: "NFI", "NON-FOOTBALL INJURY": "NFI", Q: "QUESTIONABLE", QUESTIONABLE: "QUESTIONABLE"
+});
+/** One meaning for a feed's status word (the word itself, upper-cased, when it is not one of the spellings above). Pure. */
+function feedMeaning(word) {
+  const w = String(word ?? "").trim().toUpperCase().replace(/\s+/g, " ");
+  return FEED_MEANING[w] ?? w;
+}
+
+/** G68, D32: the injury note's count of men the two feeds disagree on, never their names, e.g. "Sleeper disagrees with ESPN on 3 men; ESPN's word stands (Injuries tab)."; null when none.
+ *  The names show on the Injuries tab (row.injury.otherFeed). `conflicts`: [{ name, sleeper, espn }]; `espnStale`: ESPN's part is its saved copy. Pure. */
 export function feedConflictNote(conflicts, espnStale) {
-  if (!conflicts?.length) return null;
-  const feed = espnStale ? "ESPN saved copy" : "ESPN";
-  return `Sleeper disagrees: ${conflicts.map((c) => `${c.name} ${c.sleeper} (${feed}: ${c.espn ?? "no designation"})`).join(", ")}. Sleeper's word is a flag only; ESPN's stands.`;
+  const n = conflicts?.length ?? 0;
+  if (!n) return null;
+  return `Sleeper disagrees with ${espnStale ? "ESPN's saved copy" : "ESPN"} on ${n} ${n === 1 ? "man" : "men"}; ESPN's word stands (Injuries tab).`;
 }
 
 export function entriesInjuryProblem(report) {

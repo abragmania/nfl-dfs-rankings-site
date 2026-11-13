@@ -14,7 +14,8 @@ import { deleteShowdownOverrides, putShowdownOverrides, optimizerLive, optimizer
 import { delegateStatusClicks, statusPatch } from "../status-switch.js"; // Adam 2026-11-12: the Sources page's Player status card
 import { makeTabBoards, otherTab, tabWord } from "./tab-boards.js"; // Part F: the GPP and Cash tabs' own boards
 import { renderPills, renderSlateLine, paintSourcesLink, wireSourcesLink, modePillHtml } from "../header.js";
-import { isSourcesTab, sourcesTabToOpen, onSitePage } from "../tabs.js";
+import { isSourcesTab, sourcesTabToOpen, onSitePage, INJURIES_TAB } from "../tabs.js";
+import { renderInjuriesPanel } from "../injuries-tab.js"; // Adam 1:08 PM 11-13: the Injuries tab, as classic's
 import { renderSourcesPage, sectionSources } from "../sources-page.js";
 import { escapeHtml } from "../format.js";
 import { gameTileHtml } from "./game-tile.js"; // the one game tile, the classic strip's
@@ -99,6 +100,8 @@ const els = {
   tabs: document.getElementById("sd-tabs"),
   sourcesPanel: document.getElementById("sd-sources-panel"),
   sourcesBtn: document.getElementById("sd-sources-btn"),
+  injuriesBtn: document.getElementById("sd-injuries-btn"),
+  injuriesPanel: document.getElementById("sd-injuries-panel"),
   salaryBtn: document.getElementById("sd-salary-btn"),
   slateLine: document.getElementById("sd-slate-line"), // Season, Week and Cap of this game's slate, in the shared header
   header: document.getElementById("classic-header"),
@@ -298,7 +301,10 @@ async function writeBoard(send, label, opts = {}) {
   return data !== null;
 }
 // Adam 2026-11-12: a switch in the Sources page's Player status card writes his In / Out / Auto, kept once for both tabs (as a star).
-delegateStatusClicks(els.sourcesPanel, (id, next) => writeBoard((key, tab) => putShowdownOverrides(key, statusPatch(id, next), undefined, tab), "the In / Out setting", { shared: true }));
+const writeStatus = (id, next) => writeBoard((key, tab) => putShowdownOverrides(key, statusPatch(id, next), undefined, tab), "the In / Out setting", { shared: true });
+delegateStatusClicks(els.sourcesPanel, writeStatus);
+delegateStatusClicks(els.injuriesPanel, writeStatus); // the Injuries tab: the same control and the same write
+const canSetStatus = () => supports("overrides") && !isShowdownSampleMode();
 
 // Part F: a GPP | Cash click shows that tab's own board at once when it is kept; otherwise it is read first, and the switch waits for it (a failure says so and the tab stays).
 // `switched`: a Load's switch (optimizer.js setOptimizerMode), made already; a board not kept yet paints when its read lands (tab-boards.js), a failure is said there.
@@ -407,6 +413,7 @@ function render() {
   if (isSourcesTab(state.activeTab)) state.lastSourcesTab = state.activeTab;
   renderShowdownTabs(els.tabs, state.activeTab, onTabClick, tabCounts());
   paintSourcesLink(els.sourcesBtn, isSourcesTab(state.activeTab));
+  paintSourcesLink(els.injuriesBtn, state.activeTab === INJURIES_TAB);
   if (els.figuresPill) els.figuresPill.hidden = !(els.figuresPill.innerHTML = figuresPillHtml(state.board, modePillHtml)); // none for no board or one with no figures
   if (!state.board) {
     renderEmpty();
@@ -417,6 +424,7 @@ function render() {
   els.sourcesPanel.hidden = !isSourcesTab(state.activeTab);
   els.projectionsPanel.hidden = state.activeTab !== "projections";
   els.ownershipPanel.hidden = state.activeTab !== "ownership";
+  if (els.injuriesPanel) els.injuriesPanel.hidden = state.activeTab !== INJURIES_TAB;
   els.lineupPanel.hidden = state.activeTab !== "lineup";
   if (els.lineupsPanel) els.lineupsPanel.hidden = state.activeTab !== "lineups";
   els.entriesPanel.hidden = state.activeTab !== "entries";
@@ -439,6 +447,8 @@ function render() {
     renderShowdownLineupsPanel(els.lineupsPanel, state.board, state.boardKey); // full width, no player list: Recently generated and Saved
   } else if (isSourcesTab(state.activeTab)) {
     renderSourcesView();
+  } else if (state.activeTab === INJURIES_TAB) {
+    renderInjuriesPanel(els.injuriesPanel, state.board.rows, { canWrite: canSetStatus() });
   } else if (state.activeTab === "entries") {
     renderShowdownEntriesPanel(els.entriesPanel, state.board, state.boardKey);
   }
@@ -458,7 +468,7 @@ function renderSourcesView() {
       if (why) throw new Error(why); // loadBoard never rejects: the page says "Saved, but the board could not be refreshed" from this
     },
     onSelection: () => { if (isSourcesTab(state.activeTab) && state.board) render(); }, // the ticks arrived after the first draw: the Projections table's columns follow them
-    canSetStatus: supports("overrides") && !isShowdownSampleMode(), // the Player status card's switches (Adam 2026-11-12)
+    canSetStatus: canSetStatus(), // the Player status card's switches (Adam 2026-11-12)
     asOf: { lines: [poolNoteText(state.board), savedCopiesLine(state.board), uploadStaleLine(), state.board ? ownTotalsLine(state.board.rows) : "", state.board?.injuryNote, ...selfCheckLines(state.board)].filter(Boolean) }, // item 7: the game's stamps, its figures reading and saved copies (the header's chips) and the injury report's counts, moved here
   });
   if (state.activeTab === "projections") {
@@ -492,6 +502,7 @@ function openSources() {
   render();
 }
 wireSourcesLink(els.sourcesBtn, { onOpen: openSources });
+wireSourcesLink(els.injuriesBtn, { onOpen: () => onTabClick(INJURIES_TAB) });
 els.figuresPill?.addEventListener("click", (e) => { if (e.target?.closest?.("[data-sd-open-sources]")) openSources(); });
 
 // The Salary used button opens the contest salary-used page, naming the Showdown on screen so its Back button returns here.

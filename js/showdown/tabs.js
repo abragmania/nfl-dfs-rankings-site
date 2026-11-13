@@ -13,7 +13,7 @@ import { shownRows, ownTitleText, sdLine } from "./table.js";
 import { showAllToggleHtml, wireShowAllButtons } from "../filterbar.js";
 import { sortRows, defaultDirFor } from "../state.js";
 import { sdShowAll, sdShowAllFlag } from "./show-all.js"; // C24: the Showdown's own Show all players, not classic's
-import { sortableHeadHtml, unusedColumn, onSitePage, isSourcesTab } from "../tabs.js"; // the classic sortable header and its dimmed unused-source column
+import { sortableHeadHtml, unusedColumn, onSitePage, isSourcesTab, INJURIES_TAB } from "../tabs.js"; // the classic sortable header and its dimmed unused-source column
 import { sourceIsTicked } from "../sources-page-html.js"; // the one tick predicate the Sources page and this table share
 import { injuryUnmatchedHtml } from "../unmatched.js";
 import { snapPanelMaxHeight, sourcesPageBelow } from "../scroll-panels.js"; // the classic tables' sizing step
@@ -47,7 +47,7 @@ export function visibleShowdownTabs(onSite = onSitePage()) {
  *  site, an unknown key) the Optimizer. */
 export function shownShowdownTab(key, tabs = visibleShowdownTabs()) {
   const k = Object.prototype.hasOwnProperty.call(RETIRED_SHOWDOWN_TABS, key) ? RETIRED_SHOWDOWN_TABS[key] : key;
-  return tabs.some((t) => t.key === k) || isSourcesTab(k) ? k : "lineup";
+  return tabs.some((t) => t.key === k) || isSourcesTab(k) || k === INJURIES_TAB ? k : "lineup";
 }
 
 /** A tab's label with its count when it has one above 0 (the Lineups tab: "Lineups <b>10</b>"); `counts` = {tabKey: n}. */
