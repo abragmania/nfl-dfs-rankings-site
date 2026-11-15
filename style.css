@@ -1840,7 +1840,7 @@ td.opt-exp-opp { color: var(--text-muted); } /* the cells only: the Matchup head
 .opt-exp-table td.opt-exp-pos .sd-pos, .opt-exp-table td.opt-exp-pos .pos-mini { font-size: 11px; }
 .opt-exp-table td .opt-filter-btn { vertical-align: middle; }
 .opt-exp-table td.opt-exp-pct .opt-pick.opt-filter-btn { display: inline-block; margin-left: 6px; padding: 0 6px; font-size: 11px; font-weight: 600; line-height: 16px; border: 1px solid var(--border); border-radius: 4px; background: var(--bg-elevated-2); color: var(--text-muted); }
-.opt-exp-table td.opt-exp-pct .opt-pick.opt-filter-btn.opt-pick-on { background: var(--accent); border-color: var(--accent); color: #ffffff; }
+.opt-exp-table td.opt-exp-pct .opt-pick.opt-filter-btn.opt-pick-on { background: var(--am, #ffb000); border-color: var(--am, #ffb000); color: #000000; } /* lit = NBA's amber (.opt .xf.on, a39b37e), Adam 2026-11-15 */
 .opt-exp-table td.opt-exp-pct .opt-pick.opt-filter-btn:hover { border-color: var(--accent); color: var(--text); text-decoration: none; }
 .opt-exp-table th.sd-cpt-col, .opt-exp-table td.sd-cpt-col { color: var(--amber); }
 .opt-exp-count { font-weight: 400; color: var(--text-dim); }
@@ -1860,7 +1860,8 @@ td.opt-exp-opp { color: var(--text-muted); } /* the cells only: the Matchup head
 /* A7 (2026-11-03): in an exposure row the name opens his player card and the only-lineups-with filter is this small separate button beside it. */
 .opt-exp-name .opt-pick.opt-filter-btn { display: inline-block; flex: 0 0 auto; margin-left: 6px; padding: 0 6px; font-size: 11px; font-weight: 600; line-height: 16px; border: 1px solid var(--border); border-radius: 4px; background: var(--bg-elevated-2); color: var(--text-muted); text-decoration: none; }
 .opt-exp-name .opt-pick.opt-filter-btn:hover { border-color: var(--accent); color: var(--text); text-decoration: none; }
-.opt-exp-name .opt-pick.opt-filter-btn.opt-pick-on { background: var(--accent); border-color: var(--accent); color: #ffffff; }
+.opt-exp-name .opt-pick.opt-filter-btn.opt-pick-on { background: var(--am, #ffb000); border-color: var(--am, #ffb000); color: #000000; }
+html[data-theme="light"] .nl .opt-exp-table .opt-pick.opt-filter-btn.opt-pick-on { color: #ffffff; } /* the light theme's --am is a dark amber (theme-light.css) */
 .opt-must-bar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); padding: var(--sp-2) var(--sp-3); background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 8px; }
 .opt-must-label { font-size: var(--fs-sm); font-weight: 600; color: var(--text-muted); }
 .opt-must-count { margin-left: auto; }

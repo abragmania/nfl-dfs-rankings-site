@@ -148,8 +148,8 @@ export function sortExposureEntries(entries, state, kind) {
     .map((x) => x.e);
 }
 
-/** The rows the table draws: every man the only-lineups-with filter has chosen first (whatever the Pos / Seat chip says), then the rest the chip keeps, each group in the sort of `state`, nobody twice.
- *  `isChosen(key)` is the pick's test (keys: classic = the id, seats = "cpt:<id>" / "flex:<id>" where that seat exists); none = nothing chosen. */
+/** The rows the table draws: only the men the Pos / Seat chip keeps (Adam 2026-11-15: on TE, no RB or WR, chosen or locked or not), the men the only-lineups-with filter has chosen first, then the rest,
+ *  each group in the sort of `state`, nobody twice. `isChosen(key)` is the pick's test (keys: classic = the id, seats = "cpt:<id>" / "flex:<id>" where that seat exists); none = nothing chosen. */
 export function shownExposureEntries(entries, state, kind, isChosen = null) {
   const sorted = sortExposureEntries(entries ?? [], state, kind);
   const chosen = (e) => {
@@ -157,9 +157,9 @@ export function shownExposureEntries(entries, state, kind, isChosen = null) {
     if (kind === "seats") return (e.cpt?.key != null && isChosen(e.cpt.key)) || (e.flex?.key != null && isChosen(e.flex.key));
     return e.id != null && isChosen(e.id);
   };
-  const first = sorted.filter(chosen);
   const kept = new Set(filterExposure(entries ?? [], state.filter, kind));
-  return [...first, ...sorted.filter((e) => kept.has(e) && !first.includes(e))];
+  const rows = sorted.filter((e) => kept.has(e));
+  return [...rows.filter(chosen), ...rows.filter((e) => !chosen(e))];
 }
 
 /** Classic's entries: the per-position lists of exposureOfLineups, one flat list, each carrying his position. */

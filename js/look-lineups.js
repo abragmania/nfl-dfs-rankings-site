@@ -274,7 +274,7 @@ export function exposureHtml(entries, label, marks, pick) {
       <td>${escapeHtml(e.pos ?? "")}</td>
       <td class="ex-own">${hasOwn ? escapeHtml(ownText(e.own)) : dash("no published ownership")}</td>
       ${hasOwn ? `<td class="ex-bar"><span class="xb"><i style="width:${Math.min(100, Math.max(0, e.pct ?? 0)).toFixed(1)}%"></i><u style="left:${Math.min(100, Math.max(0, e.own)).toFixed(1)}%"></u></span></td><td class="ex-diff">${diff >= 0 ? "+" : "−"}${Math.abs(diff).toFixed(1)}</td>` : `<td class="ex-bar">${dash("no published ownership")}</td><td class="ex-own">${dash("no published ownership")}</td>`}
-      <td class="ex-f">${pickButtonHtml({ id: e.id, name: e.name ?? "", chosen: pick?.isChosen(e.id), cls: "xf", innerHtml: "Filter" })}</td>
+      <td class="ex-f">${pickButtonHtml({ id: e.id, name: e.name ?? "", chosen: pick?.isChosen(e.id), cls: pick?.isChosen(e.id) ? "xf on" : "xf", innerHtml: "Filter" })}</td>
     </tr>`;
   }).join("");
   const posButtons = ["All", ...OPT_POSITIONS].map((p) => `<button type="button" class="xf${st.filter === p ? " on" : ""}" data-action="opt-exp-filter" data-filter="${p}" aria-pressed="${st.filter === p}">${p}</button>`).join("");
