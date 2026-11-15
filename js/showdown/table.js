@@ -3,7 +3,7 @@
 // (no Lev, standard A2): Player, Sal, CPT Sal, Proj, CPT Proj, Own, CPT Own, Val (one column: Captain value is identical to FLEX value since Captain price and points are both 1.5x);
 // words per optimizer standard D1, 2026-11-03. The pool's cells carry the star and the typed Proj and Own editors through `hooks` (B2, B3; showdown/pool-edit.js).
 import { escapeHtml, money, dec1, dec2, pct1 } from "../format.js";
-import { rowIsOut, opponentLabel, outTagHtml, statusTagsHtml } from "../table.js";
+import { rowIsOut, opponentLabel, outTagHtml, statusTagsHtml, markerHtml } from "../table.js";
 import { adamTouched } from "../out.js"; // the pool keeps a man Adam marked In / Out or typed a projection on listed, so his edit is never out of reach
 import { playerLineHtml, showPos, teamLogoHtml } from "../player-row.js";
 import { cardNameHtml } from "../lineup-card.js";
@@ -124,6 +124,14 @@ function ownBarCellHtml(valueNum, innerHtml) {
   return `<td class="num bar own">${bar}<span class="v">${innerHtml}</span></td>`;
 }
 
+/** G68: the classic pool's small dot (table.js markerHtml) after a figure TwoGun's copy joined by close match, `cell` "proj" (Proj, CPT Proj) or "own"
+ *  (Own, CPT Own), drawn where row.tgClose (server/showdown/board-view.js withCloseMarks) says his figures of that kind are ticked; its hover names his spelling. */
+export function closeMatchMarkHtml(row, cell = "proj") {
+  const c = row?.tgClose;
+  const his = c && typeof c.his === "string" && c.his && c[cell] === true ? c.his : null;
+  return his ? markerHtml([`TwoGun lists him as ${his}; joined as a close match (same team, position and last name).`]) : "";
+}
+
 function cellHtml(row, key, h) {
   const hooked = typeof h.figures === "function";
   switch (key) {
@@ -131,11 +139,11 @@ function cellHtml(row, key, h) {
     case "player": return `<td class="pl">${h.playerCell ? h.playerCell(row) : playerWhoHtml(row)}</td>`;
     case "salary": return `<td class="num sal">${money(row.salary)}</td>`;
     case "cptSalary": return `<td class="num sal">${money(row.cptSalary)}</td>`;
-    case "proj": return `<td class="num proj">${hooked ? hookedProjHtml(row, false, h) : projCellHtml(row.proj, row)}</td>`;
-    case "cptProj": return `<td class="num proj">${hooked ? hookedProjHtml(row, true, h) : projCellHtml(row.cptProj, row, `Captain: 1.5x price, 1.5x points. `)}</td>`;
+    case "proj": return `<td class="num proj">${hooked ? hookedProjHtml(row, false, h) : projCellHtml(row.proj, row)}${closeMatchMarkHtml(row)}</td>`;
+    case "cptProj": return `<td class="num proj">${hooked ? hookedProjHtml(row, true, h) : projCellHtml(row.cptProj, row, `Captain: 1.5x price, 1.5x points. `)}${closeMatchMarkHtml(row)}</td>`;
     case "value": return `<td class="num bar val"><span class="v">${h.valueCell ? h.valueCell(row) : gradedValueHtml(row)}</span></td>`;
-    case "ownFlex": return hooked ? ownBarCellHtml(h.figures(row, false).own, hookedOwnHtml(row, false, h)) : ownBarCellHtml(row.ownFlex, ownCellHtml(row.ownFlex, row.ownHow));
-    case "ownCpt": return hooked ? ownBarCellHtml(h.figures(row, true).own, hookedOwnHtml(row, true, h)) : ownBarCellHtml(row.ownCpt, ownCellHtml(row.ownCpt, row.ownHow));
+    case "ownFlex": return hooked ? ownBarCellHtml(h.figures(row, false).own, hookedOwnHtml(row, false, h) + closeMatchMarkHtml(row, "own")) : ownBarCellHtml(row.ownFlex, ownCellHtml(row.ownFlex, row.ownHow) + closeMatchMarkHtml(row, "own"));
+    case "ownCpt": return hooked ? ownBarCellHtml(h.figures(row, true).own, hookedOwnHtml(row, true, h) + closeMatchMarkHtml(row, "own")) : ownBarCellHtml(row.ownCpt, ownCellHtml(row.ownCpt, row.ownHow) + closeMatchMarkHtml(row, "own"));
     default: return h.ctlCell ? h.ctlCell(row, key) : "<td></td>"; // the pool's row controls (pool.js controlCellHtml)
   }
 }
