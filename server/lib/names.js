@@ -5,8 +5,12 @@ export const SUFFIX = new Set(["jr", "sr", "ii", "iii", "iv", "v"]);
 
 // The one table of a man whose sources spell his name differently: the folded name (lower case, single spaces, no
 // punctuation or suffix) a source writes -> DraftKings' spelling, which is the target (Adam 2026-11-02: TwoGun's board
-// calls Hollywood Brown "Marquise Brown"). nameKey here and normalizeName in server/twogun/normalize.js both read it.
-const NAME_ALIASES = new Map([["marquise brown", "hollywood brown"]]);
+// calls Hollywood Brown "Marquise Brown"; found 2026-11-14: TwoGun's board writes "Mitchell Tinsley" for DraftKings' "Mitch Tinsley").
+// nameKey here and normalizeName in server/twogun/normalize.js both read it.
+const NAME_ALIASES = new Map([
+  ["marquise brown", "hollywood brown"],
+  ["mitchell tinsley", "mitch tinsley"]
+]);
 
 /** A folded name ("marquise brown") in DraftKings' spelling ("hollywood brown"); any other name comes back unchanged. */
 export function aliasedName(folded) {
