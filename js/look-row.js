@@ -4,7 +4,7 @@ import { escapeHtml, money } from "./format.js";
 import { teamLogoHtml, playerTagHtml } from "./player-row.js";
 import { teamColours } from "./lineup-card.js";
 import { liftForDark } from "./team-palette.js";
-import { moneyText, projText, ownText, MISSING_WHY, NO_FIGURE } from "./look-adapter.js";
+import { moneyText, projText, ownText, valueText, MISSING_WHY, NO_FIGURE } from "./look-adapter.js";
 
 // The look's two row icons (the padlock on the working lineup and in the pool, the Exclude mark in the pool).
 export const LOCK_ICON = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><rect x="5" y="11" width="14" height="9"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>`;
@@ -41,7 +41,8 @@ const logo = (team) => teamLogoHtml(team, "logo sm", 20) || `<span class="chipx 
  * `noteHtml`: the same place with markup already made (the Showdown's slot notes carry a hover), which wins over `note`; `showPos`: the man's position chip after his name.
  */
 export function lookRowHtml(man, { slot, kind = "card", locked = false, palette = null, swap = "", ctl = "", attrs = "", cls = "", note = "", noteHtml = "", showPos = false }) {
-  const figures = `${swap}${fig("ss", moneyText(man.salary), MISSING_WHY.salary)}${fig("sp", projText(man.proj), MISSING_WHY.proj)}${fig("so", ownText(man.own), MISSING_WHY.own)}${ctl}`;
+  const valueFig = kind === "work" ? fig("sv", valueText(man.value), MISSING_WHY.value) : ""; // NBA's per-row Value, on the working lineup only (the board row's own Val, a dash when it has none)
+  const figures = `${swap}${fig("ss", moneyText(man.salary), MISSING_WHY.salary)}${fig("sp", projText(man.proj), MISSING_WHY.proj)}${valueFig}${fig("so", ownText(man.own), MISSING_WHY.own)}${ctl}`;
   const cardId = man.id != null ? ` data-card-id="${escapeHtml(man.id)}"` : "";
   const classes = kind === "work" ? `crow wkr tm${locked ? " locked" : " hand"}${cls ? ` ${cls}` : ""}` : `crow lead tm lr${locked ? " locked" : ""}${swap ? " hasswap" : ""}${cls ? ` ${cls}` : ""}`;
   return `<div class="${classes}"${cardId} style="${teamVars(man.team, palette)}"${attrs ? ` ${attrs}` : ""}><span class="sl" title="Roster slot ${escapeHtml(slot)}">${escapeHtml(slot)}</span>${logo(man.team)}${nameCell(man, note, noteHtml, showPos)}${figures}</div>`;

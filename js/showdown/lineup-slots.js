@@ -6,7 +6,6 @@ import { lookRowHtml, lookEmptyRowHtml } from "../look-row.js";
 import { showdownPalette } from "./lineup-look.js";
 import { findRow } from "./lineup-saved.js";
 import { playerFigures, reasonHtml, NOT_ON_BOARD_WORDS } from "./lineup-meter.js";
-
 // A slot's note (beside his name) carries what the old "$ · proj · own" line carried after the figures (D29: a missing figure reads missing, never zero): a man not on
 // TwoGun's board reads "(not on TwoGun's board, 0%)" (Q8), a blank ownership its reason, a listed-Out projection TwoGun's own figure on hover.
 export function notesHtml({ notOnBoard, missingReason, projNote }) {
@@ -27,7 +26,7 @@ const REMOVE = `tabindex="0" title="${REMOVE_TITLE}" aria-label="${REMOVE_TITLE}
 /** One filled slot's row: salary, projection and ownership are the board row's own (playerFigures, the Captain's included); a missing figure stays null so the row prints a dash, never 0. `attrs`: the row's own hooks (data-action, the seat). */
 export function slotPlayerHtml(row, isCpt, palette = null, attrs = "", game = null) {
   const figs = playerFigures(row, isCpt);
-  const p = { ...row, salary: isCpt ? row.cptSalary : row.salary, proj: figs.proj, own: figs.notOnBoard ? null : figs.own };
+  const p = { ...row, salary: isCpt ? row.cptSalary : row.salary, proj: figs.proj, own: figs.notOnBoard ? null : figs.own, value: row.value ?? null }; // Value: the board row's own Val figure (one for Captain and FLEX); a row with none shows a dash
   const live = rowWithGame(row, game);
   return lookRowHtml(lookMan(p, live), { slot: isCpt ? "CPT" : "FLEX", kind: "work", palette, attrs, cls: `sd-slot${isCpt ? " sd-cpt-slot" : ""}`, noteHtml: notesHtml(figs), showPos: true }); // every Showdown seat is CPT or FLEX, so the row names his position
 }

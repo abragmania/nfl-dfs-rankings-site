@@ -1,7 +1,7 @@
 // The NFL adapter of the copied NBA look (PROJECT.md Part 4 item 5, NBA commit a39b37e): the look's drawing code takes only these neutral shapes, filled from NFL's own board rows and lineup figures.
 // Nothing here computes a figure of its own: a number the row or the lineup carries is passed through, a number it does not carry is null, and a null figure is drawn as a dash with its reason (router Data rules, G5),
 // never as 0. Pure: no DOM (tests/look-adapter.test.mjs).
-import { money, dec1, pct1 } from "./format.js";
+import { money, dec1, dec2, pct1 } from "./format.js";
 import { shownTotal } from "./totals.js";
 import { opponentLabel, rowIsOut } from "./table.js";
 
@@ -22,6 +22,7 @@ export function lookMan(figures, row = null) {
     salary: num(f.salary),
     proj: num(f.proj),
     own: num(f.own),
+    value: num(f.value), // the board row's own projection per $1,000 (the pool's Val); never computed here
     out: rowIsOut(live),
     tagRow: live,
   };
@@ -31,12 +32,14 @@ export function lookMan(figures, row = null) {
 export const moneyText = (v) => (num(v) === null ? NO_FIGURE : money(v));
 export const projText = (v) => (num(v) === null ? NO_FIGURE : dec1(v));
 export const ownText = (v) => (num(v) === null ? NO_FIGURE : pct1(v));
+export const valueText = (v) => (num(v) === null ? NO_FIGURE : dec2(v));
 
 /** The reason a dash shows, by figure, for its hover (the row builder uses them). */
 export const MISSING_WHY = Object.freeze({
   salary: "no salary in the DraftKings file",
   proj: "no projection",
   own: "no published ownership",
+  value: "no value figure (needs a projection and a salary)",
 });
 
 /** The totals line's figures for a list of men's {salary, proj, own}, from the rows as shown (A11): {used, left, proj, own, value, perOpen}, each null when any man lacks the figure or there is nobody yet (`value`, the projection per $1,000 of salary used, and `perOpen`, salary left over the open seats, are null in those cases too). `cap`: DraftKings' salary cap. Pure. */

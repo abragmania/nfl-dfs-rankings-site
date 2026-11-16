@@ -69,7 +69,29 @@ const panelHeadHtml = () => sharedPanelHead(opt.mode, { error: opt.error, errorT
 
 // ---- the settings ----
 
-export const openSetops = new Set(); // which of the panel's collapsed settings groups are open; page-only
+// The Build settings fold (NBA's "Build settings ▸", Adam 11-16) and the QB stacks fold inside it (Adam 12:27 PM 11-16): folded by default, and each one's open or closed is remembered in this browser under its own key.
+// Every storage read and write is in try/catch, so it works with storage blocked.
+export const FOLD_KEY = "build-settings";
+export const FOLD_STORAGE_KEY = "nfldfs.buildSettingsOpen";
+export const QB_FOLD_KEY = "qb-stacks";
+export const QB_FOLD_STORAGE_KEY = "nfldfs.qbStacksOpen";
+const REMEMBERED = Object.freeze({ [FOLD_KEY]: FOLD_STORAGE_KEY, [QB_FOLD_KEY]: QB_FOLD_STORAGE_KEY });
+const foldStore = () => { try { return typeof localStorage === "undefined" ? null : localStorage; } catch { return null; } }; // reading the property itself can throw when storage is blocked
+function readFoldOpen(storageKey) {
+  try { return foldStore()?.getItem(storageKey) === "1"; } catch { return false; } // unreadable storage: folded
+}
+function saveFoldOpen(storageKey, open) {
+  try { foldStore()?.setItem(storageKey, open ? "1" : "0"); } catch { /* storage blocked or full: the fold works for this page view, it is just not remembered */ }
+}
+class SetopSet extends Set {
+  add(key) { const had = this.has(key); super.add(key); if (REMEMBERED[key] && !had) saveFoldOpen(REMEMBERED[key], true); return this; }
+  delete(key) { const had = super.delete(key); if (REMEMBERED[key] && had) saveFoldOpen(REMEMBERED[key], false); return had; }
+}
+export const openSetops = new SetopSet(); // which of the panel's collapsed settings groups are open; page-only, except the two folds above (remembered)
+for (const [key, storageKey] of Object.entries(REMEMBERED)) if (readFoldOpen(storageKey)) Set.prototype.add.call(openSetops, key);
+
+/** The Build settings fold: one row ("Build settings ▸") over everything a Build rarely needs changed; `bodyHtml` is drawn always, hidden while folded (its ids and wiring stay in the page). */
+const foldHtml = (bodyHtml) => `<button type="button" class="setop setop-fold" data-setop="${FOLD_KEY}" aria-expanded="${openSetops.has(FOLD_KEY)}">Build settings<span>${openSetops.has(FOLD_KEY) ? "▾" : "▸"}</span></button><div class="foldb"${openSetops.has(FOLD_KEY) ? "" : " hidden"}>${bodyHtml}</div>`;
 
 const setopHtml = (key, label, summary, bodyHtml) => `<button type="button" class="setop" data-setop="${key}" aria-expanded="${openSetops.has(key)}">${escapeHtml(label)}<em>${escapeHtml(summary)}</em><span>${openSetops.has(key) ? "▾" : "▸"}</span></button><div class="setopb"${openSetops.has(key) ? "" : " hidden"}>${bodyHtml}</div>`;
 
@@ -83,27 +105,30 @@ export function stackSummary(o = opt) {
   return `QB + ${side(o.stackOwn, o.stackOwnOrMore, "teammate")} · ${side(o.stackOpp, o.stackOppOrMore, "opponent")}`;
 }
 
-function capsSummary(board, lockedList) {
+function capsSummary(board) {
   const caps = OPT_POSITIONS.map((pos) => [pos, parsePct(opt.maxExp[pos])]).filter(([, n]) => typeof n === "number" && Number.isFinite(n)).map(([pos, n]) => `${pos} ${n}%`);
-  const custom = Object.keys(qbStacksPayload(opt.qb.entries, boardRowMap(board), listedQbIds(activeSlateRows(board)), null, lockedList)).length;
   const avoided = activeSlateGames(board).filter((g) => opt.avoid.has(String(g.id ?? g))).length;
-  const parts = [...caps, opt.spreadDst ? "spread defenses" : "", avoided ? `${avoided} avoided` : "", custom ? `${plural(custom, "custom QB stack")}` : ""].filter(Boolean);
+  const parts = [...caps, opt.spreadDst ? "spread defenses" : "", avoided ? `${avoided} avoided` : ""].filter(Boolean);
   return parts.length ? parts.join(" · ") : "none";
 }
 
+/** The QB stacks heading's count (Adam 2026-11-16: its own always-open section, under the caps row): the custom stacks the build sends, or "none". */
+function qbStacksSummary(board, lockedList) {
+  const custom = Object.keys(qbStacksPayload(opt.qb.entries, boardRowMap(board), listedQbIds(activeSlateRows(board)), null, lockedList)).length;
+  return custom ? plural(custom, "custom QB stack") : "none";
+}
+
 const heldLineHtml = (html) => `<div class="hint2 opt-lockinfo" id="opt-lockinfo" title="${html}">${html}</div>`;
-const heldNames = (rs) => escapeHtml(rs.map((r) => r.name).join(", "));
 
 function gppSettingsHtml(rowById, board) {
   const games = activeSlateGames(board);
-  const { inLineup, padlocked } = heldSplit(rowById);
-  const heldParts = [inLineup.length ? `${inLineup.length} in the lineup: ${heldNames(inLineup)}` : "", padlocked.length ? `${padlocked.length} locked: ${heldNames(padlocked)}` : ""].filter(Boolean);
   const lockedList = lockedIds(state.slots, state.locks);
   const countInput = numberBoxHtml(`type="number" min="1" max="${OPT_MAX_COUNT}" id="opt-count" value="${escapeHtml(opt.count)}" aria-label="How many lineups"`, countNote(opt.count, OPT_MAX_COUNT), "opt-unit-note");
   const uniqueInput = numberBoxHtml(`type="number" min="1" max="${OPT_MAX_UNIQUE}" id="opt-min-unique" value="${escapeHtml(opt.minUnique)}" aria-label="Minimum unique players between lineups"`, `Maximum ${OPT_MAX_UNIQUE}`, "opt-unit-note");
   const teamSelect = selectHtml("opt-max-team", "Max per team", MAX_TEAM_OPTIONS, opt.maxPerTeam, (v) => (v === "" ? "No limit" : v));
-  const row1 = `<div class="set4">
-      <label title="Each keeps the men in your slots, locked or not">Lineups to make${countInput}</label>
+  // NBA's way: "Lineups to make" stays in sight above the fold; Min unique, Max per team and Objective go inside it.
+  const countRow = `<div class="cntrow"><label title="Each keeps the men in your slots, locked or not">Lineups to make${countInput}</label></div>`;
+  const row1 = `<div class="set4 set3">
       <label title="Between any two lineups, maximum ${OPT_MAX_UNIQUE}">Min unique players${uniqueInput}</label>
       <label title="Not applied to the QB's team or his opponent">Max per team${teamSelect}</label>
       <label title="The lineups are built by projection">Objective<input value="Projection" readonly tabindex="-1" /></label>
@@ -118,12 +143,16 @@ function gppSettingsHtml(rowById, board) {
   const qbBody = `${qbListHtml(qbRows, opt.qb, lockedList)}${qbPanelsHtml(qbRows, opt.qb, qbGlobals(), activeSlateRows(board), OPT_STACK_OWN_MAX, OPT_STACK_OPP_MAX, lockedList)}`;
   // GPP variance per position (Adam 2026-11-11): one compact row under the four boxes, blank by default; a box that is not a percent is marked and blocks Build.
   const varianceRow = `<div class="opt-var-line">${varianceRowHtml(opt.variancePos, CLASSIC_VARIANCE_POSITIONS, "data-opt-var")}</div>`;
-  return `${row1}
+  // Adam 2026-11-16: the QB stacks are their own section under the caps row; since 12:27 PM it folds on its own (default folded, remembered), and its count stays on the heading.
+  const qbOpen = openSetops.has(QB_FOLD_KEY);
+  const qbSection = `<button type="button" class="setop" id="opt-qb-stacks" data-setop="${QB_FOLD_KEY}" aria-expanded="${qbOpen}">QB stacks<em>${escapeHtml(qbStacksSummary(board, lockedList))}</em><span>${qbOpen ? "▾" : "▸"}</span></button><div class="setopb"${qbOpen ? "" : " hidden"}>${qbBody}</div>`;
+  // Adam 11-16: the "N in the lineup: names" line is gone from the main view (the box below it says the same, and nothing reads it).
+  return `${countRow}${foldHtml(`${row1}
     ${varianceRow}
     ${setopHtml("stack", "Stack", stackSummary(), stackBody)}
     ${setopHtml("rules", "Rules", activeRuleNames(), ruleRows)}
-    ${setopHtml("caps", "Position caps, spread defenses, avoid games, custom QB stacks", capsSummary(board, lockedList), `${capRow}${spreadRow}${avoidRow}<div class="opt-subtitle">Per-QB overrides</div>${qbBody}`)}
-    ${heldLineHtml(heldParts.join(" · "))}`;
+    ${setopHtml("caps", "Position caps, spread defenses, avoid games", capsSummary(board), `${capRow}${spreadRow}${avoidRow}`)}
+    ${qbSection}`)}`;
 }
 
 const activeRuleNames = () => OPT_RULES.filter((r) => RULE_GROUPS.build.includes(r.key) && ruleOn(opt.rules, r.key)).map((r) => r.label).join(" · ") || "none on";
@@ -141,10 +170,10 @@ function cashSettingsHtml(rowById, board) {
   const avoidBody = games.length ? settingChipsRowHtml("Avoid game", avoidChipsHtml(games, new Set(opt.cash.avoid))) : "";
   const avoided = games.filter((g) => opt.cash.avoid.includes(String(g.id ?? g))).length;
   return `<div class="cntrow"><label title="The best first, then the next best">Lineups to make${numberBoxHtml(`type="number" min="1" max="${OPT_MAX_COUNT}" id="opt-cash-count" value="${escapeHtml(opt.cash.count)}" aria-label="How many lineups"`, countNote(opt.cash.count, OPT_MAX_COUNT), "opt-unit-note")}</label></div>
-    <div class="set2">${setopHtml("cash-team", "Max per team", opt.cash.maxPerTeam === "" ? "no limit" : opt.cash.maxPerTeam, settingRowHtml("Max per team", teamSelect, "Every team, the quarterback's included"))}${setopHtml("cash-avoid", "Avoid games", avoided ? `${avoided} avoided` : "none", avoidBody)}</div>
-    ${basis.blocked ? `<div class="hint2 opt-warn">${escapeHtml(basis.text)}</div>` : basis.basis === "proj" ? "" : `<div class="hint2">Build by <span class="cash-basis">${escapeHtml(basis.text)}</span></div><div class="hint2 cash-typed">${CASH_TYPED_WORDS}</div>`}
+    ${basis.blocked ? `<div class="hint2 opt-warn">${escapeHtml(basis.text)}</div>` : ""}${foldHtml(`<div class="set2">${setopHtml("cash-team", "Max per team", opt.cash.maxPerTeam === "" ? "no limit" : opt.cash.maxPerTeam, settingRowHtml("Max per team", teamSelect, "Every team, the quarterback's included"))}${setopHtml("cash-avoid", "Avoid games", avoided ? `${avoided} avoided` : "none", avoidBody)}</div>
+    ${basis.blocked || basis.basis === "proj" ? "" : `<div class="hint2">Build by <span class="cash-basis">${escapeHtml(basis.text)}</span></div><div class="hint2 cash-typed">${CASH_TYPED_WORDS}</div>`}
     <div class="hint2 cash-key" aria-label="What Lock, Want and Fine do">${CASH_KEY_HTML}</div>
-    ${heldLineHtml(cashHeadLine(held.padlocked, wantRowsFor(slateKeyOf(board), rowById), held.inLineup))}`;
+    ${heldLineHtml(cashHeadLine(held.padlocked, wantRowsFor(slateKeyOf(board), rowById), held.inLineup))}`)}`;
 }
 
 // ---- the working lineup ----
@@ -178,7 +207,7 @@ function workingLineupHtml(rowById, board) {
   const rows = LINEUP_SLOTS.map((name, i) => workRowHtml(name, i, rowById, palette)).join("");
   return `<div class="lu wk">
       <div class="luh"><span>${opt.mode === "cash" ? "Cash" : "GPP"} lineup · ${filled} of ${LINEUP_SLOTS.length} seats filled</span><span class="luhr">${locked} locked${clear}</span></div>
-      <div class="wkh"><span>Slot</span><span class="wkhp">Player</span><span>Salary</span><span>Proj</span><span>Own</span><span></span></div>
+      <div class="wkh"><span>Slot</span><span class="wkhp">Player</span><span>Salary</span><span>Proj</span><span>Value</span><span>Own</span><span></span></div>
       ${rows}
       ${totalsHtml(men, board, filled)}
     </div>`;

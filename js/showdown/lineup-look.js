@@ -24,7 +24,7 @@ export function showdownPalette(board) {
 export function lineupHeadHtml({ mode = null, filled, seats = 6, locked = 0, confirm = null }) {
   const word = mode === "cash" ? "Cash lineup" : mode === "gpp" ? "GPP lineup" : "Lineup";
   const clear = anchorHtml(`<button type="button" id="sd-lineup-clear-all-btn" class="clr">Clear lineup</button>`, confirm === "clear" ? confirmHtml(CLEAR_QUESTION, { data: "clear" }) : "", { align: "swap" });
-  return `<div class="luh"><span>${word} · ${filled} of ${seats} seats filled</span><span class="luhr">${locked} locked${clear}</span></div><div class="wkh"><span>Slot</span><span class="wkhp">Player</span><span>Salary</span><span>Proj</span><span>Own</span><span></span></div>`;
+  return `<div class="luh"><span>${word} · ${filled} of ${seats} seats filled</span><span class="luhr">${locked} locked${clear}</span></div><div class="wkh"><span>Slot</span><span class="wkhp">Player</span><span>Salary</span><span>Proj</span><span>Value</span><span>Own</span><span></span></div>`;
 }
 
 /** Save as and `Save working lineup`, the classic's `.two` row (look.css `.act .two`); the Build button is in the Build row above it (optimizer standard A13), and no Objective choice is drawn while Projection is the only objective (A21). */

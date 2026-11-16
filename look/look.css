@@ -87,9 +87,11 @@ body:not(.nl-page) #classic-header{padding:0 var(--sp-5)}
 .nl .opt .lu.wk .wkh span{text-align:right}
 .nl .opt .lu.wk .wkh span:first-child,.nl .opt .lu.wk .wkh .wkhp{text-align:left}
 .nl .opt .lu.wk .wkh span:first-child{text-align:center}
+.nl .opt .lu.wk .wkh span:nth-child(5),.nl .opt .lu.wk .wkr .sv{display:none} /* the per-row Value is drawn from 901px up (below), a phone has no room for it */
 .nl .opt .lu.wk .wkr{height:30px;font-size:13px}
 .nl .opt .lu.wk .wkr>.sl{align-self:stretch;display:flex;align-items:center;justify-content:center;border:0;background:var(--am);color:#000;font-size:11px;font-weight:900;letter-spacing:.3px;padding:0}
 .nl .opt .lu.wk .wkr.locked>.sl{background:var(--gr)}
+.nl .opt .lu.wk .wkr.empty>.sl{background:none;color:var(--mu)}
 .nl .opt .lu.wk .wkr .logo.sm{width:20px;height:20px}
 .nl .opt .lu.wk .wkr .sn1{gap:4px;display:flex;align-items:baseline;min-width:0}
 .nl .opt .lu.wk .wkr .pn{font:700 13px "Space Grotesk",sans-serif;letter-spacing:0}
@@ -268,12 +270,14 @@ body:not(.nl-page) #classic-header{padding:0 var(--sp-5)}
 html[data-theme="light"] .nl .opt .xb{background:#dfdfd8}
 .nl .ext tr.exp-off td{color:var(--am)}
 /* Calm look: bright amber only on the selected tab or segment, the Build button, the sort arrow, projections and stars. */
-.nl #lineups .crow.lr>.sl,.nl .opt .lu.wk .wkr>.sl,.nl .opt .lu.wk .wkr.empty>.sl,.nl .opt .lu.wk .wkr.hand>.sl,.nl .opt .lo .crow .sl{background:#1d1d23;border:1px solid #2e2e36;color:#b9b9c2;font-weight:900;box-shadow:none}
-.nl #lineups .crow.lr.locked>.sl,.nl .opt .lu.wk .wkr.locked>.sl{background:#1d1d23;border:1px solid #2f5f47;color:#5fb98a}
-.nl .opt .lu.wk .wkr.locked .lkd{color:#5fb98a;border:1px solid #2f5f47;background:none}
-html[data-theme="light"] .nl #lineups .crow.lr>.sl,html[data-theme="light"] .nl .opt .lu.wk .wkr>.sl,html[data-theme="light"] .nl .opt .lu.wk .wkr.empty>.sl,html[data-theme="light"] .nl .opt .lo .crow .sl{background:#ececea;border:1px solid #c8c8c1;color:#3c3c42}
-html[data-theme="light"] .nl #lineups .crow.lr.locked>.sl,html[data-theme="light"] .nl .opt .lu.wk .wkr.locked>.sl{background:#ececea;border:1px solid #6fb191;color:#2e7a58}
-.nl .capbar i,.nl .lu.wk .capbar i{background:#5a6f86;box-shadow:none}
+/* The working lineup's slot boxes (amber, dark text; green while locked) and salary bar (amber) are NBA's own (Adam 11-16, second pass); the Lineups cards and the Left out rows keep the dark neutral box. */
+.nl #lineups .crow.lr>.sl,.nl .opt .lo .crow .sl{background:#1d1d23;border:1px solid #2e2e36;color:#b9b9c2;font-weight:900;box-shadow:none}
+.nl #lineups .crow.lr.locked>.sl{background:#1d1d23;border:1px solid #2f5f47;color:#5fb98a}
+.nl .opt .lu.wk .wkr.locked .lkd{color:var(--gr);border:1px solid var(--gr);background:none}
+html[data-theme="light"] .nl #lineups .crow.lr>.sl,html[data-theme="light"] .nl .opt .lo .crow .sl{background:#ececea;border:1px solid #c8c8c1;color:#3c3c42}
+html[data-theme="light"] .nl #lineups .crow.lr.locked>.sl{background:#ececea;border:1px solid #6fb191;color:#2e7a58}
+.nl .capbar i{background:#5a6f86;box-shadow:none}
+.nl .lu.wk .capbar i{background:var(--am);box-shadow:none}
 .nl .capbar{height:3px}.nl .lu.wk .capbar{height:3px}
 .nl .opt .xb i{background:#5a6f86}
 .nl .opt .ext td.ex-pct{color:var(--tx);font-weight:600}
@@ -304,6 +308,106 @@ html[data-theme="light"] .nl .opt .lch button.sm,html[data-theme="light"] .nl #l
 .nl #lineups .lt-tagl{display:inline-flex;align-items:center;gap:4px;font-size:11px;color:var(--mu)}
 .nl .capt .lt-med{color:inherit;margin:0}
 .nl .opt .hint2{margin-top:6px}
+/* The Build settings fold (NBA's "Build settings ▸"): one row; what is inside it is drawn hidden while folded (lineup-view.js foldHtml). */
+.nl .opt .setop-fold{padding:9px 16px;font-size:13px;font-weight:700;color:var(--mu)}
+.nl .opt .setop-fold span{float:none;margin-left:6px;color:var(--mu)}
+.nl .opt .foldb[hidden]{display:none}
+@media (min-width:901px){.nl .opt .cntrow{padding:6px 16px}.nl .opt .cntrow label{font-size:13px;gap:14px}.nl .opt .cntrow input{width:72px;height:32px;font-size:16px}.nl .opt .cntrow .opt-unit-note{font-size:11px}}
+/* The lineup box at NBA's scale (Adam 11:20 AM 11-16, PROJECT.md Part 4 item 5; sizes from the pinned NBA board.css `.lu.wk`): head, seat rows, Empty seats, salary bar, totals, Build, Save row and Left out, on the classic and Showdown panels.
+   Window over 1830px (the panel is the 700px column): the full scale. 901 to 1830px (a 420-520px panel, or the Showdown panel above its pool): the same shape one step smaller. A phone (900px and under) keeps the compact rules above. */
+@media (min-width:1831px){
+  .nl .opt .lu.wk{padding:0 16px 12px}
+  .nl .opt .lu.wk .luh{padding:10px 0 8px}
+  .nl .opt .lu.wk .luh>span:first-child{font-size:21px;font-weight:800;letter-spacing:.2px}
+  .nl .opt .lu.wk .luhr{font-size:14px;gap:12px}
+  .nl .opt .lu.wk .clr{min-height:34px;padding:3px 16px;font-size:13.5px;font-weight:700}
+  .nl .opt .lu.wk .wkh,.nl .opt .lu.wk .wkr{grid-template-columns:50px 30px minmax(0,1fr) 78px 50px 50px 64px 30px;column-gap:8px;padding-left:12px;padding-right:12px}
+  .nl .opt .lu.wk .wkh span:nth-child(5),.nl .opt .lu.wk .wkr .sv{display:block}
+  .nl .opt .lu.wk .wkh{height:28px;font-size:11.5px;font-weight:700;letter-spacing:1.1px}
+  .nl .opt .lu.wk .wkr{height:46px;font-size:14px}
+  .nl .opt .lu.wk .wkr.tm{box-shadow:inset 5px 0 var(--t1)}
+  .nl .opt .lu.wk .wkr>.sl{margin:5px 0;font-size:17px;letter-spacing:.4px}
+  .nl .opt .lu.wk .wkr .logo.sm,.nl .opt .lu.wk .wkr .chipx.sm{width:30px;height:30px}
+  .nl .opt .lu.wk .wkr .sn1{gap:8px}
+  .nl .opt .lu.wk .wkr .pn{font:800 18px "Space Grotesk",sans-serif;letter-spacing:-.1px}
+  .nl .opt .lu.wk .wkr .slt{font-size:13.5px;margin-left:2px}
+  .nl .opt .lu.wk .wkr .pos{font-size:12px}
+  .nl .opt .lu.wk .wkr .slnote{font-size:12px}
+  .nl .opt .lu.wk .wkr .ss,.nl .opt .lu.wk .wkr .sp,.nl .opt .lu.wk .wkr .sv,.nl .opt .lu.wk .wkr .so{font:800 18px "Space Grotesk",sans-serif}
+  .nl .opt .lu.wk .wkr .lkb,.nl .opt .lu.wk .wkr .lkd{width:30px;height:30px}
+  .nl .opt .lu.wk .wkr .lkb{color:var(--tx);background:color-mix(in srgb,var(--tx) 8%,transparent);border:1px solid color-mix(in srgb,var(--tx) 45%,transparent)}
+  .nl .opt .lu.wk .wkr .lkb:hover{border-color:var(--am);color:var(--am)}
+  .nl .opt .lu.wk .wkr.empty{outline:2px dashed color-mix(in srgb,var(--mu) 45%,transparent);outline-offset:-5px;background:color-mix(in srgb,var(--mu) 5%,transparent)}
+  .nl .opt .lu.wk .wkr.empty>.sl{background:none;border:0;color:var(--mu);font-size:15px}
+  .nl .opt .lu.wk .wkr.empty .sn b{font:600 20px "Space Grotesk",sans-serif}
+  .nl .opt .lu.wk .wkr.empty .eh{font:400 14px "Space Grotesk",sans-serif}
+  .nl .opt .lu.wk .cap{margin-top:12px}
+  .nl .opt .lu.wk .capbar{height:8px}
+  .nl .opt .lu.wk .cap .capt{align-items:flex-end;gap:10px;padding:12px 4px 18px;font-size:11.5px;font-weight:700;letter-spacing:.9px;text-transform:uppercase;color:var(--mu)}
+  .nl .opt .lu.wk .cap .capt span{position:relative;flex-direction:column;align-items:flex-start;gap:4px}
+  .nl .opt .lu.wk .cap .capt b{font:800 25px "Space Grotesk",sans-serif;letter-spacing:0;text-transform:none;color:var(--tx);font-variant-numeric:tabular-nums}
+  .nl .opt .lu.wk .cap .capt span:nth-child(3) b{color:var(--am)}
+  .nl .opt .lu.wk .cap .capt span:nth-child(4) b{color:var(--bl)}
+  .nl .opt .lu.wk .cap .capt .tval b{color:var(--gr)}
+  .nl .opt .lu.wk .cap .capt .overcap b{color:var(--rd)}
+  .nl .opt .lu.wk .cap .capt .of{position:absolute;left:0;top:100%;margin-top:3px;white-space:nowrap;font:600 11.5px "Space Grotesk",sans-serif;letter-spacing:0;text-transform:none;color:var(--dim)}
+  .nl .opt .lu.wk .lt-read{padding:8px 4px 0;font-size:13px}
+  .nl .opt .act{margin:6px 16px 10px}
+  .nl .opt .act .go{height:46px;padding:0 12px;font-size:17px;letter-spacing:.3px}
+  .nl .opt .act .gorun .gomsg,.nl .opt .act .gorun .opt-building,.nl .opt .act .gorun .opt-done{font-size:13px}
+  .nl .opt .act .two{margin-top:8px;gap:10px}
+  .nl .opt .act .two .ol{height:38px;padding:0 12px;font-size:14px}
+  .nl .opt .act .savebox{gap:8px;font-size:13px}
+  .nl .opt .act .savebox input{width:150px;height:38px;padding:0 10px;font-size:14px}
+  .nl .opt .lobox .sec{padding:14px 16px 4px;font:800 19px "Space Grotesk",sans-serif;color:var(--tx)}
+  .nl .opt .lonote{padding:0 16px 6px;font-size:13px}
+  .nl .opt .lo{padding:4px 16px 8px}
+  .nl .opt .lo .crow{grid-template-columns:56px 32px minmax(0,1fr) 96px 78px 84px 82px;gap:10px;padding:6px 4px 4px 12px}
+  .nl .opt .lo .crow .sl{align-self:center;height:42px;display:flex;align-items:center;justify-content:center;font-size:15px}
+  .nl .opt .lo .crow .logo.sm{width:30px;height:30px}
+  .nl .opt .lo .crow .pn{font:800 18px "Space Grotesk",sans-serif}
+  .nl .opt .lo .crow .sn small{display:block;white-space:normal;font-size:13px;line-height:1.25}
+  .nl .opt .lo .crow :is(.ss,.sp,.so){font:800 18px "Space Grotesk",sans-serif}
+  .nl .opt .lo .crow i{font-size:11px;margin-right:5px}
+  .nl .opt .lo .xf{min-height:34px;padding:0 12px;font-size:13px}
+  .nl .opt .lo .way{padding:0 0 8px 78px;font-size:13px}
+  .nl .opt .lo-sub{font-size:13px}
+}
+@media (min-width:901px) and (max-width:1830px){
+  .nl .opt .lu.wk .luh{padding:14px 0 10px}
+  .nl .opt .lu.wk .luh>span:first-child{font-size:18px;font-weight:800}
+  .nl .opt .lu.wk .clr{min-height:30px;font-size:13px}
+  .nl .opt .lu.wk .wkh,.nl .opt .lu.wk .wkr{grid-template-columns:46px 28px minmax(0,1fr) 76px 52px 50px 60px 30px;column-gap:7px;padding-left:10px;padding-right:8px}
+  .nl .opt .lu.wk .wkh span:nth-child(5),.nl .opt .lu.wk .wkr .sv{display:block}
+  .nl .opt .lu.wk .wkh{height:28px;font-size:11px}
+  .nl .opt .lu.wk .wkr{height:46px}
+  .nl .opt .lu.wk .wkr.tm{box-shadow:inset 4px 0 var(--t1)}
+  .nl .opt .lu.wk .wkr>.sl{margin:6px 0;font-size:15px}
+  .nl .opt .lu.wk .wkr .logo.sm,.nl .opt .lu.wk .wkr .chipx.sm{width:28px;height:28px}
+  .nl .opt .lu.wk .wkr .pn{font:800 17px "Space Grotesk",sans-serif}
+  .nl .opt .lu.wk .wkr .slt{font-size:12.5px}
+  .nl .opt .lu.wk .wkr .ss,.nl .opt .lu.wk .wkr .sp,.nl .opt .lu.wk .wkr .sv,.nl .opt .lu.wk .wkr .so{font:800 17px "Space Grotesk",sans-serif}
+  .nl .opt .lu.wk .wkr .lkb,.nl .opt .lu.wk .wkr .lkd{width:28px;height:28px}
+  .nl .opt .lu.wk .wkr.empty>.sl{background:none;border:0;color:var(--mu)}
+  .nl .opt .lu.wk .wkr.empty{outline:2px dashed color-mix(in srgb,var(--mu) 45%,transparent);outline-offset:-5px}
+  .nl .opt .lu.wk .wkr.empty .sn b{font:600 18px "Space Grotesk",sans-serif}
+  .nl .opt .lu.wk .wkr.empty .eh{font-size:12.5px}
+  .nl .opt .lu.wk .capbar{height:6px}
+  .nl .opt .lu.wk .cap .capt{flex-wrap:nowrap;align-items:flex-end;gap:6px;padding:12px 2px 20px;font-size:10px;font-weight:700;letter-spacing:.3px;text-transform:uppercase}
+  .nl .opt .lu.wk .cap .capt span{position:relative;flex-direction:column;align-items:flex-start;gap:3px}
+  .nl .opt .lu.wk .cap .capt b{font:800 20px "Space Grotesk",sans-serif;text-transform:none;color:var(--tx)}
+  .nl .opt .lu.wk .cap .capt span:nth-child(3) b{color:var(--am)}
+  .nl .opt .lu.wk .cap .capt span:nth-child(4) b{color:var(--bl)}
+  .nl .opt .lu.wk .cap .capt .tval b{color:var(--gr)}
+  .nl .opt .lu.wk .cap .capt .overcap b{color:var(--rd)}
+  .nl .opt .lu.wk .cap .capt .of{position:absolute;left:0;top:100%;margin-top:2px;white-space:nowrap;font-size:10.5px;letter-spacing:0;text-transform:none;color:var(--dim)}
+  .nl .opt .act .go{height:46px;padding:0 12px;font-size:16px}
+  .nl .opt .act .two .ol{height:38px;font-size:13px}
+  .nl .opt .act .savebox input{height:38px}
+  .nl .opt .lobox .sec{font:800 17px "Space Grotesk",sans-serif;color:var(--tx)}
+  .nl .opt .lo .crow .pn{font:800 16px "Space Grotesk",sans-serif}
+  .nl .opt .lo .crow :is(.ss,.sp,.so){font:800 15px "Space Grotesk",sans-serif}
+}
 .nl .cs .tabs button.on.fine{background:color-mix(in srgb,var(--tx) 18%,transparent);border-color:var(--mu);color:var(--tx)}
 /* One bar at any wide screen: the slate stamps give way first. */
 @media (min-width:1900px){.nl .top{flex-wrap:nowrap}.nl .top .stamps{flex:0 1 auto;min-width:0;overflow:hidden;white-space:nowrap}.nl .top .stamps span{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis}.nl .top .grow{flex:0 1 8px;min-width:0}.nl .top .mode-tag{display:none}}

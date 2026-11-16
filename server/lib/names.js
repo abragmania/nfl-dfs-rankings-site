@@ -13,10 +13,14 @@ export function aliasedName(folded) {
   return NAME_ALIASES.get(folded) ?? folded;
 }
 
-export function nameKey(name) {
+/** A name folded: accents and punctuation gone, lower case, generational suffix dropped, DraftKings' spelling of the one aliased man, single spaces kept. The one copy (nameKey, close-name.js). */
+export function foldName(name) {
   const toks = name.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z0-9 ]+/g, "").split(/\s+/).filter(Boolean);
   while (toks.length > 1 && SUFFIX.has(toks[toks.length - 1])) toks.pop();
-  return aliasedName(toks.join(" ")).replace(/ /g, "");
+  return aliasedName(toks.join(" "));
+}
+export function nameKey(name) {
+  return foldName(name).replace(/ /g, "");
 }
 export function lastKey(name) {
   const toks = name.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z0-9 ]+/g, "").split(/\s+/).filter(Boolean);
