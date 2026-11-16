@@ -8,7 +8,7 @@ import { CLASSIC_GPP_COLUMNS, CLASSIC_CASH_COLUMNS, CLASSIC_TG_KEYS, loadColumns
 import { store, matchesPosition, filterRows, sortRows, passesProjFloor, activeSlateRows, isTwoGunMode, DEFAULT_SORT } from "./state.js";
 import { sortableHeadHtml } from "./tabs.js";
 import { gradedCellHtml, rowIsOut, STATUS_INFO, TG_COLUMNS, tgCellHtml, tagsCellHtml, tagsCellTitle, markerHtml, twoGunMarkerTexts, projFlagMarkerHtml, opponentLabel } from "./table.js";
-import { playerTagHtml, teamLogoHtml, showPos } from "./player-row.js";
+import { playerTagHtml, teamLogoHtml, showPos, poolMatchupHtml, poolWhyHtml, poolPosHtml, poolNoLogoTeamHtml } from "./player-row.js";
 import { rowsGradedForView } from "./grade.js";
 import { adamTouched } from "./out.js"; // a man Adam marked In / Out or typed a projection on stays listed under the floor (his edit is never out of reach)
 import { cardNameHtml } from "./lineup-card.js"; // cardNameHtml: the short name a phone shows (style.css, max-width 700px)
@@ -18,7 +18,7 @@ import { bumpControlHtml, bumpFigureOnlyHtml } from "./bump-control.js"; // sinc
 import { messageIsFor, rowMessageHtml, TONE_WARN } from "./row-message.js";
 import { poolPicker } from "./lineup-pool-fit.js"; // A18, D3: what a click on each pool row may do, and why a row is greyed
 import { typedFigureHtml, resetXHtml } from "./typed-proj.js"; // B12: the figure span and the x beside it that clears his typed numbers and bump (shared with the Showdown pool)
-import { statusSwitchHtml } from "./status-switch.js"; // Adam 2026-11-12: In / Out / Auto on the status badge (app.js delegates the clicks)
+import { statusSwitchHtml } from "./status-switch.js"; // the status mark as a plain label: Adam 1:35 PM 11-16, a click near a name never flips In / Out (the switch lives on the Injuries tab and the Sources page's Player status card)
 import { crossedNoteHtml } from "./limit-cross.js"; // item 18: Min % above Max % is said under the Max box
 import { refusalNoteHtml } from "./limit-box.js"; // item 7: a refused Min % / Max % text is drawn beside its row until the next press
 import { state, opt, LINEUP_SLOTS, SALARY_CAP, dkIdentity } from "./lineup.js";
@@ -284,10 +284,10 @@ function rightRowHtml(row, picked, placedSet, posShown, maxMap = {}, minMap = {}
   const noWrite = !canWrite();
   const ownNum = typeof row.own === "number" && Number.isFinite(row.own) ? row.own : null;
   const ownBar = ownNum === null ? `<span class="b off"></span>` : `<span class="b"><i style="width:${Math.min(100, (ownNum / 30) * 100).toFixed(0)}%"></i></span>`;
-  // The name cell (A1): logo, name, position and injury letter on the first line, team and matchup (D43) on the second, the click's message under them. The TwoGun dot follows the name for a status that changed after his board was made.
+  // The name cell (A1): logo, name, position and injury letter, then the matchup (D43) beside them (under them on a narrow screen), the click's message under them. The TwoGun dot follows the name for a status that changed after his board was made.
   const cells = {
     star: () => `<td class="ctl"><button type="button" class="fav${row.starred ? " on" : ""}" title="${row.starred ? "Starred" : "Star"}" data-action="toggle-star" data-id="${idAttr(id)}"${poolCallbacks?.onToggleStar ? "" : " disabled"}>${row.starred ? "★" : "☆"}</button></td>`,
-    player: () => `<td class="pl"><div class="who">${teamLogoHtml(row.team, "logo", 24)}<div class="whot"><div class="l1"><span class="name player-name" title="${name}">${cardNameHtml(row)}</span>${statusSwitchHtml(row, playerTagHtml(row), { canWrite: Boolean(poolCallbacks?.onStatus) })}${posShown && row.pos ? `<span class="pos">${escapeHtml(row.pos)}</span>` : ""}${markerHtml(twoGunMarkerTexts(row, "status"))}</div><div class="l2">${escapeHtml(row.team ?? "")}${opponentLabel(row) ? ` · ${escapeHtml(opponentLabel(row))}` : ""}${greyed && picked.short ? ` · <span class="blk-why">${escapeHtml(picked.short)}</span>` : ""}</div></div></div>${poolRowMessageHtml(id)}</td>`, // a greyed row says why under his name (walkthrough friction), the full sentence on hover
+    player: () => `<td class="pl"><div class="who">${posShown ? poolPosHtml(row.pos) : ""}${teamLogoHtml(row.team, "logo", 24)}<div class="whot"><div class="l1"><span class="name player-name" title="${name}">${cardNameHtml(row)}</span>${statusSwitchHtml(row, playerTagHtml(row), { canWrite: false })}${poolNoLogoTeamHtml(row)}${markerHtml(twoGunMarkerTexts(row, "status"))}</div><div class="l2">${poolMatchupHtml(row, opponentLabel(row))}</div>${greyed ? poolWhyHtml(picked.short) : ""}</div></div>${poolRowMessageHtml(id)}</td>`, // the matchup sits beside the name (look.css, 901px up), a greyed row's few words after it, the full sentence on hover
     salary: () => `<td class="num sal">${money(row.salary)}${markerHtml(twoGunMarkerTexts(row, "salary"))}</td>`,
     proj: () => `<td class="num proj"><div class="editable-cell" data-field="proj" data-id="${idAttr(id)}">${projCellInner(row, { canReset: !noWrite })}</div></td>`,
     own: () => `<td class="num bar own">${ownBar}<span class="v"><div class="editable-cell" data-field="own" data-id="${idAttr(id)}">${ownCellInner(row, { canReset: !noWrite })}</div></span></td>`,

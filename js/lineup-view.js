@@ -18,6 +18,7 @@ import { lookMan, lookTotals, projText, ownText, NO_FIGURE } from "./look-adapte
 import { lookRowHtml, lookEmptyRowHtml, padlockHtml, lookCapHtml } from "./look-row.js";
 import { lineupsScreenHtml } from "./look-lineups.js";
 import { varianceRowHtml, variancePosSettings, varianceSummary, CLASSIC_VARIANCE_POSITIONS } from "./variance-pos.js"; // GPP variance per position (Adam 2026-11-11)
+import { slateParts, splitLive, summaryText, requestText, teamGameBodyHtml, ownBodyHtml } from "./lineup-count-rules.js"; // GPP team, game and ownership rules (items 8 and 9, Adam 2026-11-16)
 import {
   state, opt, LINEUP_SLOTS, SALARY_CAP, MAX_TEAM_OPTIONS, OPT_MAX_COUNT, OPT_MAX_UNIQUE, OPT_STACK_OWN_MAX, OPT_STACK_OPP_MAX, OPT_DEFAULT_UNIQUE,
   OPT_RULES, RULE_GROUPS, boardRowMap, effectiveObjective, qbGlobals, listedQbIds, lineupsCountNow,
@@ -146,11 +147,16 @@ function gppSettingsHtml(rowById, board) {
   // Adam 2026-11-16: the QB stacks are their own section under the caps row; since 12:27 PM it folds on its own (default folded, remembered), and its count stays on the heading.
   const qbOpen = openSetops.has(QB_FOLD_KEY);
   const qbSection = `<button type="button" class="setop" id="opt-qb-stacks" data-setop="${QB_FOLD_KEY}" aria-expanded="${qbOpen}">QB stacks<em>${escapeHtml(qbStacksSummary(board, lockedList))}</em><span>${qbOpen ? "▾" : "▸"}</span></button><div class="setopb"${qbOpen ? "" : " hidden"}>${qbBody}</div>`;
+  // Items 8 and 9 (Adam 2026-11-16): NBA's way, two more fold rows with a chip line each; the closed line says the rules in force, so nothing hides while folded.
+  const countRules = opt.countRules ?? [];
+  const parts = slateParts(activeSlateRows(board), games);
   // Adam 11-16: the "N in the lineup: names" line is gone from the main view (the box below it says the same, and nothing reads it).
   return `${countRow}${foldHtml(`${row1}
     ${varianceRow}
     ${setopHtml("stack", "Stack", stackSummary(), stackBody)}
     ${setopHtml("rules", "Rules", activeRuleNames(), ruleRows)}
+    ${setopHtml("team-game", "Team and game rules", summaryText(countRules, parts, false, opt.countRulesDropped), teamGameBodyHtml(countRules, parts))}
+    ${setopHtml("own-rules", "Ownership rules", summaryText(countRules, parts, true, opt.countRulesDropped), ownBodyHtml(countRules))}
     ${setopHtml("caps", "Position caps, spread defenses, avoid games", capsSummary(board), `${capRow}${spreadRow}${avoidRow}`)}
     ${qbSection}`)}`;
 }
@@ -348,7 +354,7 @@ export function optSummaryText(board) {
   const caps = buildGenerateSettings({ playerMax: inPool(playerMaxFor(slateKey)), playerMin: inPool(playerMinFor(slateKey)) });
   const playerCapCount = new Set([...Object.keys(caps.playerMaxExposure ?? {}), ...Object.keys(caps.playerMinExposure ?? {})]).size;
   const variance = variancePosSettings(opt.variancePos, CLASSIC_VARIANCE_POSITIONS); // as buildGenerateSettings sends it
-  const shown = { ...opt, maxExp, count: requestCount(opt.count), minUnique: parseWhole(opt.minUnique, 1, OPT_MAX_UNIQUE, OPT_DEFAULT_UNIQUE), objective: effectiveObjective(opt.objective), varianceText: variance ? varianceSummary(variance) : "" };
+  const shown = { ...opt, maxExp, count: requestCount(opt.count), minUnique: parseWhole(opt.minUnique, 1, OPT_MAX_UNIQUE, OPT_DEFAULT_UNIQUE), objective: effectiveObjective(opt.objective), varianceText: variance ? varianceSummary(variance) : "", countText: requestText(splitLive(opt.countRules ?? [], slateParts(rows, activeSlateGames(board))).live) };
   return activeRulesSummary(shown, { games: activeSlateGames(board), starredQbCount: qualifiers === 0 && lockedQb ? null : qualifiers, qbOwnCount, playerCapCount });
 }
 

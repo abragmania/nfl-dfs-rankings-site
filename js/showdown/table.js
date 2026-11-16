@@ -5,7 +5,7 @@
 import { escapeHtml, money, dec1, dec2, pct1 } from "../format.js";
 import { rowIsOut, opponentLabel, outTagHtml, statusTagsHtml, markerHtml } from "../table.js";
 import { adamTouched } from "../out.js"; // the pool keeps a man Adam marked In / Out or typed a projection on listed, so his edit is never out of reach
-import { playerLineHtml, showPos, teamLogoHtml } from "../player-row.js";
+import { playerLineHtml, showPos, teamLogoHtml, poolMatchupHtml, poolWhyHtml, poolPosHtml, poolNoLogoTeamHtml } from "../player-row.js";
 import { cardNameHtml } from "../lineup-card.js";
 import { sdShowAll } from "./show-all.js";
 import { rowWithGame } from "./lineup-slots.js";
@@ -89,13 +89,13 @@ function projCellHtml(value, row, extraTitlePrefix = "") {
 // (`playerCell(row)`), the bumped figure in the Proj cell or, on the Captain tab, the CPT proj cell (`projCell(row, proj, isCpt)`), the Val cell (`valueCell(row)`), a class on the row (`rowClass(row)`) and the row controls' cells
 // (`ctlCell(row, key)`), and the row's own attributes (`rowAttrs(row)`: the pool's click, keyboard stop and title). Without hooks a row is drawn as the retired Rankings tab drew it.
 
-/** The Player cell's inside, the classic pool's (lineup-pool.js): logo, name with his In / Out switch (`tagWrap(tag)` draws the switch's place; null keeps the tag) and position on the first line, team and opponent on the second.
- *  `extra`: what follows the position on the first line (the seat tag and padlock); `why`: the few words of a greyed row's reason after the matchup. */
+/** The Player cell's inside, the classic pool's (lineup-pool.js): position chip (fixed width, left of the logo: Adam 1:45 PM 11-16), logo, name with his status label (`tagWrap(tag)` draws its place; null keeps the tag) on the first line, the opponent beside them (look.css; under them on a narrow screen), the team only for a team with no logo (poolMatchupHtml).
+ *  `extra`: what follows the position on the first line (the seat tag and padlock); `why`: the few words of a greyed row's reason (plain text) after the matchup. */
 export function playerWhoHtml(row, { nameHtml = cardNameHtml(row), tagWrap, extra = "", why = "", game = null } = {}) {
   const tag = outTagHtml(row) || statusTagsHtml(row);
   const tagInner = typeof tagWrap === "function" ? tagWrap(tag) ?? tag : tag;
-  const opp = opponentLabel(rowWithGame(row, game)); // `game`: the board's game, so the second line reads `WAS · @NYG` / `NYG · v WAS` as classic's does (the one helper, opponentLabel)
-  return `<div class="who">${teamLogoHtml(row.team, "logo", 24)}<div class="whot"><div class="l1"><span class="name player-name" title="${escapeHtml(row.name ?? "")}">${nameHtml}</span>${tagInner}${row.pos ? `<span class="pos">${escapeHtml(row.pos)}</span>` : ""}${extra}</div><div class="l2">${escapeHtml(row.team ?? "")}${opp ? ` · ${escapeHtml(opp)}` : ""}${why}</div></div></div>`;
+  const opp = opponentLabel(rowWithGame(row, game)); // `game`: the board's game, so the matchup reads `@NYG` / `v WAS` as classic's does (the one helper, opponentLabel)
+  return `<div class="who">${poolPosHtml(row.pos)}${teamLogoHtml(row.team, "logo", 24)}<div class="whot"><div class="l1"><span class="name player-name" title="${escapeHtml(row.name ?? "")}">${nameHtml}</span>${tagInner}${poolNoLogoTeamHtml(row)}${extra}</div><div class="l2">${poolMatchupHtml(row, opp)}</div>${poolWhyHtml(why)}</div></div>`;
 }
 
 // A pool figure's hover (the retired Captain | FLEX lists' rule, D41): the board's projHow (a Captain's with its 1.5x line) plus what TwoGun

@@ -191,9 +191,29 @@ body:not(.nl-page) #classic-header{padding:0 var(--sp-5)}
 .nl .l1{display:flex;align-items:center;gap:6px;white-space:nowrap}
 .nl .l1 .name{overflow:hidden;text-overflow:ellipsis;min-width:0;cursor:pointer}.nl .l2{color:var(--dim);font-size:11px}
 .nl .who .logo{width:24px;height:24px;flex-shrink:0}
+/* The pool's matchup (PROJECT.md Part 4 Monday 11-16 item 7, Adam 10:01 AM 11-15): the opponent beside the name at the size of the lineup box's, in the muted but legible colour, never cut; the name gives first
+   (its ellipsis). 1:21 PM 11-16: the matchup is its own narrow column at the Player cell's right edge (`.l2`, 46px, every row's starts at one left edge) in the row's own text size; a greyed row's few words (.blk-why) are the line under both.
+   Under 901px it stays the second line under the name, in the same readable type. */
+.nl td.pl .l2{font:500 13.5px/16px "Space Grotesk",sans-serif;color:var(--mu)}
+.nl td.pl .l2 .mu{white-space:nowrap}
+.nl td.pl .l3{font:600 12.5px/15px "Space Grotesk",sans-serif;color:var(--am);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+@media (min-width:901px){
+  .nl td.pl .who>.whot{flex:1 1 auto}
+  .nl td.pl .whot{display:grid;grid-template-columns:auto 42px;column-gap:6px;align-items:center}
+  .nl td.pl .whot>.l1{gap:5px}
+  .nl td.pl .l1 .name{overflow:visible;flex:none} /* a full name is never cut: the Player column grows to the longest name (the table sizes to content, last block of this file) */
+  .nl td.pl .whot>.l3{grid-column:1 / -1;width:0;min-width:100%} /* a greyed row's few words fill the cell but never widen it */
+}
+/* The position chip (Adam 1:21 PM 11-16): smaller, one hue per position so the eye tells them apart (dark values here, the light theme's below); a position with no variable keeps the amber chip. */
+.nl{--pc-qb:#ff6b8a;--pc-rb:#39e58c;--pc-wr:#5aa9ff;--pc-te:#ff9a3d;--pc-dst:#b794ff;--pc-k:#e8d44d}
+html[data-theme="light"] .nl{--pc-qb:#b8163f;--pc-rb:#0d7a44;--pc-wr:#1f5fbf;--pc-te:#a85200;--pc-dst:#6a37c2;--pc-k:#7a6a00}
+.nl td.pl .pos{font-size:10.5px;font-weight:800;line-height:13px;width:30px;padding:0;text-align:center;border:0;border-radius:2px;flex:none;color:var(--pc,var(--am));background:color-mix(in srgb,var(--pc,var(--am)) 18%,transparent)} /* 1:35 PM 11-16: smaller again, no border */
+.nl td.pl .pos-qb{--pc:var(--pc-qb)}.nl td.pl .pos-rb{--pc:var(--pc-rb)}.nl td.pl .pos-wr{--pc:var(--pc-wr)}.nl td.pl .pos-te{--pc:var(--pc-te)}.nl td.pl .pos-dst{--pc:var(--pc-dst)}.nl td.pl .pos-k{--pc:var(--pc-k)}
 .nl td .editable-cell{justify-content:flex-end;display:inline-flex;align-items:center}
 .nl td.proj .cell-value.is-override{outline:1px solid var(--am);padding:0 3px}
-.nl td.proj .row-reset,.nl td.own .row-reset{color:var(--mu);font-size:10px;background:none;border:0;cursor:pointer;padding:0 0 0 2px}
+.nl td.proj .row-reset,.nl td.own .row-reset{color:var(--mu);font-size:12px;background:none;border:0;cursor:pointer;padding:0 0 0 2px}
+.nl .tbl .bump-fig .bump-from{font-size:12px;line-height:12px;color:var(--mu)} /* what a bumped figure was bumped from: readable (Adam 1:21 PM 11-16) */
+.nl #thead th,.nl #sd-thead th{font-size:11.5px}
 .nl td.val .grade-cell{background:none;padding:0;color:inherit;font-weight:700}
 .nl td.val .grade-v1{color:var(--gr)}
 .nl td.val .grade-v2{color:color-mix(in srgb,var(--gr) 70%,var(--tx))}
@@ -455,9 +475,11 @@ html[data-theme="light"] .nl .vtabs button.on,html[data-theme="light"] .nl .vtab
   .nl #tbody td.pl .who{gap:0}
   /* The injury letter moves to the matchup line, so the name keeps the room beside the position (walkthrough friction: names clipped beside a Q badge). */
   .nl #tbody td.pl .whot{position:relative}
-  .nl #tbody td.pl .l1>:is(.status-badge,.out-tag){position:absolute;left:0;top:18px;font-size:9.5px;line-height:12px;padding:0 3px;margin:0}
+  .nl #tbody td.pl .l1>:is(.status-badge,.out-tag,.st-pill){position:absolute;left:0;top:18px;font-size:9.5px;line-height:12px;padding:0 3px;margin:0}
+  .nl #tbody td.pl .l1>.st-pill{height:12px;min-width:0}
   .nl #tbody td.pl .whot:has(.l1>.status-badge) .l2{padding-left:16px}
   .nl #tbody td.pl .whot:has(.l1>.out-tag) .l2{padding-left:30px}
+  .nl #tbody td.pl .whot:has(.l1>.st-pill) .l2{padding-left:28px} /* his own In / Out label (status-switch.js, a plain label in the pool) sits on the matchup line too, so the matchup starts after it */
   .nl .tbl #thead th{box-shadow:none}
   .nl .tbl .lineup-pool-empty{display:block}
   /* The panel is one closed line above the player list until it is opened. */
@@ -603,3 +625,26 @@ body.nl-page #showdown-main{max-width:none;padding:0;width:auto}
 .nl .sd-opt .lu.wk .wkr.empty .eh{white-space:nowrap}
 .nl .sd-opt .opt-results .opt-sub{font-size:12px;color:var(--mu);padding:2px 0}
 .nl .sd-opt .opt-results .opt-note{font-size:11px;color:var(--mu)}
+/* The pool packs the way NBA's does (board.css a39b37e: "the name column keeps to its content, every column packs left beside it, the last column takes the spare width"; Adam 1:46 PM 11-16): from 901px up the table sizes its
+   columns to their content (the Player column to the longest full name on the slate, so the matchup column sits just after it and every matchup starts at one left edge), the row buttons keep their 24px size in
+   NBA's narrow columns, and the last column takes what is left. Placed last so it follows every width rule above. */
+@media (min-width:901px){
+  .nl .tbl table{table-layout:auto}
+  .nl #thead th[class*="k-"],.nl #sd-thead th[class*="k-"]{width:auto}
+  .nl #thead th.k-lim,.nl #sd-thead th.k-lim{min-width:50px} /* NBA's Min % / Max % column: the 44px box with 3px each side */
+  .nl #thead th.k-lock,.nl #thead th.k-excl,.nl #sd-thead th.k-lock,.nl #sd-thead th.k-excl{padding-left:7px;padding-right:7px} /* the heads Lock and Exclude read apart */
+  .nl #thead th:last-child,.nl #tbody td:last-child,.nl #sd-thead th:last-child,.nl #sd-tbody td:last-child{width:100%}
+  /* Even spacing (Adam 1:52 PM 11-16: "an enormous hole between columns" and the buttons "crammed"): the figure columns are as wide as their figures (a row with no Own figure draws no bar, so no hole before its dash);
+     the row buttons are NBA's 24px squares with 7px each side, the thumbs pair 10px each side, the Min % / Max % boxes 5px each side; no head touches the next. */
+  .nl td.bar .b.off{display:none}
+  .nl td.bar .v{min-width:36px}
+  .nl td.own .b{margin-right:6px}
+  .nl #thead th.num,.nl #sd-thead th.num{padding-left:8px;padding-right:8px}
+  .nl #tbody td.ctl:not(:first-child),.nl #sd-tbody td.ctl:not(:first-child){padding-left:7px;padding-right:7px}
+  .nl #thead th.ctl:not(:first-child),.nl #sd-thead th.ctl:not(:first-child){padding-left:7px;padding-right:7px}
+  .nl #tbody td.bmp,.nl #sd-tbody td.bmp,.nl #thead th.bmp,.nl #sd-thead th.bmp{padding-left:10px;padding-right:10px}
+  .nl #tbody td.lim,.nl #sd-tbody td.lim{padding-left:5px;padding-right:5px}
+  .nl #thead th.k-lim,.nl #sd-thead th.k-lim{min-width:56px}
+  .nl #thead th.k-tg,.nl #sd-thead th.k-tg{padding-left:9px;padding-right:9px}
+  .nl #tbody td.tg-col{padding-left:9px;padding-right:9px}
+}

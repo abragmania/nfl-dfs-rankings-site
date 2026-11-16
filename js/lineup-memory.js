@@ -3,6 +3,7 @@
 // the exposure table's sort and filter). The pure cleaners are here
 // (tests/lineup-memory.test.mjs); lineup-memory-sync.js reads and writes through them. A remembered setting that is not valid reads as the default, never as an error.
 import { cleanExpState, OPT_POSITIONS } from "./lineup-exposure.js";
+import { cleanStoredRules } from "./lineup-count-rules.js"; // GPP team, game and ownership rules (items 8 and 9)
 
 const isObject = (v) => v !== null && typeof v === "object" && !Array.isArray(v);
 const text = (v, fallback) => (typeof v === "string" ? v : fallback);
@@ -22,6 +23,7 @@ export function settingsToStore(opt) {
     stackOppOrMore: opt.stackOppOrMore,
     spreadDst: opt.spreadDst === true,
     variancePos: { ...opt.variancePos }, // GPP Variance % per position, as typed
+    countRules: (opt.countRules ?? []).map((r) => ({ ...r })), // GPP team, game and ownership rules (items 8 and 9), per slate
     avoid: [...opt.avoid],
     cashAvoid: [...(opt.cash?.avoid ?? [])],
     cashCount: opt.cash?.count,
@@ -36,7 +38,7 @@ export function settingsToStore(opt) {
  * `ruleKeys`: the rule names that exist; `teamOptions`: the Max per team values offered; `stackOwnMax`, `stackOppMax`: the largest teammate and opponent counts offered.
  */
 export function cleanSettings(raw, defaults, { ruleKeys, teamOptions, stackOwnMax, stackOppMax, cleanQb = (v) => (isObject(v) ? v : {}) }) {
-  const out = { ...defaults, maxExp: { ...defaults.maxExp }, ...(defaults.variancePos ? { variancePos: { ...defaults.variancePos } } : {}), rules: { ...defaults.rules }, avoid: [...defaults.avoid], cashAvoid: [...(defaults.cashAvoid ?? [])], exp: { ...defaults.exp }, qb: {} };
+  const out = { ...defaults, ...(defaults.countRules ? { countRules: [...defaults.countRules] } : {}), maxExp: { ...defaults.maxExp }, ...(defaults.variancePos ? { variancePos: { ...defaults.variancePos } } : {}), rules: { ...defaults.rules }, avoid: [...defaults.avoid], cashAvoid: [...(defaults.cashAvoid ?? [])], exp: { ...defaults.exp }, qb: {} };
   if (!isObject(raw)) return out;
   out.count = text(raw.count, out.count);
   out.minUnique = text(raw.minUnique, out.minUnique);
@@ -49,6 +51,11 @@ export function cleanSettings(raw, defaults, { ruleKeys, teamOptions, stackOwnMa
   if (typeof raw.stackOppOrMore === "boolean") out.stackOppOrMore = raw.stackOppOrMore;
   if (typeof raw.spreadDst === "boolean") out.spreadDst = raw.spreadDst;
   if (out.variancePos && isObject(raw.variancePos)) for (const pos of Object.keys(out.variancePos)) out.variancePos[pos] = text(raw.variancePos[pos], out.variancePos[pos]); // the defaults name the positions
+  if (raw.countRules !== undefined) {
+    const read = cleanStoredRules(raw.countRules); // a rule the server's check refuses is left out, counted (the closed lines say it) and warned about
+    out.countRules = read.rules;
+    out.countRulesDropped = read.dropped;
+  }
   const games = (list, fallback) => (Array.isArray(list) ? [...new Set(list.filter((g) => typeof g === "string"))] : fallback);
   out.avoid = games(raw.avoid, out.avoid);
   out.cashAvoid = games(raw.cashAvoid, out.cashAvoid ?? []);

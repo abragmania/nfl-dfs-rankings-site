@@ -15,9 +15,10 @@ import { validateIdArray } from "./id-checks.js";
 import { CEILING_REMOVED_SENTENCE } from "./objective.js";
 import { validateQbStacks } from "./qb-stacks.js";
 import { slotsFull, lockedSlotWords, minSlotProblem } from "./soft.js";
-import { medianOf, CASH_NOTES } from "./cash.js";
+import { medianOf, CASH_NOTES, COUNT_RULES_CASH_SENTENCE } from "./cash.js";
 import { lineupModeOf } from "../lineups/validate.js";
 import { varianceRequestError, resolveVariance, VARIANCE_CASH_SENTENCE, CLASSIC_VARIANCE_POSITIONS } from "./sd-variance.js";
+import { validateCountRules, poolShortfalls } from "./count-rules.js";
 
 // An older saved request may still carry the D55 rule keys D73 replaced; they are accepted (and must be booleans).
 const GENERATE_RULE_KEYS = [...RULE_KEYS, ...LEGACY_RULE_KEYS];
@@ -25,7 +26,8 @@ const GENERATE_BODY_KEYS = new Set(["slate", "settings"]);
 export const GENERATE_SETTING_KEYS = new Set([
   "count", "minUnique", "locks", "excludes", "catchers", "maxExposure", "rules", "maxPerTeam", "allowRbGames", "avoidGames",
   "objective", "stackOwn", "stackOwnOrMore", "stackOpp", "stackOppOrMore", "playerMaxExposure", "playerMinExposure", "qbStacks", "spreadDst", "mode",
-  "variancePos", "variance" // GPP variance per position, or the older one percent at every position (sd-variance.js)
+  "variancePos", "variance", // GPP variance per position, or the older one percent at every position (sd-variance.js)
+  "countRules" // GPP team, game and ownership rules (count-rules.js, items 8 and 9, Adam 2026-11-16)
 ]);
 // Cash mode job 2b, 2026-10-17: what a cash request may not send, each with the engine's own sentence (cash.js CASH_NOTES).
 const CASH_REFUSED = [
@@ -33,7 +35,8 @@ const CASH_REFUSED = [
   { keys: ["stackOwn", "stackOwnOrMore", "stackOpp", "stackOppOrMore", "qbStacks"], error: CASH_NOTES.stacks },
   { keys: ["rules"], error: CASH_NOTES.rules },
   { keys: ["maxExposure", "playerMaxExposure", "playerMinExposure", "spreadDst"], error: CASH_NOTES.exposure },
-  { keys: ["minUnique"], error: CASH_NOTES.unique } // Cash: no minimum unique, Adam 2026-10-17
+  { keys: ["minUnique"], error: CASH_NOTES.unique }, // Cash: no minimum unique, Adam 2026-10-17
+  { keys: ["countRules"], error: COUNT_RULES_CASH_SENTENCE } // team, game and ownership rules are GPP only
 ];
 // D73: the QB stack's two numbers, in Adam's words for the refusal sentence.
 const GENERATE_STACK_NUMBERS = [
@@ -254,9 +257,29 @@ export function validateGenerateSettings(raw, ctx) {
     if (unknown.length) return { error: `${name} names a game that is not on this slate: ${unknown.join(", ")}` };
     out[name] = games;
   }
+  if (raw.countRules !== undefined && raw.countRules !== null) {
+    const rulesChecked = countRulesChecked(raw.countRules, ctx);
+    if (rulesChecked.error) return { error: rulesChecked.error };
+    if (rulesChecked.rules.length) out.countRules = rulesChecked.rules;
+  }
   const minError = minPctError(out, ctx);
   if (minError) return { error: minError };
   return { settings: out };
+}
+
+/** Team, game and ownership rules (count-rules.js) held to the chosen slate: { rules } (canonical), or { error } with the plain reason a rule is wrong or can never be met on this slate. */
+function countRulesChecked(value, ctx) {
+  const rows = ctx.slateRows ?? null;
+  const code = (v) => String(v ?? "").trim().toUpperCase();
+  const teams = rows ? new Set(rows.map((r) => code(r.team)).filter(Boolean)) : undefined;
+  const checked = validateCountRules(value, { teams, games: ctx.gameIds });
+  if (checked.error) return checked;
+  const men = rows ? rows.map((r) => ({ team: r.team, game: r.gameId, own: r.own })) : [];
+  // An ownership rule with no figure anywhere on the slate would count nobody: refused, never quietly idle (G62).
+  if (rows && checked.rules.some((r) => r.kind === "own") && !men.some((m) => typeof m.own === "number" && Number.isFinite(m.own))) {
+    return { error: "Ownership rules need ownership figures, and no player on this slate has one yet." };
+  }
+  const short = rows ? poolShortfalls(checked.rules.filter((r) => r.op === "atLeast"), men, [], "are on this slate") : [];  return short.length ? { error: `${short[0]}.` } : checked;
 }
 
 // D43 (public/js/lineup.js matchupOf): "vs DAL" at home, "@ DET" away, from the board's "AWAY@HOME" game id; the

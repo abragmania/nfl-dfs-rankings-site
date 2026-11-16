@@ -9,6 +9,7 @@
 // count both read, so the two always agree. lineup.js owns the lineup and draws this pool in its panel; this file draws, sorts and wires.
 import { escapeHtml, pct1 } from "../format.js";
 import { rowMessageHtml, messageIsFor } from "../row-message.js";
+import { statusSwitchHtml } from "../status-switch.js"; // the status mark as a plain label, never a switch in the pool (Adam 1:35 PM 11-16; the control is on the Injuries tab and the Sources page)
 import { shortName, cardNameHtml } from "../lineup-card.js"; // the cards' one name shortener (👁 V-N1: a tagged row's name; 👁 V1: every name on a phone)
 import { teamVars } from "../look-row.js"; // the classic pool's team tint (--t1, --t2)
 import { sortableHeadHtml } from "../tabs.js"; // the classic pool's one sortable head cell
@@ -390,9 +391,9 @@ export function poolBodyHtml(board, rows, placement, figures = playerFigures, ta
     // row that was clicked (row-message.js, standard A14).
     playerCell: (row) => { // a greyed row says why after his matchup in a few words (seat-picker.js `short`), the sentence on hover, as classic's pool does
       const p = picks.get(String(row.id));
-      const why = !p.action && p.short ? ` · <span class="blk-why">${escapeHtml(p.short)}</span>` : "";
+      const why = !p.action && p.short ? String(p.short) : ""; // plain text; playerWhoHtml draws it after the matchup
       const extra = `<span class="sd-seat-slot">${seatTagHtml(placedSeat(placement, row.id))}${controls?.lockIcon?.(row) ?? ""}</span>`;
-      return `${playerWhoHtml(row, { nameHtml: cardNameHtml(row), tagWrap: controls?.statusTag ? (tag) => controls.statusTag(row, tag) : undefined, extra, why, game: board?.game })}${messageIsFor(placement?.message, row.id) ? rowMessageHtml(placement.message.text, placement.message.tone) : ""}`;
+      return `${playerWhoHtml(row, { nameHtml: cardNameHtml(row), tagWrap: (tag) => statusSwitchHtml(row, tag, { canWrite: false }), extra, why, game: board?.game })}${messageIsFor(placement?.message, row.id) ? rowMessageHtml(placement.message.text, placement.message.tone) : ""}`;
     },
     valueCell: (row) => poolValueHtml(row, figures),
     // A man seated in the lineup, on either list, has his row tinted (the classic pool's `inl`), kept apart from a lock (the icon, C20), beside the Optimizer's own look (excluded: `excl`), each class once.
@@ -502,8 +503,7 @@ export function wirePool(poolEl, ctx) {
     const n = tr.querySelector?.(".player-name");
     if (!n) return;
     const full = rowOf(tr.dataset.id)?.name ?? (n.title || n.textContent); // the row's name: the cell holds both the full and the short name
-    n.title = full;
-    if (tr.querySelector(".out-tag, .status-badge")) n.textContent = shortName(full, rowOf(tr.dataset.id)?.pos);
+    n.title = full; // Adam 1:45 PM 11-16: full names, never shortened (a tagged row no longer swaps in the short form)
   });
 }
 

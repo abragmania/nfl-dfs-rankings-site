@@ -79,6 +79,33 @@ export function matchupPillHtml(row) {
   return text ? `<span class="meta-pill">${escapeHtml(text)}</span>` : "";
 }
 
+/**
+ * The pool rows' matchup (the Player cell's `.l2`, classic and Showdown; Adam 10:01 AM 11-15 and 1:21 PM 11-16, PROJECT.md Part 4 Monday 11-16 item 7): the opponent as its own narrow column
+ * in the Player cell (look.css lays `.l1` and `.l2` side by side from 901px up, so every row's matchup starts at one left edge; under the name on a narrow screen). `opp` is opponentLabel's
+ * text ("v KC", "@LV", or "").
+ */
+export function poolMatchupHtml(row, opp) {
+  return opp ? `<span class="mu">${escapeHtml(String(opp))}</span>` : "";
+}
+
+/** A greyed row's few words (seat-picker `short`, plain text) on a line of their own under the name and matchup. */
+export function poolWhyHtml(whyText) {
+  return whyText ? `<div class="l3"><span class="blk-why">${escapeHtml(String(whyText))}</span></div>` : "";
+}
+
+/** The position chip of a pool row: one class per position (`pos-qb`, `pos-rb`, `pos-wr`, `pos-te`, `pos-dst`, `pos-k`) so look.css can colour each its own. */
+export function poolPosHtml(pos) {
+  const label = String(pos ?? "").trim();
+  if (!label) return "";
+  const key = label.toLowerCase().replace(/[^a-z]/g, "");
+  return `<span class="pos${key ? ` pos-${key}` : ""}">${escapeHtml(label)}</span>`;
+}
+
+/** The team abbreviation chip for a pool row whose team has no logo (the logo already names the team; D80); "" otherwise. */
+export function poolNoLogoTeamHtml(row) {
+  return logoFor(TEAM_BY_ABBR[row?.team]) ? "" : teamChipHtml(row?.team);
+}
+
 export function playerLineHtml(row, opts = {}) {
   return `${playerIdentityHtml(row, opts)}${opts.pill === false ? "" : matchupPillHtml(opts.pillRow ?? row)}`;
 }

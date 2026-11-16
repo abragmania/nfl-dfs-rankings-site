@@ -66,6 +66,7 @@ export function activeRulesSummary(opt, { games = [], starredQbCount = null, qbO
   if (playerCapCount > 0) parts.push(`caps on ${plural(playerCapCount, "player")}`);
   if (opt.spreadDst) parts.push("spread defenses");
   if (opt.varianceText) parts.push(opt.varianceText); // "variance QB 5, WR 15": the Variance % boxes as the request sends them (lineup-view.js optSummaryText)
+  if (opt.countText) parts.push(opt.countText); // "rules ≥2 <5%, KC ≥ 2": the team, game and ownership rules the request sends (lineup-count-rules.js requestText)
   const onSlate = new Set((games ?? []).map((g) => String(g?.id ?? g)));
   const avoided = [...(opt.avoid ?? [])].map(String).filter((g) => onSlate.has(g)); // only games on this slate, as doGenerate sends
   if (avoided.length) parts.push(`avoiding ${avoided.map((g) => g.replace("@", " @ ")).join(", ")}`);

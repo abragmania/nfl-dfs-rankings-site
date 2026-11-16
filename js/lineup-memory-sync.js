@@ -32,6 +32,7 @@ export function defaultSettings() {
     ...OPT_DEFAULT_STACK,
     spreadDst: false,
     variancePos: { QB: "", RB: "", WR: "", TE: "", DST: "" }, // every Variance % box blank: none
+    countRules: [], // no team, game or ownership rule
     avoid: [],
     cashAvoid: [],
     cashCount: CASH_DEFAULTS_BROWSER.count,
@@ -62,6 +63,8 @@ export function applySettings(raw, board) {
     stackOppOrMore: s.stackOppOrMore,
     spreadDst: s.spreadDst,
     variancePos: s.variancePos,
+    countRules: s.countRules,
+    countRulesDropped: s.countRulesDropped ?? { own: 0, other: 0 }, // remembered rules that could not be read: said on the closed lines, page-only
     exp: s.exp,
   });
   opt.avoid = new Set(avoidOnSlate(s.avoid, gameIds));

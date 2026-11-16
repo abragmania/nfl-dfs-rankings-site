@@ -33,6 +33,7 @@ import { cashEngineSettings, medianOf } from "./cash.js"; // pure; entered only 
 import {
   resolveVariance, varianceIgnoredNotes, varianceNote, lineupFactors, byRealTotal, CLASSIC_VARIANCE_POSITIONS
 } from "./sd-variance.js"; // pure; GPP variance per position (PROJECT.md Part 4 item 5, Adam 2026-11-11)
+import { validateCountRules, membership, rulesBroken, poolShortfalls, explainRules, ruleWords } from "./count-rules.js"; // pure; team, game and ownership rules (items 8 and 9, Adam 2026-11-16)
 
 // --------------------------------------------------------------------------------------------------------
 // Constants
@@ -44,6 +45,8 @@ const GROUP_ORDER = Object.freeze(["QB", "RB", "WR", "TE", "DST"]);
 const DEFAULT_CAP = 50000; // D1; optimize.js uses the same default and the board carries no cap of its own
 const MAX_LINEUPS = 150;
 const SCORE_SCALE = 1e6;
+const LAG_WEIGHTS = Object.freeze([1, 3, 8]); // points a man of a tight at-least rule's set is raised by in the rule-aware bound tables (configTables); each weight is its own valid bound
+const LAG_RULES = 2; // the tightest at-least rules (the largest counts, at 3 or more) that get those tables
 const MAX_UNITS = 2000; // salary resolution of the knapsack bound
 const MAX_REBUILD_SALARY_STEPS = 1000; // a real slate's prices move in $100 steps: 501
 // No step limit on the lineups (Adam 2026-11-03): a build ends on finishing, the ten minute limit (server/lib/app-build.js,
@@ -207,6 +210,9 @@ function normaliseSettings(settings, slate, existingCount, notes) {
   if (!OBJECTIVES.includes(objective) && !(cash && objective === "median")) {
     fatal = `The objective "${objective}" is not one the Optimizer knows; use Projection.`;
   }
+  // Team, game and ownership rules (count-rules.js): hard, never bent. The route checks them first; a list that still fails here is refused whole, never partly used.
+  const countChecked = validateCountRules(s.countRules);
+  if (countChecked.error && fatal === null) fatal = `The team, game and ownership rules were refused: ${countChecked.error}`;
 
   // Exposure: {pct} of this batch rounded up to whole lineups (0% is never) or {count}; saved lineups never count
   // toward a cap (D74). Anything else is ignored with a note (the route refuses it); nothing set means no cap.
@@ -276,6 +282,8 @@ function normaliseSettings(settings, slate, existingCount, notes) {
     excludes: new Set(idList(s.excludes)),
     allowRbGames: new Set(idList(s.allowRbGames).map(upper)),
     avoidGames: new Set(idList(s.avoidGames).map(upper)),
+    countRules: countChecked.rules ?? [],
+    recheckRules: Array.isArray(s._recheckRules) ? s._recheckRules : null, // tests only: the rules the invariant re-checks, so a break can be reached
     noTrim: Boolean(s._noTrim),
     diagNodeLimit: num(s._diagNodeLimit) ?? DIAG_NODE_LIMIT,
     checkTotalLimit: num(s._checkTotalLimit) ?? CHECK_TOTAL_LIMIT, // tests only to change
@@ -415,6 +423,8 @@ const oppStackActive = (opts) => !(opts.stackOpp === 0 && opts.stackOppOrMore);
  *   objective: "proj" (default); the retired "lev" and "projMinusOwn" are built on projection with a note. Rows flagged
  *     "outAfterStamp" are left out of every build unless locked.
  *   allowRbGames, avoidGames: game keys as on the board (row.gameId, e.g. "DET@ARI").
+ *   countRules (GPP only; count-rules.js): hard rules asking at least or at most N men from one team, one game, or strictly under or over a percent owned (a man with no
+ *     figure is in neither); every lineup keeps all of them, none bends, and a lineup they make impossible is named in a note (countRulesWhy).
  *   maxPerTeam: most players (defense included) from one team, as optimize.js maxFromTeam; default none. D76: it
  *     never limits the lineup quarterback's team or the team he faces, only every other team.
  *   Every running back, receiver and tight end counts toward the stack (D55 as amended 2026-10-17); catchers is ignored.
@@ -659,7 +669,8 @@ function buildBatch(c) {
         break;
       }
       if (!b.players) {
-        notes.push(`No single setting could be bent for lineup ${n + 1} of ${opts.count}: ${b.why}. ${madeBefore()}`);
+        const rulesWhy = opts.countRules.length ? countRulesWhy(c) : null; // the team, game and ownership rules never bend, so they are named when they are why
+        notes.push(rulesWhy ? `Lineup ${n + 1} of ${opts.count} could not be made: ${rulesWhy}. ${madeBefore()}` : `No single setting could be bent for lineup ${n + 1} of ${opts.count}: ${b.why}. ${madeBefore()}`);
         break;
       }
       // PROJECT.md Part 4 Optimizer, Min % and soft rules: a dropped Min waits two lineups unless out of slack.
@@ -676,6 +687,15 @@ function buildBatch(c) {
     if (st.perQb && st.locksAt.QB === 0) {
       const qbs = (lst.fatal ? availableLists(st, opts, counts, prev) : avail).QB.filter((q) => !players.some((p) => p.key === q.key));
       notes.push(...cappedMustNotes(qbs, (lst.fatal ? st : lst).candByKey, (m) => mustCapCause(m, counts, st, opts), c.mustNoted, c.variance ? null : n + 1)); // a varied batch is re-sorted: no made number
+    }
+    // Invariant: a made lineup keeps every team, game and ownership rule (count-rules.js, re-checked on `_recheckRules` in a test). A break is a bug: it is logged and said, the lineup is not served
+    // and the ones made before it are returned, as every other failure path here ends.
+    const countBroken = rulesBroken(opts.recheckRules ?? opts.countRules, players);
+    if (countBroken.length) {
+      const words = countBroken.map((b) => `"${ruleWords(b.rule)}"`).join(", ");
+      warn("lineup: a made lineup broke a count rule", { lineup: n + 1, rules: words });
+      notes.push(`Lineup ${n + 1} broke the rule ${words}; this is a bug, the ${n} made before it ${n === 1 ? "is" : "are"} returned.`);
+      break;
     }
     const keys = players.map((p) => p.key);
     prevKeys.push(keys);
@@ -884,6 +904,31 @@ function bendLineup(c, forced, lst, n, vary = null) {
   return { players: pick.best, label, dropped };
 }
 
+/** Why no lineup can be made when the team, game and ownership rules are the cause (count-rules.js explainRules), or null when they are not. Each probe searches the lineup
+ *  again with only a subset of the rules and every other setting as it stands, on the same node allowance as the quarterback checks (opts.checkTotalLimit). */
+function countRulesWhy(c, pin = null) {
+  const { opts } = c;
+  const base = c.settings && typeof c.settings === "object" ? c.settings : {};
+  const ready = (rules) => {
+    // `pin`: a quarterback locked for the check (entryQbChecks: why this man fits no lineup).
+    const o2 = normaliseSettings({ ...base, ...(pin ? { locks: [...opts.locks, pin] } : {}), countRules: rules, count: opts.count }, c.slate, c.existingCount, []);
+    o2.capCount = opts.capCount;
+    return { o2, st2: prepare(c.rows, o2, []) };
+  };
+  const probe = (rules) => {
+    const { o2, st2 } = ready(rules);
+    if (st2.fatal) return false;
+    const prev2 = makePrevIndex(st2, c.prevKeys, 1);
+    const limit = Math.max(0, Math.min(opts.diagNodeLimit, opts.checkTotalLimit - opts.checkUsed));
+    const r = searchOne(st2, availableLists(st2, o2, c.counts ?? new Map(), prev2), prev2, o2, limit);
+    opts.checkUsed += r.nodes;
+    return r.best ? true : r.aborted ? null : false;
+  };
+  const { st2 } = ready(opts.countRules);
+  if (st2.fatal) return /^The rule /.test(st2.fatal) ? st2.fatal.replace(/^The rule /, "the rule ").replace(/\.$/, "") : null; // locked men already past an at-most: prepare's own sentence
+  return explainRules(opts.countRules, { pool: st2.candByKey ? [...st2.candByKey.values()] : [], locked: st2.lockCands ?? [], probe });
+}
+
 /**
  * The one best classic lineup by projection among `rows`, for the single Build (optimize.js exactClassic, Adam 2026-11-02): this
  * engine's search with no roster rule, every team capped (no D76 exemption, as Build's Max per team has always been) and "stackQbWith or
@@ -920,6 +965,11 @@ function entryQbChecks(rows, settings, slate, existingCount, prevKeys, opts, st,
     const o2 = normaliseSettings({ ...base, locks: [...opts.locks, qb.id], count: opts.count }, slate, existingCount, scratch);
     o2.capCount = opts.capCount;
     const st2 = prepare(rows, o2, scratch);
+    if (st2.fatal && /^The rule /.test(st2.fatal)) { // he alone is past a team, game or ownership at-most: the rule is why, said (G62)
+      notes.push(`${qb.name} cannot be in any lineup: ${st2.fatal.replace(/^The rule /, "the rule ").replace(/\.$/, "")}.`);
+      reported.add(qb.key);
+      continue;
+    }
     if (st2.fatal) continue; // he and the locks do not fit together (salary or slots): not his stack settings, as for any quarterback
     const lim = Math.max(0, Math.min(opts.diagNodeLimit, opts.checkTotalLimit - opts.checkUsed)); // one total for every check and diagnosis: they never eat the build
     if (lim === 0) {
@@ -940,7 +990,12 @@ function entryQbChecks(rows, settings, slate, existingCount, prevKeys, opts, st,
     }
     const d = diagnose(rows, settings, slate, existingCount, prevKeys, opts, qb.id);
     if (d.timedOut) { reported.delete(qb.key); break; } // past the deadline: no note from a diagnosis that did not finish
-    notes.push(`${qb.name} cannot be in any lineup with his stack settings: ${diagnosisSentence(d.trials, { n: 0, existingCount, perQb: opts.qbStacks.size > 0, capText: money(opts.cap) })}.`);
+    // A team, game or ownership rule can be what keeps him out (his stack needs two KC teammates and "KC ≤ 1"): when no setting bends to let him in, the rules are asked with him locked.
+    const rulesWhy = opts.countRules.length ? countRulesWhy({ opts, settings, slate, rows, existingCount, prevKeys }, qb.id) : null;
+    const stackWhy = `${qb.name} cannot be in any lineup with his stack settings: ${diagnosisSentence(d.trials, { n: 0, existingCount, perQb: opts.qbStacks.size > 0, capText: money(opts.cap) })}.`;
+    if (!rulesWhy) notes.push(stackWhy);
+    else if (d.trials.some((t) => t.found)) notes.push(`${stackWhy} The team, game or ownership rules are also why: ${rulesWhy}.`); // both are causes: relaxing either lets him in
+    else notes.push(`${qb.name} cannot be in any lineup: ${rulesWhy}.`);
   }
   return reported;
 }
@@ -1120,6 +1175,25 @@ function prepare(rows, opts, notes) {
     return st;
   }
   st.lockCands = lockCands;
+  // Team, game and ownership rules: each man's membership flags (0 or 1 per rule) for searchOne's counts, and his signature, which trimPosition keeps equal between a man and his dominators.
+  st.countRules = opts.countRules;
+  if (opts.countRules.length) {
+    for (const c of all) {
+      c.inRule = membership(opts.countRules, c);
+      c.crSig = c.inRule.join("");
+    }
+    st.lagRules = opts.countRules.map((r, i) => ({ i, n: r.op === "atLeast" ? r.n : 0 })).filter((x) => x.n >= 3).sort((a, b) => b.n - a.n || a.i - b.i).slice(0, LAG_RULES).map((x) => x.i);
+    const lockedPast = poolShortfalls(opts.countRules.filter((r) => r.op === "atMost"), [], lockCands, "can be used", forcedIds.size ? "locked or Min %" : "locked");
+    if (lockedPast.length) {
+      st.fatal = `The rule ${lockedPast[0]}.`;
+      return st;
+    }
+    // Ownership rules count only men with a figure: say how many have none (G62), once per build (prepare's own notes, not a probe's scratch list).
+    const unfigured = all.filter((c) => c.own === null).length;
+    if (unfigured > 0 && opts.countRules.some((r) => r.kind === "own")) {
+      notes.push(`Ownership rules: ${unfigured} of ${all.length} players have no ownership figure and count as neither under nor over.`);
+    }
+  }
   const locksAt = { QB: 0, RB: 0, WR: 0, TE: 0, DST: 0 };
   for (const c of lockCands) locksAt[c.pos]++;
   st.locksAt = locksAt;
@@ -1222,12 +1296,21 @@ function prepare(rows, opts, notes) {
 function configTables(lists, st) {
   const knap = {};
   for (const pos of POSITIONS) knap[pos] = knapsack(lists[pos], MAX_AT[pos], st.S);
+  // Rule-aware bounds (team, game and ownership at-least rules): for each tight rule r and weight L, the same tables on scores raised by L for a man in the rule's set. A completion that must
+  // hold d more men of the set scores at most (the raised table) minus L * d, for any L >= 0, so each is an upper bound; searchOne takes the lowest of them and the plain one.
+  const lagKnap = (st.lagRules ?? []).flatMap((r) => LAG_WEIGHTS.map((points) => {
+    const weight = points * SCORE_SCALE;
+    const raised = {};
+    for (const pos of POSITIONS) raised[pos] = knapsack(lists[pos], MAX_AT[pos], st.S, (c) => c.score + weight * c.inRule[r]);
+    return { r, weight, raised };
+  }));
   const out = [];
   for (let ci = 0; ci < CONFIGS.length; ci++) {
     const cfg = CONFIGS[ci];
     if (!POSITIONS.every((p) => st.locksAt[p] <= cfg[p])) continue;
     const groups = GROUP_ORDER.map((pos) => ({ pos, need: cfg[pos] - st.locksAt[pos] })).filter((g) => g.need > 0);
-    out.push({ index: ci, groups, ...boundTables(groups, knap, st.S) });
+    const lag = lagKnap.map(({ r, weight, raised }) => ({ r, weight, ...boundTables(groups, raised, st.S) }));
+    out.push({ index: ci, groups, lag, ...boundTables(groups, knap, st.S) });
   }
   return out;
 }
@@ -1251,7 +1334,7 @@ function cmpCand(a, b) {
 
 /** best[k][s]: the highest total score of exactly k players from `list` costing at most s units (-Infinity when
  *  no k players fit). */
-function knapsack(list, K, S) {
+function knapsack(list, K, S, scoreOf = (c) => c.score) {
   const best = [];
   for (let k = 0; k <= K; k++) {
     const row = new Float64Array(S);
@@ -1260,11 +1343,12 @@ function knapsack(list, K, S) {
   }
   for (const c of list) {
     const w = c.sUnits;
+    const score = scoreOf(c);
     for (let k = K; k >= 1; k--) {
       const cur = best[k];
       const prev = best[k - 1];
       for (let s = S - 1; s >= w; s--) {
-        const v = prev[s - w] + c.score;
+        const v = prev[s - w] + score;
         if (v > cur[s]) cur[s] = v;
       }
     }
@@ -1397,6 +1481,7 @@ function availableLists(st, opts, counts, prev) {
 function trimPosition(list, pos, st, opts, prev) {
   if (list.length <= 1) return list;
   const rules = opts.rules;
+  const countRules = st.countRules?.length > 0;
   const need = Math.max(1, MAX_AT[pos] - st.locksAt[pos]);
   const perTeamCap = opts.maxPerTeam ? Math.floor(8 / opts.maxPerTeam) : 0;
   const globalOwn = ownStackActive(opts);
@@ -1431,6 +1516,7 @@ function trimPosition(list, pos, st, opts, prev) {
       if (pos === "QB" && q.oppIx !== p.oppIx) continue;
       if (q.salary > p.salary || q.score < p.score) continue;
       if (q.salary === p.salary && q.score === p.score && cmpId(q.id, p.id) >= 0) continue;
+      if (countRules && q.crSig !== p.crSig) continue; // a swap must leave every team, game and ownership count as it was
       total++;
       if (q.teamIx === p.teamIx) sameTeam++;
       byTeam.set(q.teamIx, (byTeam.get(q.teamIx) ?? 0) + 1);
@@ -1471,6 +1557,11 @@ function searchOne(st, avail, prev, opts, nodeLimit) {
   const maxPerTeam = st.maxPerTeam;
   const capAllTeams = st.capAllTeams === true;
   const allowRbGame = st.allowRbGame;
+  // Team, game and ownership rules (count-rules.js): crN[r] = placed men in rule r's set. An at-most is refused in canAdd; an at-least is pruned
+  // by countReachable and checked at the leaf, so every lineup served keeps every rule.
+  const CR = st.countRules ?? [];
+  const crN = new Int16Array(CR.length);
+  const crLeast = CR.map((r, i) => (r.op === "atLeast" ? i : -1)).filter((i) => i >= 0);
   const placed = [];
   let games = 0;
   let qbTeam = -1;
@@ -1493,6 +1584,7 @@ function searchOne(st, avail, prev, opts, nodeLimit) {
   let best = null;
 
   function canAdd(c) {
+    if (c.inRule) for (let r = 0; r < CR.length; r++) if (c.inRule[r] === 1 && CR[r].op === "atMost" && crN[r] >= CR[r].n) return false;
     // D76: Max per team skips the quarterback's team and the team he faces. Before he is placed (only locks: the QB
     // group is searched first) a team is not refused, since it may turn out to be his game; his own placement
     // below then checks every placed team outside his game, so the limit holds whatever the order.
@@ -1538,6 +1630,7 @@ function searchOne(st, avail, prev, opts, nodeLimit) {
 
   function add(c) {
     placed.push(c);
+    if (c.inRule) for (let r = 0; r < CR.length; r++) crN[r] += c.inRule[r];
     teamN[c.teamIx]++;
     if (gameN[c.gameIx]++ === 0) games++;
     if (c.pos === "DST") dstOpp = c.oppIx;
@@ -1569,6 +1662,7 @@ function searchOne(st, avail, prev, opts, nodeLimit) {
 
   function remove(c) {
     placed.pop();
+    if (c.inRule) for (let r = 0; r < CR.length; r++) crN[r] -= c.inRule[r];
     teamN[c.teamIx]--;
     if (--gameN[c.gameIx] === 0) games--;
     if (c.pos === "DST") dstOpp = -1;
@@ -1616,6 +1710,7 @@ function searchOne(st, avail, prev, opts, nodeLimit) {
     const lists = groups.map((g) => avail[g.pos]);
     const R = cfg.R;
     const suffix = cfg.suffix;
+    const cfgLag = cfg.lag ?? [];
     // D73 pruning: for the quarterback in place, mateSuf[h][j] / oppSuf[h][j] count the players of group h from
     // index j on who would count as a teammate / an opponent, so a branch that cannot reach N and O is cut.
     const mateSuf = lists.map((list) => new Int32Array(list.length + 1));
@@ -1623,6 +1718,23 @@ function searchOne(st, avail, prev, opts, nodeLimit) {
     const stackBinds = st.perQb || global.needOwn > 0 || global.needOpp > 0;
     const idxOf = st.perQb ? lists.map((list) => new Map(list.map((c, i) => [c.key, i]))) : null;
     const mustCnt = new Int32Array(groups.length);
+    // At-least rules: crSuf[q][h][j] counts the men of group h from index j on who are in the q-th at-least rule's set.
+    const crSuf = crLeast.map((r) => lists.map((list) => {
+      const out = new Int32Array(list.length + 1);
+      for (let j = list.length - 1; j >= 0; j--) out[j] = out[j + 1] + list[j].inRule[r];
+      return out;
+    }));
+    /** False when the slots left (kRem in group gi from `start`, then every later group) cannot reach an at-least rule's count. */
+    const countReachable = (gi, kRem, start) => {
+      for (let q = 0; q < crLeast.length; q++) {
+        const want = CR[crLeast[q]].n - crN[crLeast[q]];
+        if (want <= 0) continue;
+        let can = 0;
+        for (let h = gi; h < groups.length && can < want; h++) can += Math.min(h === gi ? kRem : groups[h].need, crSuf[q][h][h === gi ? start : 0]);
+        if (can < want) return false;
+      }
+      return true;
+    };
     const setMates = () => {
       if (!stackBinds) return;
       for (let h = 0; h < groups.length; h++) {
@@ -1668,6 +1780,7 @@ function searchOne(st, avail, prev, opts, nodeLimit) {
       if (games < 2 && !st.oneGameOk) return;
       if (mates < rule.needOwn || mates > rule.capOwn || opps < rule.needOpp || opps > rule.capOpp) return;
       if (rule.withKeys.length && !rule.withKeys.every((k) => placed.some((p) => p.key === k))) return;
+      for (const r of crLeast) if (crN[r] < CR[r].n) return;
       const salary = st.cap - rem;
       if (score > bestScore || (score === bestScore && (salary < bestSalary || (salary === bestSalary && keyLess(placed, best))))) {
         bestScore = score;
@@ -1692,10 +1805,19 @@ function searchOne(st, avail, prev, opts, nodeLimit) {
         return;
       }
       if (stackBinds && qbTeam !== -1 && !stackReachable(gi, kRem, start)) return;
+      if (crLeast.length && !countReachable(gi, kRem, start)) return;
       const list = lists[gi];
       const last = kRem === 1;
       const nextTable = last ? suffix[gi + 1] : R[gi][kRem - 1];
-      const maxNext = nextTable[st.units(rem)];
+      let maxNext = nextTable[st.units(rem)];
+      // Rule-aware bound: what is left must still bring `want` more men of the rule's set, and at least want - 1 of them after the man picked here (the weakest case, so it holds for every pick).
+      for (let q = 0; q < cfgLag.length; q++) {
+        const l = cfgLag[q];
+        const want = CR[l.r].n - crN[l.r];
+        if (want <= 0) continue;
+        const b = (last ? l.suffix[gi + 1] : l.R[gi][kRem - 1])[st.units(rem)] - l.weight * Math.max(0, want - 1);
+        if (b < maxNext) maxNext = b;
+      }
       const isQbGroup = groups[gi].pos === "QB";
       const end = list.length - (kRem - 1);
       for (let j = start; j < end; j++) {
@@ -1706,7 +1828,14 @@ function searchOne(st, avail, prev, opts, nodeLimit) {
         if (maxNext === -Infinity || s2 + maxNext < bestScore) break;
         if (c.salary > rem) continue;
         const r2 = rem - c.salary;
-        const lim = nextTable[st.units(r2)];
+        let lim = nextTable[st.units(r2)];
+        for (let q = 0; q < cfgLag.length; q++) {
+          const l = cfgLag[q];
+          const want = CR[l.r].n - crN[l.r];
+          if (want <= 0) continue;
+          const b = (last ? l.suffix[gi + 1] : l.R[gi][kRem - 1])[st.units(r2)] - l.weight * Math.max(0, want - c.inRule[l.r]);
+          if (b < lim) lim = b;
+        }
         if (lim === -Infinity || s2 + lim < bestScore) continue;
         if (!canAdd(c)) continue;
         add(c);

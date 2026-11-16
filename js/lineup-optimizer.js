@@ -29,6 +29,7 @@ import { heldSplit, cardIsSaved, optSummaryText, stackDefaultsApply, STACK_INERT
 import { requestTab } from "./lineup-tabs.js"; // Part F: the GPP | Cash click's gate
 import { variancePosSettings, variancePosProblem, CLASSIC_VARIANCE_POSITIONS } from "./variance-pos.js"; // GPP variance per position (Adam 2026-11-11)
 import { buildAfterQuiet } from "./lineup-left-out-panel.js"; // Part F: a Build goes before the quiet Left out build
+import { slateParts, splitLive, wireCountRules } from "./lineup-count-rules.js"; // GPP team, game and ownership rules (items 8 and 9, Adam 2026-11-16)
 
 // ---- Cash mode job 3b, 2026-10-17 (PROJECT.md Part 4 "Cash mode"; the pure pieces are in lineup-cash.js) ----
 
@@ -552,6 +553,8 @@ export function buildGenerateSettings(form) {
   // GPP variance per position (Adam 2026-11-11): only the boxes holding a percent above 0, sent only when there is one.
   const variancePos = variancePosSettings(form.variancePos, CLASSIC_VARIANCE_POSITIONS);
   if (variancePos) settings.variancePos = variancePos;
+  // Team, game and ownership rules (items 8 and 9): only the rules this slate can use, sent as they are (the server's count-rules.js checks them); none sent means none.
+  if (form.countRules?.length) settings.countRules = form.countRules.map((r) => ({ ...r }));
   return settings;
 }
 
@@ -666,6 +669,7 @@ async function doGenerate() {
       qbStacks: qbStacksForRequest(board, slateNotes),
       spreadDst: opt.spreadDst,
       variancePos: opt.variancePos,
+      countRules: splitLive(opt.countRules ?? [], slateParts(activeSlateRows(board), activeSlateGames(board))).live,
     };
     sent = buildGeneratePayload(form, slateKey);
     // The pre-Go Min % checks read the request as built: only the locks that stay in this slate count (the route sees those alone).
@@ -1075,6 +1079,12 @@ export function wireOptimizer(container) {
   container.querySelector("[data-action='opt-spread-dst']")?.addEventListener("click", () => {
     opt.spreadDst = !opt.spreadDst;
     commit();
+  });
+  wireCountRules(container, {
+    get: () => opt.countRules ?? [],
+    set: (rules) => { opt.countRules = rules; savePersisted(); refreshSummary(); }, // kept with the other GPP settings, per slate (lineup-memory.js)
+    parts: () => slateParts(activeSlateRows(store.get().board), activeSlateGames(store.get().board)),
+    commit,
   });
   const settingsEl = container.querySelector("#opt-panel");
   if (settingsEl) {
