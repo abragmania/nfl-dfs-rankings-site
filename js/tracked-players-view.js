@@ -42,12 +42,11 @@ export function orderedContests(contests) {
 
 /**
  * The table's columns: mark, name, top 100 (the RotoGrinders rank), then one YES column per contest (id = the contest's id, label
- * = its short name, a contest column opens YES first, the rank opens lowest first). On the public site, where marking runs
- * in the app, no Mark column. `counts` (columnCounts of the model; optional) puts the player count in the Top 100 and contest
+ * = its short name, a contest column opens YES first, the rank opens lowest first). `counts` (columnCounts of the model; optional) puts the player count in the Top 100 and contest
  * headers, "Cash game · 46" (Adam 2026-10-21: "show total players in the header / top of column of each"); a contest's title
  * then carries its full label, its entries and its players.
  */
-export function columnsFor(site, contests, counts = null) {
+export function columnsFor(contests, counts = null) {
   const withCount = (label, id) => (counts && Number.isInteger(counts[id]) ? `${label} · ${counts[id].toLocaleString("en-US")}` : label);
   const cols = [
     { id: "mark", label: "Mark", dir: "desc" },
@@ -58,7 +57,7 @@ export function columnsFor(site, contests, counts = null) {
       return { id: c.id, label: withCount(c.short ?? c.id, c.id), dir: "desc", title: `${c.label}: YES when he entered it, blank when not${more}` };
     }),
   ];
-  return site ? cols.filter((c) => c.id !== "mark") : cols;
+  return cols;
 }
 
 /** The players per column, for the headers: { top100, [contest id]: distinct usernames that entered it } over every row of the model. */

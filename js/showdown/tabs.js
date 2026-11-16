@@ -13,7 +13,7 @@ import { shownRows, ownTitleText, sdLine } from "./table.js";
 import { showAllToggleHtml, wireShowAllButtons } from "../filterbar.js";
 import { sortRows, defaultDirFor } from "../state.js";
 import { sdShowAll, sdShowAllFlag } from "./show-all.js"; // C24: the Showdown's own Show all players, not classic's
-import { sortableHeadHtml, unusedColumn, onSitePage, isSourcesTab, INJURIES_TAB } from "../tabs.js"; // the classic sortable header and its dimmed unused-source column
+import { sortableHeadHtml, unusedColumn, isSourcesTab, INJURIES_TAB } from "../tabs.js"; // the classic sortable header and its dimmed unused-source column
 import { sourceIsTicked } from "../sources-page-html.js"; // the one tick predicate the Sources page and this table share
 import { injuryUnmatchedHtml } from "../unmatched.js";
 import { snapPanelMaxHeight, sourcesPageBelow } from "../scroll-panels.js"; // the classic tables' sizing step
@@ -32,19 +32,18 @@ function fitScrollPanel(container) {
 export const SHOWDOWN_TABS = Object.freeze([
   Object.freeze({ key: "lineup", label: "Optimizer" }),
   Object.freeze({ key: "lineups", label: "Lineups" }), // Adam 2026-11-05: where built lineups go, Recently generated and Saved (lineups-screen.js); its count is the lineups kept across builds
-  Object.freeze({ key: "entries", label: "Entries" }), // Showdown Entries plan 2026-10-20: Adam's private entries files, so the app only (visibleShowdownTabs)
+  Object.freeze({ key: "entries", label: "Entries" }), // Showdown Entries plan 2026-10-20: Adam's entries files; the site runs them in the visitor's browser (D71)
 ]);
 
 /** Retired Showdown tab keys and the tab that shows in their place (classic tabs.js RETIRED_TABS's rule). */
 export const RETIRED_SHOWDOWN_TABS = Object.freeze({ rankings: "lineup" });
 
-/** The tabs to draw: all of them in the app, all but Entries on the public site (as tabs.js visibleTabs does for classic). */
-export function visibleShowdownTabs(onSite = onSitePage()) {
-  return SHOWDOWN_TABS.filter((t) => !(onSite && t.key === "entries"));
+/** The tabs to draw: all of them, in the app and on the public site alike (as tabs.js visibleTabs does for classic). */
+export function visibleShowdownTabs() {
+  return [...SHOWDOWN_TABS];
 }
 
-/** The tab to show for a key: a drawn tab or a Sources table as it is, a retired key's replacement, anything else (Entries on the
- *  site, an unknown key) the Optimizer. */
+/** The tab to show for a key: a drawn tab or a Sources table as it is, a retired key's replacement, anything else (an unknown key) the Optimizer. */
 export function shownShowdownTab(key, tabs = visibleShowdownTabs()) {
   const k = Object.prototype.hasOwnProperty.call(RETIRED_SHOWDOWN_TABS, key) ? RETIRED_SHOWDOWN_TABS[key] : key;
   return tabs.some((t) => t.key === k) || isSourcesTab(k) || k === INJURIES_TAB ? k : "lineup";

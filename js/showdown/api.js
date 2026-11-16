@@ -16,6 +16,7 @@ import {
   pageStorage, showdownLineupsResponse, showdownOptimizeResponse, saveShowdownLineup, deleteShowdownDeviceLineup, renameShowdownDeviceLineup, envelope, errorBody,
   showdownMeterResponse, showdownSwapsResponse, runShowdownGenerate, readShowdownDeviceLineups, bakedCurvesRead, BAKED_CURVES_URL, SHOWDOWN_GENERATE_FAILED,
   showdownBoardWithEdits, putShowdownEdits, resetAllShowdownEdits, modesWithEdits, readTab, tabOfMode, SHOWDOWN_TABS,
+  showdownStorageKey, showdownSlateOf, hasCashLineup, listShowdownEntries, uploadShowdownEntries, exportShowdownEntries, tagShowdownDeviceLineup,
 } from "../site-showdown.js";
 
 export const READ_ONLY_MESSAGE = "Read-only on the live site. Do this in the app on your computer.";
@@ -116,22 +117,78 @@ export function postShowdownProjectionsPaste() {
   return readOnly();
 }
 
-// A saved card's letter is changed in the app only: the site's saved lineups, its own device ones included, take no letter.
-export function putShowdownLineupTag() {
-  return readOnly();
+// The Showdown Entries tab (D71, D56, D75) runs in this browser (site-entries.js): the visitor's entries file is kept in this browser only, the game it belongs to is told by
+// the ids of the published Showdown games, and the written file is made from this device's and the app's baked lineups of the game, checked on the published board with
+// this device's changes. The kickoff that locks a game is the published board's (D13, D30). Never throws: a failure is the page's own sentence.
+const ENTRIES_FAILED = () => errorBody("ENTRIES_FAILED", "Could not read the entries on this device.");
+
+/** The published board of the game as the entries checks read it, or the refusal to answer with. */
+async function entriesBoard(key, tab = "gpp") {
+  const board = await getShowdownBoard(key, tab);
+  return !board || board.ok === false || !Array.isArray(board.rows) ? { refusal: board?.ok === false && board.error ? board : errorBody("NO_SLATE", "No showdown slate has been uploaded.") } : { board };
 }
 
-// The Showdown Entries tab holds Adam's private entries files and is not on the site (showdown/tabs.js visibleShowdownTabs); all three refuse.
-export function getShowdownEntries() {
-  return readOnly();
+export async function getShowdownEntries(key) {
+  try {
+    const got = await entriesBoard(key);
+    return got.refusal ?? listShowdownEntries({ storage: pageStorage(), key, slate: showdownSlateOf(got.board) });
+  } catch (e) {
+    console.error("showdown entries: list failed", e);
+    return ENTRIES_FAILED();
+  }
 }
 
-export function postShowdownEntriesUpload() {
-  return readOnly();
+export async function postShowdownEntriesUpload(csv) {
+  try {
+    const index = await getShowdowns();
+    const keys = (Array.isArray(index?.showdowns) ? index.showdowns : []).map((s) => s?.key).filter((k) => typeof k === "string");
+    const reads = await Promise.allSettled(keys.map((k) => getBakedBoard(k)));
+    const games = [];
+    const unread = [];
+    reads.forEach((r, i) => {
+      if (r.status === "fulfilled" && r.value && r.value.ok !== false && Array.isArray(r.value.rows)) games.push({ key: keys[i], slate: showdownSlateOf(r.value) });
+      else unread.push(keys[i]);
+    });
+    return uploadShowdownEntries({ storage: pageStorage(), csv, games, unread, nowMs: Date.now() });
+  } catch (e) {
+    console.error("showdown entries: upload failed", e);
+    return errorBody("ENTRIES_FAILED", "Could not read the published Showdown games, so the entries file was not loaded.");
+  }
 }
 
-export function postShowdownEntriesExport() {
-  return readOnly();
+export async function postShowdownEntriesExport(key, payload) {
+  try {
+    const got = await entriesBoard(key);
+    if (got.refusal) return got.refusal;
+    const storage = pageStorage();
+    const app = await bakedLineupsRead(key);
+    if (!app) return errorBody("LINEUPS_UNREADABLE", "The app's saved lineups for this game could not be read; nothing was written."); // fail closed: a missing list is not "no saved lineups"
+    const lineups = showdownLineupsResponse(app, storage, key).lineups;
+    let cashBoard = null;
+    if (hasCashLineup(lineups)) {
+      const cash = await entriesBoard(key, "cash"); // a Cash lineup's revives are the Cash tab's own typed numbers (optimizer standard Part F)
+      if (cash.refusal) return errorBody("BOARD_BUILD_FAILED", "Could not read the Cash board, so injury statuses cannot be checked; nothing was written.");
+      cashBoard = cash.board;
+    }
+    return exportShowdownEntries({ storage, key, payload, slate: showdownSlateOf(await getBakedBoard(key)), lineups, board: got.board, cashBoard, nowMs: Date.now() });
+  } catch (e) {
+    console.error("showdown entries: export failed", e);
+    return ENTRIES_FAILED();
+  }
+}
+
+// A saved card's letter (the Entries tab carries it onto the entries, plan 7a): changed on a lineup saved on this device, kept in this browser, the letter moving off any other device
+// lineup of the game that held it (as the route moves it). The app's baked lineups are read-only here, and their cards draw no letter select (showdown/lineup.js).
+export async function putShowdownLineupTag(key, id, tag) {
+  const app = await bakedLineups(key);
+  const storage = pageStorage();
+  const result = tagShowdownDeviceLineup(storage, showdownStorageKey(key), id, tag, app.lineups);
+  if (result.error) return errorBody("VALIDATION_ERROR", result.error);
+  if (result.status === "refused") return errorBody("DEVICE_STORAGE_UNAVAILABLE", "This browser is not letting the site change its saved lineups (storage is switched off).");
+  if (result.status === "missing") {
+    return app.lineups.some((l) => l.id === id) ? errorBody("READ_ONLY", "App lineups cannot be changed here.") : errorBody("NOT_FOUND", "No saved lineup with that id.");
+  }
+  return envelope({ lineup: result.entry, lineups: showdownLineupsResponse(app, storage, key).lineups }, { stale: app.stale ?? [] });
 }
 
 // Body and answer as POST /api/showdown/<key>/lineup/optimize. Never throws: there is no server on the site, so a
@@ -249,13 +306,18 @@ export function stopShowdownLineupGenerate() {
 /** False on the page-thread fallback, where nothing can answer a click until the build is done. */
 export const canStopShowdownLineupGenerate = () => runShowdownGenerate.canStop();
 
-async function bakedLineups(key) {
+/** The app's baked lineups file of the game, or null when it is missing or unreadable (publish bakes one for every game, so a missing file is a failure, not "no lineups"). */
+async function bakedLineupsRead(key) {
   try {
     const data = await getJson(`baked/showdown/${encodeURIComponent(key)}/lineups.json`);
-    return data && data.ok !== false && Array.isArray(data.lineups) ? data : { ok: true, lineups: [] };
+    return data && data.ok !== false && Array.isArray(data.lineups) ? data : null;
   } catch {
-    return { ok: true, lineups: [] };
+    return null;
   }
+}
+
+async function bakedLineups(key) {
+  return (await bakedLineupsRead(key)) ?? { ok: true, lineups: [] };
 }
 
 // Body and answer as POST /api/showdown/<key>/lineups, but the lineup is kept in this browser only.

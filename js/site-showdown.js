@@ -39,6 +39,8 @@ export { pageStorage };
 export { showdownBoardWithEdits, putShowdownEdits, resetAllShowdownEdits, modesWithEdits } from "./site-overrides.js";
 // The GPP and Cash tabs' own typed numbers (optimizer standard Part F): the routes' tab reading, handed on for site-src/showdown-api.js.
 export { readTab, tabOfMode, SHOWDOWN_TABS } from "../server/showdown/override-tabs.js";
+// The Showdown Entries tab and a device lineup's letter (D71; site-entries.js), handed on for the same one import.
+export { showdownSlateOf, hasCashLineup, listShowdownEntries, uploadShowdownEntries, exportShowdownEntries, tagShowdownDeviceLineup } from "./site-entries.js";
 
 /** The storage key for one showdown (its key looks like 2026-w03-ATLGB). */
 export function showdownStorageKey(key) {

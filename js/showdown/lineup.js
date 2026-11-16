@@ -27,7 +27,7 @@ export { slotPlayerHtml } from "./lineup-slots.js"; // tests import it from here
 import { findRow, FLEX_COUNT, savedLineupCardHtml as savedCardHtml, cardPutGuard } from "./lineup-saved.js";
 import { computeTotals, workingTotalsHtml } from "./working-totals.js"; // A11: the working lineup's totals (moved out to keep this file under its cap)
 export { computeTotals, workingTotalsHtml }; // tests import them from here
-import { onSitePage } from "../tabs.js"; // the public site marks the page is-site: its saved cards draw no letter select (it can only be refused there)
+import { onSitePage } from "../tabs.js"; // the public site marks the page is-site: only a card saved on this device draws a letter select there (an app lineup's letter is changed in the app)
 export { savedLineupSlotHtml, savedProjTotal } from "./lineup-saved.js";
 import { syncSwaps, swapsPanelHtml, wireSwaps, seatsAfterSwap, holdSwapsHeight, setSwapsRefusal } from "./lineup-swaps.js"; // the uniqueness swaps, full width below both columns (Adam 2026-10-18); C22: a click on a swap makes it
 import { syncMeter, meterStripHtml, wireMeter, playerFigures } from "./lineup-meter.js"; // uniqueness / projection strip under the slots; every figure on the screen is the served board's (Adam 2026-10-20)
@@ -296,7 +296,7 @@ export function repaintShowdownPool() {
 
 // The saved card with the panel's rename box, delete prompt and PUT state (lineup-saved.js draws it); `numbers`: numberLineups of this game's saved lineups.
 export function savedLineupCardHtml(lineup, board, figures = playerFigures, numbers = null) {
-  return savedCardHtml(lineup, board, figures, { renamingId: state.renamingId, deleteConfirmId: state.deleteConfirmId, numbers, busy: cardPuts.busy.has(lineup.id), error: cardPuts.errors[lineup.id] ?? null, deleteError: state.deleteErrors[lineup.id] ?? null, editableTag: !onSitePage(), ticked: state.dkSelected.has(lineup.id), confirm: state.confirm, canDelete: canDeleteSaved(lineup.id, onSitePage()), justSaved: state.justSaved.has(lineup.id) });
+  return savedCardHtml(lineup, board, figures, { renamingId: state.renamingId, deleteConfirmId: state.deleteConfirmId, numbers, busy: cardPuts.busy.has(lineup.id), error: cardPuts.errors[lineup.id] ?? null, deleteError: state.deleteErrors[lineup.id] ?? null, editableTag: canDeleteSaved(lineup.id, onSitePage()), ticked: state.dkSelected.has(lineup.id), confirm: state.confirm, canDelete: canDeleteSaved(lineup.id, onSitePage()), justSaved: state.justSaved.has(lineup.id) });
 }
 
 // The saved cards are drawn on the Lineups tab now (lineups-screen.js); `lineupsHands` is what it reads and acts through, so their rename, Load, Download and Delete work as they did.

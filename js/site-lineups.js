@@ -126,6 +126,8 @@ export function buildDeviceLineup(body, board, others = []) {
   const slateFound = findLineupSlate(body.slate, Array.isArray(board?.slates) ? board.slates : []);
   if (slateFound.error) return { error: slateFound.error };
   const { lineupSlate, lineupSecondSlate } = slateFound;
+  const taken = appLetterHolder(tagResult.tag, lineupSlate, others);
+  if (taken) return { error: letterTakenMessage(tagResult.tag, taken) };
   const rowById = new Map((board?.rows ?? []).map((r) => [String(r.id), r]));
   const snapshot = buildLineupSnapshot(slotsResult.slots, rowById, lineupSecondSlate);
   if (snapshot.error) return { error: snapshot.error };
@@ -147,6 +149,18 @@ export function buildDeviceLineup(body, board, others = []) {
   if (buildResult.build) entry.build = buildResult.build;
   return { entry, slateKey: typeof lineupSlate === "string" && lineupSlate !== "" ? lineupSlate : "main" };
 }
+
+/**
+ * The app's baked lineup that already holds letter `tag` on `slate` ("main" when none), or null. A device lineup cannot take that letter: the app's lineups are read-only here, so the
+ * letter could not be moved off them and two lineups would carry it (releaseLineupTag moves a letter among device lineups only). `others`: every lineup the visitor sees.
+ */
+export function appLetterHolder(tag, slate, others) {
+  if (typeof tag !== "string" || tag === "") return null;
+  return (others ?? []).find((l) => l?.tag === tag && !String(l.id ?? "").startsWith(DEVICE_ID_PREFIX) && (l.slate || "main") === (slate || "main")) ?? null;
+}
+
+/** The refusal sentence for a letter an app lineup holds. */
+export const letterTakenMessage = (tag, holder) => `Letter ${tag} is on the app's lineup ${holder?.name ?? holder?.id}; pick another.`;
 
 /** The patch a PUT /api/lineups/<id> body asks of device lineup `existing`, refusing what handleLineupUpdate refuses
  *  (PROJECT.md Part 4 Lineups). `others`: every lineup the visitor sees, for a blank name. {error} or {patch}. */
@@ -173,6 +187,8 @@ export function buildDevicePatch(body, board, existing, others = []) {
     return { error: `This lineup belongs to the ${existingSlate} slate and cannot be changed from the ${slateFound.lineupSlate} slate; save the men as a new lineup instead.` };
   }
   const patchSlate = existingSlate === "" && slateFound.lineupSlate !== "main" ? undefined : slateFound.lineupSlate;
+  const taken = appLetterHolder(tagResult.tag, patchSlate || existingSlate, others);
+  if (taken) return { error: letterTakenMessage(tagResult.tag, taken) };
   const rowById = new Map((board?.rows ?? []).map((r) => [String(r.id), r]));
   const patch = {};
   if (nameResult.name !== undefined) {

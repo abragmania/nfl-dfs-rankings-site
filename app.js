@@ -427,7 +427,7 @@ function renderRankedParts(board, filters, slateRows) {
 
 function renderDynamic() {
   const { board, filters, loading, boardError } = store.get();
-  const activeTab = shownTab(store.get().activeTab); // a tab the page does not draw (Entries on the site) shows the Optimizer
+  const activeTab = shownTab(store.get().activeTab); // a tab the page does not draw shows the Optimizer
 
   // Every list below reads the slate on screen's rows (D57): the whole board, or the active second slate's.
   const slateRows = activeSlateRows(board);

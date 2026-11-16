@@ -204,7 +204,7 @@ export function createEntriesWire(config = {}) {
     if (!data || data.ok === false) return { ok: false, message: refusalLines(data).join(" ") };
     if (key !== null && ent.weekKey === key) await loadFiles(key);
     // notRead (G62): the server's "rows not read" line for the file, or null; the header's status line repeats it.
-    return { ok: true, entries: data.entries?.length ?? 0, contests: contestCount(data.entries), notRead: typeof data.notRead === "string" && data.notRead ? data.notRead : null };
+    return { ok: true, entries: data.entries?.length ?? 0, contests: contestCount(data.entries), notRead: [data.notRead, data.note].filter((s) => typeof s === "string" && s).join(" ") || null }; // the site's upload may add a note (earlier weeks' files removed): shown with it, G62
   }
 
   let uploadRouter = null; // app.js sets it to the header's routing, so this tab's button takes any DraftKings export too

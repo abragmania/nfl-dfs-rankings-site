@@ -1,6 +1,6 @@
 // Tabs above the screen: Optimizer (the main-slate tab and the default, D70; since Optimizer-first step 4 it also holds the game strip and
 // the filter bar, drawn by gamestrip.js/filterbar.js, and since optimizer standard C9 and C17 (round 5) the one player table, the pool, lineup-pool.js, which took over every column and control
-// of the ranked list Rankings used to show; the Rankings and Favorites tabs are retired, RETIRED_TABS: their old keys, a remembered one included, open the Optimizer), Showdown, Entries (app only). Projections and Projected Ownership are not tabs here any more: the header's
+// of the ranked list Rankings used to show; the Rankings and Favorites tabs are retired, RETIRED_TABS: their old keys, a remembered one included, open the Optimizer), Showdown, Entries (app and site alike, D71). Projections and Projected Ownership are not tabs here any more: the header's
 // Sources link opens ONE Sources page (public/js/sources-page.js: which sources, their weights, when each was pulled), and the two
 // per-player tables below it are this file's renderProjectionsPanel and renderOwnershipPanel, chosen by a Projections | Ownership
 // switch on that page (Adam 2026-10-18; SOURCE_TABS keeps the two old tab keys, so "?tab=projections" and "?tab=ownership" still land there).
@@ -36,7 +36,7 @@ function floorNoteHtml(allRows, shownRows) {
 const TABS = [
   { key: "lineup", label: "Optimizer" }, // DECISIONS.md D70: "Optimizer" (was "Lineup Builder"); the first tab since Rankings folded into it (step 4)
   { key: "lineups", label: "Lineups" }, // Adam 2026-11-08: the Optimizer panel showing only its results (New and Saved lineups), app and site; app.js adds #lineup-panel.lineups-only
-  { key: "entries", label: "Entries" }, // rules repo 2026-10-17: Entries is its own tab (was a section under the Optimizer); app-only, see visibleTabs
+  { key: "entries", label: "Entries" }, // rules repo 2026-10-17: Entries is its own tab (was a section under the Optimizer); the site runs it in the browser (D71)
 ];
 
 // The Showdown tab is no longer drawn (2026-11-13: the Main slate / Showdown switch in the one top bar is the door, the same order on both screens: Optimizer | Lineups | Entries | Sources);
@@ -63,19 +63,18 @@ export function sourcesTabToOpen(current, last) {
   return isSourcesTab(last) ? last : SOURCE_TABS[0].key;
 }
 
-// Rules repo 2026-10-17: the public site marks the page `is-site` (tools/publish.mjs injectSite marks the html tag at publish time; site-src/site.js adds it too), the same signal filterbar.js reads;
-// Entries holds Adam's private entries files (site.css hides .entries-section there), so the site gets no Entries tab.
+// The public site marks the page `is-site` (tools/publish.mjs injectSite marks the html tag at publish time; site-src/site.js adds it too), the same signal filterbar.js reads.
 export function onSitePage() {
   return typeof document !== "undefined" && Boolean(document.documentElement?.classList?.contains("is-site")); // a page stand-in with no documentElement is the app
 }
 
-/** The tabs to draw: all of them in the app, all but Entries on the public site. */
-export function visibleTabs(onSite = onSitePage()) {
-  return TABS.filter((t) => !(onSite && t.key === "entries"));
+/** The tabs to draw: all of them, in the app and on the public site alike (D71: the site runs Entries in the visitor's browser, site-src/site-entries.js). */
+export function visibleTabs() {
+  return [...TABS];
 }
 
 /** The tab to show: the stored one when it is drawn, a retired key's replacement (RETIRED_TABS) when that is drawn, else the
- *  Optimizer (an Entries tab left over on the site; rules repo 2026-10-17). */
+ *  Optimizer (an unknown key). */
 export function shownTab(activeTab, tabs = visibleTabs()) {
   const key = Object.prototype.hasOwnProperty.call(RETIRED_TABS, activeTab) ? RETIRED_TABS[activeTab] : activeTab;
   return tabs.some((t) => t.key === key) || isSourcesTab(key) || key === INJURIES_TAB || HIDDEN_TAB_KEYS.includes(key) ? key : "lineup";

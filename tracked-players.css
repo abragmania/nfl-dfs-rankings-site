@@ -3,8 +3,8 @@
    with its own column widths, since .rankings-table sizes its columns by position. The columns are the mark, the name, the top-100
    rank and one YES column per contest (Adam 2026-10-20 2:10 and 2:19 PM), so every row is one 30px line and the box is 920px
    (lead 2026-10-20, review round: six short columns left a 1,000px gap between a name and its YES in the Rankings table's 1250px cap
-   of D54, which this page does not use). In the app every row is a click target that marks or unmarks the name; on the public
-   site the rows are read-only and there is no Mark column. */
+   of D54, which this page does not use). Every row is a click target that marks or unmarks the name, in the app and on the public
+   site (where the visitor's ticks are kept in this browser). */
 .tp-wrap { max-width: 920px; margin: 0 auto; }
 a.tp-back { display: inline-block; text-decoration: none; }
 /* The chip bar (lists, filters, search, key hint) sits above the table box and never scrolls away, because the page itself does not
@@ -19,8 +19,10 @@ a.tp-back { display: inline-block; text-decoration: none; }
 .tp-search { margin-left: auto; }
 .tp-search input { width: 160px; } /* narrow enough that the chips ("Cash games", the counts), Hide marked and the box fit one 920px row */
 .tp-list-count { margin-left: 2px; font-weight: 400; opacity: 0.8; font-variant-numeric: tabular-nums; }
-.tp-source { margin-bottom: var(--sp-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.tp-readonly { margin-bottom: var(--sp-2); }
+/* The page's foot (G64): the site note and the source line sit under the table box, which the script sizes to leave room for them. */
+.tp-foot { padding-top: var(--sp-2); }
+.tp-source { margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tp-readonly { margin: 0 0 var(--sp-1); }
 .tp-readonly[hidden] { display: none; }
 .tp-hint { text-decoration: underline dotted; cursor: help; }
 .tp-error {
@@ -70,7 +72,6 @@ a.tp-back { display: inline-block; text-decoration: none; }
 .tp-table td.tp-mark { text-align: left; }
 .tp-mark input { pointer-events: none; margin: 0; width: 15px; height: 15px; accent-color: var(--accent); vertical-align: middle; }
 .tp-row { cursor: pointer; scroll-margin-top: var(--tp-stick-h, 0px); scroll-margin-bottom: var(--sp-3); }
-.tp-row.is-read-only { cursor: default; }
 .tp-row:hover { background: var(--row-hover); }
 .tp-row:focus { outline: none; }
 .tp-row:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }

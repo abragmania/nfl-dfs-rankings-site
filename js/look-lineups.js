@@ -139,10 +139,14 @@ export function savedLineupCardHtml(lineup, rowById, numbers = null) {
     t.left !== null && t.left < 0 ? `<span class="lt-badge bad">Over cap</span>` : "",
   ].join("");
   const buildText = buildTypeText(lineup.build);
+  // The letter changes on a lineup the visitor may edit: every card in the app, only this device's on the site (an app lineup's letter is changed in the app; the site would refuse it as read-only).
+  const letterHtml = canDeleteSaved(lineup.id, onSitePage())
+    ? `<label class="lt-tagl" title="A letter that follows this lineup onto the Entries tab">Entries letter<select class="saved-lineup-tag lt-tag" data-action="lineup-tag" data-id="${id}" aria-label="Letter for ${escapeHtml(lineup.name)}"${busy}>${tagOptions}</select></label>`
+    : "";
   return `<div class="lc svc${state.justSaved?.has(lineup.id) ? " just" : ""}" data-lineup-id="${id}">
     <div class="lch"><span class="lt-title">${dkSelectHtml(lineup.id, state.dkSelected.has(lineup.id))}${prefix ? `<span class="lt-pre">${escapeHtml(prefix)}</span>` : ""}${name}</span>
       <span class="lcb">${anchorHtml(ltBtn("", "Load", `data-action="lineup-load" data-id="${id}" title="Make it the working lineup"`), loadConfirm, { align: "left" })}${ltBtn("", "Download", `data-lt-dl-card="${id}" title="Download this lineup for DraftKings"`)}${deleting}</span></div>
-    <div class="lt-at"><span class="md${lineupModeOf(lineup) === "cash" ? " cash" : ""}">${lineupModeOf(lineup) === "cash" ? "Cash" : "GPP"}</span><label class="lt-tagl" title="A letter that follows this lineup onto the Entries tab">Entries letter<select class="saved-lineup-tag lt-tag" data-action="lineup-tag" data-id="${id}" aria-label="Letter for ${escapeHtml(lineup.name)}"${busy}>${tagOptions}</select></label><span class="lt-time">Saved ${escapeHtml(formatSavedAt(lineup.savedAt))}</span>${buildText ? `<span class="lt-badge" title="How this lineup was made">${escapeHtml(buildText)}</span>` : ""}${badges}</div>
+    <div class="lt-at"><span class="md${lineupModeOf(lineup) === "cash" ? " cash" : ""}">${lineupModeOf(lineup) === "cash" ? "Cash" : "GPP"}</span>${letterHtml}<span class="lt-time">Saved ${escapeHtml(formatSavedAt(lineup.savedAt))}</span>${buildText ? `<span class="lt-badge" title="How this lineup was made">${escapeHtml(buildText)}</span>` : ""}${badges}</div>
     ${seats.map((entry, i) => savedLineupSlotHtml(LINEUP_SLOTS[i], entry, palette)).join("")}
     ${capShortHtml(t, median)}
     ${readLine ? `<div class="lt-read">${readLine}</div>` : ""}

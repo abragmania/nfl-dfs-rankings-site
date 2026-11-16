@@ -3,8 +3,9 @@
 // from the standings Adam uploaded (2:10 PM: columns, not tags; contest results are not shown). Clicking a row, or Enter or Space on the
 // keyboard row (arrow keys or j and k move it), marks or unmarks the name at once through POST /api/tracked-players/mark.
 // What to show is worked out in tracked-players-view.js (pure, tested); this file only draws it and wires the controls.
-// On the public site (D71) the page shows the same list read-only: tools/publish.mjs rewrites TRACKED_URL to the baked copy,
-// which is how the page knows where it runs, and marking is left to the app.
+// On the public site (D71) the page shows the same list and takes the visitor's ticks, kept in this browser only (SITE_MARKS_KEY,
+// laid over the baked registry): tools/publish.mjs rewrites TRACKED_URL to the baked copy, which is how the page knows where it runs.
+// The app is unchanged.
 import { escapeHtml, localStamp } from "./format.js";
 import { sortArrowHtml } from "./table.js";
 import { cameFromApp, backTarget } from "./showdown/salary-used.js";
@@ -16,9 +17,9 @@ import {
 
 const TRACKED_URL = "baked/tracked-players.json";
 const SITE = TRACKED_URL.startsWith("baked/");
-let cols = columnsFor(SITE, []); // the contests' columns join them once the lists load
+let cols = columnsFor([]); // the contests' columns join them once the lists load
 
-const els = {
+const els = typeof document === "undefined" ? {} : { // empty under node, where the tests import the pure parts below
   counts: document.getElementById("tp-counts"),
   search: document.getElementById("tp-search"),
   back: document.getElementById("tp-back"),
@@ -32,6 +33,7 @@ const els = {
   box: document.getElementById("tp-box"),
   bar: document.getElementById("tp-bar"),
   keys: document.getElementById("tp-keys"),
+  foot: document.getElementById("tp-foot"),
 };
 const typedSearch = makeFilterDebounce({ apply: (patch) => { view.query = patch.query; renderBody(); } }); // 150 ms, as the Optimizer's filter bar
 const view = { list: "all", query: "", hideMarked: false, sort: { ...DEFAULT_SORT } };
@@ -41,6 +43,95 @@ let cursor = null; // the keyboard row's name key, or null until an arrow key or
 let shownKeys = []; // every row of the current list, in order: where the arrow keys step
 const saving = new Map(); // key -> the state being saved (true = marking)
 let saves = Promise.resolve(); // marks are posted one at a time, in click order
+// On the site (D71): the visitor's saved ticks lie over the baked registry. siteChanges: the saved ticks; bakedKeys: the baked marks
+// an untouched name shows; siteUnread: how many saved entries could not be read (G62, -1 when the whole record could not).
+let siteChanges = {};
+let bakedKeys = new Set();
+let siteUnread = 0;
+let sourceData = null; // the loaded list data, for redrawing the source line
+
+// The visitor's ticks on the site are kept in this browser only and never sent (D71). Storage can be missing, switched off or full,
+// so every access is guarded; an entry that is not well formed is left out and counted, and a write the browser refuses changes nothing.
+export const SITE_MARKS_KEY = "nfldfs-site-tracked-players";
+export const SITE_REFUSED_MESSAGE = "This browser is not letting the site keep your ticks (storage is switched off or full), so nothing was saved.";
+const lowerKey = (s) => String(s).trim().toLowerCase();
+const isObject = (v) => typeof v === "object" && v !== null && !Array.isArray(v);
+
+/** This browser's storage, or null when there is none (no window, switched off, or the access throws). */
+export function siteStorage() {
+  try {
+    return typeof window !== "undefined" && window.localStorage ? window.localStorage : null;
+  } catch (e) {
+    console.warn("tracked players: browser storage unavailable", e);
+    return null;
+  }
+}
+
+/** The visitor's saved ticks as { changes: {lower-case name: {on, name}}, unread }; unread counts the entries left out, -1 when the record cannot be read at all. */
+export function readSiteMarks(storage) {
+  if (!storage) return { changes: {}, unread: 0 };
+  let parsed;
+  try {
+    const raw = storage.getItem(SITE_MARKS_KEY);
+    if (!raw) return { changes: {}, unread: 0 };
+    parsed = JSON.parse(raw);
+  } catch (e) {
+    console.warn("tracked players: saved ticks unreadable", e);
+    return { changes: {}, unread: -1 };
+  }
+  if (!isObject(parsed)) return { changes: {}, unread: -1 };
+  const changes = {};
+  let unread = 0;
+  for (const [key, v] of Object.entries(parsed)) {
+    if (isObject(v) && typeof v.on === "boolean" && typeof v.name === "string" && v.name.trim() !== "" && lowerKey(v.name) === key) changes[key] = { on: v.on, name: v.name };
+    else unread++;
+  }
+  return { changes, unread };
+}
+
+/** Writes the visitor's ticks (an empty set removes the entry). False when there is no storage or the browser refused the write. */
+export function writeSiteMarks(storage, changes) {
+  if (!storage) return false;
+  try {
+    if (Object.keys(changes).length === 0) storage.removeItem(SITE_MARKS_KEY);
+    else storage.setItem(SITE_MARKS_KEY, JSON.stringify(changes));
+    return true;
+  } catch (e) {
+    console.warn("tracked players: ticks not saved", e);
+    return false;
+  }
+}
+
+/** The ticks after the visitor sets `key` (shown as `name`) to `on`. An entry is kept only where the tick differs from the baked registry (`bakedKeys`), so Adam's later publishes show through. */
+export function changeMark(changes, bakedKeys, key, name, on) {
+  const next = { ...changes };
+  if (on === bakedKeys.has(key)) delete next[key];
+  else next[key] = { on, name };
+  return next;
+}
+
+/**
+ * One tick saved over what the browser holds now, not over this page's copy: another tab may have saved ticks since this page loaded,
+ * and a write over the old copy would drop them. Returns { changes, saved, unread }: `saved` is false when the browser refused the
+ * write (nothing changed, and `unread` is what it was); when saved, `unread` is 0, since the write replaces every unreadable entry (G62).
+ */
+export function saveTick(storage, bakedKeys, key, name, on) {
+  const now = readSiteMarks(storage);
+  const changes = changeMark(now.changes, bakedKeys, key, name, on);
+  if (writeSiteMarks(storage, changes)) return { changes, saved: true, unread: 0 };
+  return { changes: now.changes, saved: false, unread: now.unread };
+}
+
+/** The baked marked names with the visitor's ticks laid over: a tick on adds the name, a tick off removes it; a baked name keeps its own spelling. */
+export function marksWith(bakedNames, changes) {
+  const out = new Map(bakedNames.map((n) => [lowerKey(n), n]));
+  for (const [key, { on, name }] of Object.entries(changes)) {
+    if (on) {
+      if (!out.has(key)) out.set(key, name);
+    } else out.delete(key);
+  }
+  return [...out.values()];
+}
 
 const fmt = (n) => n.toLocaleString("en-US");
 
@@ -103,10 +194,10 @@ function yesCell(row, contest) {
 function rowHtml(row) {
   const pending = saving.get(row.key);
   const marked = pending ?? model.marked.has(row.key);
-  const cls = `tp-row${marked ? " is-marked" : ""}${cursor === row.key ? " is-cursor" : ""}${pending !== undefined ? " is-saving" : ""}${SITE ? " is-read-only" : ""}`;
-  const mark = SITE ? "" : `<td class="tp-mark"><input type="checkbox" tabindex="-1" aria-label="Mark ${escapeHtml(row.name)}"${marked ? " checked" : ""}></td>`;
+  const cls = `tp-row${marked ? " is-marked" : ""}${cursor === row.key ? " is-cursor" : ""}${pending !== undefined ? " is-saving" : ""}`;
+  const mark = `<td class="tp-mark"><input type="checkbox" tabindex="-1" aria-label="Mark ${escapeHtml(row.name)}"${marked ? " checked" : ""}></td>`;
   return (
-    `<tr class="${cls}"${SITE ? "" : ` tabindex="0" aria-busy="${pending !== undefined}"`} data-key="${escapeHtml(row.key)}">` +
+    `<tr class="${cls}" tabindex="0" aria-busy="${pending !== undefined}" data-key="${escapeHtml(row.key)}">` +
     mark +
     `<td class="tp-name" title="${escapeHtml(row.name)}">${escapeHtml(row.name)}${pending !== undefined ? `<span class="tp-saving">saving…</span>` : ""}</td>` +
     rankCell(row) +
@@ -164,7 +255,7 @@ function cursorOnScreen() {
 }
 
 /**
- * Sizes the table box (Adam 2026-10-21): the room from its top edge to the window's bottom edge less the page's bottom padding
+ * Sizes the table box (Adam 2026-10-21): the room from its top edge to the window's bottom edge less the page's bottom padding and the foot's height (G64)
  * (420px at least), cut down to whole rows (RULES.md D21: header height + n drawn rows + the box's border allowance, the largest n
  * that fits), so the page never scrolls and no row is cut at the bottom. A fixed height, not a max-height, so a short list leaves
  * the box full. Measured from the box's place in the document, so it holds whatever the page's scroll. scroll-panels.js's
@@ -174,7 +265,8 @@ function cursorOnScreen() {
 function layout() {
   const pad = parseFloat(getComputedStyle(document.querySelector("main")).paddingBottom) || 0;
   const top = els.box.getBoundingClientRect().top + window.scrollY;
-  const room = Math.max(420, Math.floor(window.innerHeight - top - pad));
+  const foot = els.foot ? els.foot.offsetHeight : 0; // the notes under the box (G64) take their room from the window too
+  const room = Math.max(420, Math.floor(window.innerHeight - top - pad - foot));
   const head = els.thead.getBoundingClientRect().height;
   const rowH = els.tbody.querySelector("tr")?.getBoundingClientRect().height ?? 0; // every row is one line of the same height
   const allowance = els.box.offsetHeight - els.box.clientHeight; // the box's border (and a sideways scrollbar, if any)
@@ -228,7 +320,11 @@ async function save(key, on) {
 }
 
 function toggle(key) {
-  if (SITE || saving.has(key) || !model.rows.some((r) => r.key === key)) return;
+  if (saving.has(key) || !model.rows.some((r) => r.key === key)) return;
+  if (SITE) {
+    siteToggle(key);
+    return;
+  }
   const on = !model.marked.has(key);
   saving.set(key, on);
   replaceRow(key);
@@ -236,6 +332,42 @@ function toggle(key) {
     saving.delete(key);
     showError(`The mark could not be shown as saved (${e.message}); reload the page to see what was saved.`);
   });
+}
+
+/** On the site: one tick saved in this browser, then the row redrawn as save() does; a tick the browser cannot keep is refused and the row stays as it was. */
+function siteToggle(key) {
+  const row = model.rows.find((r) => r.key === key);
+  const on = !model.marked.has(key);
+  const result = saveTick(siteStorage(), bakedKeys, key, row.name, on);
+  if (!result.saved) {
+    showError(SITE_REFUSED_MESSAGE);
+    return;
+  }
+  siteChanges = result.changes;
+  const noteWas = siteUnread;
+  siteUnread = result.unread;
+  clearError();
+  model.marked = withMark(model.marked, key, on);
+  renderCounts();
+  if (noteWas !== siteUnread) renderSource(sourceData); // the unread note goes once the write has cleared it
+  if (view.hideMarked || view.sort.col === "mark") renderBody();
+  else replaceRow(key);
+}
+
+/** On the site: reads the visitor's saved ticks and the baked marks they lie over, before the model is built. */
+function loadSiteMarks(bakedNames) {
+  const saved = readSiteMarks(siteStorage());
+  siteChanges = saved.changes;
+  siteUnread = saved.unread;
+  bakedKeys = new Set(bakedNames.map(lowerKey));
+}
+
+/** The source line's note on saved ticks that could not be read (G62), or "" when all were read. */
+function siteUnreadText() {
+  if (!SITE || siteUnread === 0) return "";
+  if (siteUnread < 0) return "Your saved ticks in this browser could not be read, so none are applied; the next tick replaces them.";
+  const one = siteUnread === 1;
+  return `${siteUnread} saved tick${one ? "" : "s"} in this browser could not be read and ${one ? "is" : "are"} left out; the next tick removes ${one ? "it" : "them"}.`;
 }
 
 function wireBack() {
@@ -293,7 +425,7 @@ function wireKeys() {
     if (step !== 0) {
       e.preventDefault(); // the arrow keys would scroll the box
       moveCursor(step);
-    } else if ((e.key === "Enter" || e.key === " ") && cursor !== null && !SITE && !on("button, a")) {
+    } else if ((e.key === "Enter" || e.key === " ") && cursor !== null && !on("button, a")) {
       e.preventDefault(); // Space would scroll the box
       if (e.repeat) return; // a held key marks once, not on every finished save
       if (cursorOnScreen()) toggle(cursor);
@@ -301,19 +433,23 @@ function wireKeys() {
     }
   });
   layout();
-  if (typeof ResizeObserver !== "undefined") new ResizeObserver(layout).observe(els.bar); // the chips wrapping moves the box's top edge
+  if (typeof ResizeObserver !== "undefined") { // the chips wrapping moves the box's top edge; the foot's lines wrapping moves its bottom
+    const observer = new ResizeObserver(layout);
+    observer.observe(els.bar);
+    if (els.foot) observer.observe(els.foot);
+  }
   window.addEventListener("resize", layout);
-  if (SITE) els.keys.textContent = "↑ ↓ move";
 }
 
 /** The source line: each contest group's live-or-final state and time, and where the RG rank comes from (its page on hover). */
 function renderSource(data) {
   const built = when(data.lists.builtAt);
+  const unread = siteUnreadText();
   const rgSource = data.registry.rotogrindersSource;
   const rg = rgSource ? `<span class="tp-hint" title="${escapeHtml(rgSource)}">RG rank: RotoGrinders overall rankings</span>` : "RG rank: source not recorded";
   els.source.innerHTML =
     `<span class="tp-hint" title="${escapeHtml(`${data.listsFolder ?? "lists"}, built ${built ?? "at an unknown time"}`)}">DraftKings standings</span> &middot; ` +
-    `${escapeHtml(snapshotSummary(model.contests, when, columnCounts(model)))} &middot; ${rg}`;
+    `${escapeHtml(snapshotSummary(model.contests, when, columnCounts(model)))} &middot; ${rg}${unread ? ` &middot; ${escapeHtml(unread)}` : ""}`;
 }
 
 async function init() {
@@ -329,9 +465,15 @@ async function init() {
     showError(`The tracked players could not be loaded: ${e.message}`);
     return;
   }
-  model = buildModel(data.registry, data.lists);
+  let registry = data.registry;
+  if (SITE) {
+    loadSiteMarks(data.registry.adam);
+    registry = { ...data.registry, adam: marksWith(data.registry.adam, siteChanges) };
+  }
+  model = buildModel(registry, data.lists);
   counts = listCounts(model);
-  cols = columnsFor(SITE, model.contests, columnCounts(model));
+  cols = columnsFor(model.contests, columnCounts(model));
+  sourceData = data;
   renderSource(data);
   renderCounts();
   renderLists();

@@ -17,6 +17,7 @@ import { readTab, tabOfMode } from "../server/showdown/override-tabs.js"; // the
 import { buildCard, precheck, identityOf } from "../server/playercard/build.js";
 import { ndcAbbr, teamFileUrl, gamelogUrl, teamFileProblem, gamelogProblem } from "../server/playercard/ndc-files.js";
 import { boardWithWeights, readWeights, putWeights, weightsKey } from "./site-weights.js";
+import { classicFullOf, hasCashLineup, listClassicEntries, uploadClassicEntries, exportClassicEntries } from "./site-entries.js";
 import { createWorkerRunner, endedSiteResult } from "./site-worker.js";
 
 export const READ_ONLY_MESSAGE = "Read-only on the live site. Do this in the app on your computer.";
@@ -388,15 +389,57 @@ export async function putLineup(id, payload) {
   return { ok: true, generatedAt: new Date().toISOString(), stale: [], lineup: result.entry, lineups: await lineupsWithDevice(app) };
 }
 
-// Entries are Adam's private DraftKings files: the site has none, and its Entries section is hidden by site.css.
+// The Entries tab (D71, D55, D56, D75): the visitor's DraftKings entries export is read, matched to a slate, proposed saved lineups and written back in the browser
+// (site-entries.js, the routes' own pure checks). The file stays in this browser's storage and goes nowhere. The lineups offered are the ones the Lineups tab lists
+// (the app's baked lineups and this device's); the kickoff that locks a slate is the published slate's (D13, D30).
+async function entriesContext() {
+  const [board, slate] = await Promise.all([bakedVisitorBoard("gpp"), baked("baked/slate.json")]);
+  if (!board || board.ok === false || !Array.isArray(board.rows) || !slate || slate.ok === false || slate.season == null || slate.week == null) {
+    return { refusal: board?.ok === false ? board : siteError("NO_SLATE", "No slate has been uploaded yet.") };
+  }
+  return { board, full: classicFullOf(board, slate), secondSlates: Array.isArray(board.slates) ? board.slates : [] };
+}
+
+/** Runs one Entries call; a failure nobody planned for is the page's own sentence, never "could not reach the server" (there is none). */
+async function entriesCall(name, work) {
+  try {
+    const ctx = await entriesContext();
+    return ctx.refusal ?? (await work(ctx));
+  } catch (e) {
+    console.error(`entries ${name}: failed`, e);
+    return siteError("ENTRIES_FAILED", "Could not read the entries on this device.");
+  }
+}
+
 export function getEntries() {
-  return readOnly();
+  return entriesCall("list", ({ full, secondSlates }) => listClassicEntries({ storage: pageStorage(), full, secondSlates }));
 }
 
-export function postEntriesUpload() {
-  return readOnly();
+export function postEntriesUpload(csv) {
+  return entriesCall("upload", ({ full, secondSlates }) => uploadClassicEntries({ storage: pageStorage(), csv, full, secondSlates, nowMs: Date.now() }));
 }
 
-export function postEntriesExport() {
-  return readOnly();
+export function postEntriesExport(payload) {
+  return entriesCall("export", async ({ board, full, secondSlates }) => {
+    // Fail closed: a missing or unreadable baked lineups file is not "no saved lineups", and a Cash board that cannot be read is not a board with no revives.
+    let app = null;
+    try {
+      const data = await baked("baked/lineups.json");
+      app = data && data.ok !== false && Array.isArray(data.lineups) ? data.lineups : null;
+    } catch (e) {
+      console.warn("entries export: baked lineups unreadable", e);
+    }
+    if (!app) return siteError("LINEUPS_UNREADABLE", "The app's saved lineups could not be read; nothing was written.");
+    const lineups = await lineupsWithDevice(app);
+    let cashBoard = null;
+    if (hasCashLineup(lineups)) {
+      try {
+        cashBoard = await bakedVisitorBoard("cash"); // a Cash lineup's revives are the Cash tab's own typed numbers (optimizer standard Part F)
+      } catch (e) {
+        console.warn("entries export: baked Cash board unreadable", e);
+      }
+      if (!cashBoard || cashBoard.ok === false || !Array.isArray(cashBoard.rows)) return siteError("BOARD_BUILD_FAILED", "Could not read the Cash board, so injury statuses cannot be checked; nothing was written.");
+    }
+    return exportClassicEntries({ storage: pageStorage(), payload, full, secondSlates, lineups, board, cashBoard, nowMs: Date.now() });
+  });
 }

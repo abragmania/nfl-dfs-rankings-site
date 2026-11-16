@@ -24,7 +24,7 @@
 </head>
 <body>
   <!-- Tracked DFS players (Adam 2026-10-20): public/js/tracked-players.js draws the page from GET /api/tracked-players (the baked
-       copy on the public site, where it is read-only). The back link's address is set from ?from= (a Showdown) by the script. -->
+       copy on the public site, where the visitor's ticks are kept in this browser). The back link's address is set from ?from= (a Showdown) by the script. -->
   <header class="header">
     <div class="header-top">
       <h1 class="title">Tracked DFS players</h1>
@@ -38,7 +38,6 @@
   <main class="main">
     <div class="tp-wrap">
       <div id="tp-error" class="tp-error" role="alert" hidden></div>
-      <p id="tp-readonly" class="tab-note tp-readonly" hidden>Read-only on the live site. Marking runs in the app on your computer.</p>
       <div id="tp-bar" class="tp-bar">
         <div class="filter-row tp-controls">
           <div id="tp-lists" class="chip-group" aria-label="List"></div>
@@ -48,12 +47,15 @@
         </div>
         <p id="tp-keys" class="tab-note tp-keys">&uarr; &darr; move &middot; Enter marks</p>
       </div>
-      <p id="tp-source" class="tab-note tp-source"></p>
       <div id="tp-box" class="scroll-panel tp-box">
         <table class="tp-table">
           <thead id="tp-thead"></thead>
           <tbody id="tp-tbody"></tbody>
         </table>
+      </div>
+      <div id="tp-foot" class="tp-foot">
+        <p id="tp-readonly" class="tab-note tp-readonly" hidden>Marks made here are kept in this browser only; nothing is sent anywhere.</p>
+        <p id="tp-source" class="tab-note tp-source"></p>
       </div>
     </div>
   </main>
