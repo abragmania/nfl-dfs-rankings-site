@@ -72,6 +72,7 @@ export function twoGunMarkerTexts(row, field) {
     if (projFallback) texts.push(`TwoGun does not project him; this is the current sources' blend${ownFallback ? ", and so is his Own" : ""}.`);
   } else if (field === "own") {
     if (ownFallback && !projFallback) texts.push("TwoGun publishes no ownership for him; this is the current sources' Own.");
+    else if (tg?.ownClose && !ownFallback) texts.push(`TwoGun's ownership board lists him as ${tg.ownClose}; joined as a close match.`); // G68: classic's close match moves only ownership
   } else if (field === "salary") {
     if (flags.includes("salaryDiffers")) texts.push(`TwoGun lists ${money(tg?.salary)}; DraftKings' ${money(row.salary)} is used for Val and the Optimizer (D13).`);
   } else if (field === "status") {
