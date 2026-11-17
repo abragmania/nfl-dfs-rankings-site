@@ -5,7 +5,7 @@ import { escapeHtml } from "./format.js";
 import { LOCK_ICON, EXCLUDE_ICON } from "./look-row.js";
 
 /** The padlock, drawn in the text colour (the sketch's, approved 2026-10-19): the small one beside a locked man's name. */
-export const LOCK_SVG = `<svg viewBox="0 0 16 16" width="13" height="13" fill="currentColor" aria-hidden="true"><rect x="3" y="7" width="10" height="8" rx="1.5"/><path d="M5 7V5a3 3 0 016 0v2" fill="none" stroke="currentColor" stroke-width="1.7"/></svg>`;
+export const LOCK_SVG = `<svg viewBox="0 0 16 16" width="13" height="13" style="width:0.8125rem;height:0.8125rem" fill="currentColor" aria-hidden="true"><rect x="3" y="7" width="10" height="8" rx="1.5"/><path d="M5 7V5a3 3 0 016 0v2" fill="none" stroke="currentColor" stroke-width="1.7"/></svg>`;
 
 const FACES = Object.freeze({
   lock: { inner: LOCK_ICON, cls: " lk" },

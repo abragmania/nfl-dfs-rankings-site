@@ -5,7 +5,7 @@
    (lead 2026-10-20, review round: six short columns left a 1,000px gap between a name and its YES in the Rankings table's 1250px cap
    of D54, which this page does not use). Every row is a click target that marks or unmarks the name, in the app and on the public
    site (where the visitor's ticks are kept in this browser). */
-.tp-wrap { max-width: 920px; margin: 0 auto; }
+.tp-wrap { max-width: 57.5rem; margin: 0 auto; }
 a.tp-back { display: inline-block; text-decoration: none; }
 /* The chip bar (lists, filters, search, key hint) sits above the table box and never scrolls away, because the page itself does not
    scroll (Adam 2026-10-21: "without endless scrolling"): the table is a fixed-height box with its own scroll, the Optimizer's ranked-list
@@ -17,8 +17,8 @@ a.tp-back { display: inline-block; text-decoration: none; }
 .tp-keys { margin: 0; color: var(--text-dim); }
 .tp-sep { width: 1px; align-self: stretch; background: var(--border); margin: 0 var(--sp-1); }
 .tp-search { margin-left: auto; }
-.tp-search input { width: 160px; } /* narrow enough that the chips ("Cash games", the counts), Hide marked and the box fit one 920px row */
-.tp-list-count { margin-left: 2px; font-weight: 400; opacity: 0.8; font-variant-numeric: tabular-nums; }
+.tp-search input { width: 10rem; } /* narrow enough that the chips ("Cash games", the counts), Hide marked and the box fit one 920px row */
+.tp-list-count { margin-left: 0.125rem; font-weight: 400; opacity: 0.8; font-variant-numeric: tabular-nums; }
 /* The page's foot (G64): the site note and the source line sit under the table box, which the script sizes to leave room for them. */
 .tp-foot { padding-top: var(--sp-2); }
 .tp-source { margin: 0; }
@@ -29,17 +29,17 @@ a.tp-back { display: inline-block; text-decoration: none; }
   margin-bottom: var(--sp-3);
   padding: var(--sp-2) var(--sp-3);
   border: 1px solid var(--danger);
-  border-radius: 6px;
+  border-radius: 0.375rem;
   background: rgba(var(--danger-rgb), 0.12);
   color: color-mix(in srgb, var(--danger) 70%, var(--text));
   font-size: var(--fs-sm);
 }
 .tp-error[hidden] { display: none; }
-.tp-table { width: 100%; border-collapse: collapse; font-size: 14px; table-layout: fixed; }
+.tp-table { width: 100%; border-collapse: collapse; font-size: 0.875rem; table-layout: fixed; }
 .tp-table thead { position: sticky; top: 0; z-index: 2; background: var(--bg-elevated-2); } /* pinned at the top of the box; opaque in both themes */
 .tp-table th {
   text-align: left;
-  padding: 6px 10px;
+  padding: 0.375rem 0.625rem;
   cursor: pointer;
   color: var(--text-muted);
   font-size: var(--fs-sm);
@@ -49,38 +49,38 @@ a.tp-back { display: inline-block; text-decoration: none; }
   position: relative;
 }
 .tp-table th.sorted { color: var(--text); }
-.tp-table th .sort-arrow { font-size: 9px; }
+.tp-table th .sort-arrow { font-size: 0.5625rem; }
 /* In the right-aligned and centred headers the arrow sits in the cell's right padding, so a hidden one takes no room and the label
    lines up with the numbers and YES cells below it. */
-.tp-table th.tp-col-top100 .sort-arrow, .tp-table th.tp-col-yes .sort-arrow { position: absolute; right: 1px; top: 50%; transform: translateY(-50%); }
+.tp-table th.tp-col-top100 .sort-arrow, .tp-table th.tp-col-yes .sort-arrow { position: absolute; right: 0.0625rem; top: 50%; transform: translateY(-50%); }
 .tp-table td {
-  padding: 0 10px;
-  height: 30px;
+  padding: 0 0.625rem;
+  height: 1.875rem;
   border-bottom: 1px solid var(--border);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 /* The name column takes whatever the fixed columns leave of the 920px box (60 + 110 + 3 x 150 = 620px fixed, so 300px at the cap). */
-.tp-table .tp-col-mark { width: 60px; }
-.tp-table .tp-col-top100 { width: 110px; }
-.tp-table .tp-col-yes { width: 150px; } /* a contest's YES column ("High $ 675", "Double-up") */
+.tp-table .tp-col-mark { width: 3.75rem; }
+.tp-table .tp-col-top100 { width: 6.875rem; }
+.tp-table .tp-col-yes { width: 9.375rem; } /* a contest's YES column ("High $ 675", "Double-up") */
 .tp-table th.tp-col-top100, .tp-table td.tp-num { text-align: right; font-variant-numeric: tabular-nums; }
 /* Adam 2:19 PM: a contest column is just YES or blank, centred, in the note size (not the 14px body text) and the normal text colour. */
 .tp-table th.tp-col-yes, .tp-table td.tp-yes { text-align: center; }
 .tp-table td.tp-yes { font-size: var(--fs-sm); font-weight: 400; color: var(--text); }
 .tp-table td.tp-mark { text-align: left; }
-.tp-mark input { pointer-events: none; margin: 0; width: 15px; height: 15px; accent-color: var(--accent); vertical-align: middle; }
+.tp-mark input { pointer-events: none; margin: 0; width: 0.9375rem; height: 0.9375rem; accent-color: var(--accent); vertical-align: middle; }
 .tp-row { cursor: pointer; scroll-margin-top: var(--tp-stick-h, 0px); scroll-margin-bottom: var(--sp-3); }
 .tp-row:hover { background: var(--row-hover); }
 .tp-row:focus { outline: none; }
 .tp-row:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 /* The keyboard row (arrow keys, j and k): a wash plus a bar down its left edge, distinct from Marked (accent name text). */
 .tp-row.is-cursor, .tp-row.is-cursor:hover { background: rgba(var(--accent-rgb), 0.2); }
-.tp-row.is-cursor td:first-child { box-shadow: inset 4px 0 0 var(--accent); }
+.tp-row.is-cursor td:first-child { box-shadow: inset 0.25rem 0 0 var(--accent); }
 .tp-row.is-marked td.tp-name { color: var(--accent-text); font-weight: 600; }
 .tp-row.is-saving { cursor: progress; }
 .tp-row.is-saving td { opacity: 0.6; }
 .tp-name { font-weight: 600; }
-.tp-saving { margin-left: var(--sp-1); color: var(--text-dim); font-size: 12px; line-height: 20px; vertical-align: middle; }
+.tp-saving { margin-left: var(--sp-1); color: var(--text-dim); font-size: 0.75rem; line-height: 1.25rem; vertical-align: middle; }
 .tp-empty td { color: var(--text-muted); cursor: default; }

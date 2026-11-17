@@ -1,7 +1,7 @@
 /* NFL's own additions to the copied NBA look (PROJECT.md Part 4 item 5): the approved mock-up's page-local rules, and the seating of NFL's controls the NBA stylesheets have no rule for. board.css, lineups.css and theme-light.css are the pinned copies; this file loads after them. */
-.nl{color:var(--tx);font:13.5px/1.35 "JetBrains Mono",monospace}
+.nl{color:var(--tx);font:0.8438rem/1.35 "JetBrains Mono",monospace}
 .nl input,.nl select{font:inherit;color:inherit}
-body.nl-page{margin:0;background-color:#050506;color:#ececec;font:13.5px/1.35 "JetBrains Mono",monospace;padding:0 clamp(20px,2.2vw,60px) 40px;background-image:linear-gradient(#ffffff04 1px,transparent 1px),linear-gradient(90deg,#ffffff04 1px,transparent 1px);background-size:48px 48px}
+body.nl-page{margin:0;background-color:#050506;color:#ececec;font:0.8438rem/1.35 "JetBrains Mono",monospace;padding:0 clamp(1.25rem,2.2vw,3.75rem) 2.5rem;background-image:linear-gradient(#ffffff04 1px,transparent 1px),linear-gradient(90deg,#ffffff04 1px,transparent 1px);background-size:3rem 3rem}
 html[data-theme="light"] body.nl-page{background-color:#f4f4f1;background-image:none;color:#17171a}
 html:has(body.nl-page){background:#050506}
 html[data-theme="light"]:has(body.nl-page){background:#f4f4f1}
@@ -9,211 +9,211 @@ body.nl-page #classic-main{max-width:none;padding:0;width:auto}
 /* The top bar: sticky at the top of the page, the same on every tab of the classic page. */
 #classic-header{position:sticky;top:0;z-index:30;background:var(--bg)}
 body:not(.nl-page) #classic-header{padding:0 var(--sp-5)}
-.nl .top .tab-btn{margin:0;background:none;border:0;border-right:1px solid var(--ln);border-radius:0;padding:4px 12px;font-weight:700;font-size:12px;color:var(--mu);box-shadow:none}
+.nl .top .tab-btn{margin:0;background:none;border:0;border-right:1px solid var(--ln);border-radius:0;padding:0.25rem 0.75rem;font-weight:700;font-size:0.75rem;color:var(--mu);box-shadow:none}
 .nl .vtabs nav{display:contents}
 .nl .vtabs button:last-child{border-right:0}
 .nl .vtabs nav .tab-btn:last-child{border-right:1px solid var(--ln)}
 .nl .vtabs button.active,.nl .vtabs button.on{background:var(--am);color:#000}
-.nl .vtabs .site-matchups-tab{padding:4px 12px;font-size:12px;font-weight:700;color:var(--mu);text-decoration:none;border:0;border-left:1px solid var(--ln);border-radius:0;margin:0}
+.nl .vtabs .site-matchups-tab{padding:0.25rem 0.75rem;font-size:0.75rem;font-weight:700;color:var(--mu);text-decoration:none;border:0;border-left:1px solid var(--ln);border-radius:0;margin:0}
 .nl #top-slates{display:flex;align-items:center}
 .nl #mode-row{padding:0;background:none;border:0;margin:0;position:static}
-.nl .mode-row-inner{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
-.nl .mode-tile{margin:0;background:var(--p2);border:1px solid var(--ln);border-radius:0;padding:4px 10px;font:700 13px "JetBrains Mono",monospace;color:var(--mu);white-space:nowrap}
+.nl .mode-row-inner{display:flex;flex-wrap:wrap;gap:0.375rem;align-items:center}
+.nl .mode-tile{margin:0;background:var(--p2);border:1px solid var(--ln);border-radius:0;padding:0.25rem 0.625rem;font:700 0.8125rem "JetBrains Mono",monospace;color:var(--mu);white-space:nowrap}
 .nl .mode-tile.active{color:var(--tx);border-color:var(--ln)}
-.nl .mode-upload-tile{font-weight:600;font-size:11.5px;cursor:pointer}
+.nl .mode-upload-tile{font-weight:600;font-size:0.7188rem;cursor:pointer}
 .nl .tg-mode{display:flex}
 .nl .tg-mode:empty{display:none}
 .nl .tg-mode-switch{display:flex;border:1px solid var(--ln)}
-.nl .tg-mode-btn{border:0;background:none;padding:4px 10px;font-weight:700;font-size:11.5px;color:var(--mu);border-radius:0}
+.nl .tg-mode-btn{border:0;background:none;padding:0.25rem 0.625rem;font-weight:700;font-size:0.7188rem;color:var(--mu);border-radius:0}
 .nl .tg-mode-btn.active{background:var(--p2);color:var(--tx)}
-.nl .header-actions{display:flex;align-items:center;gap:8px;margin:0}
-.nl .upload-info{font-size:11px;color:var(--mu)}
+.nl .header-actions{display:flex;align-items:center;gap:0.5rem;margin:0}
+.nl .upload-info{font-size:0.6875rem;color:var(--mu)}
 /* After an upload its stamp hangs under the Upload button and takes no width, so Season, Week, Salaries and Cap never truncate (walkthrough friction); on a phone it wraps in line. */
 .nl .header-actions{position:relative}
-.nl .header-actions .upload-info{position:absolute;left:0;top:100%;margin-top:2px;font-size:10px;line-height:12px;pointer-events:auto}
+.nl .header-actions .upload-info{position:absolute;left:0;top:100%;margin-top:0.125rem;font-size:0.625rem;line-height:0.75rem;pointer-events:auto}
 .nl .chip.upload-btn{cursor:pointer}
-.nl .brand .mode-tag{background:none;border:0;padding:0;margin:0;font:500 12px "JetBrains Mono",monospace;color:var(--mu);letter-spacing:0}
+.nl .brand .mode-tag{background:none;border:0;padding:0;margin:0;font:500 0.75rem "JetBrains Mono",monospace;color:var(--mu);letter-spacing:0}
 .nl #tg-pill,.nl #pills-row{margin:0}
-.nl .header-sub{display:flex;flex-wrap:wrap;align-items:center;gap:4px 12px;padding:0 0 2px}
-.nl .tg-pill .pill,.nl .tg-pill .mode-pill,.nl .tg-pill > *{background:none!important;border:0!important;padding:0!important;font-size:11px!important;color:var(--dim)!important}
+.nl .header-sub{display:flex;flex-wrap:wrap;align-items:center;gap:0.25rem 0.75rem;padding:0 0 0.125rem}
+.nl .tg-pill .pill,.nl .tg-pill .mode-pill,.nl .tg-pill > *{background:none!important;border:0!important;padding:0!important;font-size:0.6875rem!important;color:var(--dim)!important}
 .nl .tg-pill .pill-warning{color:var(--am)!important}
 .nl .header-sub:has(> [hidden]:first-child):has(> [hidden]:last-child){display:none}
 #status:empty{display:none}
 /* The two quiet lines under the game strip: the ownership and injury notes on the left, the board's as-of times on the right. */
-.nl .updline{display:flex;justify-content:space-between;gap:16px;align-items:baseline;margin:0 0 6px;padding-right:150px;font-size:11px;color:var(--dim)}
-.nl .updline .own-banner{margin:0;padding:0;border:0;background:none;color:var(--dim);font-size:11px}
+.nl .updline{display:flex;justify-content:space-between;gap:1rem;align-items:baseline;margin:0 0 0.375rem;padding-right:9.375rem;font-size:0.6875rem;color:var(--dim)}
+.nl .updline .own-banner{margin:0;padding:0;border:0;background:none;color:var(--dim);font-size:0.6875rem}
 .nl .updline .own-banner.stale-line{color:var(--am)} /* item 7: the one short line a stale or missing feed leaves, e.g. "Injuries: saved copy" */
 .nl .updline:has(.own-banner[hidden]){display:none}
-.nl .stamps-line{font-size:11px;color:var(--dim);margin:0}
-.nl .stamps-line .stamp{margin-left:12px;white-space:nowrap}
+.nl .stamps-line{font-size:0.6875rem;color:var(--dim);margin:0}
+.nl .stamps-line .stamp{margin-left:0.75rem;white-space:nowrap}
 .nl .stamps-line i{font-style:normal;color:var(--dim)}
 .nl #gamestrip{position:relative}
-.nl .gs-toggle{position:absolute;right:0;bottom:-20px;background:none;border:0;color:var(--dim);font-size:10.5px;cursor:pointer;padding:0}
+.nl .gs-toggle{position:absolute;right:0;bottom:-1.25rem;background:none;border:0;color:var(--dim);font-size:0.6563rem;cursor:pointer;padding:0}
 .nl .gs-toggle:hover{color:var(--mu)}
 .nl .game.game-box{display:block;width:100%;text-align:left;color:inherit;font:inherit}
 .nl .tot.line-unknown{color:var(--dim)}
-.nl .games{grid-template-columns:repeat(auto-fill,minmax(205px,1fr));margin:8px 0 6px}
-@media (min-width:2000px){.nl .games{grid-template-columns:repeat(11,minmax(0,1fr))}}
+.nl .games{grid-template-columns:repeat(auto-fill,minmax(12.8125rem,1fr));margin:0.5rem 0 0.375rem}
+@media (min-width:2561px){.nl .games{grid-template-columns:repeat(11,minmax(0,1fr))}}
 /* The approved mock-up's own rules (look-copy/look.css). */
-.nl .popbar{display:block;height:3px;background:#ffffff0d;margin-top:4px}
-.nl .gh2{justify-content:space-between;margin:3px 0 0;font-size:11px}
+.nl .popbar{display:block;height:0.1875rem;background:#ffffff0d;margin-top:0.25rem}
+.nl .gh2{justify-content:space-between;margin:0.1875rem 0 0;font-size:0.6875rem}
 .nl .popbar i{display:block;height:100%;background:var(--bl)}
 .nl .gh .pop{color:var(--mu)}
 .nl .gh .wx{color:var(--dim)}
-.nl .lt-btns{display:flex;gap:8px;flex-shrink:0;align-items:center}
-.nl .opt .setop em{font-style:normal;font-weight:500;color:var(--tx);margin-left:10px}
+.nl .lt-btns{display:flex;gap:0.5rem;flex-shrink:0;align-items:center}
+.nl .opt .setop em{font-style:normal;font-weight:500;color:var(--tx);margin-left:0.625rem}
 .nl .opt .setop span{float:right;color:var(--dim)}
-.nl .opt .lonote{padding:0 16px 3px;font-size:11.5px;color:var(--mu)}
+.nl .opt .lonote{padding:0 1rem 0.1875rem;font-size:0.7188rem;color:var(--mu)}
 .nl .opt .lonote.lo-err{color:var(--rd)}
-.nl .opt .lo{padding:2px 16px 4px}
-.nl .opt .lo .crow{grid-template-columns:44px 24px minmax(0,1fr) 80px 62px 66px 84px}
-.nl .opt .lo .way{padding:0 0 3px 76px;font-size:11.5px;color:var(--mu);text-align:left}
-.nl .opt .lobox .sec{padding:8px 16px 2px;font-size:11px;color:var(--mu);border:0;letter-spacing:0;text-transform:none}
-.nl .opt .lobox{padding-bottom:6px;border-top:1px solid var(--ln)}
-.nl .opt .lo-sub{margin-left:8px;color:var(--dim);font-size:11px}
-.nl .hint2{padding:0 16px 8px;font-size:11.5px;color:var(--dim)}
+.nl .opt .lo{padding:0.125rem 1rem 0.25rem}
+.nl .opt .lo .crow{grid-template-columns:2.75rem 1.5rem minmax(0,1fr) 5rem 3.875rem 4.125rem 5.25rem}
+.nl .opt .lo .way{padding:0 0 0.1875rem 4.75rem;font-size:0.7188rem;color:var(--mu);text-align:left}
+.nl .opt .lobox .sec{padding:0.5rem 1rem 0.125rem;font-size:0.6875rem;color:var(--mu);border:0;letter-spacing:0;text-transform:none}
+.nl .opt .lobox{padding-bottom:0.375rem;border-top:1px solid var(--ln)}
+.nl .opt .lo-sub{margin-left:0.5rem;color:var(--dim);font-size:0.6875rem}
+.nl .hint2{padding:0 1rem 0.5rem;font-size:0.7188rem;color:var(--dim)}
 .nl .hint2:empty,.nl .opt-lockinfo:empty{display:none}
-.nl .work{grid-template-columns:minmax(0,1400px) 700px;justify-content:start} /* the pool stops at 1400px on a wide window, as the Showdown's does (its own cap below) */
-.nl .opt{align-self:start;position:sticky;top:var(--tabs-h,0px);max-height:calc(100vh - var(--tabs-h,0px) - 8px);overflow-y:auto}
+.nl .work{grid-template-columns:minmax(0,87.5rem) 43.75rem;justify-content:start} /* the pool stops at 1400px on a wide window, as the Showdown's does (its own cap below) */
+.nl .opt{align-self:start;position:sticky;top:var(--tabs-h,0px);max-height:calc(100vh - var(--tabs-h,0px) - 0.5rem);overflow-y:auto}
 .nl #lineups.opt{position:static;max-height:none;overflow:visible}
-.nl .opt .lu.wk{position:static;padding:0 16px 6px;border-bottom:0}
-.nl .opt .lu.wk .luh{padding:8px 0 6px;display:flex;justify-content:space-between;align-items:center;gap:8px}
-.nl .opt .lu.wk .luh>span:first-child{font-size:16px}
-.nl .opt .lu.wk .luhr{display:flex;align-items:center;gap:10px;position:relative}
-.nl .opt .lu.wk .clr{min-height:24px;padding:2px 12px;background:none;border:1px solid var(--ln);color:var(--mu);font-size:12px}
-.nl .opt .lu.wk .wkh,.nl .opt .lu.wk .wkr{grid-template-columns:34px 20px minmax(0,1fr) 92px 62px 70px 28px;column-gap:6px;padding-left:0;padding-right:6px}
-.nl .opt .lu.wk .wkh{height:24px;font-size:10.5px}
+.nl .opt .lu.wk{position:static;padding:0 1rem 0.375rem;border-bottom:0}
+.nl .opt .lu.wk .luh{padding:0.5rem 0 0.375rem;display:flex;justify-content:space-between;align-items:center;gap:0.5rem}
+.nl .opt .lu.wk .luh>span:first-child{font-size:1rem}
+.nl .opt .lu.wk .luhr{display:flex;align-items:center;gap:0.625rem;position:relative}
+.nl .opt .lu.wk .clr{min-height:1.5rem;padding:0.125rem 0.75rem;background:none;border:1px solid var(--ln);color:var(--mu);font-size:0.75rem}
+.nl .opt .lu.wk .wkh,.nl .opt .lu.wk .wkr{grid-template-columns:2.125rem 1.25rem minmax(0,1fr) 5.75rem 3.875rem 4.375rem 1.75rem;column-gap:0.375rem;padding-left:0;padding-right:0.375rem}
+.nl .opt .lu.wk .wkh{height:1.5rem;font-size:0.6563rem}
 .nl .opt .lu.wk .wkh .wkhp{grid-column:2 / span 2}
 .nl .opt .lu.wk .wkh span{text-align:right}
 .nl .opt .lu.wk .wkh span:first-child,.nl .opt .lu.wk .wkh .wkhp{text-align:left}
 .nl .opt .lu.wk .wkh span:first-child{text-align:center}
 .nl .opt .lu.wk .wkh span:nth-child(5),.nl .opt .lu.wk .wkr .sv{display:none} /* the per-row Value is drawn from 901px up (below), a phone has no room for it */
-.nl .opt .lu.wk .wkr{height:30px;font-size:13px}
-.nl .opt .lu.wk .wkr>.sl{align-self:stretch;display:flex;align-items:center;justify-content:center;border:0;background:var(--am);color:#000;font-size:11px;font-weight:900;letter-spacing:.3px;padding:0}
+.nl .opt .lu.wk .wkr{height:1.875rem;font-size:0.8125rem}
+.nl .opt .lu.wk .wkr>.sl{align-self:stretch;display:flex;align-items:center;justify-content:center;border:0;background:var(--am);color:#000;font-size:0.6875rem;font-weight:900;letter-spacing:0.0187rem;padding:0}
 .nl .opt .lu.wk .wkr.locked>.sl{background:var(--gr)}
 .nl .opt .lu.wk .wkr.empty>.sl{background:none;color:var(--mu)}
-.nl .opt .lu.wk .wkr .logo.sm{width:20px;height:20px}
-.nl .opt .lu.wk .wkr .sn1{gap:4px;display:flex;align-items:baseline;min-width:0}
-.nl .opt .lu.wk .wkr .pn{font:700 13px "Space Grotesk",sans-serif;letter-spacing:0}
-.nl .opt .lu.wk .wkr .slt{flex-shrink:0;font-size:11px;font-weight:500;color:var(--mu);margin-left:4px}
-.nl .opt .lu.wk .wkr .ss,.nl .opt .lu.wk .wkr .sp,.nl .opt .lu.wk .wkr .so{font:700 14px "Space Grotesk",sans-serif;text-align:right}
+.nl .opt .lu.wk .wkr .logo.sm{width:1.25rem;height:1.25rem}
+.nl .opt .lu.wk .wkr .sn1{gap:0.25rem;display:flex;align-items:baseline;min-width:0}
+.nl .opt .lu.wk .wkr .pn{font:700 0.8125rem "Space Grotesk",sans-serif;letter-spacing:0}
+.nl .opt .lu.wk .wkr .slt{flex-shrink:0;font-size:0.6875rem;font-weight:500;color:var(--mu);margin-left:0.25rem}
+.nl .opt .lu.wk .wkr .ss,.nl .opt .lu.wk .wkr .sp,.nl .opt .lu.wk .wkr .so{font:700 0.875rem "Space Grotesk",sans-serif;text-align:right}
 .nl .opt .lu.wk .wkr .sp{color:var(--am)}
-.nl .opt .lu.wk .wkr .lkb,.nl .opt .lu.wk .wkr .lkd{width:22px;height:22px;display:inline-grid;place-items:center;padding:0}
+.nl .opt .lu.wk .wkr .lkb,.nl .opt .lu.wk .wkr .lkd{width:1.375rem;height:1.375rem;display:inline-grid;place-items:center;padding:0}
 .nl .opt .lu.wk .wkr.empty .sn{grid-column:2 / -1}
-.nl .opt .lu.wk .wkr.empty .sn b{font:500 13px "Space Grotesk",sans-serif}
+.nl .opt .lu.wk .wkr.empty .sn b{font:500 0.8125rem "Space Grotesk",sans-serif}
 .nl .opt .lu.wk .wkr.empty .sn{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .nl .opt .lu.wk .wkr.empty .sn b{display:inline}
-.nl .opt .lu.wk .wkr.empty .eh{font:400 11.5px "Space Grotesk",sans-serif;color:var(--dim)} /* how to fill an empty seat (walkthrough friction) */
+.nl .opt .lu.wk .wkr.empty .eh{font:400 0.7188rem "Space Grotesk",sans-serif;color:var(--dim)} /* how to fill an empty seat (walkthrough friction) */
 .nl .opt .lu.wk .wkr.tm{box-shadow:none}
 .nl .opt .lu.wk .wkr.hand{cursor:pointer}
-.nl .opt .lu.wk .cap{margin-top:6px}
-.nl .opt .lu.wk .capbar{height:3px}
-.nl .opt .lu.wk .cap .capt{display:flex;justify-content:space-between;gap:8px;padding:6px 0 0;font-size:11.5px;font-weight:400;letter-spacing:0;text-transform:none;color:var(--mu)}
-.nl .opt .lu.wk .cap .capt span{display:inline-flex;flex-direction:row;align-items:baseline;gap:4px;width:auto;position:static;justify-self:auto;max-width:none;white-space:nowrap}
-.nl .opt .lu.wk .cap .capt b{font:700 11.5px "Space Grotesk",sans-serif;letter-spacing:0}
-.nl .opt .lu.wk .cap .capt .of{position:static;margin:0;font-size:11.5px}
+.nl .opt .lu.wk .cap{margin-top:0.375rem}
+.nl .opt .lu.wk .capbar{height:0.1875rem}
+.nl .opt .lu.wk .cap .capt{display:flex;justify-content:space-between;gap:0.5rem;padding:0.375rem 0 0;font-size:0.7188rem;font-weight:400;letter-spacing:0;text-transform:none;color:var(--mu)}
+.nl .opt .lu.wk .cap .capt span{display:inline-flex;flex-direction:row;align-items:baseline;gap:0.25rem;width:auto;position:static;justify-self:auto;max-width:none;white-space:nowrap}
+.nl .opt .lu.wk .cap .capt b{font:700 0.7188rem "Space Grotesk",sans-serif;letter-spacing:0}
+.nl .opt .lu.wk .cap .capt .of{position:static;margin:0;font-size:0.7188rem}
 .nl .opt .lu.wk .cap .capt span:nth-child(2){order:1}.nl .opt .lu.wk .cap .capt .perop{order:2;margin:0}.nl .opt .lu.wk .cap .capt span:nth-child(1){order:3}.nl .opt .lu.wk .cap .capt span:nth-child(3){order:4}.nl .opt .lu.wk .cap .capt .tval{order:5}.nl .opt .lu.wk .cap .capt span:nth-child(4){order:6}
-.nl .opt .lu.wk .lt-read{padding:6px 0 0}
-.nl .opt .cntrow{padding:4px 16px}
+.nl .opt .lu.wk .lt-read{padding:0.375rem 0 0}
+.nl .opt .cntrow{padding:0.25rem 1rem}
 .nl .set4{display:grid;grid-template-columns:1.25fr 1fr 1fr 1fr;border-bottom:1px solid var(--ln)}
-.nl .set4 label{padding:4px 10px;font-size:11px;color:var(--mu);border-right:1px solid var(--ln);white-space:nowrap}
+.nl .set4 label{padding:0.25rem 0.625rem;font-size:0.6875rem;color:var(--mu);border-right:1px solid var(--ln);white-space:nowrap}
 .nl .set4 label:last-child{border-right:0}
-.nl .set4 input,.nl .set4 select{display:block;width:100%;height:22px;margin-top:2px;background:var(--p2);border:1px solid var(--ln);padding:0 8px;font-size:13px;text-align:right;border-radius:0;color:var(--tx);box-sizing:border-box}
+.nl .set4 input,.nl .set4 select{display:block;width:100%;height:1.375rem;margin-top:0.125rem;background:var(--p2);border:1px solid var(--ln);padding:0 0.5rem;font-size:0.8125rem;text-align:right;border-radius:0;color:var(--tx);box-sizing:border-box}
 .nl .set4 select{text-align-last:right}
 .nl .set4 input::placeholder{color:var(--dim);opacity:.8}
 .nl .set4 input[readonly]{color:var(--tx);outline:0}
-.nl .set4 .opt-numbox{display:flex;align-items:center;gap:6px;margin-top:2px}
-.nl .set4 .opt-numbox input{flex:0 0 58px;width:58px;margin-top:0}
-.nl .set4 .opt-unit-note{font-size:10px;color:var(--dim);white-space:nowrap}
-.nl .opt-var-line{padding:4px 10px;border-bottom:1px solid var(--ln)} /* GPP Variance %, one row under the four boxes (variance-pos.js) */
-.nl .opt-var-line .opt-var-row{gap:14px}
-.nl .opt-var-line .opt-var-label{font-size:11px;color:var(--mu);padding-bottom:3px}
-.nl .opt-var-line .opt-var-pos{font-size:10px;color:var(--dim)}
-.nl .opt-var-line .opt-var-input{width:44px;height:22px;background:var(--p2);border:1px solid var(--ln);padding:0 4px;font-size:13px;border-radius:0;color:var(--tx);box-sizing:border-box}
+.nl .set4 .opt-numbox{display:flex;align-items:center;gap:0.375rem;margin-top:0.125rem}
+.nl .set4 .opt-numbox input{flex:0 0 3.625rem;width:3.625rem;margin-top:0}
+.nl .set4 .opt-unit-note{font-size:0.625rem;color:var(--dim);white-space:nowrap}
+.nl .opt-var-line{padding:0.25rem 0.625rem;border-bottom:1px solid var(--ln)} /* GPP Variance %, one row under the four boxes (variance-pos.js) */
+.nl .opt-var-line .opt-var-row{gap:0.875rem}
+.nl .opt-var-line .opt-var-label{font-size:0.6875rem;color:var(--mu);padding-bottom:0.1875rem}
+.nl .opt-var-line .opt-var-pos{font-size:0.625rem;color:var(--dim)}
+.nl .opt-var-line .opt-var-input{width:2.75rem;height:1.375rem;background:var(--p2);border:1px solid var(--ln);padding:0 0.25rem;font-size:0.8125rem;border-radius:0;color:var(--tx);box-sizing:border-box}
 .nl .opt-var-line .opt-var-input.invalid{border-color:var(--rd)}
-.nl .cntrow .opt-numbox{display:inline-flex;align-items:center;gap:8px}
-.nl .cntrow .opt-unit-note{font-size:10px;color:var(--dim)}
+.nl .cntrow .opt-numbox{display:inline-flex;align-items:center;gap:0.5rem}
+.nl .cntrow .opt-unit-note{font-size:0.625rem;color:var(--dim)}
 .nl .set2{display:grid;grid-template-columns:1fr 1fr}
 .nl .set2 .setop:first-child{border-right:1px solid var(--ln)}
-.nl .opt .setop{padding:3px 16px}
-.nl .opt .setopb{padding:8px 16px;border-bottom:1px solid var(--ln);font-size:12px}
+.nl .opt .setop{padding:0.1875rem 1rem}
+.nl .opt .setopb{padding:0.5rem 1rem;border-bottom:1px solid var(--ln);font-size:0.75rem}
 .nl .opt .setopb[hidden]{display:none}
-.nl .opt .setopb .opt-set{padding:3px 0}
-.nl .opt .setopb .opt-set-main{display:flex;justify-content:space-between;align-items:center;gap:12px}
+.nl .opt .setopb .opt-set{padding:0.1875rem 0}
+.nl .opt .setopb .opt-set-main{display:flex;justify-content:space-between;align-items:center;gap:0.75rem}
 .nl .opt .setopb .opt-set-label{color:var(--tx)}
-.nl .opt .setopb .opt-set-hint{color:var(--dim);font-size:11px}
-.nl .opt .setopb .opt-input{background:var(--p2);border:1px solid var(--ln);color:var(--tx);padding:1px 6px;font:inherit;font-size:12px}
-.nl .opt .setopb .opt-cap-row{display:grid;grid-template-columns:repeat(5,1fr);gap:8px}
-.nl .opt .setopb .opt-cap{display:flex;flex-direction:column;gap:2px;font-size:11px;color:var(--mu)}
-.nl .opt .setopb .opt-cap .opt-numbox{display:flex;align-items:center;gap:3px}
+.nl .opt .setopb .opt-set-hint{color:var(--dim);font-size:0.6875rem}
+.nl .opt .setopb .opt-input{background:var(--p2);border:1px solid var(--ln);color:var(--tx);padding:0.0625rem 0.375rem;font:inherit;font-size:0.75rem}
+.nl .opt .setopb .opt-cap-row{display:grid;grid-template-columns:repeat(5,1fr);gap:0.5rem}
+.nl .opt .setopb .opt-cap{display:flex;flex-direction:column;gap:0.125rem;font-size:0.6875rem;color:var(--mu)}
+.nl .opt .setopb .opt-cap .opt-numbox{display:flex;align-items:center;gap:0.1875rem}
 .nl .opt .setopb .opt-cap input{width:100%;min-width:0}
-.nl .opt .setopb .opt-chips{display:flex;flex-wrap:wrap;gap:4px;padding-top:3px}
-.nl .opt .setopb .chip{border-radius:0;padding:2px 8px;font-size:11px;background:none;border:1px solid var(--ln);color:var(--mu);font-weight:700}
+.nl .opt .setopb .opt-chips{display:flex;flex-wrap:wrap;gap:0.25rem;padding-top:0.1875rem}
+.nl .opt .setopb .chip{border-radius:0;padding:0.125rem 0.5rem;font-size:0.6875rem;background:none;border:1px solid var(--ln);color:var(--mu);font-weight:700}
 .nl .opt .setopb .chip.active{border-color:var(--am);color:var(--am)}
-.nl .opt .setopb .opt-subtitle{margin:8px 0 2px;font-size:10.5px;color:var(--dim);text-transform:uppercase;letter-spacing:.6px}
-.nl .opt .act{margin:6px 16px 8px}
-.nl .opt .act .two{margin-top:6px;display:flex;gap:6px;align-items:stretch}
-.nl .opt .act .two .ol{flex:1 1 0;background:none;border:1px solid #34343c;color:#b9b9c2;font-weight:700;font-size:12px;padding:5px 8px;cursor:pointer}
+.nl .opt .setopb .opt-subtitle{margin:0.5rem 0 0.125rem;font-size:0.6563rem;color:var(--dim);text-transform:uppercase;letter-spacing:0.0375rem}
+.nl .opt .act{margin:0.375rem 1rem 0.5rem}
+.nl .opt .act .two{margin-top:0.375rem;display:flex;gap:0.375rem;align-items:stretch}
+.nl .opt .act .two .ol{flex:1 1 0;background:none;border:1px solid #34343c;color:#b9b9c2;font-weight:700;font-size:0.75rem;padding:0.3125rem 0.5rem;cursor:pointer}
 .nl .opt .act .two .ol:disabled{opacity:.45;cursor:default}
-.nl .opt .act .savebox{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--mu);white-space:nowrap}
-.nl .opt .act .savebox input{width:130px;height:28px;background:var(--p2);border:1px solid var(--ln);padding:0 6px;color:var(--tx);font-size:12px}
-.nl .opt .act .gorun{display:flex;flex-wrap:wrap;align-items:center;gap:6px 12px}
-.nl .opt .act .gorun .gomsg{flex:1 1 100%;color:var(--mu);font-size:11.5px;min-height:1em}
-.nl .opt .act .go{width:100%;background:var(--am);color:#000;border:0;font-weight:800;padding:8px 10px;font-size:13px;cursor:pointer}
+.nl .opt .act .savebox{display:flex;align-items:center;gap:0.375rem;font-size:0.6875rem;color:var(--mu);white-space:nowrap}
+.nl .opt .act .savebox input{width:8.125rem;height:1.75rem;background:var(--p2);border:1px solid var(--ln);padding:0 0.375rem;color:var(--tx);font-size:0.75rem}
+.nl .opt .act .gorun{display:flex;flex-wrap:wrap;align-items:center;gap:0.375rem 0.75rem}
+.nl .opt .act .gorun .gomsg{flex:1 1 100%;color:var(--mu);font-size:0.7188rem;min-height:1em}
+.nl .opt .act .go{width:100%;background:var(--am);color:#000;border:0;font-weight:800;padding:0.5rem 0.625rem;font-size:0.8125rem;cursor:pointer}
 .nl .opt .act .go:disabled{opacity:.5;cursor:not-allowed}
-.nl .opt .act .gorun .opt-building{flex:1 1 100%;color:var(--mu);font-size:12px;display:flex;gap:10px;align-items:center}
-.nl .opt .act .gorun .opt-done{flex:1 1 100%;color:var(--mu);font-size:12px;display:block}
-.nl .cash-basis{font-size:11.5px}
-.nl .opt .act .gorun .opt-stop{background:none;border:1px solid var(--ln);color:var(--mu);padding:2px 12px;font-weight:700}
-.nl .opt .act-status{padding:0 16px 8px;font-size:12px}
+.nl .opt .act .gorun .opt-building{flex:1 1 100%;color:var(--mu);font-size:0.75rem;display:flex;gap:0.625rem;align-items:center}
+.nl .opt .act .gorun .opt-done{flex:1 1 100%;color:var(--mu);font-size:0.75rem;display:block}
+.nl .cash-basis{font-size:0.7188rem}
+.nl .opt .act .gorun .opt-stop{background:none;border:1px solid var(--ln);color:var(--mu);padding:0.125rem 0.75rem;font-weight:700}
+.nl .opt .act-status{padding:0 1rem 0.5rem;font-size:0.75rem}
 .nl .opt .act .link-btn,.nl .opt .link-btn{background:none;border:0;color:var(--am);padding:0;font:inherit;cursor:pointer;text-decoration:underline}
-.nl .lt-read{font-size:11px;color:var(--mu)}
-.nl .lt-med{margin-right:8px;color:var(--mu)}
-.nl .cv{font-size:10.5px}
+.nl .lt-read{font-size:0.6875rem;color:var(--mu)}
+.nl .lt-med{margin-right:0.5rem;color:var(--mu)}
+.nl .cv{font-size:0.6563rem}
 /* The pool table: fixed columns, Player the widest; controls centred under their headings. */
 .nl .tbl table{width:100%;table-layout:fixed}
 .nl .tbl th.pl,.nl .tbl td.pl{overflow:hidden}
 .nl .tbl td.num{min-width:0}
 .nl #thead th:last-child,.nl #tbody td:last-child{width:auto}
-.nl #thead th.k-star{width:40px}.nl #thead th.k-sal{width:84px}.nl #thead th.k-proj{width:78px}.nl #thead th.k-own{width:116px}.nl #thead th.k-val{width:62px}.nl #thead th.k-pos{width:52px}.nl #thead th.k-thumbs{width:76px}.nl #thead th.k-lock{width:52px}.nl #thead th.k-excl{width:66px}.nl #thead th.k-lim{width:56px}.nl #thead th.k-cash{width:178px}.nl #thead th.k-tg{width:58px}.nl #thead th.k-tags{width:190px}
+.nl #thead th.k-star{width:2.5rem}.nl #thead th.k-sal{width:5.25rem}.nl #thead th.k-proj{width:4.875rem}.nl #thead th.k-own{width:7.25rem}.nl #thead th.k-val{width:3.875rem}.nl #thead th.k-pos{width:3.25rem}.nl #thead th.k-thumbs{width:4.75rem}.nl #thead th.k-lock{width:3.25rem}.nl #thead th.k-excl{width:4.125rem}.nl #thead th.k-lim{width:3.5rem}.nl #thead th.k-cash{width:11.125rem}.nl #thead th.k-tg{width:3.625rem}.nl #thead th.k-tags{width:11.875rem}
 /* Pool beside the panel (about 1830 to 2199 wide, about 1120px of table): the fixed columns left Player no room, so they tighten and the name keeps what is left. */
-@media (min-width:1831px) and (max-width:2199px){.nl #thead th.k-star{width:36px}.nl #thead th.k-sal{width:70px}.nl #thead th.k-proj{width:70px}.nl #thead th.k-own{width:90px}.nl #thead th.k-val{width:52px}.nl #thead th.k-pos{width:46px}.nl #thead th.k-thumbs{width:64px}.nl #thead th.k-lock{width:46px}.nl #thead th.k-excl{width:54px}.nl #thead th.k-lim{width:50px}.nl #thead th.k-cash{width:150px}.nl #thead th.k-tg{width:48px}.nl #thead th.k-tags{width:110px}}
+@media (min-width:1831px) and (max-width:2560px){.nl #thead th.k-star{width:2.25rem}.nl #thead th.k-sal{width:4.375rem}.nl #thead th.k-proj{width:4.375rem}.nl #thead th.k-own{width:5.625rem}.nl #thead th.k-val{width:3.25rem}.nl #thead th.k-pos{width:2.875rem}.nl #thead th.k-thumbs{width:4rem}.nl #thead th.k-lock{width:2.875rem}.nl #thead th.k-excl{width:3.375rem}.nl #thead th.k-lim{width:3.125rem}.nl #thead th.k-cash{width:9.375rem}.nl #thead th.k-tg{width:3rem}.nl #thead th.k-tags{width:6.875rem}}
 .nl .tbl th.ctl,.nl .tbl td.ctl,.nl .tbl th.bmp,.nl .tbl td.bmp,.nl .tbl th.lim,.nl .tbl td.lim,.nl .tbl th.cs,.nl .tbl td.cs{text-align:center;padding-left:0;padding-right:0}
 .nl .tbl td.bmp .bump-ctl,.nl .tbl td.cs .tabs{display:inline-flex;vertical-align:middle}
-.nl .tbl td.ctl:first-child,.nl .tbl th.ctl:first-child{padding-left:10px}
-.nl .tbl td.lim input{width:44px;height:22px;background:var(--p2);border:1px solid #2a2a30;color:var(--am);text-align:center;font:inherit;font-size:12.5px;padding:0;border-radius:0}
+.nl .tbl td.ctl:first-child,.nl .tbl th.ctl:first-child{padding-left:0.625rem}
+.nl .tbl td.lim input{width:2.75rem;height:1.375rem;background:var(--p2);border:1px solid #2a2a30;color:var(--am);text-align:center;font:inherit;font-size:0.7813rem;padding:0;border-radius:0}
 .nl .tbl td.lim input:focus{outline:none;border-color:var(--am)}
 .nl .tbl td.lim input.invalid{border-color:var(--rd)}
 .nl #thead th{top:calc(var(--filterbar-h,0px) - 1px)}
 .nl .fbar{top:var(--tabs-h,0px)}
-.nl .who{display:flex;align-items:center;gap:8px;min-width:0}
+.nl .who{display:flex;align-items:center;gap:0.5rem;min-width:0}
 .nl .who .whot{min-width:0}
-.nl .l1{display:flex;align-items:center;gap:6px;white-space:nowrap}
-.nl .l1 .name{overflow:hidden;text-overflow:ellipsis;min-width:0;cursor:pointer}.nl .l2{color:var(--dim);font-size:11px}
-.nl .who .logo{width:24px;height:24px;flex-shrink:0}
+.nl .l1{display:flex;align-items:center;gap:0.375rem;white-space:nowrap}
+.nl .l1 .name{overflow:hidden;text-overflow:ellipsis;min-width:0;cursor:pointer}.nl .l2{color:var(--dim);font-size:0.6875rem}
+.nl .who .logo{width:1.5rem;height:1.5rem;flex-shrink:0}
 /* The pool's matchup (PROJECT.md Part 4 Monday 11-16 item 7, Adam 10:01 AM 11-15): the opponent beside the name at the size of the lineup box's, in the muted but legible colour, never cut; the name gives first
    (its ellipsis). 1:21 PM 11-16: the matchup is its own narrow column at the Player cell's right edge (`.l2`, 46px, every row's starts at one left edge) in the row's own text size; a greyed row's few words (.blk-why) are the line under both.
    Under 901px it stays the second line under the name, in the same readable type. */
-.nl td.pl .l2{font:500 13.5px/16px "Space Grotesk",sans-serif;color:var(--mu)}
+.nl td.pl .l2{font:500 0.8438rem/1rem "Space Grotesk",sans-serif;color:var(--mu)}
 .nl td.pl .l2 .mu{white-space:nowrap}
-.nl td.pl .l3{font:600 12.5px/15px "Space Grotesk",sans-serif;color:var(--am);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.nl td.pl .l3{font:600 0.7813rem/0.9375rem "Space Grotesk",sans-serif;color:var(--am);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 @media (min-width:901px){
   .nl td.pl .who>.whot{flex:1 1 auto}
-  .nl td.pl .whot{display:grid;grid-template-columns:auto 42px;column-gap:6px;align-items:center}
-  .nl td.pl .whot>.l1{gap:5px}
+  .nl td.pl .whot{display:grid;grid-template-columns:auto 2.625rem;column-gap:0.375rem;align-items:center}
+  .nl td.pl .whot>.l1{gap:0.3125rem}
   .nl td.pl .l1 .name{overflow:visible;flex:none} /* a full name is never cut: the Player column grows to the longest name (the table sizes to content, last block of this file) */
   .nl td.pl .whot>.l3{grid-column:1 / -1;width:0;min-width:100%} /* a greyed row's few words fill the cell but never widen it */
 }
 /* The position chip (Adam 1:21 PM 11-16): smaller, one hue per position so the eye tells them apart (dark values here, the light theme's below); a position with no variable keeps the amber chip. */
 .nl{--pc-qb:#ff6b8a;--pc-rb:#39e58c;--pc-wr:#5aa9ff;--pc-te:#ff9a3d;--pc-dst:#b794ff;--pc-k:#e8d44d}
 html[data-theme="light"] .nl{--pc-qb:#b8163f;--pc-rb:#0d7a44;--pc-wr:#1f5fbf;--pc-te:#a85200;--pc-dst:#6a37c2;--pc-k:#7a6a00}
-.nl td.pl .pos{font-size:10.5px;font-weight:800;line-height:13px;width:30px;padding:0;text-align:center;border:0;border-radius:2px;flex:none;color:var(--pc,var(--am));background:color-mix(in srgb,var(--pc,var(--am)) 18%,transparent)} /* 1:35 PM 11-16: smaller again, no border */
+.nl td.pl .pos{font-size:0.6563rem;font-weight:800;line-height:0.8125rem;width:1.875rem;padding:0;text-align:center;border:0;border-radius:0.125rem;flex:none;color:var(--pc,var(--am));background:color-mix(in srgb,var(--pc,var(--am)) 18%,transparent)} /* 1:35 PM 11-16: smaller again, no border */
 .nl td.pl .pos-qb{--pc:var(--pc-qb)}.nl td.pl .pos-rb{--pc:var(--pc-rb)}.nl td.pl .pos-wr{--pc:var(--pc-wr)}.nl td.pl .pos-te{--pc:var(--pc-te)}.nl td.pl .pos-dst{--pc:var(--pc-dst)}.nl td.pl .pos-k{--pc:var(--pc-k)}
 .nl td .editable-cell{justify-content:flex-end;display:inline-flex;align-items:center}
-.nl td.proj .cell-value.is-override{outline:1px solid var(--am);padding:0 3px}
-.nl td.proj .row-reset,.nl td.own .row-reset{color:var(--mu);font-size:12px;background:none;border:0;cursor:pointer;padding:0 0 0 2px}
-.nl .tbl .bump-fig .bump-from{font-size:12px;line-height:12px;color:var(--mu)} /* what a bumped figure was bumped from: readable (Adam 1:21 PM 11-16) */
-.nl #thead th,.nl #sd-thead th{font-size:11.5px}
+.nl td.proj .cell-value.is-override{outline:1px solid var(--am);padding:0 0.1875rem}
+.nl td.proj .row-reset,.nl td.own .row-reset{color:var(--mu);font-size:0.75rem;background:none;border:0;cursor:pointer;padding:0 0 0 0.125rem}
+.nl .tbl .bump-fig .bump-from{font-size:0.75rem;line-height:0.75rem;color:var(--mu)} /* what a bumped figure was bumped from: readable (Adam 1:21 PM 11-16) */
+.nl #thead th,.nl #sd-thead th{font-size:0.7188rem}
 .nl td.val .grade-cell{background:none;padding:0;color:inherit;font-weight:700}
 .nl td.val .grade-v1{color:var(--gr)}
 .nl td.val .grade-v2{color:color-mix(in srgb,var(--gr) 70%,var(--tx))}
@@ -221,72 +221,72 @@ html[data-theme="light"] .nl{--pc-qb:#b8163f;--pc-rb:#0d7a44;--pc-wr:#1f5fbf;--p
 .nl td.val .grade-v4{color:color-mix(in srgb,var(--rd) 70%,var(--tx))}
 .nl td.val .grade-v5{color:var(--rd)}
 .nl .row-dimmed td{opacity:.55}
-.nl .tbl .row-msg{font-size:11px}
-.nl .table-legend{margin:4px 0;font-size:11px;color:var(--dim)}
-.nl .lineup-pool-empty{padding:14px;color:var(--dim);text-align:left;white-space:normal}
+.nl .tbl .row-msg{font-size:0.6875rem}
+.nl .table-legend{margin:0.25rem 0;font-size:0.6875rem;color:var(--dim)}
+.nl .lineup-pool-empty{padding:0.875rem;color:var(--dim);text-align:left;white-space:normal}
 .nl .lineup-pool-empty .link-btn{background:none;border:0;color:var(--am);cursor:pointer;text-decoration:underline;padding:0}
 /* The filter bar: the app's chips in the look's outline. */
-.nl .fil{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-bottom:6px}
-.nl .fil label{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;color:var(--mu);white-space:nowrap}
-.nl .salb{width:76px}
+.nl .fil{display:flex;flex-wrap:wrap;align-items:center;gap:0.5rem;margin-bottom:0.375rem}
+.nl .fil label{display:inline-flex;align-items:center;gap:0.375rem;font-size:0.7188rem;color:var(--mu);white-space:nowrap}
+.nl .salb{width:4.75rem}
 .nl .chip{border-radius:0}
 .nl .chip.active,.nl .chip.on{background:var(--am);border-color:var(--am);color:#000}
 .nl .chip.locked.on,.nl .chip.locked.active{background:var(--gr);border-color:var(--gr)}
 .nl .chip.excluded.on{background:var(--rd);border-color:var(--rd);color:#000}
 .nl .chip.starred{}
 .nl #starred-toggle::before{content:"★ "}
-.nl .chip b{margin-left:6px}
+.nl .chip b{margin-left:0.375rem}
 .nl .chip.ovr{color:var(--mu)}
 .nl .chip.ovr:disabled,.nl .chip:disabled{opacity:.45;cursor:default}
-.nl .tchips{display:flex;flex-wrap:wrap;gap:3px;flex-basis:100%}
-.nl .tchip{display:inline-flex;align-items:center;gap:4px;padding:2px 6px;font-size:11px}
-.nl .tchip .logo{width:14px;height:14px}
+.nl .tchips{display:flex;flex-wrap:wrap;gap:0.1875rem;flex-basis:100%}
+.nl .tchip{display:inline-flex;align-items:center;gap:0.25rem;padding:0.125rem 0.375rem;font-size:0.6875rem}
+.nl .tchip .logo{width:0.875rem;height:0.875rem}
 .nl .tabs{margin:0;gap:0;border-bottom:1px solid var(--ln);flex-wrap:nowrap}
 .nl .tabs button.active{background:var(--am);color:#000}
 .nl .tchip.active{background:none;border-color:var(--am);color:var(--am)}
 .nl .colslot{margin-left:auto}
 .nl .colsw{position:relative}
-.nl .filter-qb-note{font-size:11px;color:var(--mu)}
+.nl .filter-qb-note{font-size:0.6875rem;color:var(--mu)}
 .nl .filter-qb-note.opt-warn{color:var(--am)}
-.nl .build-notice{margin:2px 0;font-size:12px;color:var(--am)}
+.nl .build-notice{margin:0.125rem 0;font-size:0.75rem;color:var(--am)}
 /* The lineups: slot-first rows, one row design everywhere. */
-.nl #lineups .lt-cards{grid-template-columns:repeat(auto-fill,minmax(440px,1fr))}
-.nl #lineups .crow.lead.lr{grid-template-columns:34px 20px minmax(0,1fr) 46px 32px 40px;padding:0 4px 0 0;min-height:28px;align-items:stretch;gap:4px}
-.nl #lineups .crow.lead.lr.hasswap{grid-template-columns:34px 20px minmax(0,1fr) 22px 46px 32px 40px}
+.nl #lineups .lt-cards{grid-template-columns:repeat(auto-fill,minmax(27.5rem,1fr))}
+.nl #lineups .crow.lead.lr{grid-template-columns:2.125rem 1.25rem minmax(0,1fr) 2.875rem 2rem 2.5rem;padding:0 0.25rem 0 0;min-height:1.75rem;align-items:stretch;gap:0.25rem}
+.nl #lineups .crow.lead.lr.hasswap{grid-template-columns:2.125rem 1.25rem minmax(0,1fr) 1.375rem 2.875rem 2rem 2.5rem}
 .nl #lineups .crow.lr>*{align-self:center}
-.nl #lineups .crow.lr>.sl{align-self:stretch;display:flex;align-items:center;justify-content:center;border:0;background:var(--am);color:#000;font-size:11px;font-weight:900;letter-spacing:.3px;padding:0}
+.nl #lineups .crow.lr>.sl{align-self:stretch;display:flex;align-items:center;justify-content:center;border:0;background:var(--am);color:#000;font-size:0.6875rem;font-weight:900;letter-spacing:0.0187rem;padding:0}
 .nl #lineups .crow.lr.locked>.sl{background:var(--gr)}
 .nl #lineups .crow.lr{box-shadow:none}
-.nl #lineups .crow.lead .slt{margin-left:4px;min-width:0;text-align:left;font-weight:500;color:var(--mu)}
-.nl #lineups .crow .slnote{font-size:9.5px;font-weight:800;color:var(--am);margin-left:6px}
+.nl #lineups .crow.lead .slt{margin-left:0.25rem;min-width:0;text-align:left;font-weight:500;color:var(--mu)}
+.nl #lineups .crow .slnote{font-size:0.5938rem;font-weight:800;color:var(--am);margin-left:0.375rem}
 .nl #lineups .crow.stale{opacity:.6}
-.nl #lineups .lt-at{gap:6px}
-.nl .lt-badge{font-size:10px;color:var(--mu);border:1px solid var(--ln);padding:0 5px}
+.nl #lineups .lt-at{gap:0.375rem}
+.nl .lt-badge{font-size:0.625rem;color:var(--mu);border:1px solid var(--ln);padding:0 0.3125rem}
 .nl .lt-badge.bad{color:var(--rd);border-color:var(--rd)}
 .nl .lt-badge.warn{color:var(--am)}
 .nl .lt-badge.new{color:var(--gr);border-color:var(--gr)}
 .nl #lineups .lc.svc.just{border-color:var(--gr)}
-.nl .lt-pre{color:var(--dim);margin-right:4px}
-.nl .lt-confirm{display:inline-flex;gap:4px;align-items:center;font-size:10.5px;color:var(--rd)}
-.nl .lt-tag{background:var(--p2);border:1px solid var(--ln);color:var(--mu);font-size:10.5px;height:18px;padding:0 2px}
-.nl .dk-pick{display:inline-flex;align-items:center;margin-right:6px}
-.nl .dk-pick input{width:12px;height:12px;margin:0;accent-color:#6b7a8c}
+.nl .lt-pre{color:var(--dim);margin-right:0.25rem}
+.nl .lt-confirm{display:inline-flex;gap:0.25rem;align-items:center;font-size:0.6563rem;color:var(--rd)}
+.nl .lt-tag{background:var(--p2);border:1px solid var(--ln);color:var(--mu);font-size:0.6563rem;height:1.125rem;padding:0 0.125rem}
+.nl .dk-pick{display:inline-flex;align-items:center;margin-right:0.375rem}
+.nl .dk-pick input{width:0.75rem;height:0.75rem;margin:0;accent-color:#6b7a8c}
 .nl .lt-bdl{margin-left:auto}
-.nl .lt-bn{margin-left:14px;color:var(--mu);font-size:12px;font-weight:500}
+.nl .lt-bn{margin-left:0.875rem;color:var(--mu);font-size:0.75rem;font-weight:500}
 .nl .lt-bq{color:var(--dim)}
-.nl #lineups .lt-bh button.sm{padding:3px 10px;font-size:10.5px;font-weight:800}
+.nl #lineups .lt-bh button.sm{padding:0.1875rem 0.625rem;font-size:0.6563rem;font-weight:800}
 .nl #lineups .lt-bh button.lt-bdl{margin-left:auto}
-.nl #lineups .lt-bh button.sm.x{margin-left:8px}
-.nl .lt-bnote,.nl #lineups .opt-note,.nl #lineups .opt-bends{grid-column:1/-1;font-size:11px;color:var(--mu);padding:0 2px 4px}
-.nl .lt-empty{color:var(--dim);padding:16px}
-.nl .lt-ticked{font-size:11px;color:var(--mu)}
-.nl .dk-status{font-size:11px;color:var(--mu);max-width:560px;white-space:normal}
+.nl #lineups .lt-bh button.sm.x{margin-left:0.5rem}
+.nl .lt-bnote,.nl #lineups .opt-note,.nl #lineups .opt-bends{grid-column:1/-1;font-size:0.6875rem;color:var(--mu);padding:0 0.125rem 0.25rem}
+.nl .lt-empty{color:var(--dim);padding:1rem}
+.nl .lt-ticked{font-size:0.6875rem;color:var(--mu)}
+.nl .dk-status{font-size:0.6875rem;color:var(--mu);max-width:35rem;white-space:normal}
 .nl .dk-status-line{display:block}
 .nl .dk-status-bad{color:var(--rd)}
 .nl #lineups .lt-ex .ext th:nth-child(4),.nl #lineups .lt-ex .ext td:nth-child(4){display:table-cell}
 .nl #lineups .lt-ex .ext td.ex-name{white-space:nowrap}
 .nl #lineups .lt-ex .ext td.ex-name>*{display:inline;max-width:none}
-.nl #lineups .lt-ex .ext .ex-opp{color:var(--mu);font-size:10.5px;margin-left:5px}
+.nl #lineups .lt-ex .ext .ex-opp{color:var(--mu);font-size:0.6563rem;margin-left:0.3125rem}
 html[data-theme="light"] .nl .opt .xb{background:#dfdfd8}
 .nl .ext tr.exp-off td{color:var(--am)}
 /* Calm look: bright amber only on the selected tab or segment, the Build button, the sort arrow, projections and stars. */
@@ -298,7 +298,7 @@ html[data-theme="light"] .nl #lineups .crow.lr>.sl,html[data-theme="light"] .nl 
 html[data-theme="light"] .nl #lineups .crow.lr.locked>.sl{background:#ececea;border:1px solid #6fb191;color:#2e7a58}
 .nl .capbar i{background:#5a6f86;box-shadow:none}
 .nl .lu.wk .capbar i{background:var(--am);box-shadow:none}
-.nl .capbar{height:3px}.nl .lu.wk .capbar{height:3px}
+.nl .capbar{height:0.1875rem}.nl .lu.wk .capbar{height:0.1875rem}
 .nl .opt .xb i{background:#5a6f86}
 .nl .opt .ext td.ex-pct{color:var(--tx);font-weight:600}
 .nl .opt .ext .ex-n{color:var(--mu)}
@@ -310,7 +310,7 @@ html[data-theme="light"] .nl #lineups .crow.lr.locked>.sl{background:#ececea;bor
 .nl #lineups .lt-tabs button.on{background:var(--am);color:#000}
 .nl .opt .act .gorun .gomsg,.nl #lineups .lt-sw{color:var(--mu)}
 .nl .opt .lch{align-items:center}
-.nl .opt .lcb{display:flex;gap:4px;align-items:center;position:relative}
+.nl .opt .lcb{display:flex;gap:0.25rem;align-items:center;position:relative}
 .nl .lt-title{align-items:center}
 .nl .rn{cursor:pointer}
 html[data-theme="light"] .nl .opt .lch button.sm,html[data-theme="light"] .nl #lineups .lt-bh button.lt-bdl,html[data-theme="light"] .nl #lineups .lt-dl,html[data-theme="light"] .nl .opt .act button.ol{border-color:#c0c0b8;color:#55555c}
@@ -321,138 +321,138 @@ html[data-theme="light"] .nl .opt .lch button.sm,html[data-theme="light"] .nl #l
 .lineups-only #build-notice.is-error{display:none} /* a refused or failed Build's sentence is the screen's own line (look-lineups.js): once, not twice */
 .nl:not(.lineups-only) #lineups{display:none}
 .nl .opt-phone-toggle,.nl #lineups .lt-extog{display:none}
-.nl .seelu{display:block;width:100%;margin:6px 0 2px;padding:9px 12px;background:transparent;border:2px solid var(--am);color:var(--am);font:800 14px "Space Grotesk",sans-serif;cursor:pointer}
+.nl .seelu{display:block;width:100%;margin:0.375rem 0 0.125rem;padding:0.5625rem 0.75rem;background:transparent;border:2px solid var(--am);color:var(--am);font:800 0.875rem "Space Grotesk",sans-serif;cursor:pointer}
 .nl .seelu:hover{background:color-mix(in srgb,var(--am) 16%,transparent)}
-.nl .lt-readnote{margin-top:2px;font-size:11px;color:var(--mu)}
-.nl #lineups .lt-legend{grid-column:1/-1;margin:0 0 8px;font-size:12px;line-height:1.45;color:var(--mu)}
-.nl #lineups .lt-tagl{display:inline-flex;align-items:center;gap:4px;font-size:11px;color:var(--mu)}
+.nl .lt-readnote{margin-top:0.125rem;font-size:0.6875rem;color:var(--mu)}
+.nl #lineups .lt-legend{grid-column:1/-1;margin:0 0 0.5rem;font-size:0.75rem;line-height:1.45;color:var(--mu)}
+.nl #lineups .lt-tagl{display:inline-flex;align-items:center;gap:0.25rem;font-size:0.6875rem;color:var(--mu)}
 .nl .capt .lt-med{color:inherit;margin:0}
-.nl .opt .hint2{margin-top:6px}
+.nl .opt .hint2{margin-top:0.375rem}
 /* The Build settings fold (NBA's "Build settings ▸"): one row; what is inside it is drawn hidden while folded (lineup-view.js foldHtml). */
-.nl .opt .setop-fold{padding:9px 16px;font-size:13px;font-weight:700;color:var(--mu)}
-.nl .opt .setop-fold span{float:none;margin-left:6px;color:var(--mu)}
+.nl .opt .setop-fold{padding:0.5625rem 1rem;font-size:0.8125rem;font-weight:700;color:var(--mu)}
+.nl .opt .setop-fold span{float:none;margin-left:0.375rem;color:var(--mu)}
 .nl .opt .foldb[hidden]{display:none}
-@media (min-width:901px){.nl .opt .cntrow{padding:6px 16px}.nl .opt .cntrow label{font-size:13px;gap:14px}.nl .opt .cntrow input{width:72px;height:32px;font-size:16px}.nl .opt .cntrow .opt-unit-note{font-size:11px}}
+@media (min-width:901px){.nl .opt .cntrow{padding:0.375rem 1rem}.nl .opt .cntrow label{font-size:0.8125rem;gap:0.875rem}.nl .opt .cntrow input{width:4.5rem;height:2rem;font-size:1rem}.nl .opt .cntrow .opt-unit-note{font-size:0.6875rem}}
 /* The lineup box at NBA's scale (Adam 11:20 AM 11-16, PROJECT.md Part 4 item 5; sizes from the pinned NBA board.css `.lu.wk`): head, seat rows, Empty seats, salary bar, totals, Build, Save row and Left out, on the classic and Showdown panels.
    Window over 1830px (the panel is the 700px column): the full scale. 901 to 1830px (a 420-520px panel, or the Showdown panel above its pool): the same shape one step smaller. A phone (900px and under) keeps the compact rules above. */
 @media (min-width:1831px){
-  .nl .opt .lu.wk{padding:0 16px 12px}
-  .nl .opt .lu.wk .luh{padding:10px 0 8px}
-  .nl .opt .lu.wk .luh>span:first-child{font-size:21px;font-weight:800;letter-spacing:.2px}
-  .nl .opt .lu.wk .luhr{font-size:14px;gap:12px}
-  .nl .opt .lu.wk .clr{min-height:34px;padding:3px 16px;font-size:13.5px;font-weight:700}
-  .nl .opt .lu.wk .wkh,.nl .opt .lu.wk .wkr{grid-template-columns:50px 30px minmax(0,1fr) 78px 50px 50px 64px 30px;column-gap:8px;padding-left:12px;padding-right:12px}
+  .nl .opt .lu.wk{padding:0 1rem 0.75rem}
+  .nl .opt .lu.wk .luh{padding:0.625rem 0 0.5rem}
+  .nl .opt .lu.wk .luh>span:first-child{font-size:1.3125rem;font-weight:800;letter-spacing:0.0125rem}
+  .nl .opt .lu.wk .luhr{font-size:0.875rem;gap:0.75rem}
+  .nl .opt .lu.wk .clr{min-height:2.125rem;padding:0.1875rem 1rem;font-size:0.8438rem;font-weight:700}
+  .nl .opt .lu.wk .wkh,.nl .opt .lu.wk .wkr{grid-template-columns:3.125rem 1.875rem minmax(0,1fr) 4.875rem 3.125rem 3.125rem 4rem 1.875rem;column-gap:0.5rem;padding-left:0.75rem;padding-right:0.75rem}
   .nl .opt .lu.wk .wkh span:nth-child(5),.nl .opt .lu.wk .wkr .sv{display:block}
-  .nl .opt .lu.wk .wkh{height:28px;font-size:11.5px;font-weight:700;letter-spacing:1.1px}
-  .nl .opt .lu.wk .wkr{height:46px;font-size:14px}
-  .nl .opt .lu.wk .wkr.tm{box-shadow:inset 5px 0 var(--t1)}
-  .nl .opt .lu.wk .wkr>.sl{margin:5px 0;font-size:17px;letter-spacing:.4px}
-  .nl .opt .lu.wk .wkr .logo.sm,.nl .opt .lu.wk .wkr .chipx.sm{width:30px;height:30px}
-  .nl .opt .lu.wk .wkr .sn1{gap:8px}
-  .nl .opt .lu.wk .wkr .pn{font:800 18px "Space Grotesk",sans-serif;letter-spacing:-.1px}
-  .nl .opt .lu.wk .wkr .slt{font-size:13.5px;margin-left:2px}
-  .nl .opt .lu.wk .wkr .pos{font-size:12px}
-  .nl .opt .lu.wk .wkr .slnote{font-size:12px}
-  .nl .opt .lu.wk .wkr .ss,.nl .opt .lu.wk .wkr .sp,.nl .opt .lu.wk .wkr .sv,.nl .opt .lu.wk .wkr .so{font:800 18px "Space Grotesk",sans-serif}
-  .nl .opt .lu.wk .wkr .lkb,.nl .opt .lu.wk .wkr .lkd{width:30px;height:30px}
+  .nl .opt .lu.wk .wkh{height:1.75rem;font-size:0.7188rem;font-weight:700;letter-spacing:0.0688rem}
+  .nl .opt .lu.wk .wkr{height:2.875rem;font-size:0.875rem}
+  .nl .opt .lu.wk .wkr.tm{box-shadow:inset 0.3125rem 0 var(--t1)}
+  .nl .opt .lu.wk .wkr>.sl{margin:0.3125rem 0;font-size:1.0625rem;letter-spacing:0.025rem}
+  .nl .opt .lu.wk .wkr .logo.sm,.nl .opt .lu.wk .wkr .chipx.sm{width:1.875rem;height:1.875rem}
+  .nl .opt .lu.wk .wkr .sn1{gap:0.5rem}
+  .nl .opt .lu.wk .wkr .pn{font:800 1.125rem "Space Grotesk",sans-serif;letter-spacing:-0.0063rem}
+  .nl .opt .lu.wk .wkr .slt{font-size:0.8438rem;margin-left:0.125rem}
+  .nl .opt .lu.wk .wkr .pos{font-size:0.75rem}
+  .nl .opt .lu.wk .wkr .slnote{font-size:0.75rem}
+  .nl .opt .lu.wk .wkr .ss,.nl .opt .lu.wk .wkr .sp,.nl .opt .lu.wk .wkr .sv,.nl .opt .lu.wk .wkr .so{font:800 1.125rem "Space Grotesk",sans-serif}
+  .nl .opt .lu.wk .wkr .lkb,.nl .opt .lu.wk .wkr .lkd{width:1.875rem;height:1.875rem}
   .nl .opt .lu.wk .wkr .lkb{color:var(--tx);background:color-mix(in srgb,var(--tx) 8%,transparent);border:1px solid color-mix(in srgb,var(--tx) 45%,transparent)}
   .nl .opt .lu.wk .wkr .lkb:hover{border-color:var(--am);color:var(--am)}
-  .nl .opt .lu.wk .wkr.empty{outline:2px dashed color-mix(in srgb,var(--mu) 45%,transparent);outline-offset:-5px;background:color-mix(in srgb,var(--mu) 5%,transparent)}
-  .nl .opt .lu.wk .wkr.empty>.sl{background:none;border:0;color:var(--mu);font-size:15px}
-  .nl .opt .lu.wk .wkr.empty .sn b{font:600 20px "Space Grotesk",sans-serif}
-  .nl .opt .lu.wk .wkr.empty .eh{font:400 14px "Space Grotesk",sans-serif}
-  .nl .opt .lu.wk .cap{margin-top:12px}
-  .nl .opt .lu.wk .capbar{height:8px}
-  .nl .opt .lu.wk .cap .capt{align-items:flex-end;gap:10px;padding:12px 4px 18px;font-size:11.5px;font-weight:700;letter-spacing:.9px;text-transform:uppercase;color:var(--mu)}
-  .nl .opt .lu.wk .cap .capt span{position:relative;flex-direction:column;align-items:flex-start;gap:4px}
-  .nl .opt .lu.wk .cap .capt b{font:800 25px "Space Grotesk",sans-serif;letter-spacing:0;text-transform:none;color:var(--tx);font-variant-numeric:tabular-nums}
+  .nl .opt .lu.wk .wkr.empty{outline:2px dashed color-mix(in srgb,var(--mu) 45%,transparent);outline-offset:-0.3125rem;background:color-mix(in srgb,var(--mu) 5%,transparent)}
+  .nl .opt .lu.wk .wkr.empty>.sl{background:none;border:0;color:var(--mu);font-size:0.9375rem}
+  .nl .opt .lu.wk .wkr.empty .sn b{font:600 1.25rem "Space Grotesk",sans-serif}
+  .nl .opt .lu.wk .wkr.empty .eh{font:400 0.875rem "Space Grotesk",sans-serif}
+  .nl .opt .lu.wk .cap{margin-top:0.75rem}
+  .nl .opt .lu.wk .capbar{height:0.5rem}
+  .nl .opt .lu.wk .cap .capt{align-items:flex-end;gap:0.625rem;padding:0.75rem 0.25rem 1.125rem;font-size:0.7188rem;font-weight:700;letter-spacing:0.0563rem;text-transform:uppercase;color:var(--mu)}
+  .nl .opt .lu.wk .cap .capt span{position:relative;flex-direction:column;align-items:flex-start;gap:0.25rem}
+  .nl .opt .lu.wk .cap .capt b{font:800 1.5625rem "Space Grotesk",sans-serif;letter-spacing:0;text-transform:none;color:var(--tx);font-variant-numeric:tabular-nums}
   .nl .opt .lu.wk .cap .capt span:nth-child(3) b{color:var(--am)}
   .nl .opt .lu.wk .cap .capt span:nth-child(4) b{color:var(--bl)}
   .nl .opt .lu.wk .cap .capt .tval b{color:var(--gr)}
   .nl .opt .lu.wk .cap .capt .overcap b{color:var(--rd)}
-  .nl .opt .lu.wk .cap .capt .of{position:absolute;left:0;top:100%;margin-top:3px;white-space:nowrap;font:600 11.5px "Space Grotesk",sans-serif;letter-spacing:0;text-transform:none;color:var(--dim)}
-  .nl .opt .lu.wk .lt-read{padding:8px 4px 0;font-size:13px}
-  .nl .opt .act{margin:6px 16px 10px}
-  .nl .opt .act .go{height:46px;padding:0 12px;font-size:17px;letter-spacing:.3px}
-  .nl .opt .act .gorun .gomsg,.nl .opt .act .gorun .opt-building,.nl .opt .act .gorun .opt-done{font-size:13px}
-  .nl .opt .act .two{margin-top:8px;gap:10px}
-  .nl .opt .act .two .ol{height:38px;padding:0 12px;font-size:14px}
-  .nl .opt .act .savebox{gap:8px;font-size:13px}
-  .nl .opt .act .savebox input{width:150px;height:38px;padding:0 10px;font-size:14px}
-  .nl .opt .lobox .sec{padding:14px 16px 4px;font:800 19px "Space Grotesk",sans-serif;color:var(--tx)}
-  .nl .opt .lonote{padding:0 16px 6px;font-size:13px}
-  .nl .opt .lo{padding:4px 16px 8px}
-  .nl .opt .lo .crow{grid-template-columns:56px 32px minmax(0,1fr) 96px 78px 84px 82px;gap:10px;padding:6px 4px 4px 12px}
-  .nl .opt .lo .crow .sl{align-self:center;height:42px;display:flex;align-items:center;justify-content:center;font-size:15px}
-  .nl .opt .lo .crow .logo.sm{width:30px;height:30px}
-  .nl .opt .lo .crow .pn{font:800 18px "Space Grotesk",sans-serif}
-  .nl .opt .lo .crow .sn small{display:block;white-space:normal;font-size:13px;line-height:1.25}
-  .nl .opt .lo .crow :is(.ss,.sp,.so){font:800 18px "Space Grotesk",sans-serif}
-  .nl .opt .lo .crow i{font-size:11px;margin-right:5px}
-  .nl .opt .lo .xf{min-height:34px;padding:0 12px;font-size:13px}
-  .nl .opt .lo .way{padding:0 0 8px 78px;font-size:13px}
-  .nl .opt .lo-sub{font-size:13px}
+  .nl .opt .lu.wk .cap .capt .of{position:absolute;left:0;top:100%;margin-top:0.1875rem;white-space:nowrap;font:600 0.7188rem "Space Grotesk",sans-serif;letter-spacing:0;text-transform:none;color:var(--dim)}
+  .nl .opt .lu.wk .lt-read{padding:0.5rem 0.25rem 0;font-size:0.8125rem}
+  .nl .opt .act{margin:0.375rem 1rem 0.625rem}
+  .nl .opt .act .go{height:2.875rem;padding:0 0.75rem;font-size:1.0625rem;letter-spacing:0.0187rem}
+  .nl .opt .act .gorun .gomsg,.nl .opt .act .gorun .opt-building,.nl .opt .act .gorun .opt-done{font-size:0.8125rem}
+  .nl .opt .act .two{margin-top:0.5rem;gap:0.625rem}
+  .nl .opt .act .two .ol{height:2.375rem;padding:0 0.75rem;font-size:0.875rem}
+  .nl .opt .act .savebox{gap:0.5rem;font-size:0.8125rem}
+  .nl .opt .act .savebox input{width:9.375rem;height:2.375rem;padding:0 0.625rem;font-size:0.875rem}
+  .nl .opt .lobox .sec{padding:0.875rem 1rem 0.25rem;font:800 1.1875rem "Space Grotesk",sans-serif;color:var(--tx)}
+  .nl .opt .lonote{padding:0 1rem 0.375rem;font-size:0.8125rem}
+  .nl .opt .lo{padding:0.25rem 1rem 0.5rem}
+  .nl .opt .lo .crow{grid-template-columns:3.5rem 2rem minmax(0,1fr) 6rem 4.875rem 5.25rem 5.125rem;gap:0.625rem;padding:0.375rem 0.25rem 0.25rem 0.75rem}
+  .nl .opt .lo .crow .sl{align-self:center;height:2.625rem;display:flex;align-items:center;justify-content:center;font-size:0.9375rem}
+  .nl .opt .lo .crow .logo.sm{width:1.875rem;height:1.875rem}
+  .nl .opt .lo .crow .pn{font:800 1.125rem "Space Grotesk",sans-serif}
+  .nl .opt .lo .crow .sn small{display:block;white-space:normal;font-size:0.8125rem;line-height:1.25}
+  .nl .opt .lo .crow :is(.ss,.sp,.so){font:800 1.125rem "Space Grotesk",sans-serif}
+  .nl .opt .lo .crow i{font-size:0.6875rem;margin-right:0.3125rem}
+  .nl .opt .lo .xf{min-height:2.125rem;padding:0 0.75rem;font-size:0.8125rem}
+  .nl .opt .lo .way{padding:0 0 0.5rem 4.875rem;font-size:0.8125rem}
+  .nl .opt .lo-sub{font-size:0.8125rem}
 }
 @media (min-width:901px) and (max-width:1830px){
-  .nl .opt .lu.wk .luh{padding:14px 0 10px}
-  .nl .opt .lu.wk .luh>span:first-child{font-size:18px;font-weight:800}
-  .nl .opt .lu.wk .clr{min-height:30px;font-size:13px}
-  .nl .opt .lu.wk .wkh,.nl .opt .lu.wk .wkr{grid-template-columns:46px 28px minmax(0,1fr) 76px 52px 50px 60px 30px;column-gap:7px;padding-left:10px;padding-right:8px}
+  .nl .opt .lu.wk .luh{padding:0.875rem 0 0.625rem}
+  .nl .opt .lu.wk .luh>span:first-child{font-size:1.125rem;font-weight:800}
+  .nl .opt .lu.wk .clr{min-height:1.875rem;font-size:0.8125rem}
+  .nl .opt .lu.wk .wkh,.nl .opt .lu.wk .wkr{grid-template-columns:2.875rem 1.75rem minmax(0,1fr) 4.75rem 3.25rem 3.125rem 3.75rem 1.875rem;column-gap:0.4375rem;padding-left:0.625rem;padding-right:0.5rem}
   .nl .opt .lu.wk .wkh span:nth-child(5),.nl .opt .lu.wk .wkr .sv{display:block}
-  .nl .opt .lu.wk .wkh{height:28px;font-size:11px}
-  .nl .opt .lu.wk .wkr{height:46px}
-  .nl .opt .lu.wk .wkr.tm{box-shadow:inset 4px 0 var(--t1)}
-  .nl .opt .lu.wk .wkr>.sl{margin:6px 0;font-size:15px}
-  .nl .opt .lu.wk .wkr .logo.sm,.nl .opt .lu.wk .wkr .chipx.sm{width:28px;height:28px}
-  .nl .opt .lu.wk .wkr .pn{font:800 17px "Space Grotesk",sans-serif}
-  .nl .opt .lu.wk .wkr .slt{font-size:12.5px}
-  .nl .opt .lu.wk .wkr .ss,.nl .opt .lu.wk .wkr .sp,.nl .opt .lu.wk .wkr .sv,.nl .opt .lu.wk .wkr .so{font:800 17px "Space Grotesk",sans-serif}
-  .nl .opt .lu.wk .wkr .lkb,.nl .opt .lu.wk .wkr .lkd{width:28px;height:28px}
+  .nl .opt .lu.wk .wkh{height:1.75rem;font-size:0.6875rem}
+  .nl .opt .lu.wk .wkr{height:2.875rem}
+  .nl .opt .lu.wk .wkr.tm{box-shadow:inset 0.25rem 0 var(--t1)}
+  .nl .opt .lu.wk .wkr>.sl{margin:0.375rem 0;font-size:0.9375rem}
+  .nl .opt .lu.wk .wkr .logo.sm,.nl .opt .lu.wk .wkr .chipx.sm{width:1.75rem;height:1.75rem}
+  .nl .opt .lu.wk .wkr .pn{font:800 1.0625rem "Space Grotesk",sans-serif}
+  .nl .opt .lu.wk .wkr .slt{font-size:0.7813rem}
+  .nl .opt .lu.wk .wkr .ss,.nl .opt .lu.wk .wkr .sp,.nl .opt .lu.wk .wkr .sv,.nl .opt .lu.wk .wkr .so{font:800 1.0625rem "Space Grotesk",sans-serif}
+  .nl .opt .lu.wk .wkr .lkb,.nl .opt .lu.wk .wkr .lkd{width:1.75rem;height:1.75rem}
   .nl .opt .lu.wk .wkr.empty>.sl{background:none;border:0;color:var(--mu)}
-  .nl .opt .lu.wk .wkr.empty{outline:2px dashed color-mix(in srgb,var(--mu) 45%,transparent);outline-offset:-5px}
-  .nl .opt .lu.wk .wkr.empty .sn b{font:600 18px "Space Grotesk",sans-serif}
-  .nl .opt .lu.wk .wkr.empty .eh{font-size:12.5px}
-  .nl .opt .lu.wk .capbar{height:6px}
-  .nl .opt .lu.wk .cap .capt{flex-wrap:nowrap;align-items:flex-end;gap:6px;padding:12px 2px 20px;font-size:10px;font-weight:700;letter-spacing:.3px;text-transform:uppercase}
-  .nl .opt .lu.wk .cap .capt span{position:relative;flex-direction:column;align-items:flex-start;gap:3px}
-  .nl .opt .lu.wk .cap .capt b{font:800 20px "Space Grotesk",sans-serif;text-transform:none;color:var(--tx)}
+  .nl .opt .lu.wk .wkr.empty{outline:2px dashed color-mix(in srgb,var(--mu) 45%,transparent);outline-offset:-0.3125rem}
+  .nl .opt .lu.wk .wkr.empty .sn b{font:600 1.125rem "Space Grotesk",sans-serif}
+  .nl .opt .lu.wk .wkr.empty .eh{font-size:0.7813rem}
+  .nl .opt .lu.wk .capbar{height:0.375rem}
+  .nl .opt .lu.wk .cap .capt{flex-wrap:nowrap;align-items:flex-end;gap:0.375rem;padding:0.75rem 0.125rem 1.25rem;font-size:0.625rem;font-weight:700;letter-spacing:0.0187rem;text-transform:uppercase}
+  .nl .opt .lu.wk .cap .capt span{position:relative;flex-direction:column;align-items:flex-start;gap:0.1875rem}
+  .nl .opt .lu.wk .cap .capt b{font:800 1.25rem "Space Grotesk",sans-serif;text-transform:none;color:var(--tx)}
   .nl .opt .lu.wk .cap .capt span:nth-child(3) b{color:var(--am)}
   .nl .opt .lu.wk .cap .capt span:nth-child(4) b{color:var(--bl)}
   .nl .opt .lu.wk .cap .capt .tval b{color:var(--gr)}
   .nl .opt .lu.wk .cap .capt .overcap b{color:var(--rd)}
-  .nl .opt .lu.wk .cap .capt .of{position:absolute;left:0;top:100%;margin-top:2px;white-space:nowrap;font-size:10.5px;letter-spacing:0;text-transform:none;color:var(--dim)}
-  .nl .opt .act .go{height:46px;padding:0 12px;font-size:16px}
-  .nl .opt .act .two .ol{height:38px;font-size:13px}
-  .nl .opt .act .savebox input{height:38px}
-  .nl .opt .lobox .sec{font:800 17px "Space Grotesk",sans-serif;color:var(--tx)}
-  .nl .opt .lo .crow .pn{font:800 16px "Space Grotesk",sans-serif}
-  .nl .opt .lo .crow :is(.ss,.sp,.so){font:800 15px "Space Grotesk",sans-serif}
+  .nl .opt .lu.wk .cap .capt .of{position:absolute;left:0;top:100%;margin-top:0.125rem;white-space:nowrap;font-size:0.6563rem;letter-spacing:0;text-transform:none;color:var(--dim)}
+  .nl .opt .act .go{height:2.875rem;padding:0 0.75rem;font-size:1rem}
+  .nl .opt .act .two .ol{height:2.375rem;font-size:0.8125rem}
+  .nl .opt .act .savebox input{height:2.375rem}
+  .nl .opt .lobox .sec{font:800 1.0625rem "Space Grotesk",sans-serif;color:var(--tx)}
+  .nl .opt .lo .crow .pn{font:800 1rem "Space Grotesk",sans-serif}
+  .nl .opt .lo .crow :is(.ss,.sp,.so){font:800 0.9375rem "Space Grotesk",sans-serif}
 }
 .nl .cs .tabs button.on.fine{background:color-mix(in srgb,var(--tx) 18%,transparent);border-color:var(--mu);color:var(--tx)}
 /* One bar at any wide screen: the slate stamps give way first. */
-@media (min-width:1900px){.nl .top{flex-wrap:nowrap}.nl .top .stamps{flex:0 1 auto;min-width:0;overflow:hidden;white-space:nowrap}.nl .top .stamps span{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis}.nl .top .grow{flex:0 1 8px;min-width:0}.nl .top .mode-tag{display:none}}
+@media (min-width:1900px){.nl .top{flex-wrap:nowrap}.nl .top .stamps{flex:0 1 auto;min-width:0;overflow:hidden;white-space:nowrap}.nl .top .stamps span{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis}.nl .top .grow{flex:0 1 0.5rem;min-width:0}.nl .top .mode-tag{display:none}}
 html[data-theme="light"] .nl .vtabs button.on,html[data-theme="light"] .nl .vtabs button.active,html[data-theme="light"] .nl .opt .act .go,html[data-theme="light"] .nl .go,html[data-theme="light"] .nl #lineups .lt-tabs .on,html[data-theme="light"] .nl #lineups .lt-sort button.on,html[data-theme="light"] .nl .opt .xf.on{color:#fff}
 /* Phone: no sideways scroll; the pool keeps Lock, Exclude and Cash chips. */
-@media (max-width:1830px){.nl .work{grid-template-columns:minmax(0,1fr) minmax(420px,520px)}}
+@media (max-width:1830px){.nl .work{grid-template-columns:minmax(0,1fr) minmax(26.25rem,32.5rem)}}
 @media (max-width:900px){
-  body.nl-page{padding:0 8px 40px;overflow-x:clip}
+  body.nl-page{padding:0 0.5rem 2.5rem;overflow-x:clip}
   html:has(body.nl-page){overflow-x:clip}
   .nl .top{white-space:normal}
   #classic-header{position:static}
-  .nl .top{display:flex;flex-wrap:wrap;align-items:center;gap:4px 6px}
+  .nl .top{display:flex;flex-wrap:wrap;align-items:center;gap:0.25rem 0.375rem}
   .nl .top .brand{order:0}
   .nl .top .themes{order:1;margin-left:auto}
   .nl .top .vtabs{order:2;flex:1 1 100%}
   .nl .top .grow{display:none}
-  .nl .top #top-slates{order:3;flex:1 1 100%;display:flex;flex-wrap:wrap;gap:4px}
+  .nl .top #top-slates{order:3;flex:1 1 100%;display:flex;flex-wrap:wrap;gap:0.25rem}
   .nl .top #tg-mode{order:4}
-  .nl .top .header-actions{order:5;display:flex;flex-wrap:wrap;gap:4px;flex:1 1 auto}
-  .nl .top .header-actions .chip{min-height:32px}
+  .nl .top .header-actions{order:5;display:flex;flex-wrap:wrap;gap:0.25rem;flex:1 1 auto}
+  .nl .top .header-actions .chip{min-height:2rem}
   .nl .top .header-actions .upload-info{position:static;margin-top:0}
   .nl .top .stamps{order:6;flex:1 1 100%}
   .nl .vtabs{max-width:100%;flex-wrap:wrap}
   .nl .vtabs nav{display:contents}
-  .nl .vtabs button{flex:1 1 auto;padding:4px 5px;font-size:11px}
+  .nl .vtabs button{flex:1 1 auto;padding:0.25rem 0.3125rem;font-size:0.6875rem}
   .nl .vtabs button:last-child{min-width:0}
   .nl .work{grid-template-columns:minmax(0,1fr)}
   .nl .opt{position:static;max-height:none;overflow:visible}
@@ -460,83 +460,83 @@ html[data-theme="light"] .nl .vtabs button.on,html[data-theme="light"] .nl .vtab
   .nl .tbl{position:static;overflow:visible;max-height:none}
   .nl .tbl table,.nl .tbl thead,.nl .tbl tbody{display:block;width:100%;min-width:0}
   .nl #thead th.k-val,.nl #thead th.k-pos,.nl #thead th.k-tg,.nl #thead th.k-tags,.nl #thead th.k-thumbs,.nl #thead th.k-lim,.nl #tbody td.val,.nl #tbody td.k-pos,.nl #tbody td.tg-col,.nl #tbody td.tags-cell,.nl #tbody td.bmp,.nl #tbody td.lim{display:none}
-  .nl #thead tr,.nl #tbody tr[data-id]{display:grid;grid-template-columns:34px minmax(0,1fr) 56px 42px 46px 34px 34px;align-items:center;column-gap:2px}
-  .nl #thead tr:has(.k-cash),.nl #tbody tr[data-id]:has(td.cs){grid-template-columns:34px minmax(0,1fr) 56px 42px 46px 34px}
+  .nl #thead tr,.nl #tbody tr[data-id]{display:grid;grid-template-columns:2.125rem minmax(0,1fr) 3.5rem 2.625rem 2.875rem 2.125rem 2.125rem;align-items:center;column-gap:0.125rem}
+  .nl #thead tr:has(.k-cash),.nl #tbody tr[data-id]:has(td.cs){grid-template-columns:2.125rem minmax(0,1fr) 3.5rem 2.625rem 2.875rem 2.125rem}
   .nl #thead th.k-cash{display:none}
   .nl #thead th,.nl #tbody td{display:block;width:auto!important;min-width:0;padding-left:0;padding-right:0;position:static;background-color:var(--p);box-sizing:border-box}
   .nl #thead th.k-val,.nl #thead th.k-pos,.nl #thead th.k-tg,.nl #thead th.k-tags,.nl #thead th.k-thumbs,.nl #thead th.k-lim,.nl #tbody td.val,.nl #tbody td.k-pos,.nl #tbody td.tg-col,.nl #tbody td.tags-cell,.nl #tbody td.bmp,.nl #tbody td.lim{display:none!important}
   .nl #tbody td.own .b{display:none}
   .nl #tbody td.own{text-align:right}
-  .nl #tbody td.ctl button{width:32px;height:32px}
-  .nl #tbody td.cs{grid-column:1/-1;grid-row:2;padding:0 0 4px 34px}
-  .nl #tbody td.cs .tabs button{min-height:32px;padding:0 10px;font-size:12px}
-  .nl #tbody tr[data-id]{border-bottom:1px solid var(--ln);padding:2px 0}
+  .nl #tbody td.ctl button{width:2rem;height:2rem}
+  .nl #tbody td.cs{grid-column:1/-1;grid-row:2;padding:0 0 0.25rem 2.125rem}
+  .nl #tbody td.cs .tabs button{min-height:2rem;padding:0 0.625rem;font-size:0.75rem}
+  .nl #tbody tr[data-id]{border-bottom:1px solid var(--ln);padding:0.125rem 0}
   .nl #tbody td.pl .logo{display:none}
   .nl #tbody td.pl .who{gap:0}
   /* The injury letter moves to the matchup line, so the name keeps the room beside the position (walkthrough friction: names clipped beside a Q badge). */
   .nl #tbody td.pl .whot{position:relative}
-  .nl #tbody td.pl .l1>:is(.status-badge,.out-tag,.st-pill){position:absolute;left:0;top:18px;font-size:9.5px;line-height:12px;padding:0 3px;margin:0}
-  .nl #tbody td.pl .l1>.st-pill{height:12px;min-width:0}
-  .nl #tbody td.pl .whot:has(.l1>.status-badge) .l2{padding-left:16px}
-  .nl #tbody td.pl .whot:has(.l1>.out-tag) .l2{padding-left:30px}
-  .nl #tbody td.pl .whot:has(.l1>.st-pill) .l2{padding-left:28px} /* his own In / Out label (status-switch.js, a plain label in the pool) sits on the matchup line too, so the matchup starts after it */
+  .nl #tbody td.pl .l1>:is(.status-badge,.out-tag,.st-pill){position:absolute;left:0;top:1.125rem;font-size:0.5938rem;line-height:0.75rem;padding:0 0.1875rem;margin:0}
+  .nl #tbody td.pl .l1>.st-pill{height:0.75rem;min-width:0}
+  .nl #tbody td.pl .whot:has(.l1>.status-badge) .l2{padding-left:1rem}
+  .nl #tbody td.pl .whot:has(.l1>.out-tag) .l2{padding-left:1.875rem}
+  .nl #tbody td.pl .whot:has(.l1>.st-pill) .l2{padding-left:1.75rem} /* his own In / Out label (status-switch.js, a plain label in the pool) sits on the matchup line too, so the matchup starts after it */
   .nl .tbl #thead th{box-shadow:none}
   .nl .tbl .lineup-pool-empty{display:block}
   /* The panel is one closed line above the player list until it is opened. */
-  .nl .opt-phone-toggle{display:flex;justify-content:space-between;align-items:center;width:100%;min-height:40px;padding:8px 12px;background:var(--p2);border:1px solid var(--am);color:var(--tx);font-weight:700;font-size:13px;text-align:left;cursor:pointer}
+  .nl .opt-phone-toggle{display:flex;justify-content:space-between;align-items:center;width:100%;min-height:2.5rem;padding:0.5rem 0.75rem;background:var(--p2);border:1px solid var(--am);color:var(--tx);font-weight:700;font-size:0.8125rem;text-align:left;cursor:pointer}
   .nl .opt:not(.phone-open)>:not(.opt-phone-toggle){display:none}
   /* Opened, the working lineup comes last, right above the filter bar and the player list its seats are filled from (walkthrough friction: it sat far from the pool). */
   .nl .opt.phone-open{display:flex;flex-direction:column}
   .nl .opt.phone-open>.lu.wk{order:1}
-  .nl .work{gap:8px}
+  .nl .work{gap:0.5rem}
   /* Lineups: the cards first, the exposure table behind its switch; buttons and the build line wrap. */
-  .nl #lineups .lt-body{display:flex;flex-direction:column;gap:8px}
+  .nl #lineups .lt-body{display:flex;flex-direction:column;gap:0.5rem}
   .nl #lineups .lt-cards{order:1}
-  .nl #lineups .lt-extog{display:block;order:2;width:100%;min-height:36px;background:var(--p2);border:1px solid var(--ln);color:var(--tx);font-weight:700;cursor:pointer}
+  .nl #lineups .lt-extog{display:block;order:2;width:100%;min-height:2.25rem;background:var(--p2);border:1px solid var(--ln);color:var(--tx);font-weight:700;cursor:pointer}
   .nl #lineups .lt-ex{order:3;display:none;max-width:100%}
   .nl #lineups .lt-body.exopen .lt-ex{display:block}
   .nl #lineups .ext{width:100%;table-layout:auto}
   .nl #lineups .ext th.ex-bar,.nl #lineups .ext td.ex-bar,.nl #lineups .ext th.ex-diff,.nl #lineups .ext td.ex-diff,.nl #lineups .ext .ex-opp,.nl #lineups .ext td.ex-f,.nl #lineups .ext thead th:last-child{display:none}
   .nl #lineups .ext td.ex-name{white-space:normal}
   .nl #lineups .ext td.ex-name .pn{white-space:normal;max-width:none;overflow:visible}
-  .nl #lineups .lt-top{flex-direction:column;align-items:stretch;gap:6px}
-  .nl #lineups .lt-btns{display:flex;flex-direction:column;align-items:stretch;gap:4px}
+  .nl #lineups .lt-top{flex-direction:column;align-items:stretch;gap:0.375rem}
+  .nl #lineups .lt-btns{display:flex;flex-direction:column;align-items:stretch;gap:0.25rem}
   .nl #lineups .lt-btns .lt-dl{width:100%;white-space:normal}
-  .nl #lineups .lt-bh{flex-wrap:wrap;gap:4px 8px}
+  .nl #lineups .lt-bh{flex-wrap:wrap;gap:0.25rem 0.5rem}
   .nl #lineups .lt-bn{white-space:normal}
-  .nl #lineups .lt-bar{flex-wrap:wrap;gap:6px}
+  .nl #lineups .lt-bar{flex-wrap:wrap;gap:0.375rem}
   .nl #lineups .lt-sort{flex-wrap:wrap}
   .nl .updline,.nl .own-banner,.nl .stamps-host{text-align:left;align-items:flex-start;margin:0;padding-left:0;width:100%}
   .nl .stamps-host>*{justify-content:flex-start;margin-left:0;padding-left:0}
   .nl #lineups .lt-sum{display:grid;grid-template-columns:repeat(3,minmax(0,1fr))}
-  .nl #lineups .lt-sum div{padding:3px 6px;border-right:0}
-  .nl #lineups .lt-sum b{font-size:13px}
+  .nl #lineups .lt-sum div{padding:0.1875rem 0.375rem;border-right:0}
+  .nl #lineups .lt-sum b{font-size:0.8125rem}
   /* Left out: name line and figures fit one row; the working lineup's head stays on one line. */
   .nl .opt .lo .crow i{display:none}
   .nl .opt .lo .crow .sn{min-width:0}
-  .nl .opt .lu.wk .luh{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:baseline;gap:2px 8px}
-  .nl .opt .lu.wk .luh>span:first-child{font-size:13px;white-space:nowrap}
-  .nl #lineups .capt{flex-wrap:wrap;gap:2px 10px}
-  .nl #thead th.ctl{font-size:9px}
-  .nl .opt .lu.wk .luh .luhr{display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+  .nl .opt .lu.wk .luh{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:baseline;gap:0.125rem 0.5rem}
+  .nl .opt .lu.wk .luh>span:first-child{font-size:0.8125rem;white-space:nowrap}
+  .nl #lineups .capt{flex-wrap:wrap;gap:0.125rem 0.625rem}
+  .nl #thead th.ctl{font-size:0.5625rem}
+  .nl .opt .lu.wk .luh .luhr{display:inline-flex;align-items:center;gap:0.375rem;white-space:nowrap}
   .nl #lineups .lt-cards{grid-template-columns:minmax(0,1fr)}
   .nl #lineups .lt-body{grid-template-columns:minmax(0,1fr)}
-  .nl #lineups .crow.lead.lr{grid-template-columns:34px 20px minmax(0,1fr) 46px 32px 40px}
-  .nl .games{display:flex;flex-wrap:nowrap;overflow-x:auto;gap:6px;padding-bottom:4px;-webkit-overflow-scrolling:touch} /* phone: one sideways row inside its own box, Adam 2026-10-10 */
-  .nl .game{flex:0 0 200px}
+  .nl #lineups .crow.lead.lr{grid-template-columns:2.125rem 1.25rem minmax(0,1fr) 2.875rem 2rem 2.5rem}
+  .nl .games{display:flex;flex-wrap:nowrap;overflow-x:auto;gap:0.375rem;padding-bottom:0.25rem;-webkit-overflow-scrolling:touch} /* phone: one sideways row inside its own box, Adam 2026-10-10 */
+  .nl .game{flex:0 0 12.5rem}
   .nl .tchips{flex-wrap:wrap;min-width:0;width:100%}
-  .nl .updline{flex-direction:column;gap:2px}
-  .nl .gs-toggle{position:static;display:block;margin-top:2px}
-  .nl .tchips{gap:2px}
+  .nl .updline{flex-direction:column;gap:0.125rem}
+  .nl .gs-toggle{position:static;display:block;margin-top:0.125rem}
+  .nl .tchips{gap:0.125rem}
   .nl .tools{flex-wrap:wrap}
-  .nl .opt .lu.wk .wkh,.nl .opt .lu.wk .wkr{grid-template-columns:30px 20px minmax(0,1fr) 62px 44px 48px 26px;column-gap:4px}
-  .nl .opt .lu.wk .wkr .ss,.nl .opt .lu.wk .wkr .sp,.nl .opt .lu.wk .wkr .so{font-size:12px}
+  .nl .opt .lu.wk .wkh,.nl .opt .lu.wk .wkr{grid-template-columns:1.875rem 1.25rem minmax(0,1fr) 3.875rem 2.75rem 3rem 1.625rem;column-gap:0.25rem}
+  .nl .opt .lu.wk .wkr .ss,.nl .opt .lu.wk .wkr .sp,.nl .opt .lu.wk .wkr .so{font-size:0.75rem}
   .nl .opt .lu.wk .wkr .slt{display:none}
-  .nl .opt .lu.wk .cap .capt{flex-wrap:wrap;justify-content:flex-start;gap:4px 12px}
+  .nl .opt .lu.wk .cap .capt{flex-wrap:wrap;justify-content:flex-start;gap:0.25rem 0.75rem}
   .nl #lineups .lt-sum b{white-space:normal}
-  .nl .opt .lo .crow{grid-template-columns:30px 20px minmax(0,1fr) 54px 40px 46px}
+  .nl .opt .lo .crow{grid-template-columns:1.875rem 1.25rem minmax(0,1fr) 3.375rem 2.5rem 2.875rem}
   .nl .opt .lo .way{padding-left:0}
-  .nl .lo .xf{grid-column:1/-1!important;justify-self:end;margin-top:2px}
+  .nl .lo .xf{grid-column:1/-1!important;justify-self:end;margin-top:0.125rem}
   .nl .set4,.nl .set4.set3{grid-template-columns:1fr 1fr}
   .nl .set4 label:nth-child(2){border-right:0}
   .nl .opt .act .two{flex-wrap:wrap}
@@ -553,44 +553,44 @@ body.nl-page #showdown-main{max-width:none;padding:0;width:auto}
 .nl .mode-tile{background:none}
 .nl .mode-tile.active{background:var(--am);border-color:var(--am);color:#000}
 .nl .mode-tile+.mode-tile:not(.mode-upload-tile){border-left-width:0}
-.nl .mode-upload-tile{margin-left:8px}
+.nl .mode-upload-tile{margin-left:0.5rem}
 /* The Showdown's one game tile (showdown/game-tile.js) and the quiet line under it. */
-.nl .games.sd-games{grid-template-columns:236px;margin:8px 0}
-.nl .sd-game-tag{margin-left:auto;color:var(--am);font-weight:800;font-size:11px}
+.nl .games.sd-games{grid-template-columns:14.75rem;margin:0.5rem 0}
+.nl .sd-game-tag{margin-left:auto;color:var(--am);font-weight:800;font-size:0.6875rem}
 .nl .stamps-host:empty{display:none}
-.nl .stamps-host .stamps-line{margin:0 0 6px;font-size:11px;color:var(--am)}
+.nl .stamps-host .stamps-line{margin:0 0 0.375rem;font-size:0.6875rem;color:var(--am)}
 .nl #sd-starred-toggle::before{content:"★ "}
-.nl .sd-filterbar .sd-filter-note{color:var(--am);font-size:11px}
+.nl .sd-filterbar .sd-filter-note{color:var(--am);font-size:0.6875rem}
 .nl #sd-columns-slot .colpop{left:auto;right:0} /* the Columns button is at the bar's right edge: its list opens leftwards, inside the window */
 /* The work area: the pool beside the Optimizer panel, which sticks under the shared bar and the filter bar. */
-.nl .work.sd-work{grid-template-columns:minmax(0,1080px) minmax(520px,900px);justify-content:start} /* the pool stops at 1080px on a wide window: a longer Player column is empty space, so the rest stays free on the right */
-.nl .sd-work .opt{top:var(--filterbar-h,0px);max-height:calc(100vh - var(--filterbar-h,0px) - 8px)}
+.nl .work.sd-work{grid-template-columns:minmax(0,67.5rem) minmax(32.5rem,56.25rem);justify-content:start} /* the pool stops at 1080px on a wide window: a longer Player column is empty space, so the rest stays free on the right */
+.nl .sd-work .opt{top:var(--filterbar-h,0px);max-height:calc(100vh - var(--filterbar-h,0px) - 0.5rem)}
 @media (max-width:1830px){.nl .work.sd-work{grid-template-columns:minmax(0,1fr)}} /* a laptop: the panel above the pool, as on the classic screen (board.css) */
 /* The pool's ids (#sd-thead, #sd-tbody) get the classic pool's id-keyed rules (board.css, above): widths, the sticky head and the cell type. */
 .nl #sd-thead th:last-child,.nl #sd-tbody td:last-child{width:auto}
-.nl #sd-thead th.k-star{width:36px}.nl #sd-thead th.k-sal{width:68px}.nl #sd-thead th.k-proj{width:64px}.nl #sd-thead th.k-own{width:98px}.nl #sd-thead th.k-val{width:50px}.nl #sd-thead th.k-thumbs{width:68px}.nl #sd-thead th.k-lock{width:44px}.nl #sd-thead th.k-excl{width:56px}.nl #sd-thead th.k-lim{width:48px}
+.nl #sd-thead th.k-star{width:2.25rem}.nl #sd-thead th.k-sal{width:4.25rem}.nl #sd-thead th.k-proj{width:4rem}.nl #sd-thead th.k-own{width:6.125rem}.nl #sd-thead th.k-val{width:3.125rem}.nl #sd-thead th.k-thumbs{width:4.25rem}.nl #sd-thead th.k-lock{width:2.75rem}.nl #sd-thead th.k-excl{width:3.5rem}.nl #sd-thead th.k-lim{width:3rem}
 .nl #sd-thead th{position:sticky;top:calc(var(--filterbar-h,0px) - 1px);z-index:1;box-shadow:inset 0 -1px var(--ln)}
-.nl #sd-tbody td,.nl #sd-tbody .name,.nl #sd-tbody td.proj,.nl #sd-tbody .v,.nl #sd-tbody .bump-fig,.nl #sd-tbody .limb{font-family:"Space Grotesk",sans-serif;font-size:13.5px;font-variant-numeric:tabular-nums}
+.nl #sd-tbody td,.nl #sd-tbody .name,.nl #sd-tbody td.proj,.nl #sd-tbody .v,.nl #sd-tbody .bump-fig,.nl #sd-tbody .limb{font-family:"Space Grotesk",sans-serif;font-size:0.8438rem;font-variant-numeric:tabular-nums}
 .nl #sd-tbody .l2,.nl #sd-tbody .pos,.nl #sd-tbody .st{font-family:"Space Grotesk",sans-serif}
 .nl #sd-tbody tr.pk td.pl .l2{white-space:nowrap}
 .nl .sd-pool-table td.lineup-pool-empty{white-space:normal}
 /* The Showdown landing (showdown-tab.js) and the empty states (a board loading, or one the site does not have), in the classic look; the page's foot note (#sd-foot-note) is the quiet line at the bottom. */
-.nl#showdown-panel{padding:14px 0}
-.nl#showdown-panel .opt-title{display:block;margin:0 0 4px;font:700 16px "Space Grotesk",sans-serif;color:var(--tx)}
-.nl#showdown-panel .tab-note{margin:0 0 8px;font-size:11.5px;color:var(--mu)}
-.nl .sd-game-tiles{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0 12px}
-.nl .sd-game-tile{background:var(--p2);border:1px solid var(--ln);border-radius:0;padding:4px 10px;font:700 12px "JetBrains Mono",monospace;color:var(--mu);white-space:nowrap;cursor:pointer}
+.nl#showdown-panel{padding:0.875rem 0}
+.nl#showdown-panel .opt-title{display:block;margin:0 0 0.25rem;font:700 1rem "Space Grotesk",sans-serif;color:var(--tx)}
+.nl#showdown-panel .tab-note{margin:0 0 0.5rem;font-size:0.7188rem;color:var(--mu)}
+.nl .sd-game-tiles{display:flex;flex-wrap:wrap;gap:0.375rem;margin:0.5rem 0 0.75rem}
+.nl .sd-game-tile{background:var(--p2);border:1px solid var(--ln);border-radius:0;padding:0.25rem 0.625rem;font:700 0.75rem "JetBrains Mono",monospace;color:var(--mu);white-space:nowrap;cursor:pointer}
 .nl .sd-game-tile:hover{border-color:var(--am);color:var(--tx)}
 .nl .sd-game-loaded{border-color:var(--am);color:var(--am)}
 .nl .sd-game-missing{border-style:dashed}
 .nl .sd-game-tile.selected{background:var(--am);border-color:var(--am);color:#000}
 .nl .sd-loaded-mark{color:var(--mu);font-weight:400}
-.nl#showdown-panel .empty-state,.nl#sd-empty-state{max-width:760px;margin:8px 0 0;padding:14px 16px;text-align:left;background:var(--p);border:1px solid var(--ln);border-radius:0;color:var(--mu);font-size:13px}
-.nl#showdown-panel .empty-state p{margin:0 0 8px;color:var(--tx)}
-.nl#showdown-panel .empty-state .tab-note{margin:8px 0 0}
-.nl#showdown-panel .upload-btn{display:inline-block;margin:0;background:none;border:1px solid var(--ln);border-radius:0;padding:4px 10px;font:700 12px "JetBrains Mono",monospace;color:var(--mu);cursor:pointer}
+.nl#showdown-panel .empty-state,.nl#sd-empty-state{max-width:47.5rem;margin:0.5rem 0 0;padding:0.875rem 1rem;text-align:left;background:var(--p);border:1px solid var(--ln);border-radius:0;color:var(--mu);font-size:0.8125rem}
+.nl#showdown-panel .empty-state p{margin:0 0 0.5rem;color:var(--tx)}
+.nl#showdown-panel .empty-state .tab-note{margin:0.5rem 0 0}
+.nl#showdown-panel .upload-btn{display:inline-block;margin:0;background:none;border:1px solid var(--ln);border-radius:0;padding:0.25rem 0.625rem;font:700 0.75rem "JetBrains Mono",monospace;color:var(--mu);cursor:pointer}
 .nl#showdown-panel .upload-btn:hover{border-color:var(--am);color:var(--tx)}
-.nl.storage-foot{padding:14px 0 0;font-size:11.5px;color:var(--dim)}
+.nl.storage-foot{padding:0.875rem 0 0;font-size:0.7188rem;color:var(--dim)}
 .nl.storage-foot[hidden]{display:none}
 @media (max-width:1300px){
   .nl #sd-tbody td.pl,.nl #sd-thead th.pl{position:sticky;left:var(--plleft,0px);z-index:1}
@@ -598,53 +598,53 @@ body.nl-page #showdown-main{max-width:none;padding:0;width:auto}
   .nl #sd-thead th{top:0}
 }
 /* The pool rows' buttons: the star, Lock, Exclude and In share the classic pool's 24px square. */
-.nl .ctl .row-ico,.nl .ctl .star-btn{width:24px;height:24px;min-width:0;padding:0;border-radius:0;border:1px solid #2a2a30;background:var(--p2);color:var(--mu);display:inline-grid;place-items:center;font-size:11px;font-weight:800;line-height:1}
-.nl .ctl .star-btn{font-size:13px}
+.nl .ctl .row-ico,.nl .ctl .star-btn{width:1.5rem;height:1.5rem;min-width:0;padding:0;border-radius:0;border:1px solid #2a2a30;background:var(--p2);color:var(--mu);display:inline-grid;place-items:center;font-size:0.6875rem;font-weight:800;line-height:1}
+.nl .ctl .star-btn{font-size:0.8125rem}
 .nl .ctl .row-ico:hover,.nl .ctl .star-btn:hover{color:var(--tx);border-color:var(--am)}
 .nl .ctl .row-ico.sd-row-in.on,.nl .ctl .star-btn.active{border-color:var(--am);color:var(--am);background:#ffb00018}
 .nl .ctl .row-ico:disabled,.nl .ctl .star-btn:disabled{opacity:.4;cursor:default}
 .nl .ctl .star-btn.star-static{border-color:transparent;background:none;cursor:default}
-.nl tr.pk .sd-seat-slot{display:inline-flex;align-items:center;gap:4px}
+.nl tr.pk .sd-seat-slot{display:inline-flex;align-items:center;gap:0.25rem}
 .nl .sd-seat-slot:empty{display:none}
 /* The Optimizer panel: the Build by segment and the Cash tab's room-keeping stand-ins; the rule rows are plain lines; the panel is always open on a phone (it has no toggle). */
-.nl .set4 .setc{padding:4px 10px;font-size:11px;color:var(--mu);border-right:1px solid var(--ln);white-space:nowrap}
+.nl .set4 .setc{padding:0.25rem 0.625rem;font-size:0.6875rem;color:var(--mu);border-right:1px solid var(--ln);white-space:nowrap}
 .nl .set4 .setc:last-child{border-right:0}
-.nl .set4 .seg{margin-top:2px;height:24px}
-.nl .set4 .seg button{flex:1;padding:0 6px;font-size:12.5px}
-.nl .set4 .cash-basis{display:block;margin-top:5px;font-size:12px;color:var(--tx);white-space:normal}
+.nl .set4 .seg{margin-top:0.125rem;height:1.5rem}
+.nl .set4 .seg button{flex:1;padding:0 0.375rem;font-size:0.7813rem}
+.nl .set4 .cash-basis{display:block;margin-top:0.3125rem;font-size:0.75rem;color:var(--tx);white-space:normal}
 .nl .set4.set3{grid-template-columns:repeat(3,1fr)} /* the Cash tab: three settings (no Min unique players, no Variance row), so no empty cell or band */
 .nl .sd-opt .sd-setop{cursor:default}
 .nl .sd-opt .sd-setop:hover{color:var(--mu)}
 .nl .sd-opt .opt-lockinfo{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .nl .sd-opt .act-status:empty{display:none}
-.nl .sd-opt .sd-opt-head .lineup-status{margin:4px 16px}
-.nl .sd-opt .sd-opt-go{margin-bottom:6px}
-.nl .sd-opt .sd-opt-go .lineup-status{margin:0 0 6px}
-.nl .sd-opt .lu.wk .sd-meter{margin-top:8px}
+.nl .sd-opt .sd-opt-head .lineup-status{margin:0.25rem 1rem}
+.nl .sd-opt .sd-opt-go{margin-bottom:0.375rem}
+.nl .sd-opt .sd-opt-go .lineup-status{margin:0 0 0.375rem}
+.nl .sd-opt .lu.wk .sd-meter{margin-top:0.5rem}
 .nl .sd-opt .lu.wk .wkr.sd-slot:not(.empty)>.sl{background:var(--am);border-color:var(--am);color:#000}
 .nl .sd-opt .lu.wk .wkr.empty .eh{white-space:nowrap}
-.nl .sd-opt .opt-results .opt-sub{font-size:12px;color:var(--mu);padding:2px 0}
-.nl .sd-opt .opt-results .opt-note{font-size:11px;color:var(--mu)}
+.nl .sd-opt .opt-results .opt-sub{font-size:0.75rem;color:var(--mu);padding:0.125rem 0}
+.nl .sd-opt .opt-results .opt-note{font-size:0.6875rem;color:var(--mu)}
 /* The pool packs the way NBA's does (board.css a39b37e: "the name column keeps to its content, every column packs left beside it, the last column takes the spare width"; Adam 1:46 PM 11-16): from 901px up the table sizes its
    columns to their content (the Player column to the longest full name on the slate, so the matchup column sits just after it and every matchup starts at one left edge), the row buttons keep their 24px size in
    NBA's narrow columns, and the last column takes what is left. Placed last so it follows every width rule above. */
 @media (min-width:901px){
   .nl .tbl table{table-layout:auto}
   .nl #thead th[class*="k-"],.nl #sd-thead th[class*="k-"]{width:auto}
-  .nl #thead th.k-lim,.nl #sd-thead th.k-lim{min-width:50px} /* NBA's Min % / Max % column: the 44px box with 3px each side */
-  .nl #thead th.k-lock,.nl #thead th.k-excl,.nl #sd-thead th.k-lock,.nl #sd-thead th.k-excl{padding-left:7px;padding-right:7px} /* the heads Lock and Exclude read apart */
+  .nl #thead th.k-lim,.nl #sd-thead th.k-lim{min-width:3.125rem} /* NBA's Min % / Max % column: the 44px box with 3px each side */
+  .nl #thead th.k-lock,.nl #thead th.k-excl,.nl #sd-thead th.k-lock,.nl #sd-thead th.k-excl{padding-left:0.4375rem;padding-right:0.4375rem} /* the heads Lock and Exclude read apart */
   .nl #thead th:last-child,.nl #tbody td:last-child,.nl #sd-thead th:last-child,.nl #sd-tbody td:last-child{width:100%}
   /* Even spacing (Adam 1:52 PM 11-16: "an enormous hole between columns" and the buttons "crammed"): the figure columns are as wide as their figures (a row with no Own figure draws no bar, so no hole before its dash);
      the row buttons are NBA's 24px squares with 7px each side, the thumbs pair 10px each side, the Min % / Max % boxes 5px each side; no head touches the next. */
   .nl td.bar .b.off{display:none}
-  .nl td.bar .v{min-width:36px}
-  .nl td.own .b{margin-right:6px}
-  .nl #thead th.num,.nl #sd-thead th.num{padding-left:8px;padding-right:8px}
-  .nl #tbody td.ctl:not(:first-child),.nl #sd-tbody td.ctl:not(:first-child){padding-left:7px;padding-right:7px}
-  .nl #thead th.ctl:not(:first-child),.nl #sd-thead th.ctl:not(:first-child){padding-left:7px;padding-right:7px}
-  .nl #tbody td.bmp,.nl #sd-tbody td.bmp,.nl #thead th.bmp,.nl #sd-thead th.bmp{padding-left:10px;padding-right:10px}
-  .nl #tbody td.lim,.nl #sd-tbody td.lim{padding-left:5px;padding-right:5px}
-  .nl #thead th.k-lim,.nl #sd-thead th.k-lim{min-width:56px}
-  .nl #thead th.k-tg,.nl #sd-thead th.k-tg{padding-left:9px;padding-right:9px}
-  .nl #tbody td.tg-col{padding-left:9px;padding-right:9px}
+  .nl td.bar .v{min-width:2.25rem}
+  .nl td.own .b{margin-right:0.375rem}
+  .nl #thead th.num,.nl #sd-thead th.num{padding-left:0.5rem;padding-right:0.5rem}
+  .nl #tbody td.ctl:not(:first-child),.nl #sd-tbody td.ctl:not(:first-child){padding-left:0.4375rem;padding-right:0.4375rem}
+  .nl #thead th.ctl:not(:first-child),.nl #sd-thead th.ctl:not(:first-child){padding-left:0.4375rem;padding-right:0.4375rem}
+  .nl #tbody td.bmp,.nl #sd-tbody td.bmp,.nl #thead th.bmp,.nl #sd-thead th.bmp{padding-left:0.625rem;padding-right:0.625rem}
+  .nl #tbody td.lim,.nl #sd-tbody td.lim{padding-left:0.3125rem;padding-right:0.3125rem}
+  .nl #thead th.k-lim,.nl #sd-thead th.k-lim{min-width:3.5rem}
+  .nl #thead th.k-tg,.nl #sd-thead th.k-tg{padding-left:0.5625rem;padding-right:0.5625rem}
+  .nl #tbody td.tg-col{padding-left:0.5625rem;padding-right:0.5625rem}
 }

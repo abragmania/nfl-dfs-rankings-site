@@ -10,6 +10,7 @@ import { escapeHtml, localStamp } from "./format.js";
 import { sortArrowHtml } from "./table.js";
 import { cameFromApp, backTarget } from "./showdown/salary-used.js";
 import { makeFilterDebounce } from "./filter-debounce.js";
+import { remPx } from "./rem-scale.js"; // G71: the 420px floor on the table box grows with the page's root size
 import {
   LIST_CHOICES, DEFAULT_SORT, buildModel, listCounts, viewRows, nextSort, withMark, namesInContests,
   columnsFor, columnCounts, snapshotSummary, keyStep, stepKey, cursorAfter,
@@ -266,7 +267,7 @@ function layout() {
   const pad = parseFloat(getComputedStyle(document.querySelector("main")).paddingBottom) || 0;
   const top = els.box.getBoundingClientRect().top + window.scrollY;
   const foot = els.foot ? els.foot.offsetHeight : 0; // the notes under the box (G64) take their room from the window too
-  const room = Math.max(420, Math.floor(window.innerHeight - top - pad - foot));
+  const room = Math.max(remPx(420), Math.floor(window.innerHeight - top - pad - foot));
   const head = els.thead.getBoundingClientRect().height;
   const rowH = els.tbody.querySelector("tr")?.getBoundingClientRect().height ?? 0; // every row is one line of the same height
   const allowance = els.box.offsetHeight - els.box.clientHeight; // the box's border (and a sideways scrollbar, if any)

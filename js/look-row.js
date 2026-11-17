@@ -7,8 +7,8 @@ import { liftForDark } from "./team-palette.js";
 import { moneyText, projText, ownText, valueText, MISSING_WHY, NO_FIGURE } from "./look-adapter.js";
 
 // The look's two row icons (the padlock on the working lineup and in the pool, the Exclude mark in the pool).
-export const LOCK_ICON = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><rect x="5" y="11" width="14" height="9"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>`;
-export const EXCLUDE_ICON = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><circle cx="12" cy="12" r="8"/><path d="M6.3 17.7 17.7 6.3"/></svg>`;
+export const LOCK_ICON = `<svg width="13" height="13" style="width:0.8125rem;height:0.8125rem" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><rect x="5" y="11" width="14" height="9"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>`;
+export const EXCLUDE_ICON = `<svg width="13" height="13" style="width:0.8125rem;height:0.8125rem" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><circle cx="12" cy="12" r="8"/><path d="M6.3 17.7 17.7 6.3"/></svg>`;
 
 /** The look's team tint for `team` (--t1, --t2): the slate palette's colour, lifted on the dark page so a dark colour still reads; the light page takes it as it is. */
 export function teamVars(team, palette = null) {

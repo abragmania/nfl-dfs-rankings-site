@@ -1,5 +1,6 @@
 // Sizes every ".scroll-panel" table to the room left below it (moved out of public/app.js unchanged; a leaf module that imports nothing from app.js).
 import { phoneMinHeight } from "./expand.js";
+import { remPx } from "./rem-scale.js"; // G71: the fixed reserves below grow with the page's root size
 
 // Whole-row snapping by geometry rather than by one row's height (👁 visual-qa fourth/fifth pass): finds
 // the last tbody row whose bottom edge actually fits within the available height and snaps the panel's
@@ -51,9 +52,9 @@ export function adjustScrollPanels() {
     const top = panelEl.getBoundingClientRect().top;
     // A table's legend line can sit right below its .table-wrap; if its height isn't reserved here the table claims that room too,
     // slicing the legend and forcing a second page-level scrollbar (👁 visual-qa). The Optimizer's pools are no longer scroll panels (A15).
-    let reserve = 16;
+    let reserve = remPx(16);
     const legend = panelEl.parentElement?.querySelector(".table-legend");
-    if (legend) reserve += legend.getBoundingClientRect().height + 8;
+    if (legend) reserve += legend.getBoundingClientRect().height + remPx(8);
     snapPanelMaxHeight(panelEl, top, reserve + sourcesPageBelow(panelEl));
   });
 }
@@ -71,6 +72,6 @@ export function sourcesPageBelow(panelEl) {
     for (let s = el.nextElementSibling; s; s = s.nextElementSibling) below += s.getBoundingClientRect().height;
   }
   const row = [...panel.parentElement.querySelectorAll(".sp-asof, .sp-shown, .sp-notes")].filter((c) => c.getClientRects().length > 0);
-  if (row.length) below += Math.max(...row.map((c) => c.getBoundingClientRect().height)) + 24; // + the grid's row gap and the page's bottom padding
+  if (row.length) below += Math.max(...row.map((c) => c.getBoundingClientRect().height)) + remPx(24); // + the grid's row gap and the page's bottom padding
   return below;
 }

@@ -56,7 +56,7 @@ export const CPT_MULT = 1.5;
 function thumbsHtml(count) {
   const n = Math.max(1, count);
   const fan = n <= 1 ? 0 : n <= 3 ? 6 : (12 / (n - 1));
-  return { svgs: THUMB_SVG.repeat(n), style: n <= 1 ? "" : ` style="--fan:${Math.floor(fan * 100) / 100}px"` };
+  return { svgs: THUMB_SVG.repeat(n), style: n <= 1 ? "" : ` style="--fan:${+(Math.floor(fan * 100) / 100 / 16).toFixed(4)}rem"` }; // G71: a design size, so rem (px / 16)
 }
 
 /**

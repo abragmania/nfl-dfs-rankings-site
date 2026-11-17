@@ -11,6 +11,7 @@ import { gradedCellHtml, rowIsOut, STATUS_INFO, TG_COLUMNS, tgCellHtml, tagsCell
 import { playerTagHtml, teamLogoHtml, showPos, poolMatchupHtml, poolWhyHtml, poolPosHtml, poolNoLogoTeamHtml } from "./player-row.js";
 import { rowsGradedForView } from "./grade.js";
 import { adamTouched } from "./out.js"; // a man Adam marked In / Out or typed a projection on stays listed under the floor (his edit is never out of reach)
+import { remPx } from "./rem-scale.js"; // G71: a fixed gap added to measured pixels grows with the page's root size
 import { cardNameHtml } from "./lineup-card.js"; // cardNameHtml: the short name a phone shows (style.css, max-width 700px)
 import { paletteForRows } from "./team-palette.js";
 import { teamVars, LOCK_ICON, EXCLUDE_ICON } from "./look-row.js";
@@ -70,7 +71,7 @@ export function keepPoolHeadInView(underOverride = null) {
   const under = underOverride ?? pooledStickyHeight();
   const rect = wrap.getBoundingClientRect();
   const head = wrap.querySelector("thead")?.getBoundingClientRect().height ?? 0;
-  if (!(rect.top < under && rect.bottom < under + head + 8)) return false;
+  if (!(rect.top < under && rect.bottom < under + head + remPx(8))) return false;
   window.scrollBy(0, rect.top - under);
   return true;
 }

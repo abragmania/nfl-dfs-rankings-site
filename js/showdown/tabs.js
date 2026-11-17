@@ -17,6 +17,7 @@ import { sortableHeadHtml, unusedColumn, isSourcesTab, INJURIES_TAB } from "../t
 import { sourceIsTicked } from "../sources-page-html.js"; // the one tick predicate the Sources page and this table share
 import { injuryUnmatchedHtml } from "../unmatched.js";
 import { snapPanelMaxHeight, sourcesPageBelow } from "../scroll-panels.js"; // the classic tables' sizing step
+import { remPx } from "../rem-scale.js"; // G71: the fixed 16px bottom reserve grows with the page
 
 // Fits the table's scroll box to the room below its top edge, as app.js adjustScrollPanels does for classic's tables (the last whole row that
 // fits), so the page does not scroll beside the box. Needed here because the Sources page reads its selection after the first draw and then
@@ -24,7 +25,7 @@ import { snapPanelMaxHeight, sourcesPageBelow } from "../scroll-panels.js"; // t
 function fitScrollPanel(container) {
   if (typeof window === "undefined") return;
   const panel = container.querySelector?.(".scroll-panel");
-  if (panel) snapPanelMaxHeight(panel, panel.getBoundingClientRect().top, 16 + sourcesPageBelow(panel));
+  if (panel) snapPanelMaxHeight(panel, panel.getBoundingClientRect().top, remPx(16) + sourcesPageBelow(panel));
 }
 
 // Adam 2026-10-26 3:22 PM: the Rankings tab is gone, folded into the Optimizer (its game line, filter bar and table are the Optimizer

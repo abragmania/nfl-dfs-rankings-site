@@ -2,13 +2,14 @@
 // the meter, which at 1760px and wider sticks under the filter bar while the pool runs beside it, and sits in the page above that. It is brought in whole, the Captain or the first slot and the Clear lineup and
 // Save row included, under the sticky layers (the --filterbar-h of the panel), without the smooth scroll a redraw can interrupt; and once more a moment later, after the meter (which draws on its own answer) has
 // changed the band's height. A band already wholly in the window is left where it is.
+import { remPx } from "./rem-scale.js"; // G71: the gap under the sticky layers grows with the page's root size
 export const BAND_RECHECK_MS = 700;
 let recheckMs = BAND_RECHECK_MS;
 /** For tests: how long after a Load the band is checked once more. */
 export const setBandRecheckMs = (ms) => { recheckMs = ms; };
 
 /** How far the band's top must move to sit just under the sticky layers, or 0 when the whole band is already in the window. Pure: `rect` = {top, bottom}, `under` the sticky layers' height, `viewportH` the window's. */
-export function bandScrollBy(rect, under, viewportH, gap = 8) {
+export function bandScrollBy(rect, under, viewportH, gap = remPx(8)) {
   if (!rect) return 0;
   if (rect.top >= under && rect.bottom <= viewportH) return 0;
   return Math.round(rect.top - under - gap);
