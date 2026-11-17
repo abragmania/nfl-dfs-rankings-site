@@ -240,6 +240,23 @@ function effective(published, edits, board) {
   return out;
 }
 
+/**
+ * The In / Out now in force per man ({ id: "in" | "out" }): Adam's published word with this browser's over it, as the effective overrides carry it. The source re-blends read it, because
+ * a man TwoGun calls OUT whom the visitor marks In keeps TwoGun's figure (select.js dropsHisFigure). Never throws: unreadable saved changes leave Adam's own.
+ */
+export function effectiveStatus(board, storage, season, week, adapter = CLASSIC) {
+  const published = adapter.published(board);
+  try {
+    const { edits } = readEdits(storage, season, week, published, adapter);
+    return { ...(effective(published, edits, board).status ?? {}) };
+  } catch {
+    return { ...(published.status ?? {}) };
+  }
+}
+
+/** effectiveStatus for a Showdown game's `board` (as baked) on `tab`. */
+export const effectiveShowdownStatus = (board, storage, key, tab) => effectiveStatus(board, storage, null, key, showdownAdapter(tab));
+
 /** The baked board with Adam's published overrides plus `edits` merged by the app's remerge, flagged for Reset all. */
 function remerged(board, slate, published, edits, adapter = CLASSIC) {
   const merged = adapter.remerge(board, slate, effective(published, edits, board));

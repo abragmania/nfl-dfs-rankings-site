@@ -10,13 +10,15 @@ import {
   pageStorage, readDeviceLineups, buildDeviceLineup, saveDeviceLineup, deleteDeviceLineup, buildDevicePatch, updateDeviceLineup, weekKeys, sortedNewestFirst,
   STORAGE_UNAVAILABLE_MESSAGE,
 } from "./site-lineups.js";
-import { boardWithEdits, putEdits, resetPlayerEdits, resetAllEdits, classicAdapter } from "./site-overrides.js";
+import { boardWithEdits, putEdits, resetPlayerEdits, resetAllEdits, classicAdapter, effectiveStatus } from "./site-overrides.js";
 import { findDuplicate } from "../server/lineups/duplicate.js";
 import { lineupModeOf } from "../server/lineups/validate.js";
 import { readTab, tabOfMode } from "../server/showdown/override-tabs.js"; // the app routes' tab reading, one copy (optimizer standard Part F)
 import { buildCard, precheck, identityOf } from "../server/playercard/build.js";
 import { ndcAbbr, teamFileUrl, gamelogUrl, teamFileProblem, gamelogProblem } from "../server/playercard/ndc-files.js";
-import { boardWithWeights, readWeights, putWeights, weightsKey } from "./site-weights.js";
+import { boardWithWeights, readWeightsReport, setAsideLine, putWeights, clearStoredWeights, weightsKey, tunableSources } from "./site-weights.js";
+import { loadEngine, readBody, changeBody, applyAllBody, BOARD_URL } from "./site-sd-sources.js";
+import { BAD_SLATE_MESSAGE, classicProjectionGaps } from "../server/sources/selection-core.js";
 import { classicFullOf, hasCashLineup, listClassicEntries, uploadClassicEntries, exportClassicEntries } from "./site-entries.js";
 import { createWorkerRunner, endedSiteResult } from "./site-worker.js";
 
@@ -181,18 +183,26 @@ async function visitorBoard(board, tab = "gpp") {
   }
   if (!pub) return board;
   if (!sameSlate(board, pub.slate)) return SITE_UPDATED();
-  return boardWithEdits(weightedBoard(board, pub), pub.slate, pageStorage(), pub.season, pub.week, classicAdapter(tab));
+  return boardWithEdits(weightedBoard(board, pub, tab), pub.slate, pageStorage(), pub.season, pub.week, classicAdapter(tab));
 }
 
 /** `board` re-ranked under this browser's source weights (site-weights.js); as it was when there are none or they cannot be applied. */
-function weightedBoard(board, pub) {
+function weightedBoard(board, pub, tab = "gpp") {
   try {
-    return boardWithWeights(board, pub.slate, readWeights(pageStorage(), pub.season, pub.week, board));
+    const storage = pageStorage();
+    const { weights, kept, setAside } = readWeightsReport(storage, pub.season, pub.week, board);
+    // The In / Out in force (Adam's with this browser's) goes into the re-blend: a man TwoGun calls OUT whom the visitor marks In keeps his figure (select.js dropsHisFigure).
+    const out = boardWithWeights(board, pub.slate, weights, kept, effectiveStatus(board, storage, pub.season, pub.week, classicAdapter(tab)));
+    const line = setAsideLine(setAside); // G62: saved changes that were set aside are said at the Sources page foot (board.siteNotes)
+    return line && out && out.ok !== false ? { ...out, siteNotes: [...(out.siteNotes ?? []), line] } : out;
   } catch (e) {
+    // G62: a re-blend that cannot be done leaves the published figures, and the board says so (the Sources page foot), not only the console.
     console.warn("site weights: saved weights not applied", e);
-    return board;
+    return board && board.ok !== false ? { ...board, siteNotes: [...(board.siteNotes ?? []), NOT_APPLIED_LINE] } : board;
   }
 }
+
+const NOT_APPLIED_LINE = "Your source choices could not be applied in this browser, so the published figures show.";
 
 // The override writes (PUT /api/overrides, DELETE /api/overrides/:id, DELETE /api/overrides, each with a `tab`) on a fresh copy of the
 // baked board of that tab. Answers as the routes do: the whole merged board, or {ok:false, error} (storage switched off, or a
@@ -205,7 +215,7 @@ async function overrideWrite(tab, change) {
     return board?.ok === false ? board : siteError("NO_SLATE", "No slate has been uploaded yet.");
   }
   if (!sameSlate(board, pub.slate)) return SITE_UPDATED();
-  const result = change(pageStorage(), pub.season, pub.week, weightedBoard(board, pub), pub.slate, classicAdapter(asked.tab));
+  const result = change(pageStorage(), pub.season, pub.week, weightedBoard(board, pub, asked.tab), pub.slate, classicAdapter(asked.tab));
   return result.error ? siteError(result.error.code, result.error.message) : result.board;
 }
 
@@ -287,12 +297,79 @@ export function deleteOverride(playerId, tab) {
   return overrideWrite(tab, (storage, season, week, board, slate, adapter) => resetPlayerEdits(storage, season, week, board, slate, String(playerId), adapter));
 }
 
+// A Showdown game's Sources page on the site (site-sd-sources.js): `patch` is { showdown: <game key>, op: "probe" | "read" | "change" | "apply-all", change? }, the page's own
+// calls (public/js/sources-page-board.js makeSiteShowdownApi). Answers { ok: true, body } (the page body), { ok: true } for a probe, or the site's refusal with the app's sentence.
+// Kept in this browser; nothing is sent anywhere. "apply-all" also sets the main slate's projection weights from the game's Projections section, as the app copies it.
+async function showdownSourcesCall({ showdown: gameKey, op, change }) {
+  try {
+    if (typeof gameKey !== "string" || !/^[A-Za-z0-9_.-]+$/.test(gameKey) || gameKey.includes("..")) return siteError("BAD_SLATE", BAD_SLATE_MESSAGE);
+    const engine = await loadEngine(gameKey, getJson);
+    if (op === "probe") return engine.payload ? { ok: true } : siteError("ENGINE_INPUTS_MISSING", engine.problem);
+    const bakedBoard = await getJson(BOARD_URL(gameKey)); // read afresh each time, so inputs read before a newer publish are noticed (engineFresh)
+    const storage = pageStorage();
+    const answer = (r) => (r.error ? siteError(r.error.code, r.error.message) : { ok: true, body: r.body });
+    if (op === "read") return answer(readBody({ storage, gameKey, engine, bakedBoard }));
+    if (op === "change") return answer(changeBody({ storage, gameKey, engine, bakedBoard, change }));
+    if (op === "apply-all") {
+      const index = await getJson("baked/showdown/index.json");
+      const gameKeys = (Array.isArray(index?.showdowns) ? index.showdowns : []).map((s) => s?.key).filter((k) => typeof k === "string");
+      const r = await applyAllBody({ storage, gameKey, engine, bakedBoard, gameKeys, getJson, mainStep: (projection) => applyProjectionToMain(pageStorage(), projection) });
+      return r.error ? siteError(r.error.code, r.error.message) : { ok: true, body: r.body };
+    }
+    return siteError("VALIDATION_ERROR", "Say what to do: read, change or apply to every game.");
+  } catch (e) {
+    console.error("showdown sources: failed", e);
+    return siteError("SOURCES_FAILED", "Could not read or keep the source choices on this device.");
+  }
+}
+
+// The main slate's share of "Apply to every game", the way the app copies the game's Projections section onto it: each projection source's tick and weight, an unticked source
+// keeping the weight the section stores for it. Answers { error } or { changed (whether the main slate's saved weights moved), notes (what it could not carry, G62) }.
+// What the site's main slate cannot take: the rule for players the ticked sources miss (baked into the board, set in the app) and a source the board has no card for.
+async function applyProjectionToMain(storage, projection) {
+  const pub = await publishedSlate();
+  const board = await getJson(BOARD_FILE[await activeMode()]);
+  if (!pub || !board || board.ok === false || !Array.isArray(board.rows)) return { changed: false, notes: ["No main slate is published, so nothing was carried to it."] };
+  // The same check every other write makes: weights are kept against the slate this page loaded, never one published since.
+  if (!sameSlate(board, pub.slate)) return { error: { code: "SITE_UPDATED", message: "The site was updated; reload the page." } };
+  const sources = projection?.sources ?? {};
+  const cards = tunableSources(board).filter((s) => s.kind === "projection");
+  const notes = [];
+  const patches = cards.filter((s) => Object.hasOwn(sources, s.id)).map((s) => {
+    const e = sources[s.id];
+    return e.use === true ? { id: s.id, kind: "projection", weight: e.weight } : { id: s.id, kind: "projection", weight: 0, ...(e.weight > 0 ? { kept: e.weight } : {}) };
+  });
+  const missing = Object.keys(sources).filter((id) => !cards.some((s) => s.id === id));
+  if (missing.length) notes.push(`The main slate has no card for ${missing.join(", ")}, so ${missing.length === 1 ? "it was" : "they were"} not carried to it.`);
+  // Compared as the app reads them: a stored "blank" reads as "backup" once TwoGun is ticked for projections (classicProjectionGaps), on both sides, so a difference in the stored words alone is no difference.
+  const gapsAsRead = (gaps) => classicProjectionGaps({ projection: { gaps, sources } }).projection.gaps;
+  const publishedGaps = board.mode?.gaps?.projection;
+  if (projection?.gaps && publishedGaps && gapsAsRead(projection.gaps) !== gapsAsRead(publishedGaps)) {
+    notes.push(`The main slate keeps the rule it was published with for players the ticked sources miss (${gapsAsRead(publishedGaps) === "backup" ? "filled from Our sources" : "left blank"}); that rule is set in the app.`);
+  }
+  if (!patches.length) return { changed: false, notes };
+  const key = weightsKey(pub.season, pub.week);
+  const read = () => {
+    try {
+      return storage ? storage.getItem(key) : null;
+    } catch {
+      return null;
+    }
+  };
+  const before = read();
+  const result = putWeights(storage, pub.season, pub.week, board, patches);
+  if (result.error) return { error: result.error };
+  return { changed: read() !== before, notes };
+}
+
 export async function postSources(patch) {
+  if (patch && typeof patch === "object" && !Array.isArray(patch) && Object.hasOwn(patch, "showdown")) return showdownSourcesCall(patch);
   const pub = await publishedSlate();
   const board = await getJson(BOARD_FILE[await activeMode()]);
   if (!pub || !board || board.ok === false || !Array.isArray(board.rows)) return board?.ok === false ? board : siteError("NO_SLATE", "No slate has been uploaded yet.");
   if (!sameSlate(board, pub.slate)) return SITE_UPDATED();
-  const result = putWeights(pageStorage(), pub.season, pub.week, board, Array.isArray(patch) ? patch : [patch]);
+  // { resetAll: true }: every saved change of the week put back ("Back to the published weights").
+  const result = patch && patch.resetAll === true ? clearStoredWeights(pageStorage(), pub.season, pub.week) : putWeights(pageStorage(), pub.season, pub.week, board, Array.isArray(patch) ? patch : [patch]);
   if (result.error) return siteError(result.error.code, result.error.message);
   return visitorBoard(board);
 }

@@ -303,6 +303,9 @@ export function backupIds(sel, kind) {
   return out;
 }
 
+/** opts.backup for applySources: the sources that fill a player the ticked ones miss, for every source kind. The one copy; choices.js re-exports it. */
+export const backupFor = (selection) => Object.fromEntries(SOURCE_KINDS.map((k) => [k, backupIds(selection, k)]));
+
 /** True when the selection ticks TwoGun and no other projection source (Adam's Cash rule: his median counts only when
  *  he is the only projection source). `sel` is a selection or its kinds; pass the board's effective view so an id the
  *  app no longer knows reads as unticked. */

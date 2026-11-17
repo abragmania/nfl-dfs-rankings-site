@@ -6,13 +6,15 @@
 //     ctx.onChanged (a plain board read: nothing is re-downloaded from a source).
 //   - A refused save puts the old value back and shows the server's own words under the row.
 //   - The public site and sample data have no selection route: the page is built from the board it holds (sources-page-board.js). On the
-//     site's classic page a tick or a weight is kept in the visitor's browser and the board re-ranks there (D71); everything else
-//     there (a Showdown page, sample data, or the server saying writable:false) is read-only with every control disabled and no save.
+//     site's classic page a tick or a weight is kept in the visitor's browser and the board re-ranks there (D71); a Showdown game's page
+//     there keeps its choices in the browser the same way, per game, through the site's own calls (makeSiteShowdownApi), with "Apply to every
+//     game" over the published games; everything else (a Showdown game whose inputs were not published, sample data, or the server saying
+//     writable:false) is read-only with every control disabled and no save.
 import { escapeHtml } from "./format.js";
 import { onSitePage } from "./tabs.js";
 import { isSampleMode, getBoard, postSources, postMode } from "./api.js";
 import { selectionHtml, playersHeadHtml, sharePercents, WEIGHT_MIN, WEIGHT_MAX } from "./sources-page-html.js";
-import { selectionFromBoard, makeSiteApi, unmatchedRows } from "./sources-page-board.js";
+import { selectionFromBoard, makeSiteApi, makeSiteShowdownApi, unmatchedRows } from "./sources-page-board.js";
 import { dataAsOfHtml } from "./data-as-of.js"; // item 7 (Adam 2:48 PM 11-11): Data as of, at the top of the page
 import { playerStatusTableHtml } from "./status-switch.js"; // Adam 2026-11-12: the Player status card
 
@@ -24,6 +26,7 @@ export { selectionFromBoard } from "./sources-page-board.js";
 const SKELETON = `<div class="sources-page"><div class="sp-asof-host"></div><div class="sp-controls"></div><div class="sp-status-host"></div><div class="sp-players-head"></div></div>`;
 export const NOT_A_LIST = "The server answered, but not with a list of sources the page can read.";
 const siteApi = makeSiteApi({ getBoard, postSources, postMode });
+const siteShowdownApi = makeSiteShowdownApi({ postSources });
 
 // ---------- the network ----------
 
@@ -91,8 +94,13 @@ function pageOf(container) {
   return pages.get(container);
 }
 
-// The page builds its selection from the board (no selection route) on the public site and on sample data, or when the caller says so.
-const fromBoard = (ctx) => Boolean(ctx.readOnly) || onSitePage() || (typeof window !== "undefined" && isSampleMode());
+// The public site's Showdown games, by slate: { ok: true } when the game's engine inputs were published (its choices are kept in this browser and its board made again
+// there, site-src/site-sd-sources.js), { problem } with the sentence when not. Asked once per game per page (probeSiteShowdown).
+const siteGames = new Map();
+const probing = new Set();
+const siteShowdownLive = (ctx) => onSitePage() && ctx.showdown === true && !ctx.readOnly && siteGames.get(ctx.slate)?.ok === true;
+// The page builds its selection from the board (no selection route) on sample data, when the caller says so, and on the public site except for a Showdown game that keeps its choices in the browser.
+const fromBoard = (ctx) => Boolean(ctx.readOnly) || (onSitePage() && !siteShowdownLive(ctx)) || (typeof window !== "undefined" && isSampleMode());
 const isReadOnly = (st) => Boolean(st.ctx.readOnly) || st.data?.writable === false;
 const keyOf = (ctx) => `${ctx.slate}|${ctx.board?.generatedAt ?? ""}`;
 const rowKeyOf = (el) => `${el.dataset.kind}/${el.dataset.id}`;
@@ -226,6 +234,13 @@ export function applyAll(st) {
     const next = await st.api.applyAll(slate);
     if (typeof window !== "undefined" && typeof window.dispatchEvent === "function") window.dispatchEvent(new CustomEvent(APPLIED_ALL_EVENT, { detail: { slate } }));
     return next;
+  }).then(() => {
+    // On the public site what the main slate could not take from the game's choices (its gaps rule, a source it does not have) is said beside the button (G62).
+    const notes = st.data?.applied?.mainNotes;
+    if (Array.isArray(notes) && notes.length) {
+      st.errors.set("apply-all", notes.join(" "));
+      draw(st);
+    }
   });
 }
 
@@ -384,9 +399,25 @@ function drawFromBoard(st, ctx) {
   const edit = onSitePage() && !ctx.readOnly;
   st.local = true;
   st.api = ctx.api ?? siteApi;
-  st.data = selectionFromBoard(ctx.board, ctx.showdown, { edit, note: ctx.readOnly ? "The sources cannot be changed from here." : undefined });
+  // A Showdown game on the site says why it is read-only once its inputs were looked for (a game without them: the probe's sentence); until then, that it is being read.
+  const siteGame = onSitePage() && ctx.showdown === true && !ctx.readOnly ? siteGames.get(ctx.slate) ?? { problem: PROBING_NOTE } : null;
+  st.data = selectionFromBoard(ctx.board, ctx.showdown, { edit, note: ctx.readOnly ? "The sources cannot be changed from here." : siteGame?.problem });
   st.slate = ctx.slate;
   draw(st);
+}
+
+const PROBING_NOTE = "Reading this game's source choices…";
+
+/** Asks once whether the public site holds the inputs of this Showdown game; the page is drawn again with the answer. */
+function probeSiteShowdown(container, slate, api = siteShowdownApi) {
+  if (siteGames.has(slate) || probing.has(slate)) return;
+  probing.add(slate);
+  api.probe(slate).then((answer) => answer, () => ({})).then((answer) => { // a probe that cannot run leaves the page read-only with its default sentence
+    siteGames.set(slate, answer);
+    probing.delete(slate);
+    const st = pages.get(container);
+    if (st?.ctx?.slate === slate) renderSourcesPage(container, st.ctx);
+  });
 }
 
 /**
@@ -399,16 +430,20 @@ export function renderSourcesPage(container, ctx) {
   const st = pageOf(container);
   st.ctx = ctx;
   mount(st, container);
-  if (st.asOfEl) st.asOfEl.innerHTML = ctx.asOf ? dataAsOfHtml(ctx.board, ctx.asOf) : ""; // item 7: the board's provenance, moved here from the main views
+  // item 7: the board's provenance, moved here from the main views; the public site's notes about its own browser (board.siteNotes: saved choices set aside, what a re-rank could not redo) join its Notes card (G62, G64)
+  const siteNotes = Array.isArray(ctx.board?.siteNotes) ? ctx.board.siteNotes : [];
+  if (st.asOfEl) st.asOfEl.innerHTML = ctx.asOf ? dataAsOfHtml(ctx.board, siteNotes.length ? { ...ctx.asOf, lines: [...(ctx.asOf.lines ?? []), ...siteNotes] } : ctx.asOf) : "";
   if (st.statusEl) st.statusEl.innerHTML = Array.isArray(ctx.board?.rows) ? playerStatusTableHtml(ctx.board.rows, { canWrite: Boolean(ctx.canSetStatus) }) : ""; // Adam 2026-11-12: who is in or out
   st.headEl.innerHTML = playersHeadHtml(ctx.activeKey);
+  if (onSitePage() && ctx.showdown === true && !ctx.readOnly) probeSiteShowdown(container, ctx.slate, typeof ctx.api?.probe === "function" ? ctx.api : siteShowdownApi);
   if (fromBoard(ctx)) {
     drawFromBoard(st, ctx);
     return;
   }
+  const wasLocal = st.local; // the board-built page was on screen (while the game's inputs were being looked for): its data is not the game's choices
   st.local = false;
-  st.api = ctx.api ?? defaultApi;
-  if (st.slate !== null && st.slate !== ctx.slate) Object.assign(st, { data: null, key: null, loadError: null }); // another slate's choices (or failed read) are never shown
+  st.api = ctx.api ?? (siteShowdownLive(ctx) ? siteShowdownApi : defaultApi);
+  if (wasLocal || (st.slate !== null && st.slate !== ctx.slate)) Object.assign(st, { data: null, key: null, loadError: null, fetchingKey: null }); // another slate's choices (or failed read) are never shown
   const key = keyOf(ctx);
   if (st.data && (st.key === key || st.hold)) {
     draw(st);

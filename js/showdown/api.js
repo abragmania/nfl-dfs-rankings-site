@@ -17,6 +17,7 @@ import {
   showdownMeterResponse, showdownSwapsResponse, runShowdownGenerate, readShowdownDeviceLineups, bakedCurvesRead, BAKED_CURVES_URL, SHOWDOWN_GENERATE_FAILED,
   showdownBoardWithEdits, putShowdownEdits, resetAllShowdownEdits, modesWithEdits, readTab, tabOfMode, SHOWDOWN_TABS,
   showdownStorageKey, showdownSlateOf, hasCashLineup, listShowdownEntries, uploadShowdownEntries, exportShowdownEntries, tagShowdownDeviceLineup,
+  loadEngine, visitorBoard, modesFor, hasVisitorChoice, statusNeedsEngine, sourcesEpoch, NOT_APPLIED_SENTENCE,
 } from "../site-showdown.js";
 
 export const READ_ONLY_MESSAGE = "Read-only on the live site. Do this in the app on your computer.";
@@ -55,8 +56,22 @@ export async function getShowdowns() {
 }
 
 // The baked board as published, before this device's edits. `tab` "cash": the app's Cash board (its own typed numbers, the shared stars and notes), baked beside GPP's.
-function getBakedBoard(key, tab = "gpp") {
-  return getJson(`baked/showdown/${encodeURIComponent(key)}/${tab === "cash" ? "board-cash.json" : "board.json"}`);
+// When the visitor has ticked or weighted this game's sources (site-sd-sources.js) it is the board made again for their choices, as the app makes it, from the game's baked
+// engine inputs; a game whose inputs cannot be read shows the board as published (and its Sources page says the choices are made in the app).
+const rawBakedBoard = (key, tab) => getJson(`baked/showdown/${encodeURIComponent(key)}/${tab === "cash" ? "board-cash.json" : "board.json"}`);
+
+async function getBakedBoard(key, tab = "gpp") {
+  const baked = await rawBakedBoard(key, tab);
+  const storage = pageStorage();
+  // Nothing of theirs for this game (no source choice, and no In / Out that moves a man TwoGun lists out): the published board, with no second file read.
+  if (!hasVisitorChoice(storage, key) && !statusNeedsEngine({ storage, gameKey: key, tab, bakedBoard: baked })) return baked;
+  try {
+    return visitorBoard({ storage, gameKey: key, tab, bakedBoard: baked, engine: await loadEngine(key, getJson) });
+  } catch (e) {
+    // G62: the published board shows, and the Sources page foot says the choices were not applied (board.siteNotes), not only the console.
+    console.warn("showdown sources: the board for this device's source choices could not be made, so the published board is shown", e);
+    return baked && baked.ok !== false ? { ...baked, siteNotes: [...(baked.siteNotes ?? []), NOT_APPLIED_SENTENCE] } : baked;
+  }
 }
 
 // A request's tab as the app's routes read it (server/showdown/override-tabs.js readTab): absent is GPP, a value other than gpp or cash is the routes' 400 sentence.
@@ -211,7 +226,13 @@ export async function postShowdownLineupOptimize(key, payload, tab) {
 // its tab's: the meter and its swaps the tab asked, a Generate its mode's, as the routes do.
 const fieldBoards = new Map();
 const fieldKey = (key, tab) => `${tab}:${key}`;
+let seenSourcesEpoch = sourcesEpoch();
 function fieldBoard(key, tab = "gpp") {
+  // A tick or a weight changes the figures every kept board was made from: they are read again (site-sd-sources.js sourcesEpoch).
+  if (sourcesEpoch() !== seenSourcesEpoch) {
+    seenSourcesEpoch = sourcesEpoch();
+    fieldBoards.clear();
+  }
   const k = fieldKey(key, tab);
   if (!fieldBoards.has(k)) {
     const p = getShowdownBoard(key, tab);
@@ -273,9 +294,15 @@ export async function getShowdownModes(key, _fetchImpl, tab) {
   const asked = readTab(tab);
   if (asked.error) return tabRefusal(asked);
   try {
-    const baked = await getJson(`baked/showdown/${encodeURIComponent(key)}/modes.json`);
-    // The baked answer knows none of this device's typed numbers: a man's edited projection is put in it (site-overrides.js modesWithEdits), so the pool and the lineup show it.
-    return modesWithEdits(baked, await getBakedBoard(key), await getShowdownBoard(key, asked.tab));
+    const published = await getJson(`baked/showdown/${encodeURIComponent(key)}/modes.json`);
+    // The baked answer knows none of this device's source choices (made again from the game's engine inputs) or typed numbers: the first makes the answer, the second puts a man's edited projection in it
+    // (site-overrides.js modesWithEdits), so the pool and the lineup show them.
+    const baked = await getBakedBoard(key);
+    const storage = pageStorage();
+    const forced = statusNeedsEngine({ storage, gameKey: key, tab: "gpp", bakedBoard: await rawBakedBoard(key, "gpp") });
+    const own = hasVisitorChoice(storage, key) || forced;
+    const modes = own ? modesFor({ storage, gameKey: key, engine: await loadEngine(key, getJson), board: baked, bakedModes: published, forced }) : published;
+    return modesWithEdits(modes, baked, await getShowdownBoard(key, asked.tab));
   } catch (e) {
     console.error("showdown modes: failed", e);
     return errorBody("SHOWDOWN_MODES_FAILED", "Could not read what each mode has posted.");
