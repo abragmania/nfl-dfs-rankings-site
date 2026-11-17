@@ -948,7 +948,6 @@ tr:hover .st-ghost, .st-sw:focus-visible .st-ghost { opacity: 0.8; }
 /* Left column (slots, salary bar, controls) is a fixed width so the right column (the rankings rows,
    reused read-only) gets the rest of the 1440px viewport instead of a cramped fixed panel. */
 .lineup-layout { display: flex; gap: var(--sp-5); align-items: flex-start; }
-.lineup-left { flex: 0 0 28.75rem; max-width: 28.75rem; }
 .lineup-right { flex: 1; min-width: 0; }
 .lineup-right-title { margin: 0 0 var(--sp-2); font-size: var(--fs-md); color: var(--text-muted); }
 .lineup-pos-chips { margin-bottom: var(--sp-2); }
@@ -2283,6 +2282,16 @@ tr.cmp-held > td.ex-f { opacity: 1; }
 .sources-panel:not([hidden]) .sp-asof { order: 6; grid-column: 1; }
 .sources-panel:not([hidden]) .sp-shown { order: 6; grid-column: 2; }
 .sources-panel:not([hidden]) .sp-notes { order: 6; grid-column: 3; }
+/* A phone (390 wide): the Sources page is one column, each card's header row and the slim line wrap, and a table wider than its card scrolls inside the card, never the page. */
+@media (max-width: 700px) {
+  :is(#classic-main, #showdown-main):has(> .sources-panel:not([hidden])) { grid-template-columns: minmax(0, 1fr); }
+  .sources-panel:not([hidden]) :is(.sp-asof, .sp-shown, .sp-notes) { grid-column: 1 / -1; }
+  .sp-ch { flex-wrap: wrap; }
+  .sp-ch-r { margin-left: 0; justify-content: flex-start; }
+  .sp-gaps, .sp-figures { flex-wrap: wrap; white-space: normal; }
+  .sp-slim-item, .sp-slim-src { flex-wrap: wrap; white-space: normal; }
+  .sp-shown { overflow-x: auto; }
+}
 /* The header at 1920 to 2100 wide (look.css makes it one nowrap row whose stamps shrink to an ellipsis): it wraps to a second row instead, and the stamps keep their full text. */
 @media (min-width: 1900px) {
   header.nl#classic-header .top { flex-wrap: wrap; }

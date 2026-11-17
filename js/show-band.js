@@ -20,7 +20,7 @@ function underOf(panelEl) {
 }
 
 function bring(container, panelEl) {
-  const band = container?.querySelector?.(".lineup-left, .sd-opt"); // the Showdown's panel (.sd-opt) is the band since 2026-11-13
+  const band = container?.querySelector?.("aside.opt, .sd-opt"); // the classic builder panel is aside.opt (lineup-view.js); the Showdown's panel (.sd-opt) is the band since 2026-11-13
   if (!band || typeof window === "undefined") return;
   const by = bandScrollBy(band.getBoundingClientRect(), underOf(panelEl), window.innerHeight);
   if (by) window.scrollBy({ top: by, behavior: "instant" });

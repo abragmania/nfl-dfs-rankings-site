@@ -51,6 +51,8 @@ let wired = false;
 // The expanded table's last scroll position, kept so a render that rebuilds its element (Projections and
 // Ownership rebuild the whole panel) can hand it to the new element.
 let savedScroll = null;
+// The page's own scroll position when a table opened: the page is locked while expanded and its height changes, so it is put back on Minimize.
+let pageScrollY = null;
 
 function panelFor(def) {
   const root = document.getElementById(def.panelId);
@@ -84,6 +86,7 @@ function applyExpanded(panel, bar) {
   const carried = savedScroll && savedScroll.key === bar.dataset.key ? savedScroll : null;
   const top = carried ? carried.top : panel.scrollTop;
   const left = carried ? carried.left : panel.scrollLeft;
+  if (pageScrollY == null) pageScrollY = window.scrollY;
   // Holds the table's place in the page so nothing below it jumps while it is full-screen.
   placeholder?.remove();
   placeholder = document.createElement("div");
@@ -142,15 +145,19 @@ export function syncExpandUi() {
     placeholder = null;
     savedScroll = null;
     document.body.classList.remove("table-expanded");
+    if (pageScrollY != null) window.scrollTo({ top: pageScrollY, behavior: "instant" });
+    pageScrollY = null;
   }
 }
 
 function setExpanded(key) {
   const before = expandedKey;
+  const pageY = pageScrollY;
   expandedKey = key;
   syncExpandUi();
   if (before !== expandedKey) {
     onLayout();
+    if (key == null && pageY != null) window.scrollTo({ top: pageY, behavior: "instant" }); // onLayout resizes the tables, which can clamp the page again
   }
 }
 

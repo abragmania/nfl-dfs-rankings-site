@@ -5,6 +5,7 @@
 // One copy for the classic pool (lineup-view.js) and the Showdown pool (showdown/pool.js).
 import { escapeHtml } from "./format.js";
 import { noteUnreadable, clearUnreadable } from "./storage-damage.js";
+import { remPx } from "./rem-scale.js"; // G71: the margin under the list grows with the page's root size
 
 /** Classic GPP, in the standard's order (A1): star, name, Sal, Proj, Own, Val, then the row controls, thumbs, lock, exclude, Min %, Max %, then the rest: the columns the retired ranked list had
  *  (C9, C10, C17): Pos (the name cell already carries the position chip, so it starts off), TwoGun's Med, Nuke, 3x% and 4x% (drawn only on a TwoGun board, on by default), Tags (on by default: the tags he researched stay on screen). */
@@ -188,7 +189,13 @@ export function wireColumns(root, { defs, scope, onChange, storage = browserStor
   let st = loadColumns(defs, scope, storage);
   let dragging = null;
   const draw = () => { pop.innerHTML = columnsListHtml(defs, st, available?.() ?? null); }; // `available()`: the columns the board can show now (classic: no TwoGun columns on a board with no TwoGun figures)
-  const open = () => { draw(); pop.hidden = false; btn.setAttribute("aria-expanded", "true"); openScopes.add(scope); };
+  const fit = () => { // the list never runs past the window's bottom: it is capped to the room below its top and scrolls inside
+    if (!pop.style || typeof pop.getBoundingClientRect !== "function") return; // a test's stand-in list has no layout
+    pop.style.maxHeight = "";
+    const room = Math.floor(window.innerHeight - pop.getBoundingClientRect().top - remPx(8));
+    if (room > 0) { pop.style.maxHeight = `${Math.max(room, remPx(120))}px`; pop.style.overflowY = "auto"; }
+  };
+  const open = () => { draw(); pop.hidden = false; btn.setAttribute("aria-expanded", "true"); openScopes.add(scope); fit(); };
   const close = () => { pop.hidden = true; btn.setAttribute("aria-expanded", "false"); openScopes.delete(scope); };
   const set = (next, saved = next) => {
     st = next;
