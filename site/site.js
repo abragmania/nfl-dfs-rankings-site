@@ -64,7 +64,10 @@ function addMatchupsTab(link) {
 
 async function showPublished() {
   try {
-    const res = await fetch("baked/meta.json");
+    // Part 4 item 7: GitHub Pages caches ten minutes; revalidate so a publish is seen at once. Literal repeated from api.js
+    // FRESH_FETCH: site.js is published at site/site.js and the build rewrites no import in it. The ?t= address is unique per
+    // read, so a browser that ignores the cache mode (older iPhone Safari) or a Pages edge copy cannot answer with old data.
+    const res = await fetch(`baked/meta.json?t=${Date.now()}`, { cache: "no-cache" });
     const meta = await res.json();
     const items = siteHeaderItems(meta);
     if (items.length) {

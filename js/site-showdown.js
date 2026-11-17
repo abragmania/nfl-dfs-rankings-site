@@ -42,6 +42,7 @@ export { readTab, tabOfMode, SHOWDOWN_TABS } from "../server/showdown/override-t
 // The visitor's source choices for a game (D71, Monday 11-09 orders item 6; site-sd-sources.js): the game's board made again for them, handed on for the same one import.
 export { loadEngine, visitorBoard, modesFor, hasVisitorChoice, statusNeedsEngine, sourcesEpoch, sdSourcesKey, NOT_APPLIED_SENTENCE } from "./site-sd-sources.js";
 // The Showdown Entries tab and a device lineup's letter (D71; site-entries.js), handed on for the same one import.
+export { getJson, FRESH_FETCH, versionedUrl, publishStamp } from "./site-fetch.js"; // Part 4 item 7
 export { showdownSlateOf, hasCashLineup, listShowdownEntries, uploadShowdownEntries, exportShowdownEntries, tagShowdownDeviceLineup } from "./site-entries.js";
 
 /** The storage key for one showdown (its key looks like 2026-w03-ATLGB). */

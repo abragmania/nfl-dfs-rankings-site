@@ -18,6 +18,7 @@ import {
   showdownBoardWithEdits, putShowdownEdits, resetAllShowdownEdits, modesWithEdits, readTab, tabOfMode, SHOWDOWN_TABS,
   showdownStorageKey, showdownSlateOf, hasCashLineup, listShowdownEntries, uploadShowdownEntries, exportShowdownEntries, tagShowdownDeviceLineup,
   loadEngine, visitorBoard, modesFor, hasVisitorChoice, statusNeedsEngine, sourcesEpoch, NOT_APPLIED_SENTENCE,
+  getJson, FRESH_FETCH, versionedUrl, publishStamp, // Part 4 item 7: the one baked-file reader (site-fetch.js), re-exported so the shim's single import covers it
 } from "../site-showdown.js";
 
 export const READ_ONLY_MESSAGE = "Read-only on the live site. Do this in the app on your computer.";
@@ -34,17 +35,6 @@ export function supports(feature) {
 
 function readOnly() {
   return Promise.reject(new Error(READ_ONLY_MESSAGE));
-}
-
-async function getJson(url) {
-  const res = await fetch(url);
-  let data;
-  try {
-    data = await res.json();
-  } catch (e) {
-    throw new Error(`${url} did not return JSON (status ${res.status})`);
-  }
-  return data;
 }
 
 export function isShowdownSampleMode() {
@@ -249,7 +239,7 @@ async function fieldCurves() {
   if (curvesKept) return curvesKept;
   let read;
   try {
-    const res = await fetch(BAKED_CURVES_URL);
+    const res = await fetch(versionedUrl(BAKED_CURVES_URL, await publishStamp()), FRESH_FETCH); // Part 4 item 7
     read = bakedCurvesRead({ status: res.status, text: res.ok ? await res.text() : "" });
   } catch (e) {
     read = bakedCurvesRead({ failure: e?.message ?? String(e) });

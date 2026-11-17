@@ -457,7 +457,7 @@ async function init() {
   els.readOnly.hidden = !SITE;
   let data;
   try {
-    const res = await fetch(TRACKED_URL);
+    const res = await fetch(TRACKED_URL + "?t=" + Date.now(), { cache: "no-cache" }); // Part 4 item 7: the site's baked copy is cached ten minutes; unique address and revalidate
     data = await res.json();
     if (!data?.ok) throw new Error(data?.error?.message ?? `the app answered ${res.status}`);
   } catch (e) {

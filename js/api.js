@@ -21,6 +21,7 @@ import { loadEngine, readBody, changeBody, applyAllBody, BOARD_URL } from "./sit
 import { BAD_SLATE_MESSAGE, classicProjectionGaps } from "../server/sources/selection-core.js";
 import { classicFullOf, hasCashLineup, listClassicEntries, uploadClassicEntries, exportClassicEntries } from "./site-entries.js";
 import { createWorkerRunner, endedSiteResult } from "./site-worker.js";
+import { getJson, publishMeta } from "./site-fetch.js"; // Part 4 item 7: every baked read revalidates
 
 export const READ_ONLY_MESSAGE = "Read-only on the live site. Do this in the app on your computer.";
 
@@ -28,16 +29,6 @@ function readOnly() {
   return Promise.reject(new Error(READ_ONLY_MESSAGE));
 }
 
-async function getJson(url) {
-  const res = await fetch(url);
-  let data;
-  try {
-    data = await res.json();
-  } catch (e) {
-    throw new Error(`${url} did not return JSON (status ${res.status})`);
-  }
-  return data;
-}
 
 export function isSampleMode() {
   return false;
@@ -63,11 +54,9 @@ async function activeMode() {
     mode = pageStorage()?.getItem(MODE_KEY) ?? null;
   } catch { /* storage switched off: the published default shows */ }
   if (!Object.hasOwn(BOARD_FILE, mode)) {
-    try {
-      mode = (await baked("baked/meta.json"))?.defaultMode;
-    } catch (e) {
-      console.warn("site mode: baked/meta.json could not be read, so the Current board is shown", e);
-    }
+    const meta = await publishMeta(); // Part 4 item 7: the page load's one meta read (site-fetch.js)
+    if (meta) mode = meta.defaultMode;
+    else console.warn("site mode: baked/meta.json could not be read, so the Current board is shown");
   }
   chosenMode = Object.hasOwn(BOARD_FILE, mode) ? mode : "current";
   return chosenMode;
