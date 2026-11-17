@@ -1,13 +1,13 @@
 {
-  "publishedAt": "2026-11-17T17:15:41.205Z",
+  "publishedAt": "2026-11-17T18:33:37.492Z",
   "season": 2026,
   "week": 11,
-  "boardGeneratedAt": "2026-11-17T17:15:24.569Z",
-  "latestBoardAt": "2026-11-17T17:15:24.569Z",
+  "boardGeneratedAt": "2026-11-17T18:33:30.097Z",
+  "latestBoardAt": "2026-11-17T18:33:30.097Z",
   "defaultMode": "twogun",
   "showdowns": [],
-  "sourceCommit": "1a3b1833496a80e10b3b3c74b695413a3ac6d9ab",
-  "appCommit": "c7a258fd2de1770403cf4e9a3be7dd9e02032f5a",
+  "sourceCommit": "e9811ecb756dc36e99d2ac71421fc7cb4dc64748",
+  "appCommit": "e9811ecb756dc36e99d2ac71421fc7cb4dc64748",
   "machine": "desktop",
   "matchups": false
 }
