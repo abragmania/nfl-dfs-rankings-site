@@ -21,7 +21,7 @@ a.tp-back { display: inline-block; text-decoration: none; }
 .tp-list-count { margin-left: 2px; font-weight: 400; opacity: 0.8; font-variant-numeric: tabular-nums; }
 /* The page's foot (G64): the site note and the source line sit under the table box, which the script sizes to leave room for them. */
 .tp-foot { padding-top: var(--sp-2); }
-.tp-source { margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tp-source { margin: 0; }
 .tp-readonly { margin: 0 0 var(--sp-1); }
 .tp-readonly[hidden] { display: none; }
 .tp-hint { text-decoration: underline dotted; cursor: help; }
