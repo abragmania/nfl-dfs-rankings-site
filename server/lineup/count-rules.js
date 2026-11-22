@@ -27,6 +27,7 @@ const pctText = (pct) => `${pct}%`;
 export function inSet(rule, man) {
   if (rule.kind === "team") return upper(man.team) === rule.team;
   if (rule.kind === "game") return upper(man.game) === rule.game;
+  if (upper(man.pos) === "DST") return false; // ownership rules never count a defense (Adam 12:19 PM 11-22)
   const own = man.own;
   if (typeof own !== "number" || !Number.isFinite(own)) return false;
   return rule.side === "under" ? own < rule.pct : own > rule.pct;

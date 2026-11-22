@@ -274,7 +274,7 @@ function countRulesChecked(value, ctx) {
   const teams = rows ? new Set(rows.map((r) => code(r.team)).filter(Boolean)) : undefined;
   const checked = validateCountRules(value, { teams, games: ctx.gameIds });
   if (checked.error) return checked;
-  const men = rows ? rows.map((r) => ({ team: r.team, game: r.gameId, own: r.own })) : [];
+  const men = rows ? rows.map((r) => ({ team: r.team, game: r.gameId, own: r.own, pos: r.pos })) : [];
   // An ownership rule with no figure anywhere on the slate would count nobody: refused, never quietly idle (G62).
   if (rows && checked.rules.some((r) => r.kind === "own") && !men.some((m) => typeof m.own === "number" && Number.isFinite(m.own))) {
     return { error: "Ownership rules need ownership figures, and no player on this slate has one yet." };
