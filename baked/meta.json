@@ -1,5 +1,5 @@
 {
-  "publishedAt": "2026-11-23T03:15:25.373Z",
+  "publishedAt": "2026-11-23T03:36:59.279Z",
   "season": 2026,
   "week": 11,
   "boardGeneratedAt": "2026-11-23T03:15:07.665Z",
@@ -9,7 +9,7 @@
     "2026-w11-MINSF",
     "2026-w11-CINWAS"
   ],
-  "sourceCommit": "1aeb547a4f490876a8fea50a3015cf7bd4add7e9",
+  "sourceCommit": "6dcf4123d64f2125c9f4f375d131b2df394f915e",
   "appCommit": "282475121603f7ea5a4e01198116d2102c4161a8",
   "machine": "desktop",
   "matchups": false
