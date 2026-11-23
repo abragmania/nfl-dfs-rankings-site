@@ -51,7 +51,7 @@ export function generateResponse({ board, slate, body: rawBody, saved, onLineup,
     // Cash mode job 2b, 2026-10-17: the Cash basis the board was baked with (board.mode.cashMode, select.js modeOf), as the
     // app reads it; a board baked without one is refused by cash.js cashBasis.
     const result = partial ?? generateLineups({ rows, slate, settings: checked.settings, existing, boardMode: board.mode?.cashMode, onLineup, deadline });
-    return envelope(enrichGenerateResult(result, rowById), { stale });
+    return envelope(enrichGenerateResult(result, rowById, checked.notes), { stale });
   } catch (e) {
     console.error("lineup generate: failed", e);
     return errorBody("LINEUP_GENERATE_FAILED", "Could not make lineups.");

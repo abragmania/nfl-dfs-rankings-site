@@ -12,7 +12,7 @@ import { cardHtml, initialsBadgeHtml } from "./player-card-body.js";
 // (.player-name, inside a <tr data-id>), the other lists' names (each inside an element carrying data-card-id), and
 // Showdown's Projections and Ownership name cells (.pc-name; classic's use the shared .player-name).
 // The slots', cards' and saved rows' names are all .opt-p-name (the one lineup row, A5); the old per-list slot-name classes are gone.
-export const NAME_SELECTOR = ".player-name, .pc-name, .opt-p-name, .qbs-pname, .qbs-head-name, .qbs-name, .cash-swap-name";
+export const NAME_SELECTOR = ".player-name, .pc-name, .opt-p-name, .qbs-pname, .qbs-head-name, .qbs-name";
 const INTERACTIVE = "button, a, input, select, textarea";
 
 /** {id, name} of the player whose name `el` is (or sits inside), or null when it is not a name or has no id. */

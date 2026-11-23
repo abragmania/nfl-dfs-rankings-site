@@ -1,9 +1,10 @@
-// The Entries tab (PROJECT.md Part 4 "Optimizer", step 5; DECISIONS.md D56, D57, D43, D75; its own tab since the rules repo's 2026-10-17 ruling).
-// Adam uploads his DraftKings entries export, picks a saved lineup for each entry he wants to change (every row
-// starts blank), or lets the fill strip propose lineups for the rows and confirms them in one click (D75, entries
-// fill plan 2026-10-17); rows are grouped by contest, and the picks are kept in localStorage per uploaded file name.
-// He then downloads the upload file to put back on DraftKings. The server (server/entries/routes.js)
-// does every check; this file only shows the rows, keeps Adam's picks and says plainly what the server answered.
+// The Entries tab (PROJECT.md Part 4 "Optimizer", step 5; DECISIONS.md D56, D57, D43, D75; its own tab since the rules repo's 2026-10-17 ruling),
+// drawn as NBA's Entries screen (PROJECT.md Part 4 "Monday 11-23 complaints" item 7): a top bar with the figures and Download, three
+// numbered steps (1 Upload file, 2 Entries → Lineups, 3 Download; entries-screen.js), and in step 2 the rows grouped by contest under
+// a GPP and a Cash tab, each contest suggested that class's saved lineups 1..k (D75) with Confirm per tab, rows selectable for a bulk
+// Fill or Number in order (entries-bulk.js), and every row's own picker. The picks are kept in localStorage per uploaded file name.
+// The server (server/entries/routes.js) does every check; this file only shows the rows, keeps Adam's picks and says plainly what the
+// server answered.
 //   GET  /api/entries            { files: [{ file, slate, entries }] }  newest upload of each slate this week
 //   POST /api/entries/upload     { csv }  ->  { file, slate, entries }
 //   POST /api/entries/export     { file, assignments: [{ entryId, lineupId }] }  -> the CSV as a download
@@ -21,6 +22,8 @@ import {
   fillModelOf, fillStripHtml, fillTopHtml, classProposals, tickClassContests, fillClassPreset, keepStorageKey, restoreKeep, confirmFill, keptOpenCount,
 } from "./entries-fill.js";
 import { decodeEntriesBytes } from "./dk-csv-kind.js";
+import { barHtml, stepsNavHtml, stepStatus, uploadScreenHtml, exportScreenHtml, CLASSIC_ROSTER_COLUMNS, SHOWDOWN_ROSTER_COLUMNS } from "./entries-screen.js";
+export { CLASSIC_ROSTER_COLUMNS, SHOWDOWN_ROSTER_COLUMNS };
 // The assignment logic moved to entries-plan.js and the strip builders to entries-fill.js; re-exported so every existing
 // importer still resolves.
 export { lineupUsedElsewhere, cellId, lineupFileKey, heldLineupKeys, lineupBlockedFor, contestKey, groupByContest, effectiveAssignments, rowHolds };
@@ -54,6 +57,7 @@ export const ENTRIES_TAB_DEFAULTS = Object.freeze({
   summaryOf: currentSummary, // (entry.current) -> { text, title }: "In the file now" (the Showdown tab names the Captain)
   lineupLabelOf: lineupLabel, // (lineup, numbers) -> the lineup's name in the pickers and the lists (the Showdown tab adds the Captain)
   lockedTextFor: null, // (f) -> the sentence saying the file's slate has locked, or null: Download is then greyed with it (each tab passes its own reading of the board)
+  rosterColumns: null, // the roster columns the Upload screen names (entries-screen.js); null says "then the roster columns" (the classic instance passes CLASSIC_ROSTER_COLUMNS)
 });
 
 /** A DraftKings roster cell `Name (44312211)` as the plain name. */
@@ -203,7 +207,7 @@ export function exportResultOf(res, count) {
 // `extra` (from fileBlockHtml): { proposedId, numbers, proposals, kept }. A proposed lineup shows pre-selected in the picker
 // until Adam confirms it or picks by hand (D75 as amended 2026-10-17, entries fill plan item 6).
 function pickerHtml(file, entry, lineups, assigned, entries, slateKey, fileContext, extra = null, nameOf = lineupLabel) {
-  if (!lineups.length) return `<select class="entries-pick" disabled aria-label="Lineup for entry ${escapeHtml(entry.entryId)}"><option>No saved lineups</option></select>`;
+  if (!lineups.length) return `<select class="spsel entries-pick" disabled aria-label="Lineup for entry ${escapeHtml(entry.entryId)}"><option>No saved lineups</option></select>`;
   const cur = rowHolds({ pick: assigned?.[entry.entryId], kept: extra?.kept, proposedId: extra?.proposedId }).lineupId ?? ""; // Adam 2026-10-18: a hand pick is never shown under a proposal
   // 🔵 2026-10-17: a lineup proposed for another row of the contest is marked (still selectable), so no silent reshuffle.
   const c = contestKey(entry);
@@ -217,8 +221,11 @@ function pickerHtml(file, entry, lineups, assigned, entries, slateKey, fileConte
       return `<option value="${escapeHtml(l.id)}"${l.id === cur ? " selected" : ""}${taken ? " disabled" : ""}>${escapeHtml(lineupOptionLabel(l, extra?.numbers, nameOf))}${mark}</option>`;
     })
     .join("");
-  return `<select class="entries-pick" data-file="${escapeHtml(file)}" data-entry="${escapeHtml(entry.entryId)}" aria-label="Lineup for entry ${escapeHtml(entry.entryId)}"><option value=""${cur ? "" : " selected"}>(leave as is)</option>${opts}</select>`;
+  return `<select class="spsel entries-pick${cur ? "" : " un"}" data-file="${escapeHtml(file)}" data-entry="${escapeHtml(entry.entryId)}" aria-label="Lineup for entry ${escapeHtml(entry.entryId)}"><option value=""${cur ? "" : " selected"}>${LEAVE_TEXT}</option>${opts}</select>`;
 }
+
+/** The picker's first choice: the row keeps what DraftKings has (Adam picks it to leave a row out of the fill, D75 "kept"). */
+export const LEAVE_TEXT = "Leave as in the file";
 
 /** `labels` (the Showdown tab; classic passes none): { summaryOf(current) -> { text, title } for "In the file now", lineupLabelOf(lineup, numbers) for
  *  the lineup's name in the picker and the held tag }, ENTRIES_TAB_DEFAULTS' classic functions when absent. */
@@ -232,20 +239,30 @@ export function entryRowHtml(file, entry, lineups, assigned, entries, slateKey =
   const held = lineups.find((l) => l.id === picked);
   const heldLabel = held ? nameOf(held, extra?.numbers) : "";
   // 👁 2026-10-17: the tag cell is a fixed width and says only the state; the picker beside it shows the lineup.
+  // NBA's row notes (lsw-maps.js entryRow): amber for a suggestion waiting, red for a row with no lineup, muted for the rest.
   const tag = proposed
-    ? `<span class="entries-tag entries-tag-proposed">proposed</span>`
+    ? `<span class="entries-tag entries-tag-proposed noteA" title="Not written until you confirm the suggestions">suggested</span>`
     : set
-      ? `<span class="entries-tag entries-tag-assigned" title="${escapeHtml(heldLabel)}">assigned</span>`
+      ? `<span class="entries-tag entries-tag-assigned noteG" title="${escapeHtml(heldLabel)}">${holds.hand ? "set by you" : "confirmed"}</span>`
       : extra?.kept
-        ? `<span class="entries-tag entries-tag-kept" title="${escapeHtml(`Left as DraftKings has it; "${extra.reopen}" opens it again`)}">left as is</span>`
-        : `<span class="entries-tag"></span>`;
+        ? `<span class="entries-tag entries-tag-kept muted" title="${escapeHtml(`Left as DraftKings has it; "${extra.reopen}" opens it again`)}">left as in the file</span>`
+        : `<span class="entries-tag noteR">No lineup assigned</span>`;
+  const none = !proposed && !set && !extra?.kept;
+  const sel = Boolean(extra?.sel);
+  const id = escapeHtml(entry.entryId);
+  const place = extra?.k ? `Entry ${extra.k} of ${extra.n}` : "Entry";
   // Adam 2026-10-18: with no saved lineups the row shows the entry and what it holds now, no picker.
+  if (!lineups.length) {
+    return `
+      <div class="er plain entries-row" data-entry="${id}"><span></span><span class="cn">${place}</span><span class="fe">${escapeHtml(entry.fee ?? "")}</span><span class="id entries-id">${id}</span><span class="entries-now${sum.text === "Blank" ? " blank" : ""}"${sum.title ? ` title="${escapeHtml(sum.title)}"` : ""}>${escapeHtml(sum.text)}</span></div>`;
+  }
   return `
-      <tr class="entries-row${set ? " assigned" : ""}${proposed ? " proposed" : ""}">
-        <td class="entries-id">${escapeHtml(entry.entryId)}</td>
-        <td class="entries-now${sum.text === "Blank" ? " blank" : ""}"${sum.title ? ` title="${escapeHtml(sum.title)}"` : ""}>${escapeHtml(sum.text)}</td>
-        ${lineups.length ? `<td class="entries-pick-cell"><div class="entries-pick-wrap">${pickerHtml(file, entry, lineups, assigned, entries, slateKey, fileContext, extra, nameOf)}${tag}</div></td>` : ""}
-      </tr>`;
+      <div class="er entries-row${set ? " assigned" : ""}${proposed ? " proposed" : ""}${none ? " nolu" : ""}${sel ? " sel" : ""}" data-entry="${id}">
+        <span class="cb${sel ? " on" : ""}" data-action="entries-pick-row" data-file="${escapeHtml(file)}" data-entry="${id}" role="checkbox" aria-checked="${sel}" tabindex="0" title="Select this row (Shift-click selects a run)"></span>
+        <span class="cn">${place}</span><span class="fe">${escapeHtml(entry.fee ?? "")}</span><span class="id entries-id">${id}</span>
+        <span class="entries-now${sum.text === "Blank" ? " blank" : ""}"${sum.title ? ` title="${escapeHtml(sum.title)}"` : ""}>${escapeHtml(sum.text)}</span>
+        ${pickerHtml(file, entry, lineups, assigned, entries, slateKey, fileContext, extra, nameOf)}${tag}
+      </div>`;
 }
 
 /** The status lines under a file's Download button: the server's refusal (plainly), then its quiet notes. */
@@ -253,21 +270,89 @@ export function resultHtml(result) {
   if (!result) return "";
   const parts = [];
   if (result.errors?.length) {
-    parts.push(...result.errors.map((m) => `<div class="lineup-status lineup-status-error entries-error">${escapeHtml(m)}</div>`));
+    parts.push(...result.errors.map((m) => `<div class="msg err lineup-status-error entries-error">${escapeHtml(m)}</div>`));
   }
-  if (result.done) parts.push(`<div class="entries-quiet">${escapeHtml(result.done)}</div>`);
-  for (const w of result.warnings ?? []) parts.push(`<div class="entries-quiet">${escapeHtml(w)}</div>`);
-  if (result.stale?.length) parts.push(`<div class="entries-quiet">Served from a saved copy: ${escapeHtml(result.stale.join(", "))}.</div>`);
+  if (result.done) parts.push(`<div class="msg ok entries-quiet">${escapeHtml(result.done)}</div>`);
+  for (const w of result.warnings ?? []) parts.push(`<div class="msg warn entries-quiet">${escapeHtml(w)}</div>`);
+  if (result.stale?.length) parts.push(`<div class="msg warn entries-quiet">Served from a saved copy: ${escapeHtml(result.stale.join(", "))}.</div>`);
   return parts.join("");
 }
 
 // The fill strip, the contest headers and the fill model are in entries-fill.js (🔵 2026-10-17, size split).
 
-/** One uploaded file's block. `view`: { fill, classes, sortBy, fold, tab, adjust } (the fill strip's ticks, the contest class
- *  overrides, the Sort choice; see fillModelOf; `fold`, a Set of contest ids whose rows are folded away, Adam 2026-10-17;
- *  `tab` "gpp" (default) or "cash" and `adjust`, whether the Adjust fold is open, Adam 2026-10-18; `lineupsFor`, the tab's
- *  lineups-for-file function, classic's fileSlateLineups when absent, Showdown Entries plan step 3). `fileContext`: the second-slates
- *  array, or a Showdown file-id context function (entries-plan.js showdownFileKeyOf). */
+/** Step 2's rows for the groups given: the column heads, then each contest's header and its rows (NBA's .er grid). `s`: the step's
+ *  shared values (see stepTwoHtml). */
+function rowsHtml(groups, s) {
+  const { f, m, eff, entries, slateKey, fileContext, view, labels } = s;
+  const lineups = m ? m.sorted : []; // the pickers list lineups in the Sort order
+  const ticked = m && (m.fill.contestIds == null ? null : new Set(m.fill.contestIds.map(String)));
+  const sel = view?.sel ?? new Set();
+  const head = `<div class="er hd${m ? "" : " plain"}"><span></span><span>Entry</span><span class="fe">Fee</span><span>Entry ID</span><span>In the file now</span>${m ? "<span>Lineup</span><span>Note</span>" : ""}</div>`;
+  const groupOf = (g) => {
+    const ctx = m && { cls: m.classes[g.contestId], auto: classifyContest(g.contestName), ticked: ticked === null || ticked.has(g.contestId), sel: g.entries.filter((e) => sel.has(String(e.entryId))).length, adjust: Boolean(view?.adjust) };
+    // 🔵 2026-10-17: the kept tag's title names the control that reopens it (reopenLabel).
+    const extraOf = (e, i) => ({ k: i + 1, n: g.entries.length, sel: sel.has(String(e.entryId)), ...(m ? { proposedId: m.proposals[e.entryId], numbers: m.numbers, proposals: m.proposals, kept: m.kept.has(String(e.entryId)), reopen: reopenLabel(m.fill, m.keptOpen), dismissed: m.fill.dismissed } : {}) });
+    const folded = Boolean(view?.fold?.has(g.contestId));
+    const body = folded ? "" : g.entries.map((e, i) => entryRowHtml(f.file, e, lineups, eff, entries, slateKey, fileContext, extraOf(e, i), labels)).join("");
+    return `<div class="entries-contest-group${folded ? " folded" : ""}">${contestHeadHtml(f.file, g, eff, ctx, m?.proposals, folded, !m)}${body}</div>`;
+  };
+  return `<div class="entries-table">${head}${groups.map(groupOf).join("")}</div>`;
+}
+
+/** Step 2's selection bar (NBA's .bulk): select all, select the rows with no lineup, one lineup of the tab's class, Fill and Number in
+ *  order, Reset entries; the one-step undo under it. */
+function selectBarHtml(s, tab, mine) {
+  const { f, m, view } = s;
+  const file = escapeHtml(f.file);
+  const sel = view?.sel ?? new Set();
+  const ids = mine.flatMap((g) => g.entries.map((e) => String(e.entryId)));
+  const nSel = ids.filter((id) => sel.has(id)).length;
+  const all = ids.length > 0 && nSel === ids.length;
+  const empty = mine.flatMap((g) => g.entries).filter((e) => rowHolds({ pick: s.eff[e.entryId], kept: m.kept.has(String(e.entryId)), proposedId: m.proposals[e.entryId] }).state === "none").length;
+  const list = m[tab] ?? [];
+  const pick = list.some((l) => String(l.id) === String(view?.bulkLineup)) ? String(view.bulkLineup) : String(list[0]?.id ?? "");
+  const opts = list.map((l) => `<option value="${escapeHtml(l.id)}"${String(l.id) === pick ? " selected" : ""}>${escapeHtml(lineupOptionLabel(l, m.numbers, m.lineupLabelOf ?? lineupLabel))}</option>`).join("");
+  const none = nSel && list.length ? "" : " disabled";
+  const undo = view?.undo ? `<div class="fillnote"><span>${escapeHtml(view.undo)}</span><button type="button" class="ol" data-action="entries-undo" data-file="${file}">Undo</button></div>` : "";
+  return `<div class="bulk entries-select">
+<span class="cb${all ? " on" : nSel ? " part" : ""}" data-action="entries-pick-all" data-file="${file}" role="checkbox" aria-checked="${all}" tabindex="0" title="Select every row of this tab"></span><span class="muted">${nSel} selected</span>
+<button type="button" class="ol" data-action="entries-select-empty" data-file="${file}"${empty ? "" : " disabled"}>Select rows with no lineup (${empty})</button><span class="grow"></span>
+<span class="lab">${tab === "cash" ? "Cash" : "GPP"} lineup</span><select class="spsel entries-bulk-lineup" data-file="${file}" title="The lineup Fill gives the selected rows, and where Number in order starts"${list.length ? "" : " disabled"}>${opts || "<option>No complete lineups</option>"}</select>
+<button type="button" class="go" data-action="entries-bulk-fill" data-file="${file}" title="Gives every selected row this lineup, one per contest; a row whose contest already has it is skipped and named"${none}>Fill</button>
+<button type="button" class="ol" data-action="entries-bulk-number" data-file="${file}" title="Gives the selected rows consecutive lineups in the order listed, from the lineup picked"${none}>Number in order</button>
+<button type="button" class="ol red" data-action="entries-reset" data-file="${file}" title="Takes every lineup off every row of this file, both tabs, and opens every row to suggestions again. It asks first.">Reset entries</button>
+</div>${undo}`;
+}
+
+/** Step 2 (NBA's "Step 1 · Give each DraftKings entry a spot", turned to lineups). `s`: { f, m, eff, entries, slateKey, fileContext,
+ *  view, labels }; `m` null when the slate has no saved lineup (the rows are listed plain, Adam 2026-10-18). */
+function stepTwoHtml(s) {
+  const { f, m, view } = s;
+  const file = escapeHtml(f.file);
+  const intro = `<div class="mh"><span class="t">Give each DraftKings entry a lineup</span><span class="muted">Each contest is suggested your saved lineups 1, 2, 3 in number order, one per entry; Cash contests take your Cash lineups.</span><span class="grow"></span><span class="muted">${s.entries.length} entr${s.entries.length === 1 ? "y" : "ies"} in ${contestCount(s.entries)} contest${contestCount(s.entries) === 1 ? "" : "s"}</span></div>`;
+  if (!m) {
+    return `<section class="mapcol">${intro}<div class="rs entries-empty">${escapeHtml(view?.noLineupsText ?? ENTRIES_TAB_DEFAULTS.noLineupsText)}</div>${rowsHtml(groupByContest(s.entries), s)}</section>`;
+  }
+  const tab = view?.tab === "cash" ? "cash" : "gpp";
+  const inClass = (cls) => m.groups.filter((g) => m.classes[g.contestId] === cls);
+  const countOf = (cls) => inClass(cls).reduce((n, g) => n + g.entries.length, 0);
+  const tabBtn = (cls, text) => `<button type="button" role="tab" class="${tab === cls ? "on" : ""}" data-action="entries-tab" data-file="${file}" data-tab="${cls}" aria-selected="${tab === cls}">${text} <span class="opt-tab-n">${countOf(cls)}</span></button>`;
+  const mine = inClass(tab);
+  const open = Boolean(view?.adjust);
+  const adjust = `<div class="entries-adjust"><button type="button" class="lnk" data-action="entries-adjust" data-file="${file}" aria-expanded="${open}">${open ? "▾" : "▸"} Suggestion options: which lineups and contests, Replace, Sort</button>${open ? fillStripHtml(f.file, m, tab) : ""}</div>`;
+  const empty = `<div class="rs dim entries-empty">No ${tab === "cash" ? "Cash" : "GPP"} contests in this file. A contest's GPP | Cash buttons, in the other tab, move it here.</div>`;
+  const unset = mine.flatMap((g) => g.entries).filter((e) => rowHolds({ pick: s.eff[e.entryId], kept: m.kept.has(String(e.entryId)), proposedId: m.proposals[e.entryId] }).state === "none").length;
+  const red = unset ? `<div class="newbar red"><b>${unset}</b> ${unset === 1 ? "entry has" : "entries have"} no lineup. ${unset === 1 ? "It is" : "They are"} written back exactly as in your file; give ${unset === 1 ? "it" : "them"} a lineup above or leave ${unset === 1 ? "it" : "them"} as DraftKings has ${unset === 1 ? "it" : "them"}.</div>` : "";
+  return `<section class="mapcol">${intro}
+<div class="subtabs entries-tabs" role="tablist">${tabBtn("gpp", "GPP")}${tabBtn("cash", "Cash")}</div>
+<div class="entries-tab-panel" data-tab="${tab}">${fillTopHtml(f.file, m, tab)}${selectBarHtml(s, tab, mine)}${adjust}${mine.length ? rowsHtml(mine, s) : empty}${red}</div></section>`;
+}
+
+/** One uploaded file's view: NBA's top bar, the three steps and the screen on show (`view.screen`: "entries", the default, "export" or
+ *  "upload" with `view.uploadBody`). `view`: { fill, classes, sortBy, fold, tab, adjust, sel, undo, bulkLineup, files, lineupsFor,
+ *  noLineupsText, numberOverFor, summaryOf, lineupLabelOf, lockedTextFor } (see fillModelOf; `fold`, a Set of contest ids folded away,
+ *  Adam 2026-10-17; `tab` "gpp" or "cash" and `adjust`, the options fold, Adam 2026-10-18; `sel`, the selected entry ids). `fileContext`:
+ *  the second-slates array, or a Showdown file-id context function (entries-plan.js showdownFileKeyOf). */
 export function fileBlockHtml(f, saved, assigned, result, busy, fileContext = [], view = null) {
   const entries = f.entries ?? [];
   const slateKey = f.slate?.key ?? null;
@@ -276,100 +361,58 @@ export function fileBlockHtml(f, saved, assigned, result, busy, fileContext = []
   const eff = effectiveAssignments(entries, lineups, assigned);
   const n = Object.keys(eff).length;
   const nContests = contestCount(entries);
-  const head = `<div class="entries-file-head">
-        <span class="entries-slate">${escapeHtml(label)}</span>
-        <span class="entries-file-name">${escapeHtml(f.file)}</span>
-        <span class="entries-count">${entries.length} entr${entries.length === 1 ? "y" : "ies"} in ${nContests} contest${nContests === 1 ? "" : "s"}</span>
-      </div>${f.notRead ? `<div class="entries-quiet entries-not-read" role="note">${escapeHtml(f.notRead)}</div>` : ""}`;
-  if (f.error || !slateKey) {
-    return `<div class="entries-file">${head}<div class="lineup-status lineup-status-error">${escapeHtml(f.error ?? "This file's slate could not be told; upload it again.")}</div></div>`;
-  }
+  const notRead = f.notRead ? `<div class="msg warn entries-not-read" role="note">${escapeHtml(f.notRead)}</div>` : "";
   const numberOver = view?.numberOverFor && slateKey ? view.numberOverFor(saved, f) : null; // Showdown: numbers over all the game's lineups, the pickers list the complete ones
   const labels = { summaryOf: view?.summaryOf, lineupLabelOf: view?.lineupLabelOf }; // each absent one is classic's (entryRowHtml)
-  const m = lineups.length ? fillModelOf(entries, slateKey, lineups, eff, fileContext, numberOver ? { ...view, numberOver } : view) : null;
-  const ticked = m && (m.fill.contestIds == null ? null : new Set(m.fill.contestIds.map(String)));
-  const rows = m ? m.sorted : lineups; // the pickers list lineups in the Sort order
-  // Adam 2026-10-18: a contest's rows are drawn under its own tab (GPP or Cash) when lineups exist, all of them, plain, when none do.
-  const tbodyOf = (g) => {
-    const ctx = m && { cls: m.classes[g.contestId], auto: classifyContest(g.contestName), ticked: ticked === null || ticked.has(g.contestId) };
-    // 🔵 2026-10-17: the kept tag's title names the control the strip shows (reopenLabel).
-    const extraOf = (e) => (m ? { proposedId: m.proposals[e.entryId], numbers: m.numbers, proposals: m.proposals, kept: m.kept.has(String(e.entryId)), reopen: reopenLabel(m.fill, m.keptOpen), dismissed: m.fill.dismissed } : null);
-    const folded = Boolean(view?.fold?.has(g.contestId));
-    const body = folded ? "" : g.entries.map((e) => entryRowHtml(f.file, e, rows, eff, entries, slateKey, fileContext, extraOf(e), labels)).join("");
-    return `<tbody class="entries-contest-group${folded ? " folded" : ""}">${contestHeadHtml(f.file, g, eff, ctx, m?.proposals, folded, !m)}${body}</tbody>`;
-  };
-  const tableOf = (groups, plain) => `
-      <table class="entries-table">
-        <thead><tr><th>Entry</th><th>In the file now</th>${plain ? "" : "<th>Lineup</th>"}</tr></thead>
-        ${groups.map(tbodyOf).join("")}
-      </table>`;
-  if (!m) {
-    return `
-    <div class="entries-file" data-file="${escapeHtml(f.file)}">
-      ${head}
-      <div class="entries-empty">${escapeHtml(view?.noLineupsText ?? ENTRIES_TAB_DEFAULTS.noLineupsText)}</div>
-      ${tableOf(groupByContest(entries), true)}
-    </div>`;
-  }
-  const tab = view?.tab === "cash" ? "cash" : "gpp";
-  const inClass = (cls) => m.groups.filter((g) => m.classes[g.contestId] === cls);
-  const countOf = (cls) => inClass(cls).reduce((s, g) => s + g.entries.length, 0);
-  const tabBtn = (cls, text) => `<button type="button" role="tab" class="opt-tab${tab === cls ? " active" : ""}" data-action="entries-tab" data-file="${escapeHtml(f.file)}" data-tab="${cls}" aria-selected="${tab === cls}">${text} <span class="opt-tab-n">${countOf(cls)}</span></button>`;
-  const open = Boolean(view?.adjust);
-  const mine = inClass(tab);
-  const tabName = tab === "cash" ? "Cash" : "GPP";
-  const adjust = `<div class="entries-adjust"><button type="button" class="saved-lineup-btn" data-action="entries-adjust" data-file="${escapeHtml(f.file)}" aria-expanded="${open}">${open ? "▾" : "▸"} Adjust</button>${open ? fillStripHtml(f.file, m, tab) : ""}</div>`;
-  // 🔵 2026-10-18: proposals of both tabs still waiting for Confirm are said under Download.
-  const waiting = Object.keys(m.proposals).length;
-  const waitingText = waiting ? ` ${waiting} ${waiting === 1 ? "proposal is" : "proposals are"} not confirmed.` : "";
-  const locked = view?.lockedTextFor?.(f) ?? null; // once the slate has locked, Download is greyed and says why (walkthrough friction, PROJECT.md Part 4 item 5)
-  const dlTitle = locked ?? (n === 0 ? "Confirm at least one lineup first; nothing is written until a row is confirmed" : "Writes your entries file with every confirmed lineup, GPP and Cash");
+  const m = slateKey && !f.error && lineups.length ? fillModelOf(entries, slateKey, lineups, eff, fileContext, numberOver ? { ...view, numberOver } : view) : null;
+  const waiting = m ? Object.keys(m.proposals).length : 0;
+  const locked = slateKey ? view?.lockedTextFor?.(f) ?? null : null; // once the slate has locked, Download is greyed and says why (walkthrough friction, PROJECT.md Part 4 item 5)
+  const dlTitle = locked ?? (n === 0 ? "Give at least one entry a lineup first; nothing is written until a row has one" : "Writes your entries file with every confirmed lineup, GPP and Cash");
+  const classOf = (e) => (m ? m.classes[contestKey(e)] : classifyContest(e.contestName));
+  const gpp = entries.filter((e) => classOf(e) !== "cash").length;
+  const bar = barHtml({ f, label, entries: entries.length, contests: nContests, gpp, cash: entries.length - gpp, n, waiting, locked, busy, dlTitle, files: view?.files });
+  const screen = view?.screen === "export" || view?.screen === "upload" ? view.screen : "entries";
+  const nav = stepsNavHtml(screen, stepStatus({ file: f.file, entries: entries.length, contests: nContests, n, waiting, locked, downloaded: result?.name ?? null, noLineups: !m }));
+  let body;
+  if (screen === "upload") body = view?.uploadBody ?? "";
+  else if (f.error || !slateKey) body = `<div class="msg err lineup-status-error">${escapeHtml(f.error ?? "This file's slate could not be told; upload it again.")}</div>`;
+  else if (screen === "export") body = exportScreenHtml({ f, entries, eff, lineups, numbers: m?.numbers ?? null, waiting, locked, busy, dlTitle, resultHtml: resultHtml(result), summaryOf: view?.summaryOf ?? currentSummary, nameOf: view?.lineupLabelOf ?? lineupLabel, classOf });
+  else body = `${resultHtml(result)}${stepTwoHtml({ f, m, eff, entries, slateKey, fileContext, view, labels })}`;
   return `
-    <div class="entries-file" data-file="${escapeHtml(f.file)}">
-      ${head}
-      <div class="entries-download-row">
-        <button type="button" class="lineup-build-btn" data-action="entries-download" data-file="${escapeHtml(f.file)}" title="${escapeHtml(dlTitle)}"${n === 0 || busy || locked ? " disabled" : ""}>${busy ? "Preparing…" : "Download for DraftKings"}</button>
-        <span class="entries-quiet${locked ? " entries-locked" : ""}"${locked ? ` title="${escapeHtml(locked)}"` : ""}>${locked ? "Locked: the first game has kicked off." : `${n === 0 ? "Confirm a lineup for at least one entry. Entries left as is stay as they are." : `${n} of ${entries.length} entries will change.`}${waitingText}`}</span>
-      </div>
-      ${resultHtml(result)}
-      <div class="opt-tabs entries-tabs" role="tablist">${tabBtn("gpp", "GPP")}${tabBtn("cash", "Cash")}</div>
-      <div class="entries-tab-panel" data-tab="${tab}">
-        ${fillTopHtml(f.file, m, tab)}
-        ${adjust}
-        ${mine.length ? tableOf(mine, false) : `<div class="entries-empty">No ${tabName} contests in this file. A contest's GPP | Cash buttons, in the other tab, move it here.</div>`}
-      </div>
-    </div>`;
+    <div class="entries-file" data-file="${escapeHtml(f.file)}">${bar}${nav}${notRead}${body}</div>`;
 }
 
-/** The whole section's inside. `m`: { loaded, loadError, uploading, uploadError, files, assign, results, busyFile,
- *  fill, classes, sortBy, saved, fileContext, noWeek, storageWarning }, plus the tab's own fileInputId, emptyText and lineupsFor
- *  (each ENTRIES_TAB_DEFAULTS' classic value when absent). With no week loaded there is nothing to upload against,
- *  so only a plain line shows. */
+/** The whole section's inside. `m`: { loaded, loadError, uploading, uploadError, files, assign, results, busyFile, fill, classes, sortBy,
+ *  saved, fileContext, noWeek, storageWarning, screen, active, sel, undo, bulkLineup, msg, isSite }, plus the tab's own fileInputId,
+ *  emptyText, rosterColumns and lineupsFor (each ENTRIES_TAB_DEFAULTS' value when absent). With no file the Upload screen shows; with
+ *  no week loaded there is nothing to upload against, so only a plain line shows. */
 export function entriesInnerHtml(m) {
   // 🔵 2026-10-17: blocked browser storage is said once, quietly, at the top (never a silent catch).
-  const storage = m.storageWarning ? `<div class="entries-quiet">${escapeHtml(m.storageWarning)}</div>` : "";
-  if (m.noWeek) {
-    return `
-      <h3 class="entries-title">Entries</h3>${storage}
-      <div class="entries-empty">No week is loaded yet. Upload the week's salary file first, then the entries file.</div>`;
-  }
+  const storage = m.storageWarning ? `<div class="msg warn entries-quiet">${escapeHtml(m.storageWarning)}</div>` : "";
+  if (m.noWeek) return `${storage}<div class="rs dim entries-empty">No week is loaded yet. Upload the week's salary file first, then the entries file.</div>`;
+  const input = `<input type="file" id="${escapeHtml(m.fileInputId ?? ENTRIES_TAB_DEFAULTS.fileInputId)}" accept=".csv,text/csv" hidden />`;
+  const upErr = m.uploadError ? `<div class="msg err lineup-status-error entries-error">${escapeHtml(m.uploadError)}</div>` : "";
+  const note = m.msg ? `<div class="msg ${m.msg.kind === "ok" ? "ok" : "warn"}">${escapeHtml(m.msg.text)}<button type="button" data-action="entries-dismiss" aria-label="Dismiss">✕</button></div>` : "";
   let body;
-  if (!m.loaded) body = `<div class="entries-empty">Loading…</div>`;
-  else if (m.loadError) body = `<div class="lineup-status lineup-status-error">${escapeHtml(m.loadError)}</div>`;
-  else if (!m.files?.length) body = `<div class="entries-empty">${escapeHtml(m.emptyText ?? ENTRIES_TAB_DEFAULTS.emptyText)}</div>`;
-  else body = m.files.map((f) => fileBlockHtml(f, m.saved, m.assign?.[f.file], m.results?.[f.file], m.busyFile === f.file, m.fileContext, { fill: m.fill?.[f.file], classes: m.classes?.[f.file], sortBy: m.sortBy, fold: m.fold?.[f.file], tab: m.tab?.[f.file], adjust: m.adjust?.[f.file], lineupsFor: m.lineupsFor, noLineupsText: m.noLineupsText, numberOverFor: m.numberOverFor, summaryOf: m.summaryOf, lineupLabelOf: m.lineupLabelOf, lockedTextFor: m.lockedTextFor })).join("");
-  const upErr = m.uploadError ? `<div class="lineup-status lineup-status-error entries-error">${escapeHtml(m.uploadError)}</div>` : "";
-  return `
-      <h3 class="entries-title">Entries</h3>${storage}
-      <div class="entries-upload-row">
-        <button type="button" class="saved-lineup-btn" data-action="entries-upload"${m.uploading ? " disabled" : ""}>${m.uploading ? "Uploading…" : "Upload DraftKings entries file"}</button>
-        <input type="file" id="${escapeHtml(m.fileInputId ?? ENTRIES_TAB_DEFAULTS.fileInputId)}" accept=".csv,text/csv" hidden />
-      </div>
-      ${upErr}
-      ${body}`;
+  if (!m.loaded) body = `<div class="rs dim entries-empty">Loading…</div>`;
+  else if (m.loadError) body = `<div class="msg err lineup-status-error">${escapeHtml(m.loadError)}</div>`;
+  else {
+    const files = m.files ?? [];
+    const upload = uploadScreenHtml({ ...m, emptyText: m.emptyText ?? ENTRIES_TAB_DEFAULTS.emptyText, rosterColumns: m.rosterColumns ?? ENTRIES_TAB_DEFAULTS.rosterColumns });
+    const f = files.find((x) => x.file === m.active) ?? files[0];
+    body = !f
+      ? upload
+      : fileBlockHtml(f, m.saved, m.assign?.[f.file], m.results?.[f.file], m.busyFile === f.file, m.fileContext, {
+        fill: m.fill?.[f.file], classes: m.classes?.[f.file], sortBy: m.sortBy, fold: m.fold?.[f.file], tab: m.tab?.[f.file], adjust: m.adjust?.[f.file],
+        sel: m.sel?.[f.file], undo: m.undo?.[f.file]?.text ?? null, bulkLineup: m.bulkLineup?.[f.file], screen: m.screen, uploadBody: upload,
+        files: files.map((x) => ({ file: x.file, label: x.slate?.label ?? "Unknown slate" })),
+        lineupsFor: m.lineupsFor, noLineupsText: m.noLineupsText, numberOverFor: m.numberOverFor, summaryOf: m.summaryOf, lineupLabelOf: m.lineupLabelOf, lockedTextFor: m.lockedTextFor,
+      });
+  }
+  return `${storage}${upErr}${note}<div class="entries-screen${m.uploading ? " busy" : ""}" data-drop-zone>${body}</div>${input}`;
 }
 
-/** The section with its id (`m.sectionId`, classic "entries-section" when absent). */
+/** The section with its id (`m.sectionId`, classic "entries-section" when absent); `ent` scopes NBA's look (public/entries.css). */
 export function entriesSectionHtml(m) {
-  return `<div class="entries-section" id="${escapeHtml(m.sectionId ?? ENTRIES_TAB_DEFAULTS.sectionId)}">${entriesInnerHtml(m)}</div>`;
+  return `<div class="entries-section ent" id="${escapeHtml(m.sectionId ?? ENTRIES_TAB_DEFAULTS.sectionId)}">${entriesInnerHtml(m)}</div>`;
 }

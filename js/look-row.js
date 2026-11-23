@@ -33,7 +33,7 @@ function nameCell(man, note, noteHtml = "", showPos = false) {
   return `<div class="sn"><div class="sn1"><button type="button" class="pn player-name" data-short="${escapeHtml(shortName(man.name))}" title="Open ${escapeHtml(man.name)}'s card">${escapeHtml(man.name)}</button>${pos}${matchup}${tag ? `<span class="tagw">${tag}</span>` : ""}${noteHtml ? `<span class="slnote">${noteHtml}</span>` : note ? `<span class="slnote">${escapeHtml(note)}</span>` : ""}</div></div>`;
 }
 
-const logo = (team) => teamLogoHtml(team, "logo sm", 20) || `<span class="chipx sm">${escapeHtml(team ?? "")}</span>`; // a team with no logo keeps its abbreviation (D80)
+export const logo = (team) => teamLogoHtml(team, "logo sm", 20) || `<span class="chipx sm">${escapeHtml(team ?? "")}</span>`; // a team with no logo keeps its abbreviation (D80)
 
 /**
  * One row. `man`: look-adapter.js lookMan; `slot`: the roster slot's name; `kind`: "card" (a built or saved lineup) or "work" (the working lineup); `locked`: the padlock's green;
@@ -48,9 +48,9 @@ export function lookRowHtml(man, { slot, kind = "card", locked = false, palette 
   return `<div class="${classes}"${cardId} style="${teamVars(man.team, palette)}"${attrs ? ` ${attrs}` : ""}><span class="sl" title="Roster slot ${escapeHtml(slot)}">${escapeHtml(slot)}</span>${logo(man.team)}${nameCell(man, note, noteHtml, showPos)}${figures}</div>`;
 }
 
-/** An open slot: the slot box and the word (`Empty`, `Not on this slate`), and `hint` after it when given (how to fill it). `kind` as lookRowHtml. */
-export function lookEmptyRowHtml(slot, word = "Empty", { kind = "work", attrs = "", hint = "", cls = "" } = {}) {
-  return `<div class="crow ${kind === "work" ? "wkr" : "lead lr"} empty${cls ? ` ${cls}` : ""}"${attrs ? ` ${attrs}` : ""}><span class="sl">${escapeHtml(slot)}</span><div class="sn"><b>${escapeHtml(word)}</b>${hint ? `<span class="eh"> · ${escapeHtml(hint)}</span>` : ""}</div></div>`;
+/** An open slot: the slot box and the word (`Empty`, `Not on this slate`) only, as NBA's card-row draws an open seat (Adam 11-23: no how-to-fill text). `kind` as lookRowHtml. */
+export function lookEmptyRowHtml(slot, word = "Empty", { kind = "work", attrs = "", cls = "" } = {}) {
+  return `<div class="crow ${kind === "work" ? "wkr" : "lead lr"} empty${cls ? ` ${cls}` : ""}"${attrs ? ` ${attrs}` : ""}><span class="sl">${escapeHtml(slot)}</span><div class="sn"><b>${escapeHtml(word)}</b></div></div>`;
 }
 
 /**

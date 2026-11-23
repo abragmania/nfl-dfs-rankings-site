@@ -4,7 +4,7 @@
 // (entries-plan.js showdownFileKeyOf) in place of classic's second-slates array. Classic's instance is never touched.
 import { createEntriesWire } from "../entries-wire.js";
 import { showdownFileKeyOf } from "../entries-plan.js";
-import { currentSummary, cellName } from "../entries.js";
+import { currentSummary, cellName, SHOWDOWN_ROSTER_COLUMNS } from "../entries.js";
 import { lineupLabel } from "../lineup-tags.js";
 import { escapeHtml } from "../format.js";
 import { getShowdownLineups, getShowdownEntries, postShowdownEntriesUpload, postShowdownEntriesExport } from "./api.js";
@@ -53,6 +53,7 @@ const wire = createEntriesWire({
   sectionId: "sd-entries-section",
   fileInputId: "sd-entries-file",
   emptyText: SHOWDOWN_ENTRIES_EMPTY_TEXT,
+  rosterColumns: SHOWDOWN_ROSTER_COLUMNS, // the Upload step names the file's roster columns (entries-screen.js)
   noLineupsText: SHOWDOWN_ENTRIES_NO_LINEUPS_TEXT,
   // The pickers and the fill offer the complete lineups only (six resolvable file ids), the ones the server will not refuse on Download;
   // the numbers still run over all of the game's saved lineups (numberOverFor), so a lineup keeps the number the game gives it.

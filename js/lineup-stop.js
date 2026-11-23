@@ -38,6 +38,9 @@ export function buildingRowClass({ showing, below }) {
   return below ? " is-building-below" : " is-building";
 }
 
+/** The classic Build button's idle words for a count (one copy: the draw and the count box's typing, Adam 11:54 AM 11-23). */
+export const goWordsFor = (cash, count) => `Build ${count} ${cash ? "Cash" : "GPP"} lineup${count === 1 ? "" : "s"}`;
+
 /** The button's label: its idle words, or while `showing` its busy words over them, hidden, so its width does not change. */
 export function goLabelHtml({ showing, idle, busy = BUILDING_LABEL }) {
   if (!showing) return escapeHtml(idle);

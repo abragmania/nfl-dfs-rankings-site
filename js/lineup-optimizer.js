@@ -1,67 +1,40 @@
-// The Optimizer's logic (split out of lineup.js, Adam 2026-10-18, moved not edited): cash mode's Want/Must/swap pieces, the
+// The Optimizer's logic (split out of lineup.js, Adam 2026-10-18, moved not edited): cash mode's basis and summary, the
 // pure request and validation helpers (percent boxes, Min % checks, the generate payload, the saved-set keys), and the actions
 // (Build, Save all, Discard, the Optimizer band's event wiring). `state`, `opt` and the page-level variables are owned by
-// lineup.js; this file imports them and holds only its own swap-cache and build counter. Panel markup is in lineup-view.js.
+// lineup.js; this file imports them and holds only its own build counter. Panel markup is in lineup-view.js.
 import { store, FLEX_POS, activeSlate, activeSlateRows, activeSlateGames, slateDisplayName, isTwoGunMode } from "./state.js";
 import { rowIsOut } from "./table.js"; // D43: the one copy of "vs DAL" / "@ DET"; the red OUT tag (Adam 2026-10-15)
 import { newBuildId, batchBuild } from "./lineup-builds.js";
 import { nextSort, LOOK_SORT_KEYS } from "./lineup-sort.js"; // Adam 2026-10-17: sort options; the `Own vs field` key is stored as "geo"
-import { toggleMustHave } from "./lineup-filter.js";
+import { toggleMustHave, compareState } from "./lineup-filter.js";
 import { OPT_POSITIONS, exposureLimit, minLimit, nextExpSort } from "./lineup-exposure.js"; // A10: the one exposure table
 import { wireQbStacks } from "./lineup-qb-stacks.js";
 import { postLineupGenerate, postLineup, getLineups, stopLineupGenerate, canStopLineupGenerate } from "./api.js";
 import { saveOutcome, isAlreadySavedAnswer } from "./save-outcome.js"; // Save and Save all never refuse a lineup already saved (Adam 6:30 PM 11-09)
-import { afterBuildingDelay, goSitsBelow, stopFailure } from "./lineup-stop.js";
+import { afterBuildingDelay, goSitsBelow, stopFailure, goWordsFor } from "./lineup-stop.js";
 import { createNoticeController } from "./build-notice.js"; // A15: `Building...`, `Build finished.` and a failure under the filter bar while the Build row is off screen
 import { ruleOn, countBelowMin, syncCountNote, COUNT_MIN_SENTENCE, fullLineupText } from "./lineup-settings.js";
 import { answerTone } from "./row-message.js";
 import { wireLimitBox, flushOpenLimit, limitRefusals } from "./limit-box.js"; // A3: the Min % and Max % boxes
 import { limitsCrossed } from "./limit-cross.js"; // item 18: the row says `Min is above Max`
 import {
-  boardHasMedians, buildCashSettings, poolReport, wantSwaps, swapDecisionHtml, excludedListHtml, lineupModeOf, CASH_NO_MEDIAN_TEXT, CASH_UNKNOWN_BASIS_TEXT,
+  boardHasMedians, buildCashSettings, lineupModeOf, CASH_NO_MEDIAN_TEXT, CASH_UNKNOWN_BASIS_TEXT,
 } from "./lineup-cash.js";
 import {
-  state, opt, LINEUP_SLOTS, SALARY_CAP, OBJECTIVES, MAX_TEAM_OPTIONS, OPT_MAX_COUNT, OPT_MAX_UNIQUE, OPT_DEFAULT_COUNT, OPT_DEFAULT_UNIQUE,
-  OPT_STACK_OWN_MAX, OPT_STACK_OPP_MAX, OPT_DEFAULT_STACK, OPT_BUSY_TEXT, OPT_RULES, builtInText, effectiveObjective, dkIdentity, commit, lockPool, unlockPool,
-  savePersisted, seasonWeekKey, lastContainer, resetOptimizerResults, clearMustHave, qbStacksForRequest, qbGlobals, setMode, removeSlot,
+  state, opt, LINEUP_SLOTS, OBJECTIVES, MAX_TEAM_OPTIONS, OPT_MAX_COUNT, OPT_MAX_UNIQUE, OPT_DEFAULT_COUNT, OPT_DEFAULT_UNIQUE,
+  OPT_STACK_OWN_MAX, OPT_STACK_OPP_MAX, OPT_DEFAULT_STACK, OPT_BUSY_TEXT, OPT_RULES, builtInText, effectiveObjective, dkIdentity, commit,
+  savePersisted, seasonWeekKey, lastContainer, resetOptimizerResults, clearMustHave, qbStacksForRequest, qbGlobals, setMode,
 } from "./lineup.js";
 import { heldSplit, cardIsSaved, optSummaryText, stackDefaultsApply, STACK_INERT_TITLE, savedOfActiveSlate, openSetops } from "./lineup-view.js";
 import { requestTab } from "./lineup-tabs.js"; // Part F: the GPP | Cash click's gate
 import { variancePosSettings, variancePosProblem, CLASSIC_VARIANCE_POSITIONS } from "./variance-pos.js"; // GPP variance per position (Adam 2026-11-11)
 import { buildAfterQuiet } from "./lineup-left-out-panel.js"; // Part F: a Build goes before the quiet Left out build
 import { slateParts, splitLive, wireCountRules } from "./lineup-count-rules.js"; // GPP team, game and ownership rules (items 8 and 9, Adam 2026-11-16)
+import { noForRequest } from "./no-picks.js"; // Monday 11-23 item 4: NBA's NO
 
 // ---- Cash mode job 3b, 2026-10-17 (PROJECT.md Part 4 "Cash mode"; the pure pieces are in lineup-cash.js) ----
 
-export const wantIdsFor = (slateKey) => opt.cash.want[slateKey] ?? [];
-
-function setWant(slateKey, id, on) {
-  const rest = wantIdsFor(slateKey).filter((w) => w !== id);
-  opt.cash.want = { ...opt.cash.want, [slateKey]: on ? [...rest, id] : rest };
-}
-
-/** Must is the lock (D70), Want is membership of the cash pool for the slate on screen, Fine is neither (it takes a placed
- *  player out of his slot as unlocking does). Must keeps a Want listing; Want and Fine on a Must player unlock him first. */
-export function cashPick(id, pick) {
-  opt.cashUndo = null; // Cash 3b fix round, 2026-10-17: a pick after Make them Must is never silently undone by Undo
-  const slateKey = slateKeyOf(store.get().board);
-  if (pick === "must") {
-    if (!state.locks.has(id)) lockPool(id);
-    return;
-  }
-  const wasMust = state.locks.has(id);
-  if (wasMust) unlockPool(id);
-  else if (pick === "fine") {
-    // A man clicked into the lineup is held by the Build; Fine (neither in nor wanted) takes him out, so the chip never reads active with no effect (D3, round 3 fixes).
-    // The chip reads a man in the lineup by his DraftKings identity (a twin row of the same player counts), so Fine does too.
-    const rowById = currentRowById();
-    const idn = rowById.get(id) ? dkIdentity(rowById.get(id)) : null;
-    const at = state.slots.findIndex((s) => s && (String(s.id) === id || (idn !== null && rowById.get(String(s.id)) && dkIdentity(rowById.get(String(s.id))) === idn)));
-    if (at >= 0) removeSlot(at);
-  }
-  // Want: a Must or Fine player becomes Want only, a Want player goes back to Fine. Fine: off the list.
-  setWant(slateKey, id, pick === "want" && (wasMust || !wantIdsFor(slateKey).includes(id)));
-}
+// Monday 11-23 item 4: Cash's Lock / Want / Fine chips are retired for NBA's Lock, NO and Exclude; a Want list a browser still stores (opt.cash.want) is kept and ignored.
 
 /** What a cash build is made by: {basis "median" | "proj" | null, blocked, text, why (blocked only: the summary's words)}. The
  *  board's own Cash basis decides (board.mode.cashMode, server/rank/select.js modeOf; code review of a9455a0, MUST 1, so a custom
@@ -76,122 +49,16 @@ export function cashBasisInfo(board) {
   return { basis: "median", blocked: false, text: `TwoGun's median${when ? ` (board updated ${when})` : ""}` };
 }
 
-/** The Wants of the slate on screen that are not Must, as board rows. */
-export function wantRowsFor(slateKey, rowById) {
-  return wantIdsFor(slateKey).filter((id) => !state.locks.has(id)).map((id) => rowById.get(id)).filter(Boolean);
-}
-
-/** The footer sentence in cash: "2 cash lineups by TwoGun's median · 1 Lock · 2 Want · max 3 per team" (no minimum-unique clause: Adam 2026-10-17). */
+/** The footer sentence in cash: "2 cash lineups by TwoGun's median · 1 Lock · max 3 per team" (no minimum-unique clause: Adam 2026-10-17). */
 export function cashSummaryText(board) {
   const s = buildCashSettings(opt.cash);
   const info = cashBasisInfo(board);
   const rowById = currentRowById();
   const by = info.blocked ? `no basis (${info.why})` : info.basis === "median" ? "TwoGun's median" : "projection";
   const held = heldSplit(rowById); // D3 (round 3 fixes): a clicked-in man counts as in the lineup, a padlock only as Lock; both are kept by the Build
-  const parts = [`${s.count} cash lineup${s.count === 1 ? "" : "s"} by ${by}`, ...(held.inLineup.length ? [`${held.inLineup.length} in the lineup`] : []), `${held.padlocked.length} Lock`, `${wantRowsFor(slateKeyOf(board), rowById).length} Want`];
+  const parts = [`${s.count} cash lineup${s.count === 1 ? "" : "s"} by ${by}`, ...(held.inLineup.length ? [`${held.inLineup.length} in the lineup`] : []), `${held.padlocked.length} Lock`];
   if (s.maxPerTeam !== null) parts.push(`max ${s.maxPerTeam} per team`);
   return parts.join(" · ");
-}
-
-/** The Wants a cash batch is judged on: the slate's Want list without the players locked when it was built (a Must is in every lineup). */
-const cashWantIds = (results) => wantIdsFor(results.slateKey ?? "main").filter((id) => !(results.cash?.lockedIds ?? []).includes(id));
-
-// Cash 3b fix round, 2026-10-17: the swap search costs about 0.9 s per hard Want over 150 cards, so each card's decisions are kept
-// per batch (a WeakMap on the results object: a new batch starts clean) and searched again only when the Want list or the board changes.
-const swapCache = new WeakMap();
-export const swapScanHook = { onScan: null }; // tests only (tests/cash-wiring.test.mjs): counts the searches through wantSwaps' onScan
-
-/** wantSwaps for one cash card, under the limits the batch was built with (results.cash). */
-function cardSwapDecisions(lineup, results) {
-  const board = store.get().board;
-  const wantIds = cashWantIds(results);
-  const key = [...wantIds].sort().join("|");
-  if (!swapCache.has(results)) swapCache.set(results, new Map());
-  const perCard = swapCache.get(results);
-  const hit = perCard.get(lineup.uid);
-  if (hit && hit.key === key && hit.board === board) return hit.decisions;
-  const c = results.cash ?? {};
-  const decisions = wantSwaps(lineup, wantIds, activeSlateRows(board), {
-    basis: results.basis ?? "proj", cap: SALARY_CAP, excludedIds: c.excludedIds ?? [], lockedIds: c.lockedIds ?? [], maxPerTeam: c.maxPerTeam ?? null, avoidGames: c.avoidGames ?? [], onScan: swapScanHook.onScan,
-  });
-  perCard.set(lineup.uid, { key, board, decisions });
-  return decisions;
-}
-
-/** A cash card's pool strip: the Wants left out and the cheapest swap for each (excludedListHtml, swapDecisionHtml), and the ids of the Wants that are in.
- *  Cash 3b fix round, 2026-10-17: the swap button is drawn only in cash mode, and disabled while `busy`. */
-export function cashStrip(lineup, results, rowById, busy = false) {
-  const wantIds = cashWantIds(results);
-  if (!wantIds.length) return { html: "", wantIn: new Set() };
-  const report = poolReport(lineup, wantIds, rowById);
-  const decisions = cardSwapDecisions(lineup, results);
-  const look = { button: opt.mode === "cash", disabled: busy };
-  return { html: `<div class="cash-strip">${excludedListHtml(report)}${decisions.map((d, i) => swapDecisionHtml(d, i, look)).join("")}</div>`, wantIn: new Set(report.inLineup.map((r) => String(r.id))) };
-}
-
-// Cash 3b fix round, 2026-10-17: Make them Must and Undo act only in cash mode and never while a build or a save runs.
-const cashSwapIdle = () => opt.mode === "cash" && !opt.generating && !opt.saving;
-
-// Cash 3b fix round 2, 2026-10-17: the slots and locks as a copy, and whether the builder still holds a copy exactly.
-const buildSnapshot = () => ({ slots: state.slots.map((s) => (s ? { ...s } : null)), locks: [...state.locks] });
-const sameBuild = (b) => b.slots.length === state.slots.length && b.slots.every((s, i) => (s?.id ?? null) === (state.slots[i]?.id ?? null))
-  && b.locks.length === state.locks.size && b.locks.every((id) => state.locks.has(id));
-
-/** "Make them Must and rebuild": locks the Want(s) of one swap decision (never the partner), builds again, and offers Undo only
- *  when that build put a new batch in place (Cash 3b fix round 2, 2026-10-17); a build that did not run puts the locks and slots
- *  back, so the old batch stays with the form's or the server's sentence as the only message. */
-async function cashMakeMust(uid, index) {
-  if (!cashSwapIdle()) return;
-  const board = store.get().board;
-  if (cashBasisInfo(board).blocked) return;
-  const r = opt.results;
-  const lineup = r?.lineups.find((l) => l.uid === uid);
-  if (!lineup || r.mode !== "cash") return;
-  const d = cardSwapDecisions(lineup, r)[index];
-  if (!d || d.kind === "none") return;
-  const wants = new Set(cashWantIds(r));
-  const picked = d.in.filter((x) => wants.has(String(x.id)));
-  const before = buildSnapshot();
-  opt.cashUndo = null;
-  for (const x of picked) {
-    const id = String(x.id);
-    lockPool(id);
-    // No open slot for him: a pool-only lock still counts as Must, since the server assigns slots itself; the Must chip instead
-    // refuses with no open slot (D70). The two paths differ on purpose (Cash 3b fix round, 2026-10-17).
-    if (!state.locks.has(id) && state.addError) {
-      state.locks.add(id);
-      state.addError = null;
-    }
-  }
-  const after = buildSnapshot();
-  const built = await doGenerate();
-  // A later edit during the build wins: nothing is put back over it and no Undo is offered for it. Layout round 2, 2026-10-17:
-  // a new board (a star in the pool) gates only the Undo offer, so a refused build still puts the locks back; the restore
-  // also clears lockPool's "added anyway" note for a player no longer in a slot.
-  if (!sameBuild(after)) return;
-  if (!built) {
-    state.slots = before.slots;
-    state.locks = new Set(before.locks);
-    state.addError = null;
-  } else if (store.get().board === board) opt.cashUndo = { ...before, after, names: picked.map((x) => x.name) };
-  commit();
-}
-
-/** Puts back the build before the last Make them Must and builds again; refused (the snapshot dropped, no rebuild) unless the
- *  slots and locks are still exactly what Make them Must left (Cash 3b fix round 2, 2026-10-17). */
-function cashUndo() {
-  if (!cashSwapIdle()) return;
-  const u = opt.cashUndo;
-  if (!u) return;
-  opt.cashUndo = null;
-  if (!sameBuild(u.after)) {
-    commit();
-    return;
-  }
-  state.slots = u.slots;
-  state.locks = new Set(u.locks);
-  state.addError = null;
-  doGenerate();
 }
 
 // ---- Pure helpers (exported for tests/optimizer-ui.test.mjs) ----
@@ -244,7 +111,7 @@ export function exposureOfLineups(lineups) {
       seen.add(key);
       const hit = byKey.get(key);
       if (hit) hit.count++;
-      else byKey.set(key, { pos: p.pos, row: { id: String(p.id), name: p.name ?? String(p.id), team: p.team ?? null, opp: p.opp ?? "", own: p.own ?? null }, count: 1 });
+      else byKey.set(key, { pos: p.pos, row: { id: String(p.id), name: p.name ?? String(p.id), team: p.team ?? null, opp: p.opp ?? "", own: p.own ?? null, salary: p.salary ?? null, proj: p.proj ?? null }, count: 1 });
     }
   }
   for (const { pos, row, count } of byKey.values()) {
@@ -591,7 +458,7 @@ export function slotsForSave(players) {
 
 let optSeq = 0;
 
-/** Cash 3b fix round 2, 2026-10-17: true only when a new batch was put in place; false on every other exit (cashMakeMust reads it). */
+/** Cash 3b fix round 2, 2026-10-17: true only when a new batch was put in place; false on every other exit. */
 async function doGenerate() {
   if (opt.generating || opt.saving) return false;
   flushOpenLimit(); // a Min % or Max % box still open is read as a click away reads it, before the request is made (A3)
@@ -694,6 +561,8 @@ async function doGenerate() {
       return false;
     }
   }
+  const noList = noForRequest(opt.mode, board, slateKey); // Monday 11-23 item 4: the open mode's NO men (no-picks.js); the engine applies NBA's rule (server/lineup/no-list.js)
+  if (noList.length) sent.settings.no = noList;
   let built = false;
   const tab = opt.tabs[opt.mode]; // Part F: a build that ends after a tab switch writes to the tab it was made on
   opt.generating = true;
@@ -745,6 +614,9 @@ async function doGenerate() {
         tab.results.basis = data.basis ?? null;
         tab.results.cash = { lockedIds: sent.settings.locks, excludedIds: sent.settings.excludes, maxPerTeam: sent.settings.maxPerTeam, avoidGames: sent.settings.avoidGames };
       }
+      tab.mustHave = []; // a new Build starts the batch unfiltered, Compare off (the Showdown Optimizer does the same, D77)
+      tab.mustHaveNames = {};
+      compareState.on = false;
       built = true;
     }
   } catch (e) {
@@ -983,6 +855,8 @@ export function wireOptimizer(container) {
   // Item 18: `Minimum 1` beside a count box while it is below 1, and the refusal a Build made of it goes once the box is fixed.
   const countTyped = (el) => {
     syncCountNote(el, OPT_MAX_COUNT);
+    const goBtn = container.querySelector("#opt-go-btn");
+    if (goBtn && !opt.generating) goBtn.textContent = goWordsFor(opt.mode === "cash", requestCount(el.value)); // the button names the count the box holds as he types (while a build runs its label holds the busy words)
     if (opt.formError === COUNT_MIN_SENTENCE && !countBelowMin(el.value)) {
       opt.formError = null;
       container.querySelector(".opt-form-error")?.remove();
@@ -1013,10 +887,6 @@ export function wireOptimizer(container) {
       refreshSummary();
     });
   }
-  container.querySelectorAll("[data-cash-swap]").forEach((btn) => {
-    btn.addEventListener("click", () => cashMakeMust(btn.closest("[data-uid]")?.dataset.uid, Number(btn.dataset.cashSwap)));
-  });
-  container.querySelector("[data-cash-undo]")?.addEventListener("click", () => cashUndo());
   container.querySelectorAll("[data-opt-exp]").forEach((el) => {
     el.addEventListener("input", () => {
       opt.maxExp[el.dataset.optExp] = el.value;

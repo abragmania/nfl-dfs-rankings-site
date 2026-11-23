@@ -12,6 +12,8 @@ import {
   FILL_DEFAULT, handPick, reproposeFill, clearContestFill, fillModelOf, classProposals, tickClassContests, fillClassPreset, confirmClassFill,
 } from "./entries-fill.js";
 import { createEntriesStorage } from "./entries-storage.js";
+import { createScreenBindings } from "./entries-wire-screen.js";
+import { CLASSIC_ROSTER_COLUMNS } from "./entries-screen.js";
 import { slateLockedText } from "./dk-lineup-csv.js"; // the one reading of a slate's lock, the DraftKings download's
 import { store } from "./state.js";
 
@@ -24,7 +26,7 @@ export function createEntriesWire(config = {}) {
   const cfg = Object.fromEntries(Object.entries(ENTRIES_TAB_DEFAULTS).map(([k, v]) => [k, config[k] ?? v]));
   const api = { list: getEntries, upload: postEntriesUpload, exportFile: postEntriesExport, ...(config.api ?? {}) };
   // What the HTML builders read from the model besides the state (entries.js entriesInnerHtml, entriesSectionHtml).
-  const shape = { sectionId: cfg.sectionId, fileInputId: cfg.fileInputId, emptyText: cfg.emptyText, noLineupsText: cfg.noLineupsText, lineupsFor: cfg.lineupsFor, numberOverFor: cfg.numberOverFor, summaryOf: cfg.summaryOf, lineupLabelOf: cfg.lineupLabelOf, lockedTextFor: cfg.lockedTextFor };
+  const shape = { sectionId: cfg.sectionId, fileInputId: cfg.fileInputId, emptyText: cfg.emptyText, noLineupsText: cfg.noLineupsText, lineupsFor: cfg.lineupsFor, numberOverFor: cfg.numberOverFor, summaryOf: cfg.summaryOf, lineupLabelOf: cfg.lineupLabelOf, lockedTextFor: cfg.lockedTextFor, rosterColumns: cfg.rosterColumns };
 
   const ent = {
     weekKey: null,
@@ -44,6 +46,14 @@ export function createEntriesWire(config = {}) {
     sortRead: false,
     busyFile: null,
     storageWarning: null, // set once when localStorage throws; kept across weeks (it is the browser, not the file)
+    // NBA's screen (PROJECT.md Part 4 "Monday 11-23 complaints" item 7); all memory only.
+    screen: "entries", // "upload" | "entries" | "export"; with no file the Upload screen shows whatever this says
+    active: null, // the file on show when the week has two slates' files; null = the first
+    sel: {}, // file name -> Set of selected entry ids (step 2's boxes)
+    lastSel: {}, // file name -> the last row clicked, for Shift-click
+    undo: {}, // file name -> { assign, keep, text }: the one-step undo of a bulk Fill or Number in order
+    bulkLineup: {}, // file name -> the lineup id in the selection bar's picker
+    msg: null, // { kind: "ok" | "warn", text }: what the last bulk action did
   };
   let ctx = { getSaved: () => [], getFileContext: () => [], container: null };
   let loadSeq = 0; // only the newest file-list request may change the screen
@@ -118,6 +128,8 @@ export function createEntriesWire(config = {}) {
     for (const k of Object.keys(ent.fold)) if (!names.has(k)) delete ent.fold[k];
     for (const k of Object.keys(ent.tab)) if (!names.has(k)) delete ent.tab[k];
     for (const k of Object.keys(ent.adjust)) if (!names.has(k)) delete ent.adjust[k];
+    for (const map of [ent.sel, ent.lastSel, ent.undo, ent.bulkLineup]) for (const k of Object.keys(map)) if (!names.has(k)) delete map[k];
+    if (ent.active && !names.has(ent.active)) ent.active = null;
     for (const f of ent.files) if (!ent.assign[f.file]) ent.assign[f.file] = store.readStoredPicks(f);
     for (const f of ent.files) if (!ent.classes[f.file]) ent.classes[f.file] = store.readStoredClasses(f);
     // 🔵 2026-10-17 (F1): the file's fill may already exist (ticks), so only its `keep` is filled, and only when it has none.
@@ -134,6 +146,7 @@ export function createEntriesWire(config = {}) {
     store.storePicks(fileOf(fileName), ent.assign[fileName]);
     store.storeKeep(fileName, ent.fill[fileName]?.keep); // 🔵 2026-10-17 (F1): a hand pick, Clear or Confirm may have changed the kept rows too
     delete ent.results[fileName]; // the old answer was about different picks
+    delete ent.undo[fileName]; // review finding 3 of 11-23: a bulk fill's Undo is gone once anything else changes the picks or kept rows
     refresh();
   }
 
@@ -202,6 +215,10 @@ export function createEntriesWire(config = {}) {
       return { ok: false, message: `Could not reach the server: ${e.message}` };
     }
     if (!data || data.ok === false) return { ok: false, message: refusalLines(data).join(" ") };
+    if (typeof data.file === "string" && data.file) {
+      ent.active = data.file; // a fresh file opens at step 2 (NBA: a first upload starts at tab 1 of its rows)
+      ent.screen = "entries";
+    }
     if (key !== null && ent.weekKey === key) await loadFiles(key);
     // notRead (G62): the server's "rows not read" line for the file, or null; the header's status line repeats it.
     return { ok: true, entries: data.entries?.length ?? 0, contests: contestCount(data.entries), notRead: [data.notRead, data.note].filter((s) => typeof s === "string" && s).join(" ") || null }; // the site's upload may add a note (earlier weeks' files removed): shown with it, G62
@@ -321,6 +338,7 @@ export function createEntriesWire(config = {}) {
       else o[g.contestId] = btn.dataset.class;
       store.storeClasses(file, ent.classes[file]);
       fillOf(file);
+      delete ent.undo[file]; // review finding 3 of 11-23: a class move ends the bulk fill's Undo
       refresh();
     });
     on("input[data-fill='overwrite']", "change", (box) => {
@@ -352,6 +370,7 @@ export function createEntriesWire(config = {}) {
       const picks = f?.slate ? effectiveAssignments(f.entries, lineupsOf(f), ent.assign[file]) : ent.assign[file];
       ent.fill[file] = reproposeFill(ent.fill[file], picks); // the "(leave as is)" rows open again; hand picks stay (Adam 2026-10-18)
       store.storeKeep(btn.dataset.file, ent.fill[btn.dataset.file]?.keep); // 🔵 2026-10-17 (F1): the stored key follows the new keep
+      delete ent.undo[file]; // review finding 3 of 11-23: the kept rows changed, so the bulk fill's Undo is gone
       refresh();
     });
   }
@@ -381,6 +400,7 @@ export function createEntriesWire(config = {}) {
     el.querySelectorAll("[data-action='entries-tab']").forEach((btn) => {
       btn.addEventListener("click", () => {
         ent.tab[btn.dataset.file] = btn.dataset.tab === "cash" ? "cash" : "gpp";
+        delete ent.sel[btn.dataset.file]; // a selection belongs to the tab it was made in
         refresh();
       });
     });
@@ -392,8 +412,11 @@ export function createEntriesWire(config = {}) {
     });
   }
 
+  // NBA's screen controls (entries-wire-screen.js): the row boxes, the steps, the bulk fills, Undo, Reset entries and the drop.
+  const { bindSelect, bindScreen } = createScreenBindings({ ent, fillNow, fileOf, refresh, picksChanged, doUpload, getFileContext: () => ctx.getFileContext() });
+
   function bind(el) {
-    el.querySelector("[data-action='entries-upload']")?.addEventListener("click", () => el.querySelector(`#${cfg.fileInputId}`)?.click());
+    el.querySelectorAll("[data-action='entries-upload']").forEach((btn) => btn.addEventListener("click", () => el.querySelector(`#${cfg.fileInputId}`)?.click()));
     el.querySelector(`#${cfg.fileInputId}`)?.addEventListener("change", (ev) => {
       const file = ev.target.files?.[0];
       ev.target.value = ""; // the same file can be chosen again
@@ -411,6 +434,8 @@ export function createEntriesWire(config = {}) {
     });
     bindFill(el);
     bindFold(el);
+    bindSelect(el);
+    bindScreen(el);
     el.querySelectorAll("[data-action='entries-clear']").forEach((btn) => {
       btn.addEventListener("click", () => {
         const file = btn.dataset.file;
@@ -457,6 +482,7 @@ export function createEntriesWire(config = {}) {
       ent.tab = {};
       ent.adjust = {};
       ent.busyFile = null;
+      Object.assign(ent, { screen: "entries", active: null, sel: {}, lastSel: {}, undo: {}, bulkLineup: {}, msg: null });
       refresh();
       if (weekKey !== null) loadFiles(weekKey);
     }
@@ -477,5 +503,5 @@ function saveBlob(blob, filename) {
 }
 
 // The classic Entries tab (the main slate's): today's four names, so lineup.js, app.js and the tests import them unchanged.
-const classic = createEntriesWire({ lockedTextFor: (f) => slateLockedText({ kind: "classic", board: store.get().board, slateKey: f.slate?.key }) }); // a locked slate greys Download with its reason
+const classic = createEntriesWire({ rosterColumns: CLASSIC_ROSTER_COLUMNS, lockedTextFor: (f) => slateLockedText({ kind: "classic", board: store.get().board, slateKey: f.slate?.key }) }); // a locked slate greys Download with its reason
 export const { renderEntriesSection, wireEntries, uploadEntriesText, setUploadRouter } = classic;

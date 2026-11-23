@@ -47,9 +47,8 @@ export function repaintSlots(container, board, { cpt, flex }) {
 
 // One slot in the classic rows: filled is the row (a click on it takes his man out; lineup.js wires `clearAttrs`); Empty and "Not on this board" keep the seat's box and the same height.
 function slotHtml({ label, placed, row, palette, cls, data, clearAttrs, game }) {
-  const hint = `click a player in the ${label === "CPT" ? "Captain" : "FLEX"} list`; // an empty seat says how to fill it (walkthrough friction, PROJECT.md Part 4 item 5)
   const attrs = `${data}${placed ? ` ${clearAttrs} ${REMOVE}` : ""}`.trim();
-  if (!placed) return lookEmptyRowHtml(label, "Empty", { attrs, hint, cls });
+  if (!placed) return lookEmptyRowHtml(label, "Empty", { attrs, cls });
   if (!row) return lookEmptyRowHtml(label, "Not on this board", { attrs, cls });
   return slotPlayerHtml(row, label === "CPT", palette, attrs, game);
 }

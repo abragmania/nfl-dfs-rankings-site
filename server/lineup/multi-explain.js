@@ -187,6 +187,7 @@ function diagnose(rows, settings, slate, existingCount, prevKeys, opts, pin = nu
     // Per-player Max %: only a player already at his cap can be what blocks.
     blocking: [...opts.playerCap].filter(([id, { n }]) => rowOf.has(id) && (batchCounts.get(dkKeyOf(rowOf.get(id), id)) ?? 0) >= n).map(([id, { pct }]) => ({ id, name: nameOf(id), pct })),
     givenCaps: base.playerMaxExposure && typeof base.playerMaxExposure === "object" ? base.playerMaxExposure : {},
+    held: Array.isArray(base.noHeld) ? base.noHeld : [], // review round 2 finding 3 of 11-23: NO men held to their Min % share never bend
     entryTrials: stackTrials(entries, nameOf).map((t) => ({ label: t.label, patch: { qbStacks: { ...others, ...t.patch.qbStacks } } })),
     maxPerTeam: opts.maxPerTeam,
     capAllTeams: opts.capAllTeams,

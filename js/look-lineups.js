@@ -8,7 +8,7 @@ import { shownTotal } from "./totals.js";
 import { buildTypeText } from "./lineup-builds.js";
 import { lineupFigures, medianText, sortLineups, effectiveSort, nextSort, LOOK_SORT_KEYS, lookSortKeysFor } from "./lineup-sort.js";
 import { contrarianRead, contrarianHtml, contrarianMan, readBasisFor, ownFor } from "./lineup-contrarian.js"; // Adam 2026-11-04: the GPP Stack / Rest / Own vs field read on a card
-import { filterLineups, filterBarHtml, pickButtonHtml, applyCompare } from "./lineup-filter.js";
+import { filterLineups, filterBarHtml, pickButtonHtml, applyCompare, compareState } from "./lineup-filter.js";
 import { classicEntries, shownExposureEntries, cleanExpState, expColumns, exposureMark, zeroMinRows, OPT_POSITIONS } from "./lineup-exposure.js";
 import { statusLineHtml, rowMessageHtml, TONE_WARN } from "./row-message.js";
 import { requestTab } from "./lineup-tabs.js";
@@ -21,10 +21,10 @@ import { cashMedianText, unusedCapText, scoreOfRow, builtInTextCash, lineupModeO
 import { confirmHtml, anchorHtml, DELETE_QUESTION, REPLACE_QUESTION } from "./confirm-inline.js";
 import { dkSelectHtml, dkStatusLinesHtml } from "./dk-lineup-ui.js";
 import { dkLineupCsv, dkCsvFileName, dkCsvStatus, downloadText } from "./dk-lineup-csv.js";
-import { lookMan, lookTotals, ownText, lookFieldDiff, NO_FIGURE } from "./look-adapter.js";
-import { lookRowHtml, lookEmptyRowHtml } from "./look-row.js";
+import { lookMan, lookTotals, ownText, moneyText, projText, valueText, MISSING_WHY, NO_FIGURE } from "./look-adapter.js";
+import { lookRowHtml, lookEmptyRowHtml, logo } from "./look-row.js";
 import { state, opt, LINEUP_SLOTS, SALARY_CAP, dkIdentity, lineupBusy, placeBySlotName, commit, setMode } from "./lineup.js";
-import { identityOf, slateKeyOf, savedSetKeys, lineupSetKey, exposureOfLineups, cashStrip, slotsForSave, saveGeneratedUids, tabOfUid, removeBuild, currentRowById } from "./lineup-optimizer.js";
+import { identityOf, slateKeyOf, savedSetKeys, lineupSetKey, exposureOfLineups, slotsForSave, saveGeneratedUids, tabOfUid, removeBuild, currentRowById } from "./lineup-optimizer.js";
 import { savedOfActiveSlate, boardMediansForSort } from "./lineup-view.js";
 
 /** The screen's page state: the text typed in the player filter and, on a phone, whether the exposure table is open. The mode shown is the tab's own (`opt.mode`, D74: the board, the exposure and every download belong to one mode); which list shows is `opt.resultsTab`. */
@@ -160,14 +160,13 @@ function formatSavedAt(iso) {
   return `${d.toLocaleString("en-US", { timeZone: "America/New_York", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })} ET`;
 }
 
-/** One Recently generated card: the nine rows (batch figures for Proj, Own and Salary, the board's matchup), the totals line, Save and Discard. `saved`: the card is saved, or its men equal a saved lineup's, so Save shows `Saved ✓`. `cash` = {basis, strip: {html, wantIn}} on a card built in cash. `tab`: the tab (gpp, cash) the card's batch belongs to. `locked`: ids of the men the batch padlocked (C6: a man only clicked into the lineup is not locked). */
+/** One Recently generated card: the nine rows (batch figures for Proj, Own and Salary, the board's matchup), the totals line, Save and Discard. `saved`: the card is saved, or its men equal a saved lineup's, so Save shows `Saved ✓`. `cash` = {basis} on a card built in cash. `tab`: the tab (gpp, cash) the card's batch belongs to. `locked`: ids of the men the batch padlocked (C6: a man only clicked into the lineup is not locked). */
 export function optLineupCardHtml(lineup, index, busy, { saved = false, rowById = null, cash = null, tab = "gpp", locked = new Set() } = {}) {
   const palette = paletteForRows(rowById);
   const rows = (lineup.players ?? []).map((p, i) => {
     const live = rowById?.get(String(p.id)) ?? null;
     const man = lookMan(live ? { ...p, id: p.id } : p, live);
-    const want = cash?.strip.wantIn.has(String(p.id));
-    return lookRowHtml(man, { slot: LINEUP_SLOTS[i] ?? p.pos ?? "", kind: "card", locked: locked.has(String(p.id)), palette, note: want ? "WANT" : "" });
+    return lookRowHtml(man, { slot: LINEUP_SLOTS[i] ?? p.pos ?? "", kind: "card", locked: locked.has(String(p.id)), palette });
   }).join("");
   const t = lookTotals((lineup.players ?? []).map((p) => ({ salary: p.salary, proj: p.proj, own: p.own })), { cap: SALARY_CAP });
   const unused = cash ? unusedCapText(t.used) : "";
@@ -181,7 +180,6 @@ export function optLineupCardHtml(lineup, index, busy, { saved = false, rowById 
     ${rows}
     ${capShortHtml(t, extra)}
     ${readLine ? `<div class="lt-read">${readLine}</div>` : ""}
-    ${cash ? cash.strip.html : ""}
   </div>`;
 }
 
@@ -242,7 +240,7 @@ export function savedLineupPlayers(lineup, rowById) {
   return (lineup.slots ?? []).map((s) => {
     const id = String(s.playerId);
     const row = rowById.get(id);
-    return row ? { id, name: row.name, pos: row.pos, team: row.team, opp: matchupText(row), own: row.own ?? null, identity: dkIdentity(row) } : { id, name: s.name, pos: s.pos, team: s.team, opp: "", own: s.own ?? null, identity: id };
+    return row ? { id, name: row.name, pos: row.pos, team: row.team, opp: matchupText(row), own: row.own ?? null, salary: row.salary ?? null, proj: row.proj ?? null, identity: dkIdentity(row) } : { id, name: s.name, pos: s.pos, team: s.team, opp: "", own: s.own ?? null, salary: s.salary ?? null, proj: s.proj ?? null, identity: id };
   });
 }
 
@@ -259,30 +257,38 @@ function activeResultsTab(savedHere) {
 
 // ---- the exposure panel ----
 
-/** The exposure panel (A10): every column sorts (the state is opt.exp, `opt-exp-sort`, lineup-optimizer.js), a Pos filter, each man's share of the shown lineups, his count, position, matchup (D43) and Own, the You-vs-field bar and Diff (share minus Own, a dash when Own is unpublished), and his Filter button. */
-export function exposureHtml(entries, label, marks, pick) {
+/** A man's exposure entry with Salary, Proj and Value (NBA's exposure table, Adam 11-23): the batch's figure when it carries one, else the live row's; Value is the row's own figure, never computed here. */
+function withFigures(e, rowById) {
+  const row = e.id != null ? rowById?.get(String(e.id)) : null;
+  return { ...e, salary: e.salary ?? row?.salary ?? null, proj: e.proj ?? row?.proj ?? null, value: row?.value ?? null };
+}
+
+/** The exposure panel (A10), NBA's columns: every column sorts (the state is opt.exp, `opt-exp-sort`, lineup-optimizer.js), a Pos filter, each man's share of the shown lineups and his count, his logo, name and matchup (D43), position, Own, Salary, Proj and Value (a dash with its reason when no source gave one), and his Filter button. */
+export function exposureHtml(entries, label, marks, pick, rowById = currentRowById()) {
   const st = cleanExpState(opt.exp, "classic");
-  const shown = shownExposureEntries(entries, st, "classic", pick ? (id) => pick.isChosen(id) : null);
+  const shown = shownExposureEntries(entries.map((e) => withFigures(e, rowById)), st, "classic", pick ? (id) => pick.isChosen(id) : null);
+  const FIG_TITLE = { salary: "Salary", proj: "Projected DraftKings points", value: "Projected points per $1,000 of salary" };
   const heads = expColumns("classic").filter((c) => c.key !== "opp").map((c) => { // Matchup is shown beside the name (D43), not as its own column
     const active = st.col === c.key;
-    return `<th class="sortable${active ? " sorted" : ""}${c.key === "pct" || c.key === "own" ? ` ex-${c.key === "pct" ? "pct" : "own"}` : ""}" data-action="opt-exp-sort" data-col="${c.key}" aria-sort="${active ? (st.dir === "asc" ? "ascending" : "descending") : "none"}">${escapeHtml(c.label === "Matchup" ? "Opp" : c.label)}${active ? (st.dir === "asc" ? " ▲" : " ▼") : ""}</th>`;
+    const cls = c.key === "pct" ? " ex-pct" : c.key === "own" ? " ex-own" : FIG_TITLE[c.key] ? " ex-fig" : "";
+    return `<th class="sortable${active ? " sorted" : ""}${cls}" data-action="opt-exp-sort" data-col="${c.key}"${FIG_TITLE[c.key] ? ` title="${FIG_TITLE[c.key]}"` : ""} aria-sort="${active ? (st.dir === "asc" ? "ascending" : "descending") : "none"}">${escapeHtml(c.label === "Matchup" ? "Opp" : c.label)}${active ? (st.dir === "asc" ? " ▲" : " ▼") : ""}</th>`;
   });
   const dash = (why) => dashSpan(why);
+  const fig = (v, text, why) => `<td class="ex-fig">${typeof v === "number" && Number.isFinite(v) ? escapeHtml(text(v)) : dash(why)}</td>`;
   const rows = shown.map((e) => {
     const mark = exposureMark(e, marks, null);
     const hasOwn = typeof e.own === "number" && Number.isFinite(e.own);
-    const diff = lookFieldDiff(e.pct, e.own);
     return `<tr class="${mark ? "exp-off" : ""}">
       <td class="ex-pct"${mark ? ` title="${escapeHtml(mark.title)}"` : ""}>${(e.pct ?? 0).toFixed(1)}% <span class="ex-n">(${e.count ?? 0})</span></td>
-      <td class="ex-name"${e.id != null ? ` data-card-id="${escapeHtml(String(e.id))}"` : ""}><span class="pn player-name">${escapeHtml(e.name ?? "")}</span>${e.opp ? `<span class="slt ex-opp">${escapeHtml(opponentWords(e.opp))}</span>` : ""}</td>
+      <td class="ex-name"${e.id != null ? ` data-card-id="${escapeHtml(String(e.id))}"` : ""}><span class="exn">${logo(e.team)}<span class="pn player-name">${escapeHtml(e.name ?? "")}</span>${e.opp ? `<span class="slt ex-opp">${escapeHtml(opponentWords(e.opp))}</span>` : ""}</span></td>
       <td>${escapeHtml(e.pos ?? "")}</td>
-      <td class="ex-own">${hasOwn ? escapeHtml(ownText(e.own)) : dash("no published ownership")}</td>
-      ${hasOwn ? `<td class="ex-bar"><span class="xb"><i style="width:${Math.min(100, Math.max(0, e.pct ?? 0)).toFixed(1)}%"></i><u style="left:${Math.min(100, Math.max(0, e.own)).toFixed(1)}%"></u></span></td><td class="ex-diff">${diff >= 0 ? "+" : "−"}${Math.abs(diff).toFixed(1)}</td>` : `<td class="ex-bar">${dash("no published ownership")}</td><td class="ex-own">${dash("no published ownership")}</td>`}
+      <td class="ex-own">${hasOwn ? escapeHtml(ownText(e.own)) : dash(MISSING_WHY.own)}</td>
+      ${fig(e.salary, moneyText, MISSING_WHY.salary)}${fig(e.proj, projText, MISSING_WHY.proj)}${fig(e.value, valueText, MISSING_WHY.value)}
       <td class="ex-f">${pickButtonHtml({ id: e.id, name: e.name ?? "", chosen: pick?.isChosen(e.id), cls: pick?.isChosen(e.id) ? "xf on" : "xf", innerHtml: "Filter" })}</td>
     </tr>`;
   }).join("");
   const posButtons = ["All", ...OPT_POSITIONS].map((p) => `<button type="button" class="xf${st.filter === p ? " on" : ""}" data-action="opt-exp-filter" data-filter="${p}" aria-pressed="${st.filter === p}">${p}</button>`).join("");
-  return `<div class="lt-ex opt-exposure"><div class="lt-exh">Exposure · ${escapeHtml(label)}</div><div class="exl"><div class="expos"><span>Pos</span>${posButtons}</div>${shown.length ? `<table class="ext"><thead><tr>${heads.join("")}<th class="ex-bar" title="Bar: his share of these lineups. Tick: his projected ownership.">You vs field</th><th class="ex-diff" title="Exposure minus Own">Diff</th><th></th></tr></thead><tbody>${rows}</tbody></table>` : `<div class="lt-empty">None</div>`}</div></div>`;
+  return `<div class="lt-ex opt-exposure"><div class="lt-exh">Exposure · ${escapeHtml(label)}</div><div class="exl"><div class="expos"><span>Pos</span>${posButtons}</div>${shown.length ? `<table class="ext"><thead><tr>${heads.join("")}<th></th></tr></thead><tbody>${rows}</tbody></table>` : `<div class="lt-empty">None</div>`}</div></div>`;
 }
 
 /** A phone's plain switch for the exposure table: the cards come first, the table behind this (look.css hides it on a wider screen, where the table always shows). */
@@ -322,10 +328,34 @@ const clock = (iso) => (iso ? new Date(iso).toLocaleTimeString("en-US", { timeZo
 
 // ---- the screen ----
 
+// A redraw (a card's Save, a Discard, a sort) replaces the screen's markup, and the page and the two boxes that scroll on their own (the exposure table and the cards) would start at the top again:
+// the draw notes where they stand and the wiring puts them back, for the same list of the same mode only (Adam 12:39 PM 11-23).
+let keptScroll = null;
+const scrollKey = (view) => `${view}:${opt.mode}`;
+function keepLineupsScroll(view) {
+  keptScroll = null;
+  if (typeof document === "undefined" || typeof window === "undefined") return;
+  const box = (sel) => document.querySelector?.(`#lineups ${sel}`);
+  if (!box(".lt-body")) return; // nothing on screen yet to keep
+  keptScroll = { key: scrollKey(view), page: window.scrollY, cards: box(".lt-cards")?.scrollTop ?? 0, ex: box(".lt-ex")?.scrollTop ?? 0 };
+}
+function restoreLineupsScroll(container) {
+  const kept = keptScroll;
+  keptScroll = null;
+  const section = container.querySelector?.("#lineups");
+  if (!kept || !section || kept.key !== scrollKey(section.dataset.lineupsView)) return;
+  const cards = section.querySelector(".lt-cards");
+  const ex = section.querySelector(".lt-ex");
+  if (cards) cards.scrollTop = kept.cards;
+  if (ex) ex.scrollTop = kept.ex;
+  if (Math.abs(window.scrollY - kept.page) > 1) window.scrollTo(window.scrollX, kept.page);
+}
+
 /** The Lineups tab's whole markup. */
 export function lineupsScreenHtml(rowById) {
   const savedHere = savedOfActiveSlate(null);
   const view = activeResultsTab(savedHere);
+  keepLineupsScroll(view);
   const batches = shownBatches(rowById);
   const nBuilt = batches.reduce((t, b) => t + b.shown.length, 0);
   const builtHere = opt.results?.lineups?.length ?? 0;
@@ -343,7 +373,7 @@ export function lineupsScreenHtml(rowById) {
   };
   const savedShown = shownSaved(rowById);
   const pick = PICK(rowById);
-  const mustBar = filterBarHtml(opt.mustHave.map((key) => ({ key, name: opt.mustHaveNames[key] ?? key })), view === "new" ? nBuilt : savedShown.length, view === "new" ? builtHere : savedOfMode.length, ltState.compare === true);
+  const mustBar = filterBarHtml(opt.mustHave.map((key) => ({ key, name: opt.mustHaveNames[key] ?? key })), view === "new" ? nBuilt : savedShown.length, view === "new" ? builtHere : savedOfMode.length, compareState.on);
   let top, body;
   if (view === "saved") {
     ({ top, body } = savedViewHtml(savedOfMode, savedShown, rowById, pick));
@@ -416,19 +446,18 @@ function newViewHtml(batches, rowById, pick, nBuilt) {
     const keys = lookSortKeysFor(isCash ? r.basis === "median" : boardMediansForSort(), !isCash);
     const sort = effectiveSort(opt.sort.new, keys);
     const ordered = sortLineups(shown, sort.key, sort.dir, (e) => newFigures(e.item, rowById), LOOK_SORT_KEYS);
-    const cash = (lineup) => (isCash ? { basis: r.basis, strip: cashStrip(lineup, r, rowById, busy) } : null);
+    const cash = (lineup) => (isCash ? { basis: r.basis } : null);
     const heldIds = (r.lockedIds ?? r.cash?.lockedIds ?? []).map(String);
     const locked = new Set((r.padlockedIds ?? []).map(String)); // C6: Locked means the padlock, on the build line, the card and the builder alike; a man only clicked in is "In the lineup"
-    const names = (ids) => ids.map((id) => rowById.get(String(id))?.name).filter(Boolean).join(", ");
+    const names = (ids) => ids.map((id) => rowById.get(String(id))).filter(Boolean).map((r) => `<span class="lt-bman">${logo(r.team)}${escapeHtml(r.name)}</span>`).join(" "); // every name here carries his team logo (Adam 12:41 PM 11-23)
     const held = names([...locked]);
     const inLineup = names(heldIds.filter((id) => !locked.has(id)));
     const when = r.builtAt ? clock(r.builtAt) : "";
     const countText = `${r.lineups.length} lineup${r.lineups.length === 1 ? "" : "s"}`;
     const headText = `${isCash ? "Cash" : "GPP"}, ${countText}${when ? `, ${when}` : ""}`;
     const noteBits = [isCash ? builtInTextCash(r.lineups.length, r.basis) : r.builtIn ? `built in ${r.builtIn}` : ""].filter(Boolean);
-    groups.push(`<div class="lt-bh"><b>${escapeHtml(headText)}</b>${held ? `<span class="lt-bn">Locked: ${escapeHtml(held)}</span>` : ""}${inLineup ? `<span class="lt-bn">In the lineup: ${escapeHtml(inLineup)}</span>` : ""}${noteBits.length ? `<span class="lt-bn lt-bq">${escapeHtml(noteBits.join(" · "))}</span>` : ""}<button type="button" class="sm lt-bdl" data-lt-dl="build:${tab}" title="Download only this build's lineups for DraftKings">Download (${shown.length})</button><button type="button" class="sm x" data-action="lt-remove-build" data-tab="${tab}" title="Remove this build (saved lineups stay)">Remove build</button></div>
+    groups.push(`<div class="lt-bh"><b>${escapeHtml(headText)}</b>${held ? `<span class="lt-bn">Locked: ${held}</span>` : ""}${inLineup ? `<span class="lt-bn">In the lineup: ${inLineup}</span>` : ""}${noteBits.length ? `<span class="lt-bn lt-bq">${escapeHtml(noteBits.join(" · "))}</span>` : ""}<button type="button" class="sm lt-bdl" data-lt-dl="build:${tab}" title="Download only this build's lineups for DraftKings">Download (${shown.length})</button><button type="button" class="sm x" data-action="lt-remove-build" data-tab="${tab}" title="Remove this build (saved lineups stay)">Remove build</button></div>
       ${opt.tabs[tab].saveError ? `<div class="lt-bnote">${statusLineHtml(opt.tabs[tab].saveError, opt.tabs[tab].saveTone)}</div>` : ""}
-      ${isCash && opt.cashUndo ? `<div class="lt-bnote cash-undo">Locked ${escapeHtml(opt.cashUndo.names.join(" and "))} and built again. <button type="button" class="link-btn" data-cash-undo${busy ? " disabled" : ""}>Undo</button></div>` : ""}
       ${optNotesHtml(r.notes)}
       ${r.lineups.length ? (ordered.length ? ordered.map((e) => optLineupCardHtml(e.item, e.index, busy, { saved: savedFlags[e.index], rowById, cash: cash(e.item), tab, locked })).join("") : `<div class="lt-bnote lt-empty saved-lineups-empty">No lineups here have all of the chosen players.</div>`) : `<div class="lt-bnote lt-empty">None left from this Build.</div>`}
       ${whole ? bendsLineHtml(r.bends, r.made) : ""}`);
@@ -471,8 +500,9 @@ function downloadLineups(lineups) {
 /** The Lineups screen's own controls (the GPP | Cash switch, the typed filter, Save all unsaved, Remove build, the Download buttons); the cards' Save, Discard, Load, Delete and the exposure's Filter buttons are wired with the Optimizer (lineup-optimizer.js, lineup.js). */
 export function wireLineupsScreen(container) {
   const rowById = currentRowById();
-  applyCompare(container, ltState.compare === true, opt.mustHave, (el) => identityOf(el.dataset.cardId, rowById)); // Compare: the held men's rows grey (page state, off on reload)
-  container.querySelector("[data-action='opt-compare']")?.addEventListener("click", () => { ltState.compare = ltState.compare !== true; commit(); });
+  applyCompare(container, compareState.on, opt.mustHave, (el) => identityOf(el.dataset.cardId, rowById)); // Compare: the held men's rows grey (page state, off on reload)
+  container.querySelector("[data-action='opt-compare']")?.addEventListener("click", () => { compareState.on = !compareState.on; commit(); });
+  restoreLineupsScroll(container);
   container.querySelectorAll("[data-lt-mode]").forEach((btn) => {
     btn.addEventListener("click", () => {
       if (opt.saving || state.saving || opt.mode === btn.dataset.ltMode) return;

@@ -103,7 +103,6 @@ body:not(.nl-page) #classic-header{padding:0 var(--sp-5)}
 .nl .opt .lu.wk .wkr.empty .sn b{font:500 0.8125rem "Space Grotesk",sans-serif}
 .nl .opt .lu.wk .wkr.empty .sn{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .nl .opt .lu.wk .wkr.empty .sn b{display:inline}
-.nl .opt .lu.wk .wkr.empty .eh{font:400 0.7188rem "Space Grotesk",sans-serif;color:var(--dim)} /* how to fill an empty seat (walkthrough friction) */
 .nl .opt .lu.wk .wkr.tm{box-shadow:none}
 .nl .opt .lu.wk .wkr.hand{cursor:pointer}
 .nl .opt .lu.wk .cap{margin-top:0.375rem}
@@ -250,7 +249,8 @@ html[data-theme="light"] .nl{--pc-qb:#b8163f;--pc-rb:#0d7a44;--pc-wr:#1f5fbf;--p
 .nl .filter-qb-note.opt-warn{color:var(--am)}
 .nl .build-notice{margin:0.125rem 0;font-size:0.75rem;color:var(--am)}
 /* The lineups: slot-first rows, one row design everywhere. */
-.nl #lineups .lt-cards{grid-template-columns:repeat(auto-fill,minmax(27.5rem,1fr))}
+.nl #lineups .lt-cards{grid-template-columns:repeat(auto-fill,minmax(24rem,1fr))} /* Adam 11-23: more than two cards to a row at 1920 wide (NBA's grid; its minimum is 21.875rem) */
+.nl #lineups .lt-body{grid-template-columns:minmax(30rem,max-content) minmax(0,1fr)} /* the exposure column takes the room its NBA columns need, as NBA's does */
 .nl #lineups .crow.lead.lr{grid-template-columns:2.125rem 1.25rem minmax(0,1fr) 2.875rem 2rem 2.5rem;padding:0 0.25rem 0 0;min-height:1.75rem;align-items:stretch;gap:0.25rem}
 .nl #lineups .crow.lead.lr.hasswap{grid-template-columns:2.125rem 1.25rem minmax(0,1fr) 1.375rem 2.875rem 2rem 2.5rem}
 .nl #lineups .crow.lr>*{align-self:center}
@@ -274,6 +274,8 @@ html[data-theme="light"] .nl{--pc-qb:#b8163f;--pc-rb:#0d7a44;--pc-wr:#1f5fbf;--p
 .nl .lt-bdl{margin-left:auto}
 .nl .lt-bn{margin-left:0.875rem;color:var(--mu);font-size:0.75rem;font-weight:500}
 .nl .lt-bq{color:var(--dim)}
+.nl .lt-bman{display:inline-flex;align-items:center;gap:0.25rem;margin-right:0.5rem}
+.nl .lt-bman .logo.sm,.nl .lt-bman .chipx.sm{width:1rem;height:1rem}
 .nl #lineups .lt-bh button.sm{padding:0.1875rem 0.625rem;font-size:0.6563rem;font-weight:800}
 .nl #lineups .lt-bh button.lt-bdl{margin-left:auto}
 .nl #lineups .lt-bh button.sm.x{margin-left:0.5rem}
@@ -284,9 +286,14 @@ html[data-theme="light"] .nl{--pc-qb:#b8163f;--pc-rb:#0d7a44;--pc-wr:#1f5fbf;--p
 .nl .dk-status-line{display:block}
 .nl .dk-status-bad{color:var(--rd)}
 .nl #lineups .lt-ex .ext th:nth-child(4),.nl #lineups .lt-ex .ext td:nth-child(4){display:table-cell}
-.nl #lineups .lt-ex .ext td.ex-name{white-space:nowrap}
-.nl #lineups .lt-ex .ext td.ex-name>*{display:inline;max-width:none}
-.nl #lineups .lt-ex .ext .ex-opp{color:var(--mu);font-size:0.6563rem;margin-left:0.3125rem}
+.nl #lineups .lt-ex .ext td.ex-name{white-space:nowrap;max-width:none;overflow:visible;padding-right:0.75rem}
+.nl #lineups .lt-ex .ext td.ex-name>.exn{display:flex;align-items:center;gap:0.375rem;min-width:max-content;max-width:none;overflow:visible} /* NBA's name cell: logo, name, matchup */
+.nl #lineups .lt-ex .ext td.ex-name .exn>*{display:block;max-width:none;overflow:visible;white-space:nowrap}
+.nl #lineups .lt-ex .ext td.ex-name .logo.sm,.nl #lineups .lt-ex .ext td.ex-name .chipx.sm{flex:none;width:1.25rem;height:1.25rem}
+.nl #lineups .lt-ex .ext th:nth-child(2){width:auto}
+.nl #lineups .lt-ex .ext th.ex-fig,.nl #lineups .lt-ex .ext td.ex-fig{text-align:right;font-variant-numeric:tabular-nums;padding-left:0.25rem}
+.nl #lineups .lt-ex .ext td.ex-fig{color:var(--tx)}
+.nl #lineups .lt-ex .ext .ex-opp{color:var(--mu);font-size:0.6563rem;margin-left:0}
 html[data-theme="light"] .nl .opt .xb{background:#dfdfd8}
 .nl .ext tr.exp-off td{color:var(--am)}
 /* Calm look: bright amber only on the selected tab or segment, the Build button, the sort arrow, projections and stars. */
@@ -360,7 +367,6 @@ html[data-theme="light"] .nl .opt .lch button.sm,html[data-theme="light"] .nl #l
   .nl .opt .lu.wk .wkr.empty{outline:2px dashed color-mix(in srgb,var(--mu) 45%,transparent);outline-offset:-0.3125rem;background:color-mix(in srgb,var(--mu) 5%,transparent)}
   .nl .opt .lu.wk .wkr.empty>.sl{background:none;border:0;color:var(--mu);font-size:0.9375rem}
   .nl .opt .lu.wk .wkr.empty .sn b{font:600 1.25rem "Space Grotesk",sans-serif}
-  .nl .opt .lu.wk .wkr.empty .eh{font:400 0.875rem "Space Grotesk",sans-serif}
   .nl .opt .lu.wk .cap{margin-top:0.75rem}
   .nl .opt .lu.wk .capbar{height:0.5rem}
   .nl .opt .lu.wk .cap .capt{align-items:flex-end;gap:0.625rem;padding:0.75rem 0.25rem 1.125rem;font-size:0.7188rem;font-weight:700;letter-spacing:0.0563rem;text-transform:uppercase;color:var(--mu)}
@@ -411,7 +417,6 @@ html[data-theme="light"] .nl .opt .lch button.sm,html[data-theme="light"] .nl #l
   .nl .opt .lu.wk .wkr.empty>.sl{background:none;border:0;color:var(--mu)}
   .nl .opt .lu.wk .wkr.empty{outline:2px dashed color-mix(in srgb,var(--mu) 45%,transparent);outline-offset:-0.3125rem}
   .nl .opt .lu.wk .wkr.empty .sn b{font:600 1.125rem "Space Grotesk",sans-serif}
-  .nl .opt .lu.wk .wkr.empty .eh{font-size:0.7813rem}
   .nl .opt .lu.wk .capbar{height:0.375rem}
   .nl .opt .lu.wk .cap .capt{flex-wrap:nowrap;align-items:flex-end;gap:0.375rem;padding:0.75rem 0.125rem 1.25rem;font-size:0.625rem;font-weight:700;letter-spacing:0.0187rem;text-transform:uppercase}
   .nl .opt .lu.wk .cap .capt span{position:relative;flex-direction:column;align-items:flex-start;gap:0.1875rem}

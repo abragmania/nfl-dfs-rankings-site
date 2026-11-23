@@ -260,10 +260,14 @@ export function bendTrials(s) {
     trials.push({ label: `the ${pos} maximum exposure (${label})`, kind: "posMax", patch: { maxExposure: rest } });
   }
   if (s.spreadDst) trials.push({ label: "Spread defenses", kind: "spreadDst", patch: { spreadDst: false } });
-  if (s.blocking.length > 6) {
-    trials.push({ label: "the players' Max % settings", kind: "playerMax", patch: { playerMaxExposure: {} } });
+  // Review round 2 finding 3 of 11-23: a NO man held to his Min % share (s.held, no-list.js) never bends past it; his cap stays in every patch.
+  const held = new Set((Array.isArray(s.held) ? s.held : []).map(String));
+  const blocking = s.blocking.filter((b) => !held.has(String(b.id)));
+  if (blocking.length > 6) {
+    const kept = Object.fromEntries(Object.entries(s.givenCaps ?? {}).filter(([k]) => held.has(String(k).trim())));
+    trials.push({ label: "the players' Max % settings", kind: "playerMax", patch: { playerMaxExposure: kept } });
   } else {
-    for (const b of s.blocking) {
+    for (const b of blocking) {
       const rest = Object.fromEntries(Object.entries(s.givenCaps).filter(([k]) => String(k).trim() !== b.id));
       trials.push({ label: `the Max % of ${b.pct}% on ${b.name}`, kind: "playerMax", patch: { playerMaxExposure: rest } });
     }

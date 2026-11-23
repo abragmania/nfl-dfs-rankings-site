@@ -23,7 +23,8 @@ import { statusSwitchHtml } from "./status-switch.js"; // the status mark as a p
 import { crossedNoteHtml } from "./limit-cross.js"; // item 18: Min % above Max % is said under the Max box
 import { refusalNoteHtml } from "./limit-box.js"; // item 7: a refused Min % / Max % text is drawn beside its row until the next press
 import { state, opt, LINEUP_SLOTS, SALARY_CAP, dkIdentity } from "./lineup.js";
-import { slateKeyOf, playerMaxFor, playerMinFor, parsePct, wantIdsFor } from "./lineup-optimizer.js";
+import { slateKeyOf, playerMaxFor, playerMinFor, parsePct } from "./lineup-optimizer.js";
+import { noListKey, noIds, splitByBoard, noCellHtml, noTagHtml, noChipHtml } from "./no-picks.js"; // Monday 11-23 item 4: NBA's NO
 
 /** The identity of every currently-placed player (🔵 finding 6), used both to make a click on an already-placed
  *  row take him out and to block adding the same DraftKings player twice under a different board id. */
@@ -156,11 +157,12 @@ function sortableHeads() {
 
 const PLAIN_HEADS = {
   thumbs: `<th class="bmp k-thumbs" title="Thumbs: raise or lower his projection 5% a press">Thumbs</th>`, // the Columns list's words (A1, A17)
-  lock: `<th class="ctl k-lock" title="Lock puts a player in the lineup">Lock</th>`,
-  exclude: `<th class="ctl k-excl" title="Exclude keeps a player out of every lineup">Exclude</th>`,
+  // Monday 11-23 item 4: NBA's blank heads over Lock, NO and Exclude (player-table.js CTL_HEAD), the words on hover
+  lock: `<th class="ctl k-lock" title="Lock puts a player in the lineup" aria-label="Lock"></th>`,
+  no: `<th class="ctl k-no" title="NO: builds in this mode leave him out" aria-label="NO"></th>`,
+  exclude: `<th class="ctl k-excl" title="Exclude keeps a player out of every lineup" aria-label="Exclude"></th>`,
   min_pct: `<th class="lim k-lim" title="Fewest of the new lineups this player must be in; blank = none">Min %</th>`,
   max_pct: `<th class="lim k-lim" title="Most of the new lineups this player may be in; blank = no cap">Max %</th>`,
-  cash: `<th class="cs k-cash" title="Lock puts a player in every lineup; Want puts him on your list, and each lineup shows whether he made it; Fine leaves him to the numbers">Cash</th>`,
 };
 
 /** The pool's head row for `keys`, sorted by `sort`. */
@@ -182,11 +184,12 @@ export function rightColumnHtml(rows, rowById, opts = {}) {
   // a player already locked, excluded or clicked into the lineup stays listed so his lock, exclude or place can still be undone here.
   // D33: Value colours as on Rankings, FLEX included.
   const graded = rowsGradedForView(rows, filters.pos, store.get().board?.rows ?? rows);
-  const cash = opt.mode === "cash"; // Cash mode job 3b, 2026-10-17: one Cash column of Must | Want | Fine in place of Min % and Max %
-  const wantSet = new Set(cash ? wantIdsFor(slateKeyOf(store.get().board)) : []);
+  const noKey = noListKey(store.get().board, slateKeyOf(store.get().board)); // Monday 11-23 item 4: the open mode's NO list (no-picks.js), NBA's set in GPP and Cash
+  const noSplit = splitByBoard(noIds(opt.mode, noKey), (id) => rowById.has(id));
+  const noSet = new Set(noSplit.on);
   const slotIds = new Set(state.slots.filter(Boolean).map((s) => String(s.id))); // D3 (round 3 fixes): a man clicked into the lineup stays listed under the floor too, so his click can undo it
   const filtered = filterRows(graded, { ...filters, showAllPlayers: true }).filter(
-    (row) => passesProjFloor(row, filters) || adamTouched(row) || state.locks.has(String(row.id)) || state.excludes.has(String(row.id)) || wantSet.has(String(row.id)) || slotIds.has(String(row.id))
+    (row) => passesProjFloor(row, filters) || adamTouched(row) || state.locks.has(String(row.id)) || state.excludes.has(String(row.id)) || noSet.has(String(row.id)) || slotIds.has(String(row.id))
   );
   // The columns are Adam's own ticks and order (A17, columns.js), the standard's order until he changes it (A1): star, Player, Sal, Proj, Own, Val,
   // then the row controls, thumbs, Lock, Exclude, Min % and Max % (Cash: its chips in place of Lock, Min % and Max %), then the rest. Headers sort through the
@@ -205,9 +208,10 @@ export function rightColumnHtml(rows, rowById, opts = {}) {
   const maxMap = playerMaxFor(slateKey);
   const minMap = playerMinFor(slateKey);
   const palette = paletteForRows(rowById);
-  const bodyRows = sorted.map((row) => rightRowHtml(row, pickOf(row), placed, showPos(filters.pos) && !keys.includes("pos"), maxMap, minMap, cash ? wantSet : null, keys, palette)).join("");
+  const bodyRows = sorted.map((row) => rightRowHtml(row, pickOf(row), placed, showPos(filters.pos) && !keys.includes("pos"), maxMap, minMap, noSet, keys, palette)).join("");
+  const noChip = noChipHtml({ mode: opt.mode, ids: noSplit.on, gone: noSplit.gone, nameOf: (id) => rowById.get(id)?.name ?? id });
   const emptyRow = sorted.length > 0 ? "" : poolOnly ? poolNoMatchRowHtml(keys.length) : filters.starredOnly ? poolEmptyRowHtml(graded, filters.pos, keys.length) : rows.length ? poolNoMatchRowHtml(keys.length) : "";
-  return `
+  return `${noChip}
     <div class="tbl" id="lineup-pool">
       <table class="lineup-pool-table">
         <thead id="thead">${poolHeadHtml(keys, sortNow)}</thead>
@@ -266,8 +270,9 @@ export function ownCellInner(row, { canReset = true } = {}) {
 const canWrite = () => Boolean(poolCallbacks?.onBump);
 
 const idAttr = (id) => escapeHtml(String(id));
-function rightRowHtml(row, picked, placedSet, posShown, maxMap = {}, minMap = {}, cashWant = null, keys = poolColumnKeys(), palette = null) { // cashWant: a Set of Want ids in cash mode, else null; picked: poolPicker's {action, reason}
+function rightRowHtml(row, picked, placedSet, posShown, maxMap = {}, minMap = {}, noSet = null, keys = poolColumnKeys(), palette = null) { // noSet: the open mode's NO ids (no-picks.js); picked: poolPicker's {action, reason}
   const id = String(row.id);
+  const isNo = Boolean(noSet?.has(id));
   const maxText = maxMap[id] ?? "";
   const maxBad = Number.isNaN(parsePct(maxText));
   const minText = minMap[id] ?? "";
@@ -280,7 +285,7 @@ function rightRowHtml(row, picked, placedSet, posShown, maxMap = {}, minMap = {}
   // 🔵 finding 8: same dimming rule as the Rankings table.
   const dimmed = rowIsOut(row);
   const greyed = !pick && !excluded; // an excluded row keeps its own look; every other row that cannot be clicked is greyed (A18)
-  const rowClass = `team${excluded ? " excl" : locked ? " locked" : ""}${inLineup && !locked ? " inl" : ""}${dimmed ? " row-dimmed" : ""}${pick ? " pk" : ""}${greyed && !locked ? " blk" : ""}`;
+  const rowClass = `team${excluded ? " excl" : locked ? " locked" : ""}${inLineup && !locked ? " inl" : ""}${dimmed ? " row-dimmed" : ""}${pick ? " pk" : ""}${greyed && !locked ? " blk" : ""}${isNo ? " isno" : ""}`;
   const name = escapeHtml(row.name ?? "");
   const noWrite = !canWrite();
   const ownNum = typeof row.own === "number" && Number.isFinite(row.own) ? row.own : null;
@@ -288,14 +293,14 @@ function rightRowHtml(row, picked, placedSet, posShown, maxMap = {}, minMap = {}
   // The name cell (A1): logo, name, position and injury letter, then the matchup (D43) beside them (under them on a narrow screen), the click's message under them. The TwoGun dot follows the name for a status that changed after his board was made.
   const cells = {
     star: () => `<td class="ctl"><button type="button" class="fav${row.starred ? " on" : ""}" title="${row.starred ? "Starred" : "Star"}" data-action="toggle-star" data-id="${idAttr(id)}"${poolCallbacks?.onToggleStar ? "" : " disabled"}>${row.starred ? "★" : "☆"}</button></td>`,
-    player: () => `<td class="pl"><div class="who">${posShown ? poolPosHtml(row.pos) : ""}${teamLogoHtml(row.team, "logo", 24)}<div class="whot"><div class="l1"><span class="name player-name" title="${name}">${cardNameHtml(row)}</span>${statusSwitchHtml(row, playerTagHtml(row), { canWrite: false })}${poolNoLogoTeamHtml(row)}${markerHtml(twoGunMarkerTexts(row, "status"))}</div><div class="l2">${poolMatchupHtml(row, opponentLabel(row))}</div>${greyed ? poolWhyHtml(picked.short) : ""}</div></div>${poolRowMessageHtml(id)}</td>`, // the matchup sits beside the name (look.css, 901px up), a greyed row's few words after it, the full sentence on hover
+    player: () => `<td class="pl"><div class="who">${teamLogoHtml(row.team, "logo", 24)}<div class="whot"><div class="l1"><span class="name player-name" title="${name}">${cardNameHtml(row)}</span>${noTagHtml(isNo)}${statusSwitchHtml(row, playerTagHtml(row), { canWrite: false })}${poolNoLogoTeamHtml(row)}${markerHtml(twoGunMarkerTexts(row, "status"))}</div><div class="l2">${poolMatchupHtml(row, opponentLabel(row))}</div>${greyed ? poolWhyHtml(picked.short) : ""}</div>${posShown ? poolPosHtml(row.pos) : ""}</div>${poolRowMessageHtml(id)}</td>`, // Monday 11-23 item 5 (NBA's Pos left of Salary): logo, name and matchup, then the position chip at the cell's right edge
     salary: () => `<td class="num sal">${money(row.salary)}${markerHtml(twoGunMarkerTexts(row, "salary"))}</td>`,
     proj: () => `<td class="num proj"><div class="editable-cell" data-field="proj" data-id="${idAttr(id)}">${projCellInner(row, { canReset: !noWrite })}</div></td>`,
     own: () => `<td class="num bar own">${ownBar}<span class="v"><div class="editable-cell" data-field="own" data-id="${idAttr(id)}">${ownCellInner(row, { canReset: !noWrite })}</div></span></td>`,
     value: () => `<td class="num bar val"><span class="v">${gradedCellHtml(row.value, row.valueGrade)}</span></td>`,
     thumbs: () => `<td class="bmp">${bumpControlHtml(row, { enabled: Boolean(poolCallbacks?.onBump) })}</td>`,
-    cash: () => `<td class="cs">${cashChipsHtml(row, { locked, wanted: Boolean(cashWant?.has(id)), excluded, inLineup })}</td>`,
     lock: () => `<td class="ctl"><button type="button" class="lk${locked ? " on" : ""}" data-action="row-lock" data-id="${idAttr(id)}" aria-pressed="${locked}" title="${locked ? "Locked in every lineup. Click to unlock" : "Lock him into your lineup and every build"}"${excluded ? " disabled" : ""}>${LOCK_ICON}</button></td>`,
+    no: () => noCellHtml(row, isNo),
     exclude: () => `<td class="ctl"><button type="button" class="ex${excluded ? " on" : ""}" data-action="row-exclude" data-id="${idAttr(id)}" aria-pressed="${excluded}" title="${excluded ? "Excluded from every lineup. Click to include again" : "Exclude from every lineup"}">${EXCLUDE_ICON}</button></td>`,
     min_pct: () => `<td class="lim"><input type="text" inputmode="decimal" maxlength="5" class="limb lineup-min-input${minBad ? " invalid" : ""}" data-player-min="${idAttr(id)}" value="${escapeHtml(minText)}" aria-label="Min % for ${name}" />${refusalNoteHtml(`[data-player-min="${id}"]`)}</td>`,
     max_pct: () => `<td class="lim"><input type="text" inputmode="decimal" maxlength="5" class="limb lineup-max-input${maxBad ? " invalid" : ""}" data-player-max="${idAttr(id)}" value="${escapeHtml(maxText)}" aria-label="Max % for ${name}" />${refusalNoteHtml(`[data-player-max="${id}"]`)}${crossedNoteHtml(minText, maxText, parsePct)}</td>`,
@@ -313,12 +318,4 @@ function rightRowHtml(row, picked, placedSet, posShown, maxMap = {}, minMap = {}
     <tr class="${rowClass}" data-id="${idAttr(id)}"${poolPickAttrs(pick, picked.reason)} style="${teamVars(row.team, palette)}">
       ${keys.map((k) => cells[k]?.() ?? "").join("")}
     </tr>`;
-}
-
-/** The Cash chips on a pool row (Lock, Want, Fine: the approved look's small tabs, lineup-cash.js's words): `data-cash-pick` is wired by lineup.js. A man clicked into the lineup with no padlock has no chip on (he is held, so "Fine" would be false; a click on Fine takes him out). */
-function cashChipsHtml(row, { locked = false, wanted = false, excluded = false, inLineup = false } = {}) {
-  const id = idAttr(row.id);
-  const active = locked ? "must" : wanted ? "want" : inLineup ? null : "fine";
-  const part = (key, label) => `<button type="button" class="${active === key ? (key === "fine" ? "on fine" : "on") : ""}" data-cash-pick="${key}" data-id="${id}" aria-pressed="${active === key}"${key === "fine" && inLineup && !locked ? ` title="Take him out of your lineup"` : ""}${excluded ? " disabled" : ""}>${label}</button>`;
-  return `<span class="tabs${excluded ? " is-disabled" : ""}" role="group" aria-label="Conviction for ${escapeHtml(row?.name ?? "")}">${part("must", "Lock")}${part("want", "Want")}${part("fine", "Fine")}</span>`;
 }

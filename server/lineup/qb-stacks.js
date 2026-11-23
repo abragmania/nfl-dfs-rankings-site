@@ -69,6 +69,32 @@ export function isBlankEntry(e) {
   return !setsTeammates(e) && !setsOpponents(e) && Object.keys(e.players).length === 0;
 }
 
+/**
+ * The NO men a stack "Lock" keeps in (review rounds 1 and 2 of 11-23, finding 2 then 1): a man marked "must" under a quarterback in the
+ * request's raw qbStacks is held from NO only while that quarterback is usable (on this slate, not excluded, not left out by NO, not ruled
+ * out). `noOut`: the NO men left out before any stack man is held; `excludes`: the request's own excludes. Returns [{ id, qbs }] (trimmed
+ * ids, each held man with the quarterbacks that hold him); a malformed entry is refused later by validateQbStacks.
+ */
+export function heldStackLocks(raw, ctx, { excludes = [], noOut = [] } = {}) {
+  if (!isObj(raw)) return [];
+  const out = new Set(noOut.map(String));
+  const excluded = new Set(excludes.map(String));
+  const usable = (qb) => ctx.boardIds.has(qb) && ctx.slateIds.has(qb) && !excluded.has(qb) && !out.has(qb) && typeof ctx.rowOf === "function" && ctx.rowOf(qb) && !rowIsOut(ctx.rowOf(qb));
+  const held = new Map();
+  for (const [rawQb, value] of Object.entries(raw)) {
+    const qb = String(rawQb).trim();
+    if (!isObj(value) || !isObj(value.players) || !usable(qb)) continue;
+    for (const [pid, choice] of Object.entries(value.players)) {
+      const id = String(pid).trim();
+      if (choice === "must" && out.has(id)) held.set(id, [...(held.get(id) ?? []), qb]);
+    }
+  }
+  return [...held].map(([id, qbs]) => ({ id, qbs }));
+}
+
+// The words for the men a stack minimum cannot use; NO men are named as NO, never as excluded (review finding 2 of 11-23).
+const blockedWords = (noHit) => `the rest are marked "Exclude", ruled out${noHit ? ", excluded or on the NO list" : " or excluded"}`;
+
 export function validateQbStacks(raw, ctx, ownMax, oppMax, lists) {
   if (raw === undefined || raw === null) return { qbStacks: {} };
   if (!isObj(raw)) return { error: "qbStacks must be an object keyed by quarterback id" };
@@ -76,6 +102,7 @@ export function validateQbStacks(raw, ctx, ownMax, oppMax, lists) {
   const where = ctx.slateName ? `the ${ctx.slateName}'s games` : "this slate";
   const locked = new Set(lists.locks);
   const excluded = new Set(lists.excludes);
+  const noOut = new Set((lists.no ?? []).map(String)); // the NO men this build leaves out (applyNo's applied)
   const out = {};
   for (const [rawId, value] of Object.entries(raw)) {
     const id = String(rawId).trim();
@@ -120,17 +147,19 @@ export function validateQbStacks(raw, ctx, ownMax, oppMax, lists) {
     if (e.opponentsMax !== null && mustOpp > e.opponentsMax) {
       return { error: `${mustOpp} players from the team ${who} faces are marked "Lock", but his maximum number of opponents is ${e.opponentsMax}.` };
     }
-    const free = (r) => e.players[String(r.id)] !== "no" && !rowIsOut(r) && !excluded.has(String(r.id));
+    const free = (r) => e.players[String(r.id)] !== "no" && !rowIsOut(r) && !excluded.has(String(r.id)) && !noOut.has(String(r.id));
     const skill = (r) => OFFENSE.includes(upper(r.pos));
+    const noHit = (t) => ctx.slateRows.some((r) => skill(r) && upper(r.team) === t && noOut.has(String(r.id)));
     if (e.teammatesMin !== null) {
       const n = ctx.slateRows.filter((r) => skill(r) && upper(r.team) === team && free(r)).length;
-      if (n < e.teammatesMin) return { error: `${who} needs at least ${e.teammatesMin} teammates, but only ${n} of his running backs, receivers and tight ends can be picked (the rest are marked "Exclude", ruled out or excluded).` };
+      if (n < e.teammatesMin) return { error: `${who} needs at least ${e.teammatesMin} teammates, but only ${n} of his running backs, receivers and tight ends can be picked (${blockedWords(noHit(team))}).` };
     }
     if (e.opponentsMin !== null && e.opponentsMin > 0) {
       const n = opp === "" ? 0 : ctx.slateRows.filter((r) => skill(r) && upper(r.team) === opp && free(r)).length;
       const need = `${who} needs at least ${e.opponentsMin} ${e.opponentsMin === 1 ? "opponent" : "opponents"}`;
-      if (n === 0) return { error: `${need}, but every running back, receiver and tight end of the team he faces is marked "Exclude", ruled out or excluded.` };
-      if (n < e.opponentsMin) return { error: `${need}, but only ${n} of the running backs, receivers and tight ends of the team he faces can be picked (the rest are marked "Exclude", ruled out or excluded).` };
+      const words = blockedWords(opp !== "" && noHit(opp));
+      if (n === 0) return { error: `${need}, but every running back, receiver and tight end of the team he faces is ${words.replace(/^the rest are /, "")}.` };
+      if (n < e.opponentsMin) return { error: `${need}, but only ${n} of the running backs, receivers and tight ends of the team he faces can be picked (${words}).` };
     }
     if (!isBlankEntry(e)) out[id] = e;
   }

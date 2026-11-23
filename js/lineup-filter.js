@@ -72,6 +72,9 @@ export function filterBarHtml(chips, shown, total, compare = null) {
 // Compare (Adam 2026-11-12, NBA 252787e): a toggle in the filter bar that greys the held men on every shown card and in the exposure
 // list, so only the men who differ stand out. Page state only (off on reload); the helpers below are the whole of it.
 
+/** The classic Lineups screen's Compare state, page-only; a new Build puts it off with the "only lineups with" list (lineup-optimizer.js doGenerate). */
+export const compareState = { on: false };
+
 /** The Compare toggle: pressed while on. `on` is a boolean. */
 export function compareButtonHtml(on) {
   const title = on ? "Turn off: show the held men in normal type again" : "Gray out the men held by the filter, so only the men who differ stand out";

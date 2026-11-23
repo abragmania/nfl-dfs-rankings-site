@@ -1,0 +1,41 @@
+/* The Optimizer player list's row controls and the header's Pull now tag, in NBA's look (PROJECT.md Part 4 Monday 11-23 items 3, 4, 5; NBA b430e7c
+   board.css .pnstat and no-picks.css). Loaded after the look sheets, scoped under .nl as they are. */
+
+/* Item 3: the Pull now freshness tag (pull-now.js pullTagHtml) sits in the header row directly right of the button, in flow as NBA's .pngroup/.pnbox does (b430e7c board.css), so it never overlaps the page. */
+.nl .header-actions .pull-group{position:relative;flex-direction:row;align-items:center;gap:0.5rem}
+.nl .header-actions .pull-group #pull-info{position:static;left:auto;right:auto;top:auto;width:auto;display:inline-flex;align-items:center;gap:0.375rem;margin-top:0;font-size:0.6875rem;line-height:1rem;white-space:nowrap}
+.nl .header-actions .pull-group #pull-info:empty{display:none}
+.nl #pull-info .pndot{flex:none;width:0.4375rem;height:0.4375rem;border-radius:50%;background:var(--dim)}
+.nl #pull-info.fbusy{color:var(--am);font-weight:700}
+.nl #pull-info.fbusy .pndot{background:var(--am);animation:pnpulse 1.2s ease-in-out infinite}
+.nl #pull-info.fgreen,.nl #pull-info.famber,.nl #pull-info.fred{padding:0.0625rem 0.5rem;font-weight:700;border:1px solid var(--tg);background:color-mix(in srgb,var(--tg) 14%,transparent);color:var(--tg)}
+.nl #pull-info.fgreen{--tg:var(--gr)}.nl #pull-info.famber{--tg:var(--am)}.nl #pull-info.fred{--tg:var(--rd)}
+.nl #pull-info.fgreen .pndot,.nl #pull-info.famber .pndot,.nl #pull-info.fred .pndot{background:var(--tg)}
+.nl #pull-now-btn.fa{border-color:var(--am);color:var(--am)}
+.nl #pull-now-btn.fr{border-color:var(--rd);color:var(--rd)}
+@media (prefers-reduced-motion:reduce){.nl #pull-info.fbusy .pndot{animation:none}}
+@media (max-width:900px){.nl .header-actions .pull-group #pull-info{position:static;margin-top:0.125rem}}
+
+/* Item 4: NBA's NO (no-picks.css): the row's NO button, the pink row and its tag, the red pulsing chip over the list. One colour, --no, legible on dark and light. */
+.nl{--no:#ff2e63}
+html[data-theme="light"] .nl{--no:#c2185b}
+.nl .ctl .nob{font-size:0.5625rem;font-weight:800;letter-spacing:0.02em;font-family:inherit} /* the pool's 24px square, as Lock and Exclude (look.css) */
+.nl .ctl .nob:hover{border-color:var(--no)}
+.nl .ctl .nob.on{background:var(--no);border-color:var(--no);color:#fff}
+.nl .ctl .nob.on:hover{color:#fff;border-color:var(--tx)}
+.nl tr.isno td{background-color:color-mix(in srgb,var(--no) 8%,transparent)}
+.nl tr.isno:hover td{background-color:color-mix(in srgb,var(--no) 13%,transparent)}
+.nl .notag{display:inline-block;background:var(--no);color:#fff;font-size:0.625rem;font-weight:800;line-height:1.35;padding:0 0.3125rem;letter-spacing:0.03em}
+.nl .nobar{margin:0 0 0.5rem}
+.nl .nochip{display:inline-flex;align-items:center;flex-wrap:wrap;gap:0.375rem;padding:0.125rem 0.5rem;border:2px solid var(--no);background:color-mix(in srgb,var(--no) 18%,transparent);color:var(--tx);font-size:0.75rem;font-weight:800;letter-spacing:0.02em;animation:nopulse 1.6s ease-in-out infinite}
+.nl .nochip .nolbl{color:var(--no);white-space:nowrap}
+.nl .nochip .nonm{display:inline-flex;align-items:center;gap:0.125rem;padding:0 0 0 0.375rem;background:var(--bg);border:1px solid var(--no);color:var(--tx);white-space:nowrap}
+.nl .nochip .nox{background:none;border:0;padding:0 0.3125rem;color:var(--no);font:inherit;font-weight:800;cursor:pointer;line-height:1.4}
+.nl .nochip .nox:hover{color:var(--tx)}
+.nl .nochip .nogone{color:var(--mu);font-weight:400}
+.nl .nochip .noclr{background:none;border:0;padding:0 0 0 0.125rem;color:var(--mu);font:inherit;font-weight:400;text-decoration:underline;cursor:pointer}
+.nl .nochip .noclr:hover{color:var(--tx)}
+/* Room for NO (lead's option a, Monday 11-23): the TwoGun columns' sides 0.375rem (6px at 1920) instead of 0.5625rem, so the classic pool fits its box. */
+@media (min-width:901px){.nl #thead th.k-tg,.nl #tbody td.tg-col{padding-left:0.375rem;padding-right:0.375rem}}
+@keyframes nopulse{0%,100%{box-shadow:0 0 0 0 color-mix(in srgb,var(--no) 55%,transparent)}50%{box-shadow:0 0 0 0.3rem transparent}}
+@media (prefers-reduced-motion:reduce){.nl .nochip{animation:none}}

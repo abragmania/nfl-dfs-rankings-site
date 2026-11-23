@@ -29,6 +29,7 @@ import { noteUnreadable, clearUnreadable } from "./storage-damage.js"; // a save
 import { showBand } from "./show-band.js"; // A12, A15: a Load brings the whole band into view
 import { focusOpenRename, wireRenameEnter } from "./rename-focus.js"; // the rename box: focused and selected on open, Enter saves
 import { keepPoolHeadInView, poolAvailableKeys, setPoolOnly, poolOnlyView } from "./lineup-pool.js"; // A15: a filter from far down puts the table back in view
+import { wireNoPicks, noListKey } from "./no-picks.js"; // Monday 11-23 item 4: NBA's NO
 import { saveClassicMemory, syncLineupMemory, restoreForMode, migrateLegacyLineups, droppedMenSentence, currentMemoryKey } from "./lineup-memory-sync.js"; // A9: the browser's memory of the settings and the working lineups, per slate
 import { rowIsOut, twoGunOutReason, STATUS_INFO } from "./table.js"; // D43: the one copy of "vs DAL" / "@ DET"
 import { shownTotal } from "./totals.js";
@@ -58,7 +59,7 @@ import { onConfirmDismiss } from "./confirm-inline.js"; // B13: Esc and a click 
 import { notDeletedText } from "./delete-words.js"; // A12: the one sentence a failed delete leaves
 import { wireStaleMessages } from "./stale-messages.js"; // item 17: a one-shot message goes at the next click on any control
 import { wirePick, wirePickRows, SLOT_PICK_SKIP } from "./pick-rows.js"; // click-to-pick, the one wiring the Showdown Optimizer shares (D81)
-import { cleanPlayerMax, boardModeOf, slateKeyOf, uniqueSavedName, lockedIds, cashPick, wireOptimizer, savedSetKeys, lineupSetKey, refreshBuildNotice, resetBuildNotice, rereadSavedLineups } from "./lineup-optimizer.js";
+import { cleanPlayerMax, boardModeOf, slateKeyOf, uniqueSavedName, lockedIds, wireOptimizer, savedSetKeys, lineupSetKey, refreshBuildNotice, resetBuildNotice, rereadSavedLineups } from "./lineup-optimizer.js";
 import { isAlreadySavedAnswer, alreadySavedText, loadedText } from "./save-outcome.js"; // a Save of a lineup already saved says where it is, never refuses (Adam 6:30 PM 11-09)
 
 export const LINEUP_SLOTS = ["QB", "RB", "RB", "WR", "WR", "WR", "TE", "FLEX", "DST"];
@@ -919,13 +920,8 @@ function wire(container) {
       commit();
     });
   });
-  // Cash mode job 3b, 2026-10-17: a Must | Want | Fine click on the pool row.
-  container.querySelectorAll("[data-cash-pick]").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      cashPick(btn.dataset.id, btn.dataset.cashPick);
-      commit();
-    });
-  });
+  // Monday 11-23 item 4: NBA's NO button, the chip's ✕ and clear all (no-picks.js), on the open mode's list for this week and slate.
+  wireNoPicks(container, { mode: () => opt.mode, key: () => noListKey(store.get().board, slateKeyOf(store.get().board)), commit });
   // The pool's sortable headers write the store's global sort, exactly what the ranked list's headers write (app.js
   // onSortClick); its filters come from the one filter bar above (Optimizer-first step 4: the pool's own chip row and
   // search chip are gone, and with them its Show all players button). The store change re-renders this panel (keeping the pool's scroll position).
@@ -1162,4 +1158,4 @@ function syncOptimizerSlate() {
 
 // Re-exports: every name this module exported before the split is still importable from here (tabs.js, the tests and the site build import them).
 export { setPoolCallbacks, slotPlayerHtml, savedLineupSlotHtml, savedLineupCardHtml, savedLineupPlayers, savedLineupFigures, saveControlsHtml, poolStarClick, rightColumnHtml, lineupTotalsOf, ruleRowsHtml, starredQbQualifiers, usableQbIds, starredQbNote, avoidChipsHtml, optLineupCardHtml, optNotesHtml, bendsLineHtml, cardIsSaved } from "./lineup-view.js";
-export { swapScanHook, parseWhole, parsePct, exposureProblem, exposureOfLineups, lineupSetKey, savedSetKeys, savedForSlate, uniqueSavedName, playerMaxProblem, playerMinProblem, minSlotsFull, minSlotWords, dkKeyOfRow, minRowOut, pairClash, lockStackRefuses, minLockSkips, playerMinPositionProblem, lockedIds, requestCount, minProblemFor, buildGenerateSettings, buildGeneratePayload, slotsForSave } from "./lineup-optimizer.js";
+export { parseWhole, parsePct, exposureProblem, exposureOfLineups, lineupSetKey, savedSetKeys, savedForSlate, uniqueSavedName, playerMaxProblem, playerMinProblem, minSlotsFull, minSlotWords, dkKeyOfRow, minRowOut, pairClash, lockStackRefuses, minLockSkips, playerMinPositionProblem, lockedIds, requestCount, minProblemFor, buildGenerateSettings, buildGeneratePayload, slotsForSave } from "./lineup-optimizer.js";

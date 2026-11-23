@@ -18,6 +18,7 @@ export const CLASSIC_GPP_COLUMNS = Object.freeze([
   { key: "value", label: "Val" },
   { key: "thumbs", label: "Thumbs" },
   { key: "lock", label: "Lock" },
+  { key: "no", label: "NO" }, // Monday 11-23 item 4: NBA's NO, between Lock and Exclude (no-picks.js)
   { key: "exclude", label: "Exclude" },
   { key: "min_pct", label: "Min %" },
   { key: "max_pct", label: "Max %" },
@@ -32,8 +33,8 @@ export const CLASSIC_GPP_COLUMNS = Object.freeze([
 /** The TwoGun columns of the classic pool: on a TwoGun board only (lineup-pool.js poolAvailableKeys). */
 export const CLASSIC_TG_KEYS = Object.freeze(["tgMed", "tgNuke", "tgP3x", "tgP4x"]);
 
-/** Classic Cash: the Cash chips (Lock, Want, Fine) are one column in place of Lock, Min % and Max %. */
-export const CLASSIC_CASH_COLUMNS = Object.freeze(CLASSIC_GPP_COLUMNS.filter((c) => !["lock", "min_pct", "max_pct"].includes(c.key)).flatMap((c) => (c.key === "thumbs" ? [c, { key: "cash", label: "Cash" }] : [c])));
+/** Classic Cash: NBA's row set, Lock, NO and Exclude, as GPP (Monday 11-23 item 4: the Lock / Want / Fine chips retired); no Min % or Max %, which a Cash build refuses. */
+export const CLASSIC_CASH_COLUMNS = Object.freeze(CLASSIC_GPP_COLUMNS.filter((c) => !["min_pct", "max_pct"].includes(c.key)));
 
 /** Showdown: the same standard order (star first, B2); In sits beside Lock (D4, where a seat choice exists), Captain holds the Captain's lock and exclude on the FLEX list (C21). */
 export const SHOWDOWN_COLUMNS = Object.freeze([

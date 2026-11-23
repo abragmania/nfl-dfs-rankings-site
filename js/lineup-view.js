@@ -1,6 +1,6 @@
 // The Optimizer tab's markup in the approved look (PROJECT.md Part 4 item 5): the pool column beside the Optimizer panel (settings on one row, the working lineup in slot-first rows, the totals, Build, Save, and on Cash the Left out list). It reads `state` and
 // `opt` (owned by lineup.js) and draws HTML; the Lineups tab is look-lineups.js, the pool is lineup-pool.js. Wiring and actions stay in lineup.js, lineup-optimizer.js and look-lineups.js.
-import { buildingHtml, goLabelHtml, buildingRowClass } from "./lineup-stop.js";
+import { buildingHtml, goLabelHtml, buildingRowClass, goWordsFor } from "./lineup-stop.js";
 import { escapeHtml, money } from "./format.js";
 import { store, activeSlateRows, activeSlateGames, isTwoGunMode } from "./state.js";
 import { perSpotText } from "./totals.js";
@@ -24,7 +24,7 @@ import {
   OPT_RULES, RULE_GROUPS, boardRowMap, effectiveObjective, qbGlobals, listedQbIds, lineupsCountNow,
 } from "./lineup.js";
 import {
-  slateKeyOf, parsePct, parseWhole, requestCount, savedForSlate, playerMaxFor, playerMinFor, lockedIds, buildGenerateSettings, minRowOut, upperOf, cashBasisInfo, wantRowsFor, cashSummaryText, currentRowById,
+  slateKeyOf, parsePct, parseWhole, requestCount, savedForSlate, playerMaxFor, playerMinFor, lockedIds, buildGenerateSettings, minRowOut, upperOf, cashBasisInfo, cashSummaryText, currentRowById,
 } from "./lineup-optimizer.js";
 
 export { savedLineupCardHtml, savedLineupSlotHtml, optLineupCardHtml, savedLineupPlayers, savedLineupFigures, shownSavedLineups, pickOptions, cardIsSaved, lineupTotalsOf, optNotesHtml, bendsLineHtml } from "./look-lineups.js";
@@ -165,7 +165,7 @@ const activeRuleNames = () => OPT_RULES.filter((r) => RULE_GROUPS.build.includes
 
 // Walkthrough friction (PROJECT.md Part 4 item 5): Cash says what its pool chips do, and that a median build does not read typed projections (it reads TwoGun's median, which the thumbs scale).
 // G64 (2:49 PM 11-11): short labels in place, never a paragraph.
-const CASH_KEY_HTML = "<b>Lock</b> every lineup · <b>Want</b> your list · <b>Fine</b> the numbers";
+const CASH_KEY_HTML = "<b>Lock</b> in every lineup · <b>NO</b> builds without him · <b>Exclude</b> out of the pool";
 export const CASH_TYPED_WORDS = "Median build: typed projections not used, thumbs are.";
 
 function cashSettingsHtml(rowById, board) {
@@ -178,21 +178,18 @@ function cashSettingsHtml(rowById, board) {
   return `<div class="cntrow"><label title="The best first, then the next best">Lineups to make${numberBoxHtml(`type="number" min="1" max="${OPT_MAX_COUNT}" id="opt-cash-count" value="${escapeHtml(opt.cash.count)}" aria-label="How many lineups"`, countNote(opt.cash.count, OPT_MAX_COUNT), "opt-unit-note")}</label></div>
     ${basis.blocked ? `<div class="hint2 opt-warn">${escapeHtml(basis.text)}</div>` : ""}${foldHtml(`<div class="set2">${setopHtml("cash-team", "Max per team", opt.cash.maxPerTeam === "" ? "no limit" : opt.cash.maxPerTeam, settingRowHtml("Max per team", teamSelect, "Every team, the quarterback's included"))}${setopHtml("cash-avoid", "Avoid games", avoided ? `${avoided} avoided` : "none", avoidBody)}</div>
     ${basis.blocked || basis.basis === "proj" ? "" : `<div class="hint2">Build by <span class="cash-basis">${escapeHtml(basis.text)}</span></div><div class="hint2 cash-typed">${CASH_TYPED_WORDS}</div>`}
-    <div class="hint2 cash-key" aria-label="What Lock, Want and Fine do">${CASH_KEY_HTML}</div>
-    ${heldLineHtml(cashHeadLine(held.padlocked, wantRowsFor(slateKeyOf(board), rowById), held.inLineup))}`)}`;
+    <div class="hint2 cash-key" aria-label="What Lock, NO and Exclude do">${CASH_KEY_HTML}</div>
+    ${heldLineHtml(cashHeadLine(held.padlocked, [], held.inLineup))}`)}`;
 }
 
 // ---- the working lineup ----
 
 const SLOT_REMOVE_TITLE = "Click to remove";
-const SEAT_WHO = Object.freeze({ QB: "a QB", RB: "an RB", WR: "a WR", TE: "a TE", FLEX: "an RB, WR or TE", DST: "a defense" });
-/** How to fill an empty seat, said in the seat (walkthrough friction, PROJECT.md Part 4 item 5). */
-export const emptySeatHint = (slotName) => `click ${SEAT_WHO[slotName] ?? "a player"} in the list`;
 
 function workRowHtml(slotName, i, rowById, palette) {
   const s = state.slots[i];
   const remove = `data-action="slot-remove" data-slot="${i}" tabindex="0" title="${SLOT_REMOVE_TITLE}" aria-label="${SLOT_REMOVE_TITLE}"`;
-  if (!s) return lookEmptyRowHtml(slotName, "Empty", { attrs: `data-slot-index="${i}"`, hint: emptySeatHint(slotName) });
+  if (!s) return lookEmptyRowHtml(slotName, "Empty", { attrs: `data-slot-index="${i}"` });
   const row = rowById.get(String(s.id)); // 🔵 finding 2: a slot whose id no longer has a row shows a marker instead of guessing at stale figures
   if (!row) return lookEmptyRowHtml(slotName, "Not on this slate", { attrs: `data-slot-index="${i}" ${remove}` });
   const locked = state.locks.has(String(row.id));
@@ -244,7 +241,7 @@ function actionsHtml(board) {
   const busy = showing || opt.saving || (opt.mode === "cash" && cashBasisInfo(board).blocked);
   const cash = opt.mode === "cash";
   const count = requestCount(cash ? opt.cash.count : opt.count);
-  const goWords = `Build ${count} ${cash ? "Cash" : "GPP"} lineup${count === 1 ? "" : "s"}`;
+  const goWords = goWordsFor(cash, count);
   const loaded = state.loadedId != null && state.savedLineups.some((l) => l.id === state.loadedId);
   const n = lineupsCountNow();
   const built = opt.results?.lineups.length ?? 0;

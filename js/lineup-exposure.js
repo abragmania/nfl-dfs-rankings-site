@@ -9,6 +9,7 @@ import { pickButtonHtml } from "./lineup-filter.js";
 
 export const OPT_POSITIONS = ["QB", "RB", "WR", "TE", "DST"];
 export const SEAT_FILTERS = ["CPT", "FLEX"];
+const LOOK_FIGURE_KEYS = ["salary", "proj", "value"];
 
 let lookupBoard = null;
 let lookup = new Map();
@@ -92,6 +93,9 @@ export function expColumns(kind) {
     { key: "pos", label: "Pos", dir: "asc", sort: (e) => posRank(e.pos) },
     { key: "opp", label: "Matchup", dir: "asc", sort: (e) => (e.opp ? String(e.opp) : null) },
     { key: "own", label: "Own", dir: "desc", sort: (e) => num(e.own) },
+    { key: "salary", label: "Salary", dir: "desc", sort: (e) => num(e.salary) }, // NBA's exposure figures (Adam 11-23): the entry carries the board's own, look-lineups.js withFigures
+    { key: "proj", label: "Proj", dir: "desc", sort: (e) => num(e.proj) },
+    { key: "value", label: "Value", dir: "desc", sort: (e) => num(e.value) },
   ];
 }
 
@@ -195,7 +199,7 @@ const pctText = (pct, count) => `${escapeHtml(String(Math.round(pct ?? 0)))}% <s
  */
 export function optExposureHtml(entries, state, kind, pick = null, marks = null, opts = {}) {
   const st = cleanExpState(state, kind);
-  const cols = expColumns(kind).filter((c) => !(opts.hideCols ?? []).includes(c.key));
+  const cols = expColumns(kind).filter((c) => !(opts.hideCols ?? []).includes(c.key) && !LOOK_FIGURE_KEYS.includes(c.key)); // Salary, Proj and Value are the classic Lineups look's columns (look-lineups.js), not this table's
   const shown = shownExposureEntries(entries, st, kind, pick ? (key) => pick.isChosen(key) : null);
   const head = cols
     .map((c) => {

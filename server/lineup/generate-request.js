@@ -13,12 +13,13 @@ import { retiredObjectiveNote } from "./optimize.js";
 import { OBJECTIVES } from "./objectives.js";
 import { validateIdArray } from "./id-checks.js";
 import { CEILING_REMOVED_SENTENCE } from "./objective.js";
-import { validateQbStacks } from "./qb-stacks.js";
+import { validateQbStacks, heldStackLocks } from "./qb-stacks.js";
 import { slotsFull, lockedSlotWords, minSlotProblem } from "./soft.js";
 import { medianOf, CASH_NOTES, COUNT_RULES_CASH_SENTENCE } from "./cash.js";
 import { lineupModeOf } from "../lineups/validate.js";
 import { varianceRequestError, resolveVariance, VARIANCE_CASH_SENTENCE, CLASSIC_VARIANCE_POSITIONS } from "./sd-variance.js";
 import { validateCountRules, poolShortfalls } from "./count-rules.js";
+import { applyNo } from "./no-list.js";
 
 // An older saved request may still carry the D55 rule keys D73 replaced; they are accepted (and must be booleans).
 const GENERATE_RULE_KEYS = [...RULE_KEYS, ...LEGACY_RULE_KEYS];
@@ -27,7 +28,8 @@ export const GENERATE_SETTING_KEYS = new Set([
   "count", "minUnique", "locks", "excludes", "catchers", "maxExposure", "rules", "maxPerTeam", "allowRbGames", "avoidGames",
   "objective", "stackOwn", "stackOwnOrMore", "stackOpp", "stackOppOrMore", "playerMaxExposure", "playerMinExposure", "qbStacks", "spreadDst", "mode",
   "variancePos", "variance", // GPP variance per position, or the older one percent at every position (sd-variance.js)
-  "countRules" // GPP team, game and ownership rules (count-rules.js, items 8 and 9, Adam 2026-11-16)
+  "countRules", // GPP team, game and ownership rules (count-rules.js, items 8 and 9, Adam 2026-11-16)
+  "no" // the open mode's NO men (no-list.js applyNo, Monday 11-23 item 4), GPP and Cash
 ]);
 // Cash mode job 2b, 2026-10-17: what a cash request may not send, each with the engine's own sentence (cash.js CASH_NOTES).
 const CASH_REFUSED = [
@@ -143,6 +145,29 @@ function minPctError(out, ctx) {
 export function validateGenerateSettings(raw, ctx) {
   if (raw === undefined || raw === null) raw = {};
   if (!isPlainObject(raw)) return { error: "settings must be an object" };
+  const start = modeChecked(raw);
+  if (start.error) return { error: start.error };
+  const out = start.out;
+  // `state`: the answer's notes (G62), and what the QB stack check needs from the NO step (excludes before NO, the NO men left out).
+  const state = { notes: [], excludesBeforeNo: null, noApplied: [] };
+  for (const step of SETTING_STEPS) {
+    const error = step(raw, out, ctx, state);
+    if (error) return { error };
+  }
+  const minError = minPctError(out, ctx);
+  if (minError) return { error: minError };
+  return state.notes.length ? { settings: out, notes: state.notes } : { settings: out };
+}
+
+// The checks after the mode, in the order a request's first error is reported. Each is (raw, out, ctx, state) and returns an error
+// sentence or null, writing what it accepts into `out` (global rule: functions over 80 lines are split; R87).
+const SETTING_STEPS = [
+  countsChecked, idListsChecked, exposuresChecked, noListChecked, switchesChecked, stackNumbersChecked, spreadDstChecked,
+  qbStacksStep, gamesChecked, countRulesStep
+];
+
+/** Unknown keys, the mode, variance and what Cash refuses: { out } (mode and variance set) or { error }. */
+function modeChecked(raw) {
   for (const key of Object.keys(raw)) {
     if (!GENERATE_SETTING_KEYS.has(key)) return { error: `Unknown setting ${JSON.stringify(key)}.` };
   }
@@ -159,112 +184,180 @@ export function validateGenerateSettings(raw, ctx) {
   const out = { mode };
   // Set only when on, so a request without it (or with every percent blank or 0) is unchanged; the older single percent passes as sent.
   if (variance) Object.assign(out, raw.variancePos !== undefined ? { variancePos: variance } : { variance: raw.variance });
+  return { out };
+}
+
+function countsChecked(raw, out) {
   if (raw.count !== undefined && raw.count !== null) {
     if (!Number.isInteger(raw.count) || raw.count < 1 || raw.count > GENERATE_MAX_COUNT) {
-      return { error: `count must be a whole number from 1 to ${GENERATE_MAX_COUNT}` };
+      return `count must be a whole number from 1 to ${GENERATE_MAX_COUNT}`;
     }
     out.count = raw.count;
   }
   if (raw.minUnique !== undefined && raw.minUnique !== null) {
     if (!Number.isInteger(raw.minUnique) || raw.minUnique < 1 || raw.minUnique > GENERATE_MAX_UNIQUE) {
-      return { error: `minUnique must be a whole number from 1 to ${GENERATE_MAX_UNIQUE}` };
+      return `minUnique must be a whole number from 1 to ${GENERATE_MAX_UNIQUE}`;
     }
     out.minUnique = raw.minUnique;
   }
+  return null;
+}
+
+function idListsChecked(raw, out, ctx) {
   // "catchers" is accepted from an older saved request and ignored: every back counts toward the stack (D55 as amended 2026-10-17).
   for (const name of ["locks", "excludes"]) {
     const result = validateIdArray(raw[name], name);
-    if (result.error) return { error: result.error };
+    if (result.error) return result.error;
     const ids = [...new Set(result.ids.map(String))];
     const unknown = ids.filter((id) => !ctx.boardIds.has(id));
-    if (unknown.length) return { error: `${name} names a player who is not on the board: ${unknown.join(", ")}` };
+    if (unknown.length) return `${name} names a player who is not on the board: ${unknown.join(", ")}`;
     out[name] = ids;
   }
   if (ctx.slateName) {
     const outside = out.locks.filter((id) => !ctx.slateIds.has(id));
     if (outside.length) {
       const names = outside.map((id) => ctx.nameOf(id)).join(", ");
-      return { error: `${names} ${outside.length === 1 ? "is" : "are"} locked but not in the ${ctx.slateName}'s games. Unlock ${outside.length === 1 ? "him" : "them"} or build on the main slate.` };
+      return `${names} ${outside.length === 1 ? "is" : "are"} locked but not in the ${ctx.slateName}'s games. Unlock ${outside.length === 1 ? "him" : "them"} or build on the main slate.`;
     }
   }
+  return null;
+}
+
+function exposuresChecked(raw, out, ctx) {
   if (raw.maxExposure !== undefined && raw.maxExposure !== null) {
-    if (!isPlainObject(raw.maxExposure)) return { error: "maxExposure must be an object keyed by position" };
+    if (!isPlainObject(raw.maxExposure)) return "maxExposure must be an object keyed by position";
     for (const [pos, value] of Object.entries(raw.maxExposure)) {
-      if (!GENERATE_POSITIONS.includes(pos)) return { error: `Unknown setting ${JSON.stringify(`maxExposure.${pos}`)}; positions are ${GENERATE_POSITIONS.join(", ")}.` };
+      if (!GENERATE_POSITIONS.includes(pos)) return `Unknown setting ${JSON.stringify(`maxExposure.${pos}`)}; positions are ${GENERATE_POSITIONS.join(", ")}.`;
       const err = exposureValueError(pos, value);
-      if (err) return { error: err };
+      if (err) return err;
     }
     out.maxExposure = raw.maxExposure;
   }
   // Per-player Max % (Adam 2026-10-11) and Min %: {"<playerId>": {pct: 0-100}}; null means none and is dropped.
   for (const name of ["playerMaxExposure", "playerMinExposure"]) {
     const checked = playerPctsChecked(raw[name], name, ctx);
-    if (checked.error) return { error: checked.error };
+    if (checked.error) return checked.error;
     if (checked.pcts) out[name] = checked.pcts;
   }
+  return null;
+}
+
+function noListChecked(raw, out, ctx, state) {
+  // Monday 11-23 item 4 (NBA's NO, no-list.js applyNo): his NO men join this build's excludes unless locked or held by a Min %; a QB
+  // stack's "Lock" teammate is held only while his quarterback is usable, and named in a note since the classic engine cannot keep him
+  // to that quarterback's lineups (review round 2 finding 1 of 11-23, G62); an id the board lacks is dropped and named in a note (G62).
+  state.excludesBeforeNo = out.excludes;
+  if (raw.no !== undefined && raw.no !== null) {
+    const noChecked = validateIdArray(raw.no, "no");
+    if (noChecked.error) return noChecked.error;
+    const noIds = [...new Set(noChecked.ids.map(String))];
+    const noUnknown = noIds.filter((id) => !ctx.boardIds.has(id));
+    if (noUnknown.length) state.notes.push(noUnknownNote(noUnknown));
+    const args = {
+      noIds: noIds.filter((id) => ctx.boardIds.has(id)), locks: out.locks, excludes: out.excludes,
+      playerMinExposure: out.playerMinExposure, playerMaxExposure: out.playerMaxExposure, count: out.count ?? 1
+    };
+    const stackHeld = heldStackLocks(raw.qbStacks, ctx, { excludes: out.excludes, noOut: applyNo(args).applied });
+    const noOut = stackHeld.length ? applyNo({ ...args, locks: [...out.locks, ...stackHeld.map((h) => h.id)] }) : applyNo(args);
+    for (const h of stackHeld) {
+      state.notes.push(`${ctx.nameOf(h.id)} is on the NO list but kept for his Lock under ${h.qbs.map((qb) => ctx.nameOf(qb)).join(" and ")}; he may appear with other quarterbacks.`);
+    }
+    out.excludes = noOut.excludes;
+    state.noApplied = noOut.applied;
+    if (noOut.playerMaxExposure !== out.playerMaxExposure) out.playerMaxExposure = noOut.playerMaxExposure;
+    if (noOut.held.length) out.noHeld = Object.freeze([...noOut.held]); // internal, never a request key: the bends leave these caps alone (soft.js bendTrials)
+  }
+  return null;
+}
+
+function switchesChecked(raw, out) {
   if (raw.rules !== undefined && raw.rules !== null) {
-    if (!isPlainObject(raw.rules)) return { error: "rules must be an object of on/off switches" };
+    if (!isPlainObject(raw.rules)) return "rules must be an object of on/off switches";
     for (const [key, value] of Object.entries(raw.rules)) {
-      if (!GENERATE_RULE_KEYS.includes(key)) return { error: `Unknown setting ${JSON.stringify(`rules.${key}`)}.` };
-      if (typeof value !== "boolean") return { error: `rules.${key} must be true or false` };
+      if (!GENERATE_RULE_KEYS.includes(key)) return `Unknown setting ${JSON.stringify(`rules.${key}`)}.`;
+      if (typeof value !== "boolean") return `rules.${key} must be true or false`;
     }
     out.rules = raw.rules;
   }
   if (raw.maxPerTeam !== undefined && raw.maxPerTeam !== null) {
     if (!Number.isInteger(raw.maxPerTeam) || raw.maxPerTeam < 1 || raw.maxPerTeam > 8) {
-      return { error: "maxPerTeam must be a whole number from 1 to 8" };
+      return "maxPerTeam must be a whole number from 1 to 8";
     }
     out.maxPerTeam = raw.maxPerTeam;
   }
   if (raw.objective !== undefined && raw.objective !== null) {
     // Follows multi.js OBJECTIVES; a retired objective ("lev", "projMinusOwn") passes through and multi.js builds it
     // on projection with a note, so a saved setting never fails. "ceil" was removed (optimizer standard A21): refused, plainly.
-    if (raw.objective === "ceil") return { error: CEILING_REMOVED_SENTENCE };
-    if (!OBJECTIVES.includes(raw.objective) && retiredObjectiveNote(raw.objective) === null) return { error: `objective must be one of ${OBJECTIVES.join(", ")}` };
+    if (raw.objective === "ceil") return CEILING_REMOVED_SENTENCE;
+    if (!OBJECTIVES.includes(raw.objective) && retiredObjectiveNote(raw.objective) === null) return `objective must be one of ${OBJECTIVES.join(", ")}`;
     out.objective = raw.objective;
   }
+  return null;
+}
+
+function stackNumbersChecked(raw, out) {
   for (const { key, max, words } of GENERATE_STACK_NUMBERS) {
     const value = raw[key];
     if (value === undefined || value === null) continue;
     if (!Number.isInteger(value) || value < 0 || value > max) {
-      return { error: `${key} (the number of ${words}) must be a whole number from 0 to ${max}` };
+      return `${key} (the number of ${words}) must be a whole number from 0 to ${max}`;
     }
     out[key] = value;
   }
   for (const key of ["stackOwnOrMore", "stackOppOrMore"]) {
     const value = raw[key];
     if (value === undefined || value === null) continue;
-    if (typeof value !== "boolean") return { error: `${key} must be true or false` };
+    if (typeof value !== "boolean") return `${key} must be true or false`;
     out[key] = value;
   }
+  return null;
+}
+
+function spreadDstChecked(raw, out, ctx) {
   // Spread defenses (Adam 2026-10-16): classic only; a locked defense can't be spread.
   if (raw.spreadDst !== undefined && raw.spreadDst !== null) {
-    if (typeof raw.spreadDst !== "boolean") return { error: "spreadDst must be true or false" };
+    if (typeof raw.spreadDst !== "boolean") return "spreadDst must be true or false";
     if (raw.spreadDst && ctx.rowOf && out.locks.some((id) => String(ctx.rowOf(id)?.pos ?? "").toUpperCase() === "DST")) {
-      return { error: "A locked defense can't be spread; unlock it or turn off Spread defenses." };
+      return "A locked defense can't be spread; unlock it or turn off Spread defenses.";
     }
     if (raw.spreadDst) out.spreadDst = true;
   }
-  const qbChecked = validateQbStacks(raw.qbStacks, ctx, STACK_OWN_MAX, STACK_OPP_MAX, { locks: out.locks, excludes: out.excludes });
-  if (qbChecked.error) return { error: qbChecked.error };
+  return null;
+}
+
+function qbStacksStep(raw, out, ctx, state) {
+  const qbChecked = validateQbStacks(raw.qbStacks, ctx, STACK_OWN_MAX, STACK_OPP_MAX, { locks: out.locks, excludes: state.excludesBeforeNo, no: state.noApplied });
+  if (qbChecked.error) return qbChecked.error;
   if (Object.keys(qbChecked.qbStacks).length) out.qbStacks = qbChecked.qbStacks;
+  return null;
+}
+
+function gamesChecked(raw, out, ctx) {
   for (const name of ["allowRbGames", "avoidGames"]) {
     const value = raw[name];
     if (value === undefined || value === null) continue;
-    if (!Array.isArray(value) || value.some((g) => typeof g !== "string")) return { error: `${name} must be an array of games such as "DET@ARI"` };
+    if (!Array.isArray(value) || value.some((g) => typeof g !== "string")) return `${name} must be an array of games such as "DET@ARI"`;
     const games = [...new Set(value.map((g) => g.trim().toUpperCase()))];
     const unknown = games.filter((g) => !ctx.gameIds.has(g));
-    if (unknown.length) return { error: `${name} names a game that is not on this slate: ${unknown.join(", ")}` };
+    if (unknown.length) return `${name} names a game that is not on this slate: ${unknown.join(", ")}`;
     out[name] = games;
   }
+  return null;
+}
+
+function countRulesStep(raw, out, ctx) {
   if (raw.countRules !== undefined && raw.countRules !== null) {
     const rulesChecked = countRulesChecked(raw.countRules, ctx);
-    if (rulesChecked.error) return { error: rulesChecked.error };
+    if (rulesChecked.error) return rulesChecked.error;
     if (rulesChecked.rules.length) out.countRules = rulesChecked.rules;
   }
-  const minError = minPctError(out, ctx);
-  if (minError) return { error: minError };
-  return { settings: out };
+  return null;
+}
+
+/** G62: NO ids the board lacks, counted and named for the answer's notes. */
+function noUnknownNote(ids) {
+  const one = ids.length === 1;
+  return `${ids.length} NO ${one ? "man is" : "men are"} not on this board and ${one ? "was" : "were"} left out of the NO list: DraftKings id ${ids.join(", ")}.`;
 }
 
 /** Team, game and ownership rules (count-rules.js) held to the chosen slate: { rules } (canonical), or { error } with the plain reason a rule is wrong or can never be met on this slate. */
@@ -317,7 +410,8 @@ export function findGenerateSlate(slate, secondSlates) {
 
 /**
  * The chosen slate's players and the checked settings. `boardRows`: every board row; `secondSlate`: from
- * findGenerateSlate. Returns {error} or {rows (the slate's rows), rowById (every board row by id), slateIds, settings}.
+ * findGenerateSlate. Returns {error} or {rows (the slate's rows), rowById (every board row by id), slateIds, settings,
+ * notes (the request check's own notes for the answer, G62; [] when none)}.
  */
 export function prepareGenerate(boardRows, secondSlate, rawSettings) {
   const slateGames = secondSlate ? new Set(secondSlate.gameIds) : null;
@@ -335,7 +429,7 @@ export function prepareGenerate(boardRows, secondSlate, rawSettings) {
     slateRows: rows
   });
   if (checked.error) return { error: checked.error };
-  return { rows, rowById, slateIds, settings: checked.settings };
+  return { rows, rowById, slateIds, settings: checked.settings, notes: checked.notes ?? [] };
 }
 
 // Saved lineups of this week that belong to this slate: those saved with this slate's key. A lineup saved with
@@ -360,8 +454,9 @@ export function existingForSlate(saved, secondSlate, slateIds, mode = "gpp") {
  * server picked, also on a refusal inside the build; null only when no basis could be picked); on a median build each
  * lineup adds `median` (TwoGun's medians summed, null when any player lacks one) and each player his own `median`, and
  * the lineup's `proj` is null when any player's projection is missing. A GPP body has none of these.
+ * `requestNotes`: prepareGenerate's notes, put first in the body's notes (G62).
  */
-export function enrichGenerateResult(result, rowById) {
+export function enrichGenerateResult(result, rowById, requestNotes = []) {
   const lineups = result.lineups.map((l) => ({
     ids: l.ids,
     salary: l.salary,
@@ -384,5 +479,6 @@ export function enrichGenerateResult(result, rowById) {
   }
   // Cash mode job 2b, 2026-10-17: mode and basis only when the engine set them (cash), so a GPP answer is unchanged.
   const cash = { ...(result.mode !== undefined ? { mode: result.mode } : {}), ...(result.basis !== undefined ? { basis: result.basis } : {}) };
-  return { lineups, exposure, notes: result.notes, bends: result.bends, ...cash };
+  const notes = Array.isArray(requestNotes) && requestNotes.length ? [...requestNotes, ...(result.notes ?? [])] : result.notes;
+  return { lineups, exposure, notes, bends: result.bends, ...cash };
 }
