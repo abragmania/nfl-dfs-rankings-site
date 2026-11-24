@@ -1,13 +1,11 @@
 {
-  "publishedAt": "2026-11-24T03:15:57.597Z",
+  "publishedAt": "2026-11-24T05:18:06.104Z",
   "season": 2026,
   "week": 11,
-  "boardGeneratedAt": "2026-11-24T03:15:37.653Z",
-  "latestBoardAt": "2026-11-24T03:15:37.653Z",
+  "boardGeneratedAt": "2026-11-24T05:17:33.344Z",
+  "latestBoardAt": "2026-11-24T05:17:33.344Z",
   "defaultMode": "twogun",
-  "showdowns": [
-    "2026-w11-CINWAS"
-  ],
+  "showdowns": [],
   "sourceCommit": "e82d71585568ec52ef0e40e5a102e3e6c87e48f9",
   "appCommit": "1e9ce6c3d0d6bec0ed4e88cd689cd28f4e622eea",
   "machine": "laptop",
