@@ -248,8 +248,8 @@ function classicRow(c, { row, t, hisProj, proj, blendIn, own, markedIn }) {
     const used = c.callsOn || src.proj === TWOGUN_ID || src.own === TWOGUN_ID;
     const espn = espnStatusOf(row);
     if (used && t.salary !== null && t.salary !== toNumber(row.salary)) addFlag(r.flags, "salaryDiffers");
-    // Source order: only a game-day inactive's word may hide him (hideStatusOf), and DraftKings' own status outranks his PLAY call.
-    if (c.callsOn) applyCall(r, src, { tg: t, projected: hisProj !== null, espn: hideStatusOf(row), inactive: rowIsInactive(row), ruledOut: rowHideKind(row) === "ruled-out", salaryOut: isSidelined(row.salaryStatus) });
+    // Source order: only a game-day inactive's or a ruled-out note's word may hide him (hideStatusOf); DraftKings' Status column is never read (Adam 12:13 AM 11-26).
+    if (c.callsOn) applyCall(r, src, { tg: t, projected: hisProj !== null, espn: hideStatusOf(row), inactive: rowIsInactive(row), ruledOut: rowHideKind(row) === "ruled-out" });
     if (used && !t.outAfterStamp && statusChanged(t, { espn })) addFlag(r.flags, "statusChangedAfterStamp");
   }
   r.tg = t;

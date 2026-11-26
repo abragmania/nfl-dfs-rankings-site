@@ -4,10 +4,10 @@
 // selfCheck(board) reads a built board's rows (Showdown or classic) and returns { ok, failures, notes, rowsChecked }; each failure is
 // { id, name, rule, line, figures }, `line` the plain-English sentence the foot of the board prints; `notes` are counts of what the
 // check set aside without calling it a board failure (G62). Three checks:
-//   1. hidden-by-lower-source: the source order is DraftKings' own status and the game-day inactives list may hide a man, TwoGun sets
+//   1. hidden-by-lower-source: the source order is the game-day inactives list (and a note ruling him out of this game) may hide a man, TwoGun sets
 //      the number, and an outside feed's tag (ESPN, the Sleeper backup) alone is only a flag (row.injury.flagOnly). A man TwoGun projects
 //      who is hidden or zeroed with an outside feed's tag as the only reason is a failure; the builders no longer make one, so this is the
-//      guard. Not failures: Adam's own Out (override.status), a status in DraftKings' file (row.salaryStatus), a game-day inactive
+//      guard. Not failures: Adam's own Out (override.status), a game-day inactive
 //      (sidelined.js rowIsInactive: an ESPN Out whose comment says inactive, dated the game's own day; also the only hide the 11-02
 //      outAfterStamp rule may make), and TwoGun's own OUT call where it is in use (row.src.status "twogun").
 //      Adam's In removes the hide (rowIsOut).
@@ -16,7 +16,7 @@
 //   3. past-ceiling: a projection not typed by Adam is not above the row's ceiling (row.ceiling, or TwoGun's row.tg.ceil when his
 //      number is the one shown). A ceiling of 0 is a blank. A man whose own published projection is above his own published ceiling
 //      is the source disagreeing with itself: counted in notes, not a failure.
-import { rowIsOut, statusSetting, isSidelined, rowIsInactive, twogunCallsOut } from "./sidelined.js";
+import { rowIsOut, statusSetting, rowIsInactive, twogunCallsOut } from "./sidelined.js";
 import { bumpFactor } from "../overrides/merge.js";
 
 const TWOGUN = "twogun";
@@ -43,7 +43,7 @@ function twogunNumber(row) {
 /** A hide the source order allows: returns the reason, or null when only an outside feed's tag explains it. */
 function legitHide(row) {
   if (statusSetting(row) === "out") return "Adam's Out";
-  if (isSidelined(row.salaryStatus)) return "DraftKings' status";
+  // DraftKings' Status column is no reason (Adam 12:13 AM 11-26: only salaries come from the DraftKings upload; injuries come from injury sources).
   if (rowIsInactive(row)) return "game-day inactive or ruled out for this game"; // the one test (sidelined.js rowIsInactive: a dated inactive, or a weekday "ruled out" after the team's previous game)
   if (twogunCallsOut(row)) return "TwoGun's own out call"; // counted only where his call is in use (src.status "twogun")
   return null;

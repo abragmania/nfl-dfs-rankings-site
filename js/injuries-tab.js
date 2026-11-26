@@ -1,5 +1,6 @@
 // The Injuries tab (Adam 1:08 PM 11-13: "there can be an Injuries area, I can go turn someone from injured to healthy or vice versa"), on classic and Showdown, app and site.
-// Lists every man of the slate on screen whom any injury source tags or hides (DraftKings' Status, ESPN, Sleeper, TwoGun's OUT, a game-day inactive, a ruled-out note) and every man
+// Lists every man of the slate on screen whom any injury source tags or hides (ESPN, Sleeper, TwoGun's OUT, a game-day inactive, a ruled-out note; never DraftKings' Status column,
+// Adam 12:13 AM 11-26: only salaries come from the DraftKings upload; injuries come from injury sources) and every man
 // Adam set, with what each source says, whether the board hides him now and why (D45, the red OUT tag's reason), his projection now and the In / Out control of status-switch.js
 // (the same control and save path as the Sources page's Player status card; the caller wires delegateStatusClicks on the panel). The app keeps hiding by D45 on its own; this
 // tab is only where Adam overrides it. A search box finds any man of the slate, so a healthy-looking one can be marked Out too. Markup and the search box only.
@@ -26,7 +27,6 @@ export function sourceCells(row) {
   const feedWord = (i) => label(i?.status) || String(i?.unknownStatus ?? "").trim();
   const note = (i) => untagged([i?.comment, i?.longComment].filter(Boolean).join(" ")).trim();
   const flag = (i) => (i?.flagOnly ? " (flag)" : "");
-  const dk = label(row?.salaryStatus);
   const espn = fromEspn && feedWord(inj) ? `${feedWord(inj)}${flag(inj)}` : "";
   const other = inj?.otherFeed?.source === "Sleeper" ? label(inj.otherFeed.status) : "";
   const sleeper = fromSleeper && feedWord(inj) ? `${feedWord(inj)}${flag(inj)}` : other ? `${other} (differs from ESPN)` : "";
@@ -37,7 +37,6 @@ export function sourceCells(row) {
   const flags = row?.flags ?? [];
   const rule = flags.includes("outAfterStamp") ? "Ruled out after TwoGun's board" : kind === "inactive" ? "Game-day inactive" : kind === "ruled-out" ? "Ruled out (ESPN note)" : flags.includes("heldOut") ? "Held out (ESPN note)" : "";
   return {
-    dk: { text: dk, title: dk ? `DraftKings' salary file lists him ${dk}.` : "" },
     espn: { text: espn, title: fromEspn ? note(inj) : "" },
     sleeper: { text: sleeper, title: fromSleeper ? note(inj) : other ? "Sleeper's word differs from ESPN's; ESPN's stands and Sleeper's is a flag only." : "" },
     twogun: { text: twogun, title: untagged(tg?.callText ?? "") || (tgInUse && !tg ? "TwoGun's board lists him out." : "") },
@@ -57,14 +56,12 @@ export function hiddenCell(row) {
   if (rowIsOut(row)) {
     const kind = rowHideKind(row);
     const flags = row?.flags ?? [];
-    const dk = label(row?.salaryStatus);
     const short = statusSettingOf(row) === "out" ? "You marked him Out"
       : flags.includes("outAfterStamp") ? "Ruled out after TwoGun's board"
         : twogunCallsOut(row) ? "TwoGun: OUT"
           : kind === "inactive" ? "Game-day inactive"
             : kind === "ruled-out" ? "Ruled out (ESPN note)"
-              : dk && dk === label(row?.status) ? `DraftKings: ${dk}`
-                : `Listed ${label(row?.status) || "injured"}`;
+              : `Listed ${label(row?.status) || "injured"}`;
     return { hidden: true, short, why: outReasonText(row) };
   }
   if (statusSettingOf(row) === "in" && listedOut(row)) return { hidden: false, short: "Shown: your In", why: "You marked him In: the sources' out reading is set aside and he is projected as normal." };
@@ -112,11 +109,11 @@ function rowHtml(r, canWrite) {
   const hidden = `<td class="inj-c-hid"${h.why ? ` title="${attr(h.why)}"` : ""}><span class="st-counts ${h.hidden ? "st-counts-out" : "st-counts-in"}">${h.hidden ? "Hidden" : "Shown"}</span>${h.hidden || h.short !== "Shown" ? ` <span class="sp-quiet">${escapeHtml(h.hidden ? h.short : h.short.replace(/^Shown:\s*/, ""))}</span>` : ""}</td>`;
   const proj = `<td class="inj-c-proj${p.missing ? " inj-missing" : ""}" title="${attr(p.title)}">${escapeHtml(p.text)}${p.from ? ` <span class="sp-quiet">${escapeHtml(p.from)}</span>` : p.missing ? ` <span class="sp-quiet">type one on the Optimizer</span>` : ""}</td>`;
   return `<tr data-id="${attr(r.id)}"><td class="st-c-name">${escapeHtml(r.name ?? "")}</td><td>${escapeHtml(r.team ?? "")}</td><td>${escapeHtml(r.pos ?? "")}</td><td class="inj-c-num">${r.salary == null ? DASH : escapeHtml(money(r.salary))}</td>`
-    + `${cellHtml("inj-c-src", s.dk)}${cellHtml("inj-c-src", s.espn)}${cellHtml("inj-c-src", s.sleeper)}${cellHtml("inj-c-src", s.twogun)}${cellHtml("inj-c-src", s.rule)}`
+    + `${cellHtml("inj-c-src", s.espn)}${cellHtml("inj-c-src", s.sleeper)}${cellHtml("inj-c-src", s.twogun)}${cellHtml("inj-c-src", s.rule)}`
     + `${hidden}${proj}<td class="st-c-set">${statusSegHtml(r, canWrite)}</td></tr>`;
 }
 
-const HEAD = ["Player", "Team", "Pos", "Salary", "DraftKings", "ESPN", "Sleeper", "TwoGun", "Inactive / ruled out", "Board now", "Proj", "In / Out"];
+const HEAD = ["Player", "Team", "Pos", "Salary", "ESPN", "Sleeper", "TwoGun", "Inactive / ruled out", "Board now", "Proj", "In / Out"];
 
 /** The table and its count line for `rows` (the slate on screen's board rows). */
 export function injuriesTableHtml(rows, { search = "", canWrite = true } = {}) {

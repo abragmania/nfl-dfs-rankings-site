@@ -2,7 +2,7 @@
 // matchup text and the sort arrow. The ranked list that used to draw them (renderTableHead, renderTableBody, the click-to-type wiring) is retired: the Optimizer's pool
 // (lineup-pool.js, optimizer standard C9, C10, C17, round 5) draws these cells and lineup-pool-edit.js wires the typed boxes. Rows with a null projection show "no proj" and stay visible
 // (D27); a player nobody published an ownership number for shows an em dash in Own (still click-to-type, D28); the app never estimates one. There is no Lev column (A2).
-import { escapeHtml, money, dec1, dec2, localStamp } from "./format.js";
+import { escapeHtml, money, dec1, dec2 } from "./format.js";
 import { store } from "./state.js";
 import { twoGunOutReason, rowIsOut, untagged, revivedStatusTitle, twogunCallsOut } from "./out.js";
 
@@ -25,7 +25,7 @@ export function outTagHtml(row) {
 }
 
 /** The hover of a man Adam marked Out himself (overrides.status, 2026-11-12). */
-export const YOURS_OUT_TITLE = "You marked him Out: projection 0, hidden like a DraftKings Out.";
+export const YOURS_OUT_TITLE = "You marked him Out: projection 0, hidden like an injury report's Out.";
 
 /** R82: the red OUT tag on the Optimizer, keyed on rowIsOut (Out, Doubtful and IR all count). */
 export function lineupOutTagHtml(row) {
@@ -45,8 +45,7 @@ export function outReasonText(row) {
   const raw = (row.status || row.injury?.status || "").trim();
   const word = raw ? (STATUS_INFO[raw.toLowerCase()]?.label ?? raw) : "out";
   const comment = (row.injury?.comment ?? "").trim();
-  const byDk = Boolean(row.salaryStatus) && String(row.salaryStatus).trim().toLowerCase() === raw.toLowerCase();
-  return byDk ? `DraftKings' salary file lists him ${word}.` : `Listed ${word} on the injury report${comment ? `. ${comment}` : "."}`;
+  return `Listed ${word} on the injury report${comment ? `. ${comment}` : "."}`; // never DraftKings' Status column (Adam 12:13 AM 11-26: only salaries come from the DraftKings upload; injuries come from injury sources)
 }
 
 // TwoGun-mode markers: the same small amber dot as the A1 marker, its sentences on hover. Nothing shows in current mode
@@ -120,11 +119,7 @@ export function statusBadgeHtml(row, word = row?.status) {
   const why = untagged(row?.tg?.callText);
   // A row whose status TwoGun's own call replaced (src.status "twogun") and who is not called OUT: the report's word stays on the badge, with his call beside it.
   const playsOnHisWord = row?.src?.status === "twogun" && !twogunCallsOut(row) ? "TwoGun lists him as playing." : "";
-  // DraftKings' own word names when the salary file was uploaded (the age of the status).
-  const dkWord = String(row?.salaryStatus ?? "").trim();
-  const at = row?.salaryStatusAt ? localStamp(row.salaryStatusAt) : null;
-  const fromDk = dkWord && dkWord.toLowerCase() === raw.toLowerCase() ? `DraftKings' salary file${at ? ` (uploaded ${at.monthDay} ${at.clock} ET)` : ""} lists him ${info?.label ?? raw}.` : "";
-  const notes = [fromDk, (row?.injury?.comment ?? "").trim(), why ? `TwoGun${row.tg.tag ? ` [${row.tg.tag}]` : ""}: ${why}` : "", playsOnHisWord].filter(Boolean).join(" ");
+  const notes = [(row?.injury?.comment ?? "").trim(), why ? `TwoGun${row.tg.tag ? ` [${row.tg.tag}]` : ""}: ${why}` : "", playsOnHisWord].filter(Boolean).join(" ");
   const title = (head) => escapeHtml(notes ? `${head}. ${notes}` : head);
   const revived = revivedStatusTitle(row, info?.label ?? raw);
   if (revived) return ""; // Adam 11-12: a man he typed back in shows no status badge at all (temporary, until the injury source order ships)
@@ -245,7 +240,7 @@ export function statusTagsHtml(row) {
   const key = (row.status ?? "").trim().toLowerCase();
   const injuryStatus = row.injury?.status;
   const same = injuryStatus && (injuryStatus.toLowerCase() === key || (STATUS_INFO[key] && STATUS_INFO[key].label === STATUS_INFO[injuryStatus.toLowerCase()]?.label));
-  // The outside feed's word, when it is not what the board carries, is only a flag (source order, step 4): muted, never the coloured badge a DraftKings or TwoGun status gets.
+  // The outside feed's word, when it is not what the board carries, is only a flag (source order, step 4): muted, never the coloured badge a hiding or TwoGun status gets.
   // With a board status of its own, its badge carries the comment (R7): the flag does not repeat it.
   const injuryHtml = injuryStatus && !same ? feedFlagHtml(key ? { ...row, injury: { ...row.injury, comment: "" } } : row) : "";
   return `${statusBadgeHtml(row)}${injuryHtml}${unknownStatusHtml(row)}`;

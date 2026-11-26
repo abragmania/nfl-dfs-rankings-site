@@ -100,10 +100,11 @@ export function entriesInjuryProblem(report) {
 }
 
 // ---- Who is out: the source order (Adam 2026-11-12; PROJECT.md D45 as amended) ----
-// 1. Adam's own In / Out. 2. DraftKings' own Status column (row.salaryStatus) and the game-day inactives may hide a man.
+// 1. Adam's own In / Out. 2. The game-day inactives and an ESPN note ruling him out of this game may hide a man.
 // 3. TwoGun sets the number; his OUT call counts where his numbers are in use. 4. An outside feed's tag alone (ESPN, the Sleeper
 // backup) is only a flag: row.injury.flagOnly, never a status, a zero or a hide. 5. The 11-02 outAfterStamp path hides only what rowIsInactive says: a game-day inactive or a weekday
-// "ruled out" (isRuledOutForGame, newer than DraftKings' file).
+// "ruled out" (isRuledOutForGame).
+// Adam 12:13 AM 11-26: only salaries come from the DraftKings upload; injuries come from injury sources. DraftKings' Status column is never read as a status.
 // No imports: the browser loads this file as it is.
 const ESPN_FEED = "ESPN injuries";
 const ET_DAY = new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit" });
@@ -230,17 +231,16 @@ export function ruledOutWording({ comment = null, commentLong = null, kickoffUtc
 }
 
 /** A weekday "ruled out" (D45): an ESPN Out whose comment passes ruledOutWording, dated after the team's previous game (previousGameUtc, from the DraftKings salary files, plus the game's
- *  length), within RULED_OUT_WINDOW_MS before this game's DraftKings kickoff, and AFTER the salary file's upload (`uploadedAt`: a newer DraftKings file beats an older ESPN note, so the note is
- *  then a flag showing both words). No date, no upload time, an unknown previous game (not guessed) and a Sleeper tag are not. Pure. */
-export function isRuledOutForGame({ source = null, status = null, comment = null, commentLong = null, date = null, kickoffUtc = null, previousGameUtc = null, week = null, opp = null, uploadedAt = null, lastName = null } = {}) {
+ *  length) and within RULED_OUT_WINDOW_MS before this game's DraftKings kickoff. No date, an unknown previous game (not guessed) and a Sleeper tag are not. The salary file's upload time
+ *  no longer matters (Adam 12:13 AM 11-26: only salaries come from the DraftKings upload; injuries come from injury sources), so a DraftKings file newer than the note never overrules it. Pure. */
+export function isRuledOutForGame({ source = null, status = null, comment = null, commentLong = null, date = null, kickoffUtc = null, previousGameUtc = null, week = null, opp = null, lastName = null } = {}) {
   if (source !== ESPN_FEED || String(status ?? "").trim().toUpperCase() !== "OUT") return false;
   if (!ruledOutWording({ comment, commentLong, kickoffUtc, week, opp, lastName })) return false;
   const entry = typeof date === "string" ? Date.parse(date) : NaN;
   const kickoff = typeof kickoffUtc === "string" ? Date.parse(kickoffUtc) : NaN;
   const previous = typeof previousGameUtc === "string" ? Date.parse(previousGameUtc) : NaN;
-  const upload = typeof uploadedAt === "string" ? Date.parse(uploadedAt) : NaN;
-  if (!Number.isFinite(entry) || !Number.isFinite(kickoff) || !Number.isFinite(previous) || !Number.isFinite(upload)) return false;
-  return entry <= kickoff && kickoff - entry <= RULED_OUT_WINDOW_MS && entry > previous + GAME_LENGTH_MS && entry > upload;
+  if (!Number.isFinite(entry) || !Number.isFinite(kickoff) || !Number.isFinite(previous)) return false;
+  return entry <= kickoff && kickoff - entry <= RULED_OUT_WINDOW_MS && entry > previous + GAME_LENGTH_MS;
 }
 
 /** What a feed entry may hide a man by (the one copy): "inactive" (isGameDayInactive), "ruled-out" (isRuledOutForGame) or null. */
@@ -257,7 +257,7 @@ export function rowIsInactive(row) {
 /** "inactive", "ruled-out" or null: which feed rule hides this row (for the words a hide is said in). */
 export function rowHideKind(row) {
   const i = row?.injury;
-  return i ? feedHideKind({ source: i.source, status: i.status, comment: i.comment, commentLong: i.longComment, date: i.date, kickoffUtc: row.kickoffUtc, previousGameUtc: row.prevGameUtc ?? null, week: row.slateWeek ?? null, opp: row.opp ?? null, uploadedAt: row.slateUploadedAt ?? null, lastName: row.ruleName ?? null }) : null;
+  return i ? feedHideKind({ source: i.source, status: i.status, comment: i.comment, commentLong: i.longComment, date: i.date, kickoffUtc: row.kickoffUtc, previousGameUtc: row.prevGameUtc ?? null, week: row.slateWeek ?? null, opp: row.opp ?? null, lastName: row.ruleName ?? null }) : null;
 }
 
 /** The outside feed's Out, IR, Doubtful or Inactive word on a man it does not hide (a flag only, injury.flagOnly) and whom nothing else rules out, else null.
@@ -278,11 +278,12 @@ export function uploadStampText(iso) {
 }
 
 /**
- * The foot-of-board sentence (G62) naming every man an outside feed lists Out, IR, Doubtful or Inactive whom nothing hides (a flag only), by feed word, with when
- * DraftKings' statuses were uploaded: a man ruled out after the upload is hidden only if a re-upload brings DraftKings' word. Null when there is none. Pure.
- * Example: "Flag only (feed says Out; DraftKings' file of Tue 11:02 AM lists nothing): Colson Yankoff, Lucas Patrick. Re-upload the salary file to refresh DraftKings' statuses."
+ * The foot-of-board sentence (G62) naming every man an outside feed lists Out, IR, Doubtful or Inactive whom nothing hides (a flag only), by feed word: neither a game-day
+ * inactive nor a note ruling him out of this game. Null when there is none. Pure. (Adam 12:13 AM 11-26: only salaries come from the DraftKings upload; injuries come from
+ * injury sources, so the salary file is no longer named here.)
+ * Example: "Flag only (feed says Out; no game-day inactive or note ruling him out of this game): Colson Yankoff, Lucas Patrick."
  */
-export function flagOnlyNote(rows, uploadedAt) {
+export function flagOnlyNote(rows) {
   const byWord = new Map();
   for (const r of rows ?? []) {
     const word = flaggedWordOf(r);
@@ -291,52 +292,36 @@ export function flagOnlyNote(rows, uploadedAt) {
     byWord.get(word).push(r);
   }
   if (!byWord.size) return null;
-  const stamp = uploadStampText(uploadedAt);
-  const file = stamp ? `DraftKings' file of ${stamp}` : "DraftKings' file (upload time unknown)";
-  const parts = [...byWord].map(([word, list]) => `Flag only (feed says ${word}; ${file} ${list.some((r) => r.salaryStatus) ? "lists no out status" : "lists nothing"}): ${list.map((r) => r.name).join(", ")}.`);
-  // G62: a weekday "ruled out" that could not be taken stays a flag, and the true reason is said (no previous game on file, or DraftKings' newer file lists nothing: both words shown).
+  const parts = [...byWord].map(([word, list]) => `Flag only (feed says ${word}; no game-day inactive or note ruling him out of this game): ${list.map((r) => r.name).join(", ")}.`);
+  // G62: a weekday "ruled out" that could not be taken stays a flag, and the true reason is said (no previous game on file, or no date on the note).
   const reasons = new Map();
   for (const r of [...byWord.values()].flat()) {
-    const why = ruledOutUnconfirmed(r, uploadedAt);
+    const why = ruledOutUnconfirmed(r);
     if (!why) continue;
     if (!reasons.has(why)) reasons.set(why, []);
     reasons.get(why).push(r.name);
   }
   for (const [why, names] of reasons) parts.push(`Ruled out in the feed but only a flag, ${why}: ${names.join(", ")}.`);
-  return `${parts.join(" ")} Re-upload the salary file to refresh DraftKings' statuses.`;
+  return parts.join(" ");
 }
 
 /** Why a feed note that says, going forward, that the man is ruled out for this game could not hide him (the words of the foot note), else null: the team's previous game could not be found
- *  (row.prevGameWhy: none on file, or older than the lookback), or DraftKings' salary file (`uploadedAt`) is newer than the note and lists nothing. */
-export function ruledOutUnconfirmed(row, uploadedAt = null) {
+ *  (row.prevGameWhy: none on file, or older than the lookback), or the note carries no date. */
+export function ruledOutUnconfirmed(row) {
   const i = row?.injury;
   if (!i || i.source !== ESPN_FEED || String(i.status ?? "").trim().toUpperCase() !== "OUT") return null;
   if (!ruledOutWording({ comment: i.comment, commentLong: i.longComment, kickoffUtc: row.kickoffUtc, week: row.slateWeek ?? null, opp: row.opp ?? null, lastName: row.ruleName ?? null })) return null;
   if (!row.prevGameUtc) return `since ${row.prevGameWhy ?? "the team's previous game is not in the salary files on hand"}`;
-  const entry = Date.parse(i.date ?? ""), upload = Date.parse(row.slateUploadedAt ?? uploadedAt ?? "");
-  if (!Number.isFinite(entry)) return "since the note carries no date";
-  if (!Number.isFinite(upload)) return "since the salary file's upload time is unknown";
-  return entry <= upload ? `since DraftKings' newer salary file lists nothing for him (the note is older than the upload)` : null;
+  return Number.isFinite(Date.parse(i.date ?? "")) ? null : "since the note carries no date";
 }
 
-/** A DraftKings Status word the app reads: a sidelined one ("out"), Questionable ("q"), else "unknown" (counted and noted, never a status), blank null. */
-export function salaryWordKind(word) {
-  const w = String(word ?? "").trim();
-  if (!w) return null;
-  if (isSidelined(w)) return "out";
-  return /^(q|questionable)$/i.test(w) ? "q" : "unknown";
-}
-
-/** What the sources let hide a man (steps 2 and 4): the DraftKings Status column when it lists him out, else the feed's word only
- *  for a game-day inactive. `flagOnly`: the feed has a word that hides no one. Returns { status, by: "salary" | "inactive" | null, flagOnly }. */
-export function injuryRuling({ salaryStatus = null, feedStatus = null, inactive = false, ruledOut = false } = {}) {
-  const dk = salaryWordKind(salaryStatus) && salaryWordKind(salaryStatus) !== "unknown" ? String(salaryStatus).trim() : null; // an unknown word is never turned into a status (counted and noted by the board)
+/** What the injury sources let hide a man (steps 2 and 4): the feed's word only for a game-day inactive or a weekday "ruled out" for this game. `flagOnly`: the feed has a word
+ *  that hides no one. Returns { status, by: "inactive" | "ruled-out" | null, flagOnly }. DraftKings' Status column is never an input (Adam 12:13 AM 11-26: only salaries come from
+ *  the DraftKings upload; injuries come from injury sources). */
+export function injuryRuling({ feedStatus = null, inactive = false, ruledOut = false } = {}) {
   const word = typeof feedStatus === "string" && feedStatus.trim() ? feedStatus : null;
-  if (isSidelined(dk)) return { status: dk, by: "salary", flagOnly: word !== null };
   if (word && inactive && isSidelined(word)) return { status: word, by: "inactive", flagOnly: false };
   if (word && ruledOut && isSidelined(word)) return { status: word, by: "ruled-out", flagOnly: false }; // a weekday "ruled out" (isRuledOutForGame)
-  // DraftKings' word that hides no one (its "Q") is still its status, shown as one; the feed's word then is a flag.
-  if (dk) return { status: dk, by: "salary", flagOnly: word !== null };
   return { status: null, by: null, flagOnly: word !== null };
 }
 

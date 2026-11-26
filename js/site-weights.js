@@ -7,7 +7,6 @@ import { blendProjections, failedPositions, BLEND_FLAGS, projRecipe, filledText 
 import { dropsHisFigure, twogunPresetRecipes } from "../server/rank/select.js";
 import { ownershipRecipe, ownershipOf } from "../server/rank/ownership-summary.js";
 import { remergeOverrides } from "../server/rank/remerge.js";
-import { isSidelined } from "../server/rank/sidelined.js";
 import { toNumber } from "../server/rank/value-core.js";
 import { espnStatusOf, statusChanged } from "../server/twogun/overlay.js";
 import { TWOGUN_ID, PRESETS, ticksOnlyTwoGunProjection, presetOf, classicProjectionGaps } from "../server/sources/selection-core.js";
@@ -202,8 +201,9 @@ function projectionPlan(board, { tunable, published, now, weights, kept, his, la
   // His OUT call keeps his figure out of the blend; Adam's In keeps it while it is above 0 (select.js dropsHisFigure, the one rule).
   const blendIn = new Map(board.rows.map((r) => [r.id, r.projBySource && TWOGUN_ID in r.projBySource && dropsHisFigure({ call: r.tg?.call, markedIn: markedIn(r), hisProj: r.projBySource[TWOGUN_ID] }) ? withoutTwogun(r.projBySource) : r.projBySource]));
   const players = board.rows.map((r) => ({ id: r.id, pos: r.pos }));
-  // What the board builder left to hide a man (sidelined.js injuryRuling): DraftKings' own status, or the feed's word when it is a game-day inactive; a feed tag alone is a flag (injury.flagOnly) and counts for nothing.
-  const injuryStatus = new Map(board.rows.map((r) => [r.id, isSidelined(r.salaryStatus) ? r.salaryStatus : r.injury?.flagOnly ? null : r.injury?.status ?? null]));
+  // What the board builder left to hide a man (sidelined.js injuryRuling): the feed's word when it is a game-day inactive or a note ruling him out of this game; a feed tag alone is a
+  // flag (injury.flagOnly) and counts for nothing. Never DraftKings' Status column (Adam 12:13 AM 11-26: only salaries come from the DraftKings upload; injuries come from injury sources).
+  const injuryStatus = new Map(board.rows.map((r) => [r.id, r.injury?.flagOnly ? null : r.injury?.status ?? null]));
   const blendWith = (w) => blendProjections(players, blendIn, w, { labels, injuryStatus, injuryReport: state });
   plan.blend = blendWith(plan.ticked);
   plan.backup = plan.backupW && Object.keys(plan.backupW).length ? blendWith(plan.backupW) : null;

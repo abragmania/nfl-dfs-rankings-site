@@ -133,9 +133,10 @@ export function inactiveHeldWords(quoted) {
   return `TwoGun quoted ${quoted ?? "Out"} and still called PLAY; ESPN's game-day inactives list him, so he stays out.`;
 }
 
-export function applyCall(r, src, { tg, projected, espn, inactive = false, salaryOut = false, ruledOut = false }) {
+export function applyCall(r, src, { tg, projected, espn, inactive = false, ruledOut = false }) {
   // Source order (rank/sidelined.js): `espn` is the feed's word only for a game-day inactive (hideStatusOf), else null, because an outside
-  // feed's tag alone is a flag and hides no one (step 4). DraftKings' own status (`salaryOut`) outranks his PLAY call (step 2).
+  // feed's tag alone is a flag and hides no one (step 4). DraftKings' Status column is never read
+  // (Adam 12:13 AM 11-26: only salaries come from the DraftKings upload; injuries come from injury sources).
   const outNow = OUT_NOW.has(normStatus(espn));
   if (tg.call === "OUT") {
     r.status = "OUT";
@@ -159,7 +160,7 @@ export function applyCall(r, src, { tg, projected, espn, inactive = false, salar
     }
     return;
   }
-  if (tg.call === "PLAY" && !salaryOut) {
+  if (tg.call === "PLAY") {
     // In TwoGun mode his call replaces whatever status the current board carries (board.js injuries step).
     r.status = null;
     removeFlags(r.flags, (f) => f === "injured");
@@ -183,9 +184,9 @@ export function statusChanged(tg, { espn }) {
 /** The injury report's status on a current-board row (ESPN's, or Sleeper's when ESPN's failed; board.js keeps it in row.injury), or null. */
 export const espnStatusOf = (row) => (Object.hasOwn(INJURY_SOURCE_LABEL, row.injury?.source) ? (row.injury.status ?? null) : null);
 
-/** The word that hides a man on a row the board builder has ruled (sidelined.js injuryRuling leaves a status only for a game-day inactive or DraftKings' column;
- *  an outside feed's tag alone is a flag and leaves none), else null. For applyCall; DraftKings' own is handled by its salaryOut, so it is not passed as the feed's word. */
-export const hideStatusOf = (row) => (isSidelined(row.status) && !isSidelined(row.salaryStatus) ? row.status : null);
+/** The word that hides a man on a row the board builder has ruled (sidelined.js injuryRuling leaves a status only for a game-day inactive or a note ruling
+ *  him out of this game; an outside feed's tag alone is a flag and leaves none), else null. For applyCall. */
+export const hideStatusOf = (row) => (isSidelined(row.status) ? row.status : null);
 
 /** row.src for a figure set that is all current: the status is the injury report's where it has a word that counts (R82; a flag-only tag is no status source), else null. */
 export function currentSrc(row) {
@@ -227,7 +228,7 @@ function patchRow(row, entry, { line }) {
     src.own = "twogun";
   }
   if (tg.salary !== null && tg.salary !== toNumber(row.salary)) addFlag(r.flags, "salaryDiffers");
-  applyCall(r, src, { tg, projected: proj !== null, espn: hideStatusOf(row), inactive: rowIsInactive(row), ruledOut: rowHideKind(row) === "ruled-out", salaryOut: isSidelined(row.salaryStatus) });
+  applyCall(r, src, { tg, projected: proj !== null, espn: hideStatusOf(row), inactive: rowIsInactive(row), ruledOut: rowHideKind(row) === "ruled-out" });
   if (!tg.outAfterStamp && statusChanged(tg, { espn })) addFlag(r.flags, "statusChangedAfterStamp");
   r.tg = tg;
   r.src = src;
@@ -278,6 +279,16 @@ export function unmatchedGames(hisGames, slate) {
   const onSlate = new Set((slate?.games ?? []).map((g) => `${g.away}@${g.home}`));
   return (hisGames ?? []).filter((hg) => hg && !onSlate.has(`${hg.away}@${hg.home}`))
     .map((hg) => `${hg.game ?? `${hg.away}@${hg.home}`}, a game not on the DraftKings slate`);
+}
+
+/**
+ * The loaded DraftKings slate's games with no game in his snapshot and not already named by the snapshot itself (meta.uncoveredGames). Adam 11-25 night: a
+ * snapshot whose games differ from the loaded slate's (a Thanksgiving copy after the swap to Sunday's file, or the reverse) is never hidden; it is joined
+ * man by man as always, and these games, which keep the current figures, are named on his cards (G62).
+ */
+export function slateGamesWithoutHim(hisGames, slate, alreadyNamed = []) {
+  const his = new Set((hisGames ?? []).map((hg) => `${hg?.away}@${hg?.home}`));
+  return (slate?.games ?? []).map((g) => `${g.away}@${g.home}`).filter((k) => !his.has(k) && !alreadyNamed.includes(k));
 }
 
 /** His two read-only source cards (Projections and Projected Ownership tabs); weight above 0 so neither says "(not used)". */
@@ -372,13 +383,17 @@ export function applyTwoGun(currentBoard, snapshot, joined, overrides, { slate, 
     if (line) g.espnLine = line.espn; // two sources disagree: keep both (router Data rules)
   }
   const summary = summaryOf(merged.rows, status, load);
+  const without = slateGamesWithoutHim(snapshot.games, slate, Array.isArray(snapshot.meta?.uncoveredGames) ? snapshot.meta.uncoveredGames : []);
+  const cardLoad = without.length
+    ? { ...load, warningsNote: [load?.warningsNote, `TwoGun's copy has no figures for ${without.join(", ")} on the loaded slate; those games keep the current figures.`].filter(Boolean).join(" ") }
+    : load;
   const board = {
     ...merged,
     generatedAt: currentBoard.generatedAt,
     notes: [...(currentBoard.notes ?? [])],
     tabNotes: Object.fromEntries(Object.entries(currentBoard.tabNotes ?? {}).map(([k, v]) => [k, [...(v ?? [])]])),
     stale: status === "stale" ? staleWithTwoGun(currentBoard) : [...(currentBoard.stale ?? [])],
-    sources: [...twogunCards(load, status, joined, merged.rows, snapshot.players ?? []), ...(currentBoard.sources ?? [])],
+    sources: [...twogunCards(cardLoad, status, joined, merged.rows, snapshot.players ?? []), ...(currentBoard.sources ?? [])],
     unmatched: {
       ...(currentBoard.unmatched ?? {}),
       bySource: { ...(currentBoard.unmatched?.bySource ?? {}), [TWOGUN_ID]: [...joined.unmatched, ...unmatchedGames(snapshot.games, slate)] }

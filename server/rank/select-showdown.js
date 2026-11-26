@@ -120,10 +120,10 @@ const tickedLabel = (c, kind, id) => (id === ANY ? "any Showdown ownership file"
 function showdownPlan(inputs, opts) {
   const kinds = kindsOf(opts.selection);
   const tg = twogunInput(inputs.twogun);
-  // Who is out follows the source order (rank/sidelined.js): the board builder already left a row's status to DraftKings' own Status
-  // column or a game-day inactive; an outside feed's tag alone is a flag (row.injury.flagOnly) and hides no one. On a board that ticks
-  // TwoGun: his CSV marks a man "(assumed playing)" (load.playingIds: { board id: the status he quoted }) and that does not undo
-  // DraftKings' status, and a game-day inactive stays out with "outAfterStamp" (he projected the man before the inactives came, as
+  // Who is out follows the source order (rank/sidelined.js): the board builder already left a row's status to a game-day inactive or a
+  // note ruling him out of this game (never DraftKings' Status column: Adam 12:13 AM 11-26, only salaries come from the DraftKings upload;
+  // injuries come from injury sources); an outside feed's tag alone is a flag (row.injury.flagOnly) and hides no one. On a board that ticks
+  // TwoGun: his CSV marks a man "(assumed playing)" (load.playingIds: { board id: the status he quoted }), and a game-day inactive stays out with "outAfterStamp" (he projected the man before the inactives came, as
   // classic does, twogun/overlay.js applyCall). A man his CSV lists out with no call (load.listedOutIds) is out by his word, his
   // number notwithstanding (step 3), unless Adam marked him In. A lock still forces; row.injury keeps the feed's record.
   const ticked = tg.usable && TWOGUN_ID in tickedWeights(kinds, "projection", [TWOGUN_ID]);
@@ -136,7 +136,7 @@ function showdownPlan(inputs, opts) {
   const rowsIn = (inputs.rows ?? []).map((r) => (tg.usable ? r : withoutTwoGun(r))).map((r) => {
     const id = String(r.id);
     if (!isSidelined(r.status) && hisOut.has(id)) { calledOut.set(r.id, hisOut.get(id)); return { ...r, status: hisOut.get(id) }; }
-    if (!hisCall.has(id) || !isSidelined(r.status) || isSidelined(r.salaryStatus) || !hisNumber(r)) return r;
+    if (!hisCall.has(id) || !isSidelined(r.status) || !hisNumber(r)) return r;
     movedAfterStamp.set(r.id, hisCall.get(id));
     return r;
   });

@@ -164,8 +164,7 @@ function showdownFigureLine(what, ids, board, half) {
 function zeroedLine(row) {
   const before = row?.override?.proj ?? row?.projBase;
   if (!(row?.proj === 0 && before !== 0)) return null;
-  const dk = row.salaryStatus && String(row.salaryStatus).trim().toLowerCase() === String(row.status ?? "").trim().toLowerCase();
-  const by = dk ? "DraftKings" : twogunCallsOut(row) ? "TwoGun" : row.injury?.source ?? (row.src?.status === "twogun" ? "TwoGun" : null);
+  const by = twogunCallsOut(row) ? "TwoGun" : row.injury?.source ?? (row.src?.status === "twogun" ? "TwoGun" : null);
   return `Projection: set to 0: listed out${by ? ` by ${by}` : ""}`;
 }
 
